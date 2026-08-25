@@ -18,13 +18,19 @@ import hashlib
 import os
 import secrets
 import shutil
+import sys
 from contextlib import contextmanager
 from datetime import datetime, date
 
 # Carpeta donde vive el archivo de la base de datos. Se guarda al lado del
 # programa, dentro de una carpeta "data" para no mezclar el archivo .db
-# con el código fuente.
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# con el código fuente. Cuando el programa corre como .exe empaquetado
+# (PyInstaller), __file__ apunta a una carpeta temporal que se borra en
+# cada arranque — si se usara esa carpeta para guardar la base de datos,
+# el sistema "perdería la memoria" cada vez que se abre. Por eso, si está
+# empaquetado, se usa la carpeta donde vive el .exe real en su lugar.
+BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) \
+    else os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "kiosko.db")
 BACKUPS_DIR = os.path.join(DATA_DIR, "backups")

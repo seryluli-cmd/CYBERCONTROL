@@ -15,7 +15,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate
 
 from repositories import articulos_repo
-from ui.utils import formato_pesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase
+from ui.utils import (
+    formato_pesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores,
+    aplicar_clase, encadenar_enter,
+)
 
 
 class ArticulosWindow(QDialog):
@@ -193,9 +196,14 @@ class DialogoArticulo(QDialog):
         # sola, automáticamente. Antes ese Enter no hacía nada útil (en
         # versiones viejas, incluso llegaba a disparar "Guardar" antes
         # de tiempo). Ahora ese Enter pasa prolijamente el foco al
-        # siguiente campo (Descripción), como si se apretara Tab, para
-        # poder seguir cargando el artículo sin tocar el mouse.
-        self.campo_codigo.returnPressed.connect(lambda: self.campo_descripcion.setFocus())
+        # siguiente campo, como si se apretara Tab, para poder seguir
+        # cargando el artículo sin tocar el mouse — encadenado por todo
+        # el formulario, terminando en Guardar (ver encadenar_enter).
+        encadenar_enter(
+            self.campo_codigo, self.campo_descripcion, self.combo_marca, self.combo_rubro,
+            self.spin_precio_venta, self.spin_precio_compra, self.spin_stock_minimo,
+            accion_final=self._guardar,
+        )
 
         formulario = QFormLayout()
         formulario.addRow("Código (de barras):", self.campo_codigo)
@@ -313,6 +321,7 @@ class DialogoMovimientos(QDialog):
         self.fecha_hasta.setCalendarPopup(True)
         boton_buscar = QPushButton("Buscar")
         boton_buscar.clicked.connect(self._buscar)
+        encadenar_enter(self.fecha_desde, self.fecha_hasta, accion_final=self._buscar)
 
         filtros = QHBoxLayout()
         filtros.addWidget(QLabel("Desde:"))

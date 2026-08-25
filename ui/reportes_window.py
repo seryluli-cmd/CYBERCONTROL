@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont
 
 from repositories import reportes_repo
-from ui.utils import formato_pesos, manejar_errores, aplicar_clase
+from ui.utils import formato_pesos, manejar_errores, aplicar_clase, encadenar_enter
 
 
 class ReportesWindow(QDialog):
@@ -56,6 +56,7 @@ class PestañaResumen(QWidget):
         boton_hoy.clicked.connect(self._poner_solo_hoy)
         boton_buscar = QPushButton("Buscar")
         boton_buscar.clicked.connect(self._buscar)
+        encadenar_enter(self.fecha_desde, self.fecha_hasta, accion_final=self._buscar)
 
         filtros = QHBoxLayout()
         filtros.addWidget(QLabel("Desde:"))
@@ -140,6 +141,7 @@ class PestañaRanking(QWidget):
 
         boton_buscar = QPushButton("Buscar")
         boton_buscar.clicked.connect(self._buscar)
+        encadenar_enter(self.fecha_desde, self.fecha_hasta, self.combo_orden, accion_final=self._buscar)
 
         filtros = QHBoxLayout()
         filtros.addWidget(QLabel("Desde:"))

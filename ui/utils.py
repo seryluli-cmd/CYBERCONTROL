@@ -12,11 +12,15 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QMessageBox, QWidget
+
+import database
 
 # Junto al archivo de la base de datos, para tenerlo todo en la misma
-# carpeta "data" (ver database.py).
-_RUTA_LOG_ERRORES = Path(__file__).resolve().parent.parent / "data" / "errores.log"
+# carpeta "data" (ver database.DATA_DIR, que ya sabe resolver esta
+# ubicación tanto corriendo desde código como empaquetado en un .exe).
+_RUTA_LOG_ERRORES = Path(database.DATA_DIR) / "errores.log"
 
 
 def registrar_error(excepcion: Exception):
@@ -96,6 +100,61 @@ def aplicar_clase(widget, clase: str):
     widget.setProperty("clase", clase)
     widget.style().unpolish(widget)
     widget.style().polish(widget)
+
+
+class _FiltroEnter(QObject):
+    """Intercepta la tecla Enter/Intro en el widget donde se instala y,
+    en vez de dejarla pasar, ejecuta `accion` (ver `encadenar_enter`)."""
+
+    def __init__(self, accion):
+        super().__init__()
+        self._accion = accion
+
+    def eventFilter(self, watched, evento):
+        if evento.type() == QEvent.KeyPress and evento.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self._accion()
+            return True
+        return False
+
+
+def _widget_de_teclado(widget):
+    """
+    El widget que realmente recibe las teclas al escribir no siempre es
+    el que uno arma (QComboBox editable, QSpinBox, QDoubleSpinBox y
+    QDateEdit por dentro tienen su propio QLineEdit, y es ESE el que
+    recibe el evento de tecla) — hay que engancharse ahí, si no el
+    filtro de Enter nunca se llega a disparar.
+    """
+    if isinstance(widget, QAbstractSpinBox) or (isinstance(widget, QComboBox) and widget.isEditable()):
+        return widget.lineEdit()
+    return widget
+
+
+def encadenar_enter(*widgets, accion_final=None):
+    """
+    Hace que apretar Enter en cualquiera de estos campos de un
+    formulario pase el foco al siguiente, como si se apretara Tab, en
+    vez de no hacer nada (el comportamiento por defecto de Qt para la
+    mayoría de estos campos). Sirve para QLineEdit, QComboBox, QSpinBox,
+    QDoubleSpinBox y QDateEdit indistintamente, y se puede mezclar
+    cualquier combinación de esos tipos en la misma cadena.
+
+    En el último campo, si se pasa `accion_final` (una función sin
+    argumentos, típicamente el método que guarda o busca), Enter la
+    ejecuta directamente en vez de pasar el foco a ningún lado.
+    """
+    destinos = list(widgets[1:])
+    if accion_final is not None:
+        destinos.append(accion_final)
+
+    for widget, destino in zip(widgets, destinos):
+        accion = destino.setFocus if isinstance(destino, QWidget) else destino
+        filtro = _FiltroEnter(accion)
+        # Qt no retiene una referencia propia al filtro (solo la usa por
+        # fuera, en C++); si no la guardamos nosotros en algún lado,
+        # Python lo destruye enseguida y el filtro deja de funcionar.
+        widget._filtro_enter = filtro
+        _widget_de_teclado(widget).installEventFilter(filtro)
 
 
 def mostrar_error(padre, titulo: str, mensaje: str):

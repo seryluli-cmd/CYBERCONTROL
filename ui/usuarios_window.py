@@ -15,7 +15,9 @@ from PySide6.QtCore import Qt
 
 import database
 from repositories import usuarios_repo, config_repo
-from ui.utils import mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase
+from ui.utils import (
+    mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase, encadenar_enter,
+)
 
 
 class UsuariosWindow(QDialog):
@@ -159,6 +161,7 @@ class DialogoUsuario(QDialog):
         formulario.addRow("Nombre:", self.campo_nombre)
         formulario.addRow("Clave:", self.campo_clave)
         formulario.addRow("Rol:", self.combo_rol)
+        encadenar_enter(self.campo_nombre, self.campo_clave, self.combo_rol, accion_final=self._guardar)
 
         boton_guardar = QPushButton("Guardar")
         aplicar_clase(boton_guardar, "primario")
@@ -219,6 +222,7 @@ class DialogoFondoCambio(QDialog):
         self.spin_monto.setMaximum(99_999_999)
         self.spin_monto.setPrefix("$ ")
         self.spin_monto.setValue(valor_actual)
+        encadenar_enter(self.spin_monto, accion_final=self.accept)
 
         boton_guardar = QPushButton("Guardar")
         aplicar_clase(boton_guardar, "primario")

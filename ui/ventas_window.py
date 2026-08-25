@@ -29,7 +29,8 @@ from datetime import datetime
 
 from repositories import articulos_repo, ventas_repo
 from ui.utils import (
-    formato_pesos, mostrar_error, mostrar_info, mostrar_aviso, confirmar, manejar_errores, aplicar_clase
+    formato_pesos, mostrar_error, mostrar_info, mostrar_aviso, confirmar, manejar_errores,
+    aplicar_clase, encadenar_enter,
 )
 from ui.buscar_articulo import DialogoBuscarArticulo
 
@@ -350,6 +351,10 @@ class DialogoPago(QDialog):
         # en el mostrador: "una parte en efectivo, el resto digital", o
         # al revés — así se resuelve en un solo Enter, sin calculadora.
         self.spin_monto.lineEdit().returnPressed.connect(self._agregar_pago_y_completar)
+        # Enter en "Medio de pago" pasa el foco al monto (el monto ya
+        # tiene su propio Enter especial de arriba, así que no se
+        # encadena hasta ahí con encadenar_enter).
+        encadenar_enter(self.combo_metodo, self.spin_monto)
 
         boton_agregar = QPushButton("Agregar pago")
         boton_agregar.setToolTip("Agrega únicamente el monto tipeado, con el medio elegido.")
