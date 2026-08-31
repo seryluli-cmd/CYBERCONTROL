@@ -51,6 +51,36 @@ def crear_rubro(nombre: str) -> int:
         return fila["id"]
 
 
+def renombrar_rubro(rubro_id: int, nuevo_nombre: str):
+    nuevo_nombre = nuevo_nombre.strip()
+    if not nuevo_nombre:
+        raise ValueError("El nombre del rubro no puede quedar vacío.")
+    try:
+        with conexion_db() as conexion:
+            conexion.execute(
+                "UPDATE rubros SET nombre = ? WHERE id = ?", (nuevo_nombre, rubro_id)
+            )
+    except sqlite3.IntegrityError:
+        raise ValueError(f"Ya existe un rubro llamado '{nuevo_nombre}'.")
+
+
+def borrar_rubro(rubro_id: int):
+    """
+    Borra un rubro del catálogo. Si algún artículo todavía lo tiene
+    asignado, la base de datos rechaza el borrado (para no dejar
+    artículos "huérfanos" de rubro sin darse cuenta); se convierte en un
+    mensaje claro en vez del error crudo de SQLite.
+    """
+    try:
+        with conexion_db() as conexion:
+            conexion.execute("DELETE FROM rubros WHERE id = ?", (rubro_id,))
+    except sqlite3.IntegrityError:
+        raise ValueError(
+            "No se puede borrar este rubro: todavía hay artículos que lo tienen "
+            "asignado. Cambiales el rubro primero desde 'Modificar' en Artículos."
+        )
+
+
 # ---------------------------------------------------------------------
 # Artículos
 # ---------------------------------------------------------------------

@@ -390,6 +390,19 @@ def _cargar_datos_iniciales(conexion: sqlite3.Connection):
         )
         conexion.commit()
 
+    # Rubros de fábrica: se cargan UNA sola vez (se deja constancia en
+    # "configuracion" de que ya se hizo). Si se gatillara en cada
+    # arranque en vez de una sola vez, un rubro que el Admin borra a
+    # propósito desde "Gestionar Rubros" volvería a aparecer solo.
+    cursor.execute("SELECT COUNT(*) AS cantidad FROM configuracion WHERE clave = 'rubros_iniciales_cargados'")
+    if cursor.fetchone()["cantidad"] == 0:
+        for nombre in ("BEBIDAS", "KIOSKO", "ARTÍCULOS DE LIMPIEZA", "INSUMOS DE PAPELERÍA"):
+            cursor.execute("INSERT OR IGNORE INTO rubros (nombre) VALUES (?)", (nombre,))
+        cursor.execute(
+            "INSERT INTO configuracion (clave, valor) VALUES ('rubros_iniciales_cargados', '1')"
+        )
+        conexion.commit()
+
 
 def calcular_turno(fecha_hora: datetime) -> str:
     """

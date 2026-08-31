@@ -10,7 +10,7 @@ solo se mueve desde Compras (ver compras_window.py).
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QLabel, QComboBox, QDoubleSpinBox, QSpinBox,
-    QFormLayout, QMessageBox, QDateEdit, QHeaderView
+    QFormLayout, QMessageBox, QDateEdit, QHeaderView, QInputDialog
 )
 from PySide6.QtCore import Qt, QDate
 
@@ -35,9 +35,10 @@ class ArticulosWindow(QDialog):
         self.boton_modificar = QPushButton("Modificar")
         self.boton_borrar = QPushButton("Borrar")
         self.boton_movimientos = QPushButton("Movimientos")
+        self.boton_rubros = QPushButton("Gestionar Rubros")
         self.boton_salir = QPushButton("Salir")
         for boton in (self.boton_nuevo, self.boton_modificar, self.boton_borrar,
-                      self.boton_movimientos, self.boton_salir):
+                      self.boton_movimientos, self.boton_rubros, self.boton_salir):
             barra_botones.addWidget(boton)
         barra_botones.addStretch()
 
@@ -47,6 +48,7 @@ class ArticulosWindow(QDialog):
         self.boton_modificar.clicked.connect(self._modificar_articulo)
         self.boton_borrar.clicked.connect(self._borrar_articulo)
         self.boton_movimientos.clicked.connect(self._ver_movimientos)
+        self.boton_rubros.clicked.connect(self._gestionar_rubros)
         self.boton_salir.clicked.connect(self.close)
 
         self.campo_buscar = QLineEdit()
@@ -146,6 +148,9 @@ class ArticulosWindow(QDialog):
         dialogo = DialogoMovimientos(self, codigo)
         dialogo.exec()
 
+    def _gestionar_rubros(self):
+        DialogoGestionRubros(self).exec()
+
 
 class DialogoArticulo(QDialog):
     """Cuadro de alta o edición de un artículo (según si se le pasa un
@@ -173,8 +178,12 @@ class DialogoArticulo(QDialog):
         for marca in articulos_repo.listar_marcas():
             self.combo_marca.addItem(marca["nombre"], marca["id"])
 
+        # A diferencia de Marca, Rubro NO es editable a mano: solo se puede
+        # elegir de la lista que administra el Admin (ver "Gestionar
+        # Rubros"), para que no queden rubros mal escritos o duplicados
+        # por typos ("Bebidas" vs "BEBIDAS" vs "Bebida").
         self.combo_rubro = QComboBox()
-        self.combo_rubro.setEditable(True)
+        self.combo_rubro.addItem("(Sin rubro)", None)
         for rubro in articulos_repo.listar_rubros():
             self.combo_rubro.addItem(rubro["nombre"], rubro["id"])
 
@@ -246,8 +255,8 @@ class DialogoArticulo(QDialog):
         self.campo_descripcion.setText(articulo["descripcion"])
         if articulo["marca"]:
             self.combo_marca.setCurrentText(articulo["marca"])
-        if articulo["rubro"]:
-            self.combo_rubro.setCurrentText(articulo["rubro"])
+        indice_rubro = self.combo_rubro.findData(articulo["rubro_id"])
+        self.combo_rubro.setCurrentIndex(indice_rubro if indice_rubro >= 0 else 0)
         self.spin_precio_venta.setValue(articulo["precio_venta"])
         self.spin_precio_compra.setValue(articulo["precio_compra"])
         self.spin_stock_minimo.setValue(articulo["stock_minimo"])
@@ -263,15 +272,6 @@ class DialogoArticulo(QDialog):
             return self.combo_marca.itemData(indice)
         return articulos_repo.crear_marca(texto)  # marca nueva, se crea al vuelo
 
-    def _resolver_rubro_id(self):
-        texto = self.combo_rubro.currentText().strip()
-        if not texto:
-            return None
-        indice = self.combo_rubro.findText(texto)
-        if indice >= 0:
-            return self.combo_rubro.itemData(indice)
-        return articulos_repo.crear_rubro(texto)  # rubro nuevo, se crea al vuelo
-
     @manejar_errores
     def _guardar(self):
         codigo = self.campo_codigo.text().strip()
@@ -282,7 +282,7 @@ class DialogoArticulo(QDialog):
             return
 
         marca_id = self._resolver_marca_id()
-        rubro_id = self._resolver_rubro_id()
+        rubro_id = self.combo_rubro.currentData()  # ya viene resuelto: no es editable
 
         if self.codigo_existente:
             articulos_repo.modificar_articulo(
@@ -365,3 +365,117 @@ class DialogoMovimientos(QDialog):
             if movimiento["cantidad"] < 0:
                 item_cantidad.setForeground(Qt.red)
             self.tabla.setItem(fila, 3, item_cantidad)
+
+
+class DialogoGestionRubros(QDialog):
+    """
+    Administración del catálogo de Rubros (solo Admin, se abre desde
+    Artículos). Acá es el ÚNICO lugar donde se pueden crear, renombrar o
+    borrar rubros — en el alta/edición de un artículo, Rubro es un
+    desplegable cerrado que solo permite elegir uno de los ya existentes,
+    para que no queden rubros mal escritos o duplicados por typos.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Gestionar Rubros")
+        self.resize(380, 420)
+        self._armar_interfaz()
+        self._cargar()
+
+    def _armar_interfaz(self):
+        self.lista = QTableWidget(0, 1)
+        self.lista.setHorizontalHeaderLabels(["Rubro"])
+        self.lista.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.lista.horizontalHeader().setVisible(False)
+        self.lista.setSelectionBehavior(QTableWidget.SelectRows)
+        self.lista.setSelectionMode(QTableWidget.SingleSelection)
+        self.lista.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.lista.setAlternatingRowColors(True)
+
+        self.campo_nuevo = QLineEdit()
+        self.campo_nuevo.setPlaceholderText("Nombre del rubro nuevo...")
+        boton_agregar = QPushButton("Agregar")
+        aplicar_clase(boton_agregar, "primario")
+        boton_agregar.clicked.connect(self._agregar)
+        encadenar_enter(self.campo_nuevo, accion_final=self._agregar)
+
+        fila_agregar = QHBoxLayout()
+        fila_agregar.addWidget(self.campo_nuevo)
+        fila_agregar.addWidget(boton_agregar)
+
+        boton_renombrar = QPushButton("Renombrar seleccionado")
+        boton_renombrar.clicked.connect(self._renombrar)
+        boton_borrar = QPushButton("Borrar seleccionado")
+        aplicar_clase(boton_borrar, "peligro")
+        boton_borrar.clicked.connect(self._borrar)
+
+        fila_acciones = QHBoxLayout()
+        fila_acciones.addWidget(boton_renombrar)
+        fila_acciones.addWidget(boton_borrar)
+
+        boton_cerrar = QPushButton("Cerrar")
+        boton_cerrar.clicked.connect(self.close)
+
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Rubros disponibles para cargar en Artículos:"))
+        layout.addWidget(self.lista)
+        layout.addLayout(fila_agregar)
+        layout.addLayout(fila_acciones)
+        layout.addWidget(boton_cerrar)
+        self.setLayout(layout)
+        for boton in self.findChildren(QPushButton):
+            boton.setAutoDefault(False)
+            boton.setDefault(False)
+
+        self.campo_nuevo.setFocus()
+
+    @manejar_errores
+    def _cargar(self):
+        self.rubros = articulos_repo.listar_rubros()
+        self.lista.setRowCount(0)
+        for rubro in self.rubros:
+            fila = self.lista.rowCount()
+            self.lista.insertRow(fila)
+            self.lista.setItem(fila, 0, QTableWidgetItem(rubro["nombre"]))
+
+    def _rubro_seleccionado(self):
+        fila = self.lista.currentRow()
+        if fila < 0:
+            mostrar_error(self, "Nada seleccionado", "Elegí primero un rubro de la lista.")
+            return None
+        return self.rubros[fila]
+
+    @manejar_errores
+    def _agregar(self):
+        nombre = self.campo_nuevo.text().strip()
+        if not nombre:
+            mostrar_error(self, "Falta el nombre", "Escribí el nombre del rubro nuevo.")
+            return
+        articulos_repo.crear_rubro(nombre)
+        self.campo_nuevo.clear()
+        self._cargar()
+        self.campo_nuevo.setFocus()
+
+    @manejar_errores
+    def _renombrar(self):
+        rubro = self._rubro_seleccionado()
+        if rubro is None:
+            return
+        nuevo_nombre, aceptado = QInputDialog.getText(
+            self, "Renombrar rubro", "Nuevo nombre:", text=rubro["nombre"]
+        )
+        if not aceptado:
+            return
+        articulos_repo.renombrar_rubro(rubro["id"], nuevo_nombre)
+        self._cargar()
+
+    @manejar_errores
+    def _borrar(self):
+        rubro = self._rubro_seleccionado()
+        if rubro is None:
+            return
+        if confirmar(self, "Confirmar borrado",
+                     f"¿Borrar el rubro '{rubro['nombre']}'? Esta acción no se puede deshacer."):
+            articulos_repo.borrar_rubro(rubro["id"])
+            self._cargar()
