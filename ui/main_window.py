@@ -55,14 +55,26 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(28, 26, 28, 26)
         layout.setSpacing(4)
 
+        # Encabezado en tarjeta (mismo patrón que "#tarjetaLogin" en
+        # main.py): un objectName + estilo en la hoja GLOBAL, no un
+        # setStyleSheet local acá — eso rompería la cascada de las
+        # reglas [clase="primario"/"peligro"] de los botones de abajo.
+        encabezado = QFrame()
+        encabezado.setObjectName("encabezadoInicio")
+        layout_encabezado = QVBoxLayout()
+        layout_encabezado.setContentsMargins(20, 16, 20, 16)
+        layout_encabezado.setSpacing(4)
         titulo = QLabel(f"Hola, {self.usuario['nombre']}")
-        titulo.setStyleSheet("font-size: 20px; font-weight: 700; color: #1F2430;")
+        titulo.setStyleSheet("font-size: 19px; font-weight: 700; color: #1B2233;")
         titulo.setAlignment(Qt.AlignCenter)
         etiqueta_rol = QLabel(self.usuario["rol"])
-        etiqueta_rol.setStyleSheet("color: #6B7280; font-size: 11px; font-weight: 600; letter-spacing: 1px;")
+        etiqueta_rol.setStyleSheet("color: #2F6FED; font-size: 11px; font-weight: 700; letter-spacing: 1.2px;")
         etiqueta_rol.setAlignment(Qt.AlignCenter)
-        layout.addWidget(titulo)
-        layout.addWidget(etiqueta_rol)
+        layout_encabezado.addWidget(titulo)
+        layout_encabezado.addWidget(etiqueta_rol)
+        encabezado.setLayout(layout_encabezado)
+
+        layout.addWidget(encabezado)
         layout.addSpacing(22)
 
         # Botones disponibles para cualquier usuario logueado. Ventas es

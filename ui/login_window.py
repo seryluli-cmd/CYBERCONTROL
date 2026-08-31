@@ -11,7 +11,8 @@ ventana principal con los permisos que correspondan según el rol
 import time
 
 from PySide6.QtWidgets import (
-    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QFormLayout, QFrame, QComboBox
+    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QFormLayout, QFrame, QComboBox,
+    QGraphicsDropShadowEffect
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette, QColor
@@ -119,6 +120,18 @@ class LoginWindow(QWidget):
         layout_tarjeta.addSpacing(20)
         layout_tarjeta.addWidget(boton_entrar)
         tarjeta.setLayout(layout_tarjeta)
+
+        # Sombra suave para que la tarjeta se sienta "flotando" sobre el
+        # fondo gris, en vez de quedar pegada — un detalle chico que
+        # ayuda a que la pantalla de entrada se vea más cuidada. Tiene
+        # que ser un efecto de Qt (QGraphicsDropShadowEffect), no CSS:
+        # el motor de hojas de estilo de Qt no soporta box-shadow.
+        sombra = QGraphicsDropShadowEffect(self)
+        sombra.setBlurRadius(28)
+        sombra.setXOffset(0)
+        sombra.setYOffset(6)
+        sombra.setColor(QColor(31, 41, 61, 45))
+        tarjeta.setGraphicsEffect(sombra)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(24, 24, 24, 24)

@@ -26,6 +26,10 @@ from ui.main_window import MainWindow
 # sin importar desde qué directorio se lo ejecute.
 CARPETA_BASE = Path(__file__).resolve().parent
 RUTA_ICONO = CARPETA_BASE / "assets" / "icono.ico"
+# Qt QSS quiere barras "/" en las rutas de imagen (incluso en Windows) y
+# no admite f-strings acá abajo (la hoja de estilos ya usa { } para CSS),
+# por eso el path se arma aparte y se reemplaza con .replace() al final.
+RUTA_FLECHA_ABAJO = (CARPETA_BASE / "assets" / "flecha_abajo.svg").as_posix()
 
 
 # Estilo visual general de todo el programa: paleta de color consistente
@@ -44,24 +48,24 @@ HOJA_DE_ESTILOS = """
     QWidget {
         font-family: "Segoe UI";
         font-size: 13px;
-        color: #1F2430;
+        color: #1B2233;
     }
     QMainWindow, QDialog {
-        background-color: #F2F4F7;
+        background-color: #EEF1F6;
     }
     QPushButton {
         background-color: #FFFFFF;
-        border: 1px solid #C7CDD6;
-        padding: 9px 16px;
-        border-radius: 6px;
-        color: #1F2430;
+        border: 1px solid #CDD3DE;
+        padding: 9px 18px;
+        border-radius: 8px;
+        color: #1B2233;
     }
     QPushButton:hover {
-        background-color: #EEF1F6;
-        border-color: #B7BFCB;
+        background-color: #F5F7FA;
+        border-color: #B7BFCC;
     }
     QPushButton:pressed {
-        background-color: #E0E4EA;
+        background-color: #E7EAF0;
     }
     QPushButton:disabled {
         color: #A7ADB8;
@@ -101,9 +105,9 @@ HOJA_DE_ESTILOS = """
         background-color: #F3D3D3;
     }
     QLineEdit, QDoubleSpinBox, QSpinBox, QComboBox, QDateEdit {
-        padding: 7px 8px;
-        border: 1px solid #C7CDD6;
-        border-radius: 6px;
+        padding: 7px 9px;
+        border: 1px solid #CDD3DE;
+        border-radius: 7px;
         background-color: #FFFFFF;
         selection-background-color: #2F6FED;
     }
@@ -114,47 +118,112 @@ HOJA_DE_ESTILOS = """
         background-color: #F5F6F8;
         color: #A7ADB8;
     }
+    QComboBox {
+        padding-right: 8px;
+    }
+    QComboBox::drop-down {
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
+        width: 28px;
+        border-left: 1px solid #CDD3DE;
+        border-top-right-radius: 7px;
+        border-bottom-right-radius: 7px;
+        background-color: #F5F7FA;
+    }
+    QComboBox::drop-down:hover {
+        background-color: #EAEFF7;
+    }
+    QComboBox::down-arrow {
+        image: url(__RUTA_FLECHA_ABAJO__);
+        width: 10px;
+        height: 6px;
+        margin-right: 9px;
+    }
+    QComboBox QAbstractItemView {
+        border: 1px solid #CDD3DE;
+        selection-background-color: #DCE7FD;
+        selection-color: #1B2233;
+        outline: none;
+    }
+    QCheckBox {
+        spacing: 8px;
+        padding: 2px 0;
+    }
+    QCheckBox::indicator {
+        width: 17px;
+        height: 17px;
+        border: 1.5px solid #B7BFCC;
+        border-radius: 4px;
+        background-color: #FFFFFF;
+    }
+    QCheckBox::indicator:hover {
+        border-color: #2F6FED;
+    }
+    QCheckBox::indicator:checked {
+        background-color: #2F6FED;
+        border-color: #2F6FED;
+    }
+    QGroupBox {
+        border: 1px solid #D3D8E0;
+        border-radius: 8px;
+        margin-top: 14px;
+        padding-top: 6px;
+        font-weight: 600;
+        color: #3C4350;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 6px;
+        color: #3C4350;
+    }
     QTableWidget {
         gridline-color: #E4E7EC;
         background-color: #FFFFFF;
         border: 1px solid #D3D8E0;
-        border-radius: 6px;
+        border-radius: 8px;
         alternate-background-color: #F7F9FC;
         selection-background-color: #DCE7FD;
-        selection-color: #1F2430;
+        selection-color: #1B2233;
     }
     QTableWidget::item {
-        padding: 4px;
+        padding: 5px;
     }
     QHeaderView::section {
-        background-color: #EEF1F6;
-        padding: 8px;
+        background-color: #F5F7FA;
+        padding: 9px 8px;
         border: none;
-        border-bottom: 1px solid #D3D8E0;
+        border-bottom: 1.5px solid #D3D8E0;
         font-weight: 600;
-        color: #3C4350;
+        font-size: 11px;
+        letter-spacing: 0.4px;
+        color: #5B6472;
     }
     QTabWidget::pane {
         border: 1px solid #D3D8E0;
-        border-radius: 6px;
+        border-radius: 8px;
         top: -1px;
+        background-color: #FFFFFF;
     }
     QTabBar::tab {
-        padding: 8px 18px;
-        background: #EEF1F6;
-        border: 1px solid #D3D8E0;
-        border-bottom: none;
-        border-top-left-radius: 6px;
-        border-top-right-radius: 6px;
-        margin-right: 2px;
+        padding: 9px 20px;
+        background: transparent;
+        border: none;
+        border-bottom: 2.5px solid transparent;
+        color: #5B6472;
+        margin-right: 4px;
+    }
+    QTabBar::tab:hover {
+        color: #1B2233;
     }
     QTabBar::tab:selected {
-        background: #FFFFFF;
+        color: #2F6FED;
+        border-bottom: 2.5px solid #2F6FED;
         font-weight: 600;
     }
     QScrollBar:vertical {
         width: 11px;
-        background: #F2F4F7;
+        background: #EEF1F6;
     }
     QScrollBar::handle:vertical {
         background: #C7CDD6;
@@ -169,10 +238,15 @@ HOJA_DE_ESTILOS = """
     }
     #tarjetaLogin {
         background-color: #FFFFFF;
-        border: 1px solid #D3D8E0;
+        border: 1px solid #E1E4EA;
+        border-radius: 14px;
+    }
+    #encabezadoInicio {
+        background-color: #FFFFFF;
+        border: 1px solid #E1E4EA;
         border-radius: 12px;
     }
-"""
+""".replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)
 
 
 class Aplicacion:
