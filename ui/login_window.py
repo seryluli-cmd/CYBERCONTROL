@@ -1,32 +1,34 @@
 """
 login_window.py
 =================
-Pantalla de login. Pide "Usuario Nº" (el número de usuario, igual que en
-el sistema actual) y "Clave", y si coinciden abre la ventana principal
-con los permisos que correspondan según el rol (ADMIN o EMPLEADA).
+Pantalla de login. Elige el nombre de la persona de una listita
+desplegable (en vez de tipearlo, para evitar errores de tipeo y que sea
+más cómodo con pantalla táctil) y pide "Clave"; si coinciden, abre la
+ventana principal con los permisos que correspondan según el rol
+(ADMIN o EMPLEADA).
 """
 
 import time
 
 from PySide6.QtWidgets import (
-    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QFormLayout, QFrame
+    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QFormLayout, QFrame, QComboBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette, QColor
 
 from database import verificar_clave
-from repositories.usuarios_repo import autenticar
+from repositories.usuarios_repo import autenticar_por_nombre, listar_usuarios
 from ui.utils import mostrar_error, mostrar_aviso, manejar_errores, aplicar_clase
 
 # Protección simple contra prueba y error de claves: después de
-# MAX_INTENTOS fallidos seguidos con el mismo número de usuario, se
-# bloquea ese usuario por BLOQUEO_SEGUNDOS antes de dejar reintentar.
-# Es un diccionario a nivel de módulo (no de instancia) para que el
-# conteo sobreviva a un "cerrar sesión" y no se resetee volviendo a
-# abrir la pantalla de Login dentro de la misma ejecución del programa.
+# MAX_INTENTOS fallidos seguidos con el mismo nombre, se bloquea ese
+# nombre por BLOQUEO_SEGUNDOS antes de dejar reintentar. Es un
+# diccionario a nivel de módulo (no de instancia) para que el conteo
+# sobreviva a un "cerrar sesión" y no se resetee volviendo a abrir la
+# pantalla de Login dentro de la misma ejecución del programa.
 MAX_INTENTOS = 5
 BLOQUEO_SEGUNDOS = 60
-_intentos_fallidos = {}  # usuario_id -> (cantidad_seguidos, bloqueado_hasta)
+_intentos_fallidos = {}  # nombre (en minúsculas) -> (cantidad_seguidos, bloqueado_hasta)
 
 
 class LoginWindow(QWidget):
@@ -62,22 +64,31 @@ class LoginWindow(QWidget):
         titulo.setStyleSheet("font-size: 21px; font-weight: 700; color: #1F2430;")
         titulo.setAlignment(Qt.AlignCenter)
 
-        subtitulo = QLabel("Ingresá tu usuario y clave para continuar")
+        subtitulo = QLabel("Elegí tu nombre e ingresá la clave para continuar")
         subtitulo.setStyleSheet("color: #6B7280; font-size: 12px;")
         subtitulo.setAlignment(Qt.AlignCenter)
 
-        self.campo_usuario = QLineEdit()
-        self.campo_usuario.setPlaceholderText("Ej: 1")
+        # Lista desplegable en vez de campo de texto: se arma de nuevo
+        # cada vez que se abre esta pantalla (con listar_usuarios(), sin
+        # incluir inactivos) para reflejar altas/bajas recientes de
+        # Usuarios sin tener que reiniciar el programa. Se ordena acá
+        # con Python (nombre.lower()), no con el ORDER BY del repo: en
+        # SQLite el orden por defecto es por valor de byte, así que
+        # "admin" (minúscula) quedaría después de cualquier nombre en
+        # mayúscula en vez de intercalarse alfabéticamente de verdad.
+        self.combo_nombre = QComboBox()
+        usuarios_ordenados = sorted(listar_usuarios(), key=lambda u: u["nombre"].lower())
+        for usuario in usuarios_ordenados:
+            self.combo_nombre.addItem(usuario["nombre"])
         self.campo_clave = QLineEdit()
         self.campo_clave.setEchoMode(QLineEdit.Password)
         # Al apretar Enter en la clave, intenta entrar directamente (más
         # rápido para el uso diario que tener que hacer clic siempre).
         self.campo_clave.returnPressed.connect(self._intentar_ingresar)
-        self.campo_usuario.returnPressed.connect(lambda: self.campo_clave.setFocus())
 
         formulario = QFormLayout()
         formulario.setSpacing(10)
-        formulario.addRow("Usuario Nº:", self.campo_usuario)
+        formulario.addRow("Nombre:", self.combo_nombre)
         formulario.addRow("Clave:", self.campo_clave)
 
         boton_entrar = QPushButton("Entrar")
@@ -114,24 +125,27 @@ class LoginWindow(QWidget):
         layout.addWidget(tarjeta)
         self.setLayout(layout)
 
-        self.campo_usuario.setFocus()
+        self.combo_nombre.setFocus()
 
     @manejar_errores
     def _intentar_ingresar(self):
-        texto_usuario = self.campo_usuario.text().strip()
+        if self.combo_nombre.count() == 0:
+            mostrar_error(self, "No hay usuarios", "Todavía no hay ningún usuario cargado en el sistema.")
+            return
+
+        nombre = self.combo_nombre.currentText().strip()
         clave = self.campo_clave.text()
 
-        if not texto_usuario or not clave:
-            mostrar_error(self, "Faltan datos", "Ingresá el número de usuario y la clave.")
+        if not clave:
+            mostrar_error(self, "Falta la clave", "Ingresá tu clave.")
             return
 
-        if not texto_usuario.isdigit():
-            mostrar_error(self, "Usuario inválido", "El número de usuario debe ser numérico.")
-            return
+        # Clave del diccionario de intentos fallidos: en minúsculas, para
+        # que "Matias" y "matias" compartan el mismo contador (autenticar_por_nombre
+        # tampoco distingue mayúsculas al buscar).
+        clave_intentos = nombre.lower()
 
-        usuario_id = int(texto_usuario)
-
-        intentos, bloqueado_hasta = _intentos_fallidos.get(usuario_id, (0, 0.0))
+        intentos, bloqueado_hasta = _intentos_fallidos.get(clave_intentos, (0, 0.0))
         ahora = time.monotonic()
         if bloqueado_hasta > ahora:
             segundos_restantes = int(bloqueado_hasta - ahora) + 1
@@ -143,23 +157,23 @@ class LoginWindow(QWidget):
             self.campo_clave.clear()
             return
 
-        usuario = autenticar(usuario_id, clave)
+        usuario = autenticar_por_nombre(nombre, clave)
         if usuario is None:
             intentos += 1
             if intentos >= MAX_INTENTOS:
-                _intentos_fallidos[usuario_id] = (0, ahora + BLOQUEO_SEGUNDOS)
+                _intentos_fallidos[clave_intentos] = (0, ahora + BLOQUEO_SEGUNDOS)
                 mostrar_error(
                     self, "Demasiados intentos",
                     f"Usuario bloqueado por {BLOQUEO_SEGUNDOS} segundos por reiteradas claves incorrectas."
                 )
             else:
-                _intentos_fallidos[usuario_id] = (intentos, 0.0)
-                mostrar_error(self, "Datos incorrectos", "Usuario o clave incorrectos.")
+                _intentos_fallidos[clave_intentos] = (intentos, 0.0)
+                mostrar_error(self, "Datos incorrectos", "Nombre o clave incorrectos.")
             self.campo_clave.clear()
             self.campo_clave.setFocus()
             return
 
-        _intentos_fallidos.pop(usuario_id, None)
+        _intentos_fallidos.pop(clave_intentos, None)
         self.campo_clave.clear()
 
         # Aviso suave si el Admin todavía tiene la clave por defecto

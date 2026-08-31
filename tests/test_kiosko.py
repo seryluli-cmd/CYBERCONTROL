@@ -21,7 +21,7 @@ from datetime import date, datetime
 from unittest import mock
 
 import database
-from repositories import articulos_repo, compras_repo, turnos_repo, usuarios_repo, ventas_repo
+from repositories import articulos_repo, compras_repo, reportes_repo, turnos_repo, usuarios_repo, ventas_repo
 
 
 class BaseConBaseTemporal(unittest.TestCase):
@@ -145,6 +145,195 @@ class TestMigracionHashEnLogin(BaseConBaseTemporal):
         self.assertIn("$", usuario_actualizado["clave_hash"])
         # Y sigue pudiendo loguearse con la misma clave después de migrar.
         self.assertIsNotNone(usuarios_repo.autenticar(usuario_id, "clave123"))
+
+
+class TestCambiarClave(BaseConBaseTemporal):
+    def test_cambia_la_clave_propia_con_la_actual_correcta(self):
+        usuario_id = usuarios_repo.crear_usuario("Empleada", "vieja123", "EMPLEADA")
+
+        usuarios_repo.cambiar_clave(usuario_id, "vieja123", "nueva456")
+
+        self.assertIsNone(usuarios_repo.autenticar(usuario_id, "vieja123"))
+        self.assertIsNotNone(usuarios_repo.autenticar(usuario_id, "nueva456"))
+
+    def test_no_cambia_nada_si_la_clave_actual_es_incorrecta(self):
+        usuario_id = usuarios_repo.crear_usuario("Empleada", "vieja123", "EMPLEADA")
+
+        with self.assertRaises(ValueError):
+            usuarios_repo.cambiar_clave(usuario_id, "clave_equivocada", "nueva456")
+
+        # La clave vieja sigue funcionando: el rechazo fue limpio.
+        self.assertIsNotNone(usuarios_repo.autenticar(usuario_id, "vieja123"))
+
+
+class TestAutenticarPorNombre(BaseConBaseTemporal):
+    def test_loguea_ignorando_mayusculas_y_espacios(self):
+        usuarios_repo.crear_usuario("Matías", "1234", "EMPLEADA")
+
+        self.assertIsNotNone(usuarios_repo.autenticar_por_nombre("matías", "1234"))
+        self.assertIsNotNone(usuarios_repo.autenticar_por_nombre("MATÍAS", "1234"))
+        self.assertIsNotNone(usuarios_repo.autenticar_por_nombre("  Matías  ", "1234"))
+
+    def test_no_loguea_con_nombre_inexistente_o_clave_incorrecta(self):
+        usuarios_repo.crear_usuario("Matías", "1234", "EMPLEADA")
+
+        self.assertIsNone(usuarios_repo.autenticar_por_nombre("Nadie", "1234"))
+        self.assertIsNone(usuarios_repo.autenticar_por_nombre("Matías", "clave_mala"))
+
+    def test_no_loguea_un_usuario_inactivo_por_nombre(self):
+        usuario_id = usuarios_repo.crear_usuario("Matías", "1234", "EMPLEADA")
+        usuarios_repo.desactivar_usuario(usuario_id)
+
+        self.assertIsNone(usuarios_repo.autenticar_por_nombre("Matías", "1234"))
+
+
+class TestPermisosDeEmpleada(BaseConBaseTemporal):
+    def test_crear_usuario_guarda_los_permisos_pedidos(self):
+        usuario_id = usuarios_repo.crear_usuario(
+            "Miguel", "1234", "EMPLEADA",
+            permisos={"permiso_articulos": True, "permiso_compras": True},
+        )
+        usuario = usuarios_repo.obtener_usuario(usuario_id)
+
+        self.assertTrue(usuarios_repo.tiene_permiso(usuario, "permiso_articulos"))
+        self.assertTrue(usuarios_repo.tiene_permiso(usuario, "permiso_compras"))
+        # Los que no se pidieron quedan en False, no en True por las dudas.
+        self.assertFalse(usuarios_repo.tiene_permiso(usuario, "permiso_reportes"))
+        self.assertFalse(usuarios_repo.tiene_permiso(usuario, "permiso_consulta_ventas"))
+        self.assertFalse(usuarios_repo.tiene_permiso(usuario, "permiso_control_cierres"))
+
+    def test_admin_tiene_todos_los_permisos_sin_importar_las_columnas(self):
+        usuario_id = usuarios_repo.crear_usuario("Jefa", "1234", "ADMIN")
+        usuario = usuarios_repo.obtener_usuario(usuario_id)
+
+        for columna, _ in usuarios_repo.PERMISOS_EMPLEADA:
+            self.assertTrue(usuarios_repo.tiene_permiso(usuario, columna))
+
+    def test_modificar_usuario_reemplaza_los_permisos_en_vez_de_sumarlos(self):
+        usuario_id = usuarios_repo.crear_usuario(
+            "Miguel", "1234", "EMPLEADA", permisos={"permiso_articulos": True}
+        )
+
+        usuarios_repo.modificar_usuario(
+            usuario_id, "Miguel", "EMPLEADA", permisos={"permiso_compras": True}
+        )
+        usuario = usuarios_repo.obtener_usuario(usuario_id)
+
+        # El permiso nuevo quedó, y el viejo que no se volvió a tildar se sacó.
+        self.assertTrue(usuarios_repo.tiene_permiso(usuario, "permiso_compras"))
+        self.assertFalse(usuarios_repo.tiene_permiso(usuario, "permiso_articulos"))
+
+    def test_crear_usuario_sin_pasar_permisos_los_deja_todos_en_false(self):
+        usuario_id = usuarios_repo.crear_usuario("Empleada", "1234", "EMPLEADA")
+        usuario = usuarios_repo.obtener_usuario(usuario_id)
+
+        for columna, _ in usuarios_repo.PERMISOS_EMPLEADA:
+            self.assertFalse(usuarios_repo.tiene_permiso(usuario, columna))
+
+
+class TestMigracionColumnasPermisos(BaseConBaseTemporal):
+    def test_agrega_columnas_permiso_a_una_tabla_usuarios_vieja(self):
+        # Simula una base creada antes de que existieran los permisos
+        # por empleada: la tabla usuarios sin las columnas permiso_*.
+        with database.conexion_db() as conexion:
+            conexion.execute("DROP TABLE usuarios")
+            conexion.execute("""
+                CREATE TABLE usuarios (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre          TEXT NOT NULL,
+                    clave_hash      TEXT NOT NULL,
+                    rol             TEXT NOT NULL,
+                    activo          INTEGER NOT NULL DEFAULT 1,
+                    fecha_creacion  TEXT NOT NULL
+                )
+            """)
+            conexion.execute(
+                "INSERT INTO usuarios (nombre, clave_hash, rol, activo, fecha_creacion) VALUES (?, ?, ?, ?, ?)",
+                ("Vieja", "hash", "EMPLEADA", 1, "2026-01-01T00:00:00"),
+            )
+
+            database._migrar_columnas_permisos(conexion)
+
+            columnas = {fila["name"] for fila in conexion.execute("PRAGMA table_info(usuarios)")}
+            for columna, _ in usuarios_repo.PERMISOS_EMPLEADA:
+                self.assertIn(columna, columnas)
+
+            # La fila que ya existía no se pierde, y sus permisos nuevos
+            # arrancan en 0 (no rompe nada, no le da acceso de más a nadie).
+            fila = conexion.execute("SELECT * FROM usuarios WHERE nombre = 'Vieja'").fetchone()
+            for columna, _ in usuarios_repo.PERMISOS_EMPLEADA:
+                self.assertEqual(fila[columna], 0)
+
+
+class TestGestionDeUsuarios(BaseConBaseTemporal):
+    def test_crear_usuario_asigna_numeros_correlativos(self):
+        # El id 1 ya lo tiene el Administrador que se siembra solo.
+        id_a = usuarios_repo.crear_usuario("A", "1234", "EMPLEADA")
+        id_b = usuarios_repo.crear_usuario("B", "1234", "EMPLEADA")
+        self.assertEqual(id_a, 2)
+        self.assertEqual(id_b, 3)
+
+    def test_borrar_usuario_sin_historial_libera_su_numero(self):
+        id_a = usuarios_repo.crear_usuario("A", "1234", "EMPLEADA")
+
+        usuarios_repo.borrar_usuario(id_a)
+        self.assertIsNone(usuarios_repo.obtener_usuario(id_a))
+
+        # El próximo usuario que se crea reutiliza el número liberado,
+        # en vez de saltar directo al siguiente más alto.
+        id_c = usuarios_repo.crear_usuario("C", "1234", "EMPLEADA")
+        self.assertEqual(id_c, id_a)
+
+    def test_borrar_usuario_con_ventas_tira_error_y_no_borra_nada(self):
+        vendedor_id = usuarios_repo.crear_usuario("Vendedor", "1234", "EMPLEADA")
+        articulos_repo.crear_articulo("CODU", "Producto", None, None, 10.0, 5.0, 0)
+        compras_repo.registrar_compra(vendedor_id, [{"codigo": "CODU", "cantidad": 5, "costo_unitario": 5.0}])
+        ventas_repo.confirmar_venta(
+            vendedor_id,
+            [{"codigo": "CODU", "descripcion": "Producto", "cantidad": 1,
+              "precio_unitario": 10.0, "subtotal": 10.0}],
+            [{"metodo": "EFECTIVO", "monto": 10.0}],
+        )
+
+        with self.assertRaises(ValueError):
+            usuarios_repo.borrar_usuario(vendedor_id)
+
+        # Sigue existiendo: el rechazo fue limpio, no quedó nada a mitad
+        # de camino (mismo criterio que articulos_repo.borrar_articulo).
+        self.assertIsNotNone(usuarios_repo.obtener_usuario(vendedor_id))
+
+    def test_no_se_puede_crear_dos_usuarios_activos_con_el_mismo_nombre(self):
+        usuarios_repo.crear_usuario("Matías", "1234", "EMPLEADA")
+
+        # Ni exactamente igual, ni con mayúsculas/espacios distintos:
+        # el login es por nombre, así que dos activos iguales quedarían
+        # ambiguos (ver usuarios_repo.autenticar_por_nombre).
+        with self.assertRaises(ValueError):
+            usuarios_repo.crear_usuario("  MATÍAS  ", "otraClave", "EMPLEADA")
+
+    def test_se_puede_reusar_el_nombre_de_un_usuario_inactivo(self):
+        usuario_id = usuarios_repo.crear_usuario("Matías", "1234", "EMPLEADA")
+        usuarios_repo.desactivar_usuario(usuario_id)
+
+        # No está activo, así que no genera ambigüedad para el login.
+        nuevo_id = usuarios_repo.crear_usuario("Matías", "5678", "EMPLEADA")
+        self.assertNotEqual(nuevo_id, usuario_id)
+
+    def test_modificar_usuario_no_deja_renombrar_a_uno_ya_usado(self):
+        usuarios_repo.crear_usuario("Matías", "1234", "EMPLEADA")
+        otro_id = usuarios_repo.crear_usuario("Rocío", "1234", "EMPLEADA")
+
+        with self.assertRaises(ValueError):
+            usuarios_repo.modificar_usuario(otro_id, "Matías", "EMPLEADA")
+
+        # No cambió nada: sigue llamándose Rocío.
+        self.assertEqual(usuarios_repo.obtener_usuario(otro_id)["nombre"], "Rocío")
+
+    def test_modificar_usuario_permite_dejar_el_mismo_nombre(self):
+        # Guardar sin cambiar el nombre no debe chocar contra sí mismo.
+        usuario_id = usuarios_repo.crear_usuario("Matías", "1234", "EMPLEADA")
+        usuarios_repo.modificar_usuario(usuario_id, "Matías", "ADMIN")
+        self.assertEqual(usuarios_repo.obtener_usuario(usuario_id)["rol"], "ADMIN")
 
 
 class TestVentasYStock(BaseConBaseTemporal):
@@ -371,6 +560,43 @@ class TestUsuariosDeTurnoFaltante(BaseConBaseTemporal):
 
         slot_manana_5 = next(f for f in faltantes if f["fecha"] == date(2026, 1, 5) and f["turno"] == "MAÑANA")
         self.assertEqual(slot_manana_5["usuarios"], ["Empleada Sin Ventas"])
+
+
+class TestResumenPorTurno(BaseConBaseTemporal):
+    def _vender(self, usuario_id, momento, metodo="EFECTIVO"):
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            ventas_repo.confirmar_venta(
+                usuario_id,
+                [{"codigo": "COD8", "descripcion": "Producto", "cantidad": 1,
+                  "precio_unitario": 10.0, "subtotal": 10.0}],
+                [{"metodo": metodo, "monto": 10.0}],
+            )
+
+    def test_desglosa_ventas_por_turno(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        articulos_repo.crear_articulo("COD8", "Producto", None, None, 10.0, 5.0, 0)
+        compras_repo.registrar_compra(usuario_id, [{"codigo": "COD8", "cantidad": 10, "costo_unitario": 5.0}])
+
+        # Un lunes: una venta de Mañana y dos de Tarde (una en efectivo,
+        # otra digital) — Noche queda sin ninguna venta ese día.
+        self._vender(usuario_id, datetime(2026, 1, 5, 8, 0, 0))
+        self._vender(usuario_id, datetime(2026, 1, 5, 15, 0, 0))
+        self._vender(usuario_id, datetime(2026, 1, 5, 16, 0, 0), metodo="DIGITAL")
+
+        filas = reportes_repo.resumen_por_turno("2026-01-05", "2026-01-05")
+        por_turno = {f["turno"]: f for f in filas}
+
+        self.assertEqual(por_turno["MAÑANA"]["total"], 10.0)
+        self.assertEqual(por_turno["MAÑANA"]["cantidad_ventas"], 1)
+
+        self.assertEqual(por_turno["TARDE"]["total"], 20.0)
+        self.assertEqual(por_turno["TARDE"]["cantidad_ventas"], 2)
+        self.assertEqual(por_turno["TARDE"]["efectivo"], 10.0)
+        self.assertEqual(por_turno["TARDE"]["digital"], 10.0)
+
+        self.assertEqual(por_turno["NOCHE"]["total"], 0.0)
+        self.assertEqual(por_turno["NOCHE"]["cantidad_ventas"], 0)
 
 
 if __name__ == "__main__":

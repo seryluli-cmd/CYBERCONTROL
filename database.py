@@ -170,19 +170,31 @@ def inicializar_base_de_datos():
     # -------------------------------------------------------------------
     # Cada empleada y el/los administradores tienen su propio usuario.
     # "rol" solo puede ser ADMIN o EMPLEADA (dos niveles, como se definió).
-    #   - ADMIN: acceso total, incluida la carga de stock (vía Compras),
-    #     administración de usuarios, anulación de ventas, reportes, etc.
-    #   - EMPLEADA: solo puede facturar (Ventas) y ver su propia caja.
+    #   - ADMIN: acceso total siempre, incluida la administración de
+    #     usuarios y la anulación de ventas — esto no se puede delegar
+    #     con los permisos de abajo, son exclusivos del rol ADMIN.
+    #   - EMPLEADA: por defecto solo factura (Ventas) y ve su propia
+    #     caja. Un Admin puede sumarle permisos puntuales con los
+    #     "permiso_*" de abajo (ver PERMISOS_EMPLEADA en
+    #     usuarios_repo.py) para que también pueda entrar a Artículos,
+    #     Compras, Consulta de Ventas (sin poder anular), Reportes o
+    #     Control de Cierres, sin tener que hacerla Admin del todo.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre          TEXT NOT NULL,
-            clave_hash      TEXT NOT NULL,
-            rol             TEXT NOT NULL CHECK (rol IN ('ADMIN', 'EMPLEADA')),
-            activo          INTEGER NOT NULL DEFAULT 1,
-            fecha_creacion  TEXT NOT NULL
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre                   TEXT NOT NULL,
+            clave_hash               TEXT NOT NULL,
+            rol                      TEXT NOT NULL CHECK (rol IN ('ADMIN', 'EMPLEADA')),
+            activo                   INTEGER NOT NULL DEFAULT 1,
+            fecha_creacion           TEXT NOT NULL,
+            permiso_articulos        INTEGER NOT NULL DEFAULT 0,
+            permiso_compras          INTEGER NOT NULL DEFAULT 0,
+            permiso_consulta_ventas  INTEGER NOT NULL DEFAULT 0,
+            permiso_reportes         INTEGER NOT NULL DEFAULT 0,
+            permiso_control_cierres  INTEGER NOT NULL DEFAULT 0
         )
     """)
+    _migrar_columnas_permisos(conexion)
 
     # -------------------------------------------------------------------
     # MARCAS y RUBROS
@@ -379,6 +391,25 @@ def inicializar_base_de_datos():
     _cargar_datos_iniciales(conexion)
 
     conexion.close()
+
+
+def _migrar_columnas_permisos(conexion: sqlite3.Connection):
+    """
+    Para una base creada antes de que existieran los permisos por
+    empleada (Artículos/Compras/Consulta de Ventas/Reportes/Control de
+    Cierres): agrega las columnas "permiso_*" que falten con
+    ALTER TABLE, en vez de perder la base ya existente. Hace falta este
+    paso aparte porque CREATE TABLE IF NOT EXISTS no toca una tabla que
+    ya existe, aunque le falten columnas nuevas del esquema de arriba.
+    """
+    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(usuarios)")}
+    for columna in (
+        "permiso_articulos", "permiso_compras", "permiso_consulta_ventas",
+        "permiso_reportes", "permiso_control_cierres",
+    ):
+        if columna not in columnas_actuales:
+            conexion.execute(f"ALTER TABLE usuarios ADD COLUMN {columna} INTEGER NOT NULL DEFAULT 0")
+    conexion.commit()
 
 
 def _cargar_datos_iniciales(conexion: sqlite3.Connection):

@@ -9,7 +9,7 @@ los cierres de turno. Todo este módulo es exclusivo del rol ADMIN.
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QLabel, QComboBox, QFormLayout, QHeaderView,
-    QDoubleSpinBox, QFileDialog
+    QDoubleSpinBox, QFileDialog, QCheckBox, QGroupBox
 )
 from PySide6.QtCore import Qt
 
@@ -35,8 +35,8 @@ class UsuariosWindow(QDialog):
         boton_nuevo.clicked.connect(self._nuevo_usuario)
         boton_modificar = QPushButton("Modificar")
         boton_modificar.clicked.connect(self._modificar_usuario)
-        boton_desactivar = QPushButton("Desactivar")
-        boton_desactivar.clicked.connect(self._desactivar_usuario)
+        boton_borrar = QPushButton("Borrar")
+        boton_borrar.clicked.connect(self._borrar_usuario)
         boton_fondo = QPushButton("Configurar Fondo de Cambio")
         boton_fondo.clicked.connect(self._configurar_fondo)
         boton_backup = QPushButton("Copia de Seguridad")
@@ -50,13 +50,20 @@ class UsuariosWindow(QDialog):
         boton_salir = QPushButton("Salir")
         boton_salir.clicked.connect(self.close)
         aplicar_clase(boton_nuevo, "primario")
-        aplicar_clase(boton_desactivar, "peligro")
-        for boton in (boton_nuevo, boton_modificar, boton_desactivar, boton_fondo, boton_backup, boton_salir):
+        aplicar_clase(boton_borrar, "peligro")
+        for boton in (boton_nuevo, boton_modificar, boton_borrar, boton_fondo, boton_backup, boton_salir):
             barra_botones.addWidget(boton)
         barra_botones.addStretch()
 
-        self.tabla = QTableWidget(0, 3)
-        self.tabla.setHorizontalHeaderLabels(["Usuario Nº", "Nombre", "Rol"])
+        # Los usuarios desactivados con el sistema viejo (antes de que
+        # "Borrar" existiera) no aparecen en la grilla por defecto, así
+        # que sin este check no habría forma de encontrarlos para
+        # borrarlos del todo y liberar su número.
+        self.check_inactivos = QCheckBox("Mostrar inactivos")
+        self.check_inactivos.stateChanged.connect(self._cargar_grilla)
+
+        self.tabla = QTableWidget(0, 4)
+        self.tabla.setHorizontalHeaderLabels(["Usuario Nº", "Nombre", "Rol", "Estado"])
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setAlternatingRowColors(True)
@@ -65,6 +72,7 @@ class UsuariosWindow(QDialog):
 
         layout = QVBoxLayout()
         layout.addLayout(barra_botones)
+        layout.addWidget(self.check_inactivos)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
         # Evita que Qt elija automaticamente el primer boton como "default":
@@ -78,7 +86,7 @@ class UsuariosWindow(QDialog):
 
     @manejar_errores
     def _cargar_grilla(self):
-        usuarios = usuarios_repo.listar_usuarios()
+        usuarios = usuarios_repo.listar_usuarios(incluir_inactivos=self.check_inactivos.isChecked())
         self.tabla.setRowCount(0)
         for usuario in usuarios:
             fila = self.tabla.rowCount()
@@ -86,6 +94,7 @@ class UsuariosWindow(QDialog):
             self.tabla.setItem(fila, 0, QTableWidgetItem(str(usuario["id"])))
             self.tabla.setItem(fila, 1, QTableWidgetItem(usuario["nombre"]))
             self.tabla.setItem(fila, 2, QTableWidgetItem(usuario["rol"]))
+            self.tabla.setItem(fila, 3, QTableWidgetItem("Activo" if usuario["activo"] else "Inactivo"))
 
     def _id_seleccionado(self):
         fila = self.tabla.currentRow()
@@ -108,17 +117,31 @@ class UsuariosWindow(QDialog):
             self._cargar_grilla()
 
     @manejar_errores
-    def _desactivar_usuario(self):
+    def _borrar_usuario(self):
         usuario_id = self._id_seleccionado()
         if usuario_id is None:
             return
         if usuario_id == self.usuario_actual["id"]:
-            mostrar_error(self, "No permitido", "No podés desactivar tu propio usuario mientras estás logueado.")
+            mostrar_error(self, "No permitido", "No podés borrar tu propio usuario mientras estás logueado.")
             return
-        if confirmar(self, "Confirmar", "¿Desactivar este usuario? No va a poder loguearse más, "
-                                          "pero su historial de ventas y cierres se conserva."):
-            usuarios_repo.desactivar_usuario(usuario_id)
+        if not confirmar(self, "Confirmar", "¿Borrar este usuario? Si nunca vendió, compró ni cerró un "
+                                             "turno, se borra del todo y su número queda libre para el "
+                                             "próximo usuario que se cree."):
+            return
+
+        try:
+            usuarios_repo.borrar_usuario(usuario_id)
             self._cargar_grilla()
+        except ValueError as error:
+            # Ya tiene historial real (ventas/compras/cierres): no se
+            # puede borrar sin perderlo. Se ofrece desactivar en su
+            # lugar, con una confirmación aparte, en vez de fallar y
+            # dejar a la usuaria sin ninguna forma de sacarle el acceso.
+            if confirmar(self, "No se puede borrar del todo",
+                         f"{error}\n\n¿Desactivarlo en su lugar? Deja de poder loguearse, "
+                         "pero su número de usuario queda reservado (no se reutiliza)."):
+                usuarios_repo.desactivar_usuario(usuario_id)
+                self._cargar_grilla()
 
     @manejar_errores
     def _configurar_fondo(self):
@@ -142,7 +165,7 @@ class DialogoUsuario(QDialog):
         super().__init__(parent)
         self.usuario_id = usuario_id
         self.setWindowTitle("Modificación de Usuario" if usuario_id else "Nuevo Usuario")
-        self.resize(360, 220)
+        self.resize(400, 380)
         self._armar_interfaz()
         if usuario_id:
             self._cargar_datos(usuario_id)
@@ -154,14 +177,28 @@ class DialogoUsuario(QDialog):
         if self.usuario_id:
             self.campo_clave.setPlaceholderText("(dejar vacío para no cambiarla)")
         self.combo_rol = QComboBox()
-        self.combo_rol.addItem("Empleada — solo puede vender", "EMPLEADA")
+        self.combo_rol.addItem("Empleada — según los permisos de abajo", "EMPLEADA")
         self.combo_rol.addItem("Admin — acceso completo", "ADMIN")
+        self.combo_rol.currentIndexChanged.connect(self._actualizar_visibilidad_permisos)
 
         formulario = QFormLayout()
         formulario.addRow("Nombre:", self.campo_nombre)
         formulario.addRow("Clave:", self.campo_clave)
         formulario.addRow("Rol:", self.combo_rol)
-        encadenar_enter(self.campo_nombre, self.campo_clave, self.combo_rol, accion_final=self._guardar)
+
+        # Permisos extra para una Empleada, además de lo que ya puede
+        # hacer cualquiera (Ventas/Caja/Cierre de Turno/Cambiar mi
+        # Clave) — un Admin ya tiene todo esto siempre, así que la
+        # sección se oculta cuando el Rol de arriba es Admin (ver
+        # _actualizar_visibilidad_permisos).
+        self.checks_permisos = {}
+        self.grupo_permisos = QGroupBox("Permisos extra (Empleada)")
+        layout_permisos = QVBoxLayout()
+        for columna, etiqueta in usuarios_repo.PERMISOS_EMPLEADA:
+            check = QCheckBox(etiqueta)
+            layout_permisos.addWidget(check)
+            self.checks_permisos[columna] = check
+        self.grupo_permisos.setLayout(layout_permisos)
 
         boton_guardar = QPushButton("Guardar")
         aplicar_clase(boton_guardar, "primario")
@@ -174,8 +211,11 @@ class DialogoUsuario(QDialog):
 
         layout = QVBoxLayout()
         layout.addLayout(formulario)
+        layout.addWidget(self.grupo_permisos)
         layout.addLayout(botones)
         self.setLayout(layout)
+        encadenar_enter(self.campo_nombre, self.campo_clave, self.combo_rol, accion_final=self._guardar)
+        self._actualizar_visibilidad_permisos()
         # Evita que Qt elija automaticamente el primer boton como "default":
         # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
         # codigo de barras) tambien activaba el primer boton de la pantalla,
@@ -185,6 +225,12 @@ class DialogoUsuario(QDialog):
             boton.setAutoDefault(False)
             boton.setDefault(False)
 
+    def _actualizar_visibilidad_permisos(self):
+        """Un Admin ya tiene acceso a todo (ver usuarios_repo.tiene_permiso),
+        así que la sección de permisos solo tiene sentido — y solo se
+        muestra — para el rol Empleada."""
+        self.grupo_permisos.setVisible(self.combo_rol.currentData() == "EMPLEADA")
+
     @manejar_errores
     def _cargar_datos(self, usuario_id):
         usuario = usuarios_repo.obtener_usuario(usuario_id)
@@ -192,6 +238,9 @@ class DialogoUsuario(QDialog):
         indice = self.combo_rol.findData(usuario["rol"])
         if indice >= 0:
             self.combo_rol.setCurrentIndex(indice)
+        for columna, check in self.checks_permisos.items():
+            check.setChecked(bool(usuario[columna]))
+        self._actualizar_visibilidad_permisos()
 
     @manejar_errores
     def _guardar(self):
@@ -201,14 +250,15 @@ class DialogoUsuario(QDialog):
             return
         rol = self.combo_rol.currentData()
         clave = self.campo_clave.text()
+        permisos = {columna: check.isChecked() for columna, check in self.checks_permisos.items()}
 
         if self.usuario_id:
-            usuarios_repo.modificar_usuario(self.usuario_id, nombre, rol, clave or None)
+            usuarios_repo.modificar_usuario(self.usuario_id, nombre, rol, clave or None, permisos)
         else:
             if not clave:
                 mostrar_error(self, "Falta la clave", "Un usuario nuevo necesita una clave.")
                 return
-            usuarios_repo.crear_usuario(nombre, clave, rol)
+            usuarios_repo.crear_usuario(nombre, clave, rol, permisos)
         self.accept()
 
 
@@ -246,3 +296,70 @@ class DialogoFondoCambio(QDialog):
         for boton in self.findChildren(QPushButton):
             boton.setAutoDefault(False)
             boton.setDefault(False)
+
+
+class DialogoCambiarClave(QDialog):
+    """Para que cualquier usuario logueado (Admin o Empleada) cambie su
+    propia clave — a diferencia de DialogoUsuario, que es Admin-only y
+    puede resetear la clave de cualquier otra persona sin pedir la
+    vieja. Se abre desde el menú principal, no desde esta pantalla."""
+
+    def __init__(self, usuario, parent=None):
+        super().__init__(parent)
+        self.usuario = usuario
+        self.setWindowTitle("Cambiar mi Clave")
+        self.resize(340, 220)
+        self._armar_interfaz()
+
+    def _armar_interfaz(self):
+        self.campo_actual = QLineEdit()
+        self.campo_actual.setEchoMode(QLineEdit.Password)
+        self.campo_nueva = QLineEdit()
+        self.campo_nueva.setEchoMode(QLineEdit.Password)
+        self.campo_confirmar = QLineEdit()
+        self.campo_confirmar.setEchoMode(QLineEdit.Password)
+
+        formulario = QFormLayout()
+        formulario.addRow("Clave actual:", self.campo_actual)
+        formulario.addRow("Clave nueva:", self.campo_nueva)
+        formulario.addRow("Confirmar clave nueva:", self.campo_confirmar)
+        encadenar_enter(self.campo_actual, self.campo_nueva, self.campo_confirmar, accion_final=self._guardar)
+
+        boton_guardar = QPushButton("Guardar")
+        aplicar_clase(boton_guardar, "primario")
+        boton_guardar.clicked.connect(self._guardar)
+        boton_cancelar = QPushButton("Cancelar")
+        boton_cancelar.clicked.connect(self.reject)
+        botones = QHBoxLayout()
+        botones.addWidget(boton_guardar)
+        botones.addWidget(boton_cancelar)
+
+        layout = QVBoxLayout()
+        layout.addLayout(formulario)
+        layout.addLayout(botones)
+        self.setLayout(layout)
+        # Evita que Qt elija automaticamente el primer boton como "default":
+        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
+        # codigo de barras) tambien activaba el primer boton de la pantalla,
+        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
+        # solo con escanear y apretar Enter).
+        for boton in self.findChildren(QPushButton):
+            boton.setAutoDefault(False)
+            boton.setDefault(False)
+
+    @manejar_errores
+    def _guardar(self):
+        actual = self.campo_actual.text()
+        nueva = self.campo_nueva.text()
+        confirmar_clave = self.campo_confirmar.text()
+
+        if not actual or not nueva:
+            mostrar_error(self, "Faltan datos", "Completá la clave actual y la nueva.")
+            return
+        if nueva != confirmar_clave:
+            mostrar_error(self, "No coinciden", "La clave nueva y su confirmación no son iguales.")
+            return
+
+        usuarios_repo.cambiar_clave(self.usuario["id"], actual, nueva)
+        mostrar_info(self, "Listo", "Tu clave se actualizó correctamente.")
+        self.accept()

@@ -2,22 +2,27 @@
 main_window.py
 ================
 Ventana principal: aparece después del login, con accesos a cada módulo
-del sistema. Qué botones se ven depende del rol del usuario logueado:
-- EMPLEADA: solo Ventas, Caja y Cierre de Turno.
-- ADMIN: todo lo anterior más Artículos, Compras, Consulta de Ventas,
-  Reportes y Administración de Usuarios.
+del sistema. Qué botones se ven depende del rol y los permisos del
+usuario logueado:
+- Cualquiera: Ventas, Caja, Cierre de Turno, y Cambiar mi Clave.
+- EMPLEADA: además, Artículos/Compras/Consulta de Ventas (sin Anular)/
+  Reportes/Control de Cierres si el Admin le dio el permiso puntual
+  correspondiente (ver usuarios_repo.PERMISOS_EMPLEADA).
+- ADMIN: todo lo anterior siempre, más Administración de Usuarios (esto
+  no se puede delegar con permisos).
 """
 
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, QFrame
 from PySide6.QtCore import Qt
 
+from repositories import usuarios_repo
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
 from ui.ventas_window import VentasWindow
 from ui.consulta_ventas_window import ConsultaVentasWindow
 from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
-from ui.usuarios_window import UsuariosWindow
+from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from ui.utils import aplicar_clase
 
 
@@ -63,32 +68,53 @@ class MainWindow(QMainWindow):
         # Botones disponibles para cualquier usuario logueado. Ventas es
         # la acción principal (la que más se usa en el día a día), así
         # que se destaca con el estilo "primario" (azul, más peso visual).
-        self._agregar_boton(layout, "🛒  Ventas", self._abrir_ventas, clase="primario")
+        self._agregar_boton(layout, "🛒  Vender", self._abrir_ventas, clase="primario")
         self._agregar_boton(layout, "💵  Caja (consulta)", self._abrir_caja)
         self._agregar_boton(layout, "🧾  Cierre de Turno", self._abrir_cierre_turno)
 
-        # Botones solo para Admin, agrupados visualmente con un separador
-        # y un subtítulo, para distinguirlos del uso diario de arriba.
+        # Botones extra según rol/permisos, agrupados visualmente con un
+        # separador y un subtítulo para distinguirlos del uso diario de
+        # arriba. Un Admin los ve todos siempre; una Empleada solo ve los
+        # que tenga habilitados en usuarios_repo.PERMISOS_EMPLEADA (ver
+        # tiene_permiso) — "Usuarios" queda exclusivo de Admin, no se
+        # puede delegar. Si a una Empleada no le dieron ningún permiso,
+        # la sección entera no aparece.
+        extras = []
+        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_articulos"):
+            extras.append(("📦  Artículos", self._abrir_articulos))
+        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_compras"):
+            extras.append(("🚚  Compras", self._abrir_compras))
+        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_consulta_ventas"):
+            texto_consulta = "🔍  Consulta de Ventas / Anular" if self.es_admin else "🔍  Consulta de Ventas"
+            extras.append((texto_consulta, self._abrir_consulta_ventas))
+        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_reportes"):
+            extras.append(("📊  Reportes", self._abrir_reportes))
+        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_cierres"):
+            extras.append(("🗂️  Control de Cierres de Turno", self._abrir_control_cierres))
         if self.es_admin:
+            extras.append(("👤  Usuarios", self._abrir_usuarios))
+
+        if extras:
             layout.addSpacing(22)
             separador = QFrame()
             separador.setFrameShape(QFrame.HLine)
             separador.setStyleSheet("color: #D3D8E0;")
             layout.addWidget(separador)
             layout.addSpacing(10)
-            subtitulo = QLabel("ADMINISTRACIÓN")
+            subtitulo = QLabel("ADMINISTRACIÓN" if self.es_admin else "PERMISOS EXTRA")
             subtitulo.setAlignment(Qt.AlignCenter)
             subtitulo.setStyleSheet("color: #6B7280; font-size: 11px; font-weight: 700; letter-spacing: 2px;")
             layout.addWidget(subtitulo)
             layout.addSpacing(8)
-            self._agregar_boton(layout, "📦  Artículos", self._abrir_articulos)
-            self._agregar_boton(layout, "🚚  Compras", self._abrir_compras)
-            self._agregar_boton(layout, "🔍  Consulta de Ventas / Anular", self._abrir_consulta_ventas)
-            self._agregar_boton(layout, "📊  Reportes", self._abrir_reportes)
-            self._agregar_boton(layout, "🗂️  Control de Cierres de Turno", self._abrir_control_cierres)
-            self._agregar_boton(layout, "👤  Usuarios", self._abrir_usuarios)
+            for texto, funcion in extras:
+                self._agregar_boton(layout, texto, funcion)
 
         layout.addStretch()
+        # Disponible para cualquier usuario logueado (Admin o Empleada):
+        # antes solo el Admin podía cambiar la clave de alguien desde
+        # Usuarios, así que una Empleada no tenía forma de cambiar la
+        # suya propia sin pedírselo al Admin.
+        self._agregar_boton(layout, "🔑  Cambiar mi Clave", self._abrir_cambiar_clave)
         self._agregar_boton(layout, "Cerrar sesión", self._cerrar_sesion, clase="peligro")
 
         contenedor.setLayout(layout)
@@ -144,6 +170,9 @@ class MainWindow(QMainWindow):
 
     def _abrir_usuarios(self):
         UsuariosWindow(self.usuario, self).exec()
+
+    def _abrir_cambiar_clave(self):
+        DialogoCambiarClave(self.usuario, self).exec()
 
     def _cerrar_sesion(self):
         self.close()

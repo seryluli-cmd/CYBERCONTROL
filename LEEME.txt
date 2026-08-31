@@ -12,12 +12,17 @@ CÓMO PROBARLO EN ESTA COMPUTADORA
 3. Se va a abrir la pantalla de Login. La primera vez, el sistema crea
    solo un usuario Administrador:
 
-     Usuario Nº: 1
-     Clave:      1234
+     Nombre: Administrador
+     Clave:  1234
+
+   (El login es por nombre, no por número — ignora mayúsculas y
+   espacios de más, así que "administrador" también funciona.)
 
    Entrá con ese usuario y andá a "Usuarios" para crear a tus empleadas
-   (con su propio usuario y clave) y ajustar el fondo de cambio si
-   hace falta.
+   (con su propio nombre y clave) y ajustar el fondo de cambio si hace
+   falta. Cada usuario activo necesita un nombre distinto (no puede
+   haber dos "Matías" activos a la vez, porque el login no sabría a
+   cuál de los dos elegir).
 
 DÓNDE QUEDAN GUARDADOS LOS DATOS
 ----------------------------------

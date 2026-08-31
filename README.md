@@ -140,9 +140,9 @@ repo correspondiente). `main.py` es el único punto de entrada.
   reconstruye para el mes en curso, no retroactivamente.
 
 **Seed inicial** (`database.py`, corre en cada arranque pero es
-idempotente): si `usuarios` está vacía, crea **Usuario Nº 1 / clave 1234**
-con rol ADMIN (login muestra un aviso para cambiarla mientras siga siendo
-la default). Si no existe la clave `fondo_cambio`, la crea en `50000`. Si
+idempotente): si `usuarios` está vacía, crea **"Administrador" (Usuario
+Nº 1) / clave 1234** con rol ADMIN (login muestra un aviso para cambiarla
+mientras siga siendo la default). Si no existe la clave `fondo_cambio`, la crea en `50000`. Si
 no corrió antes, siembra los 4 rubros default.
 
 **Backups**: `hacer_backup_automatico()` copia `data/kiosko.db` →
@@ -215,17 +215,39 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   turnos del mes en curso ya vencidos sin cerrar, vía
   `turnos_repo.turnos_faltantes()`.
 - **Usuarios** (`usuarios_window.py`, `UsuariosWindow`) — alta/edición de
-  usuarios (clave vacía al editar = no se cambia), "Desactivar" (soft
-  delete, no deja auto-desactivarse), "Configurar Fondo de Cambio"
+  usuarios (clave vacía al editar = no se cambia; no deja crear/renombrar
+  a un nombre que ya use otro usuario activo, ver `_nombre_en_uso`),
+  "Borrar" (`usuarios_repo.borrar_usuario` — borrado real si nunca vendió/
+  compró/cerró un turno, y libera su "Usuario Nº" para el próximo que se
+  cree vía `_proximo_numero_disponible`; si tiene historial, ofrece
+  desactivarlo en su lugar con `desactivar_usuario`, soft-delete que no
+  libera el número), check "Mostrar inactivos" (para poder encontrar y
+  borrar del todo a alguien ya desactivado), "Configurar Fondo de Cambio"
   (`config_repo`), "Copia de Seguridad" (`database.copiar_backup_a`).
+  También `DialogoCambiarClave` (accesible para cualquier rol desde el
+  menú principal, no desde esta pantalla) — cambia la clave propia
+  pidiendo la actual como confirmación (`usuarios_repo.cambiar_clave`).
 
 ## Identidad y permisos
 
-Login por **"Usuario Nº" + clave** (`login_window.py`). Protección contra
-fuerza bruta en memoria (se resetea al reiniciar el programa): 5 intentos
-fallidos → bloqueo de 60s para ese usuario (`MAX_INTENTOS` /
-`BLOQUEO_SEGUNDOS`). No hay sesión persistida ni token — el dict `usuario`
-(con su `rol`) simplemente se pasa por parámetro a cada ventana que se abre.
+Login por **nombre + clave** (`login_window.py`, vía
+`usuarios_repo.autenticar_por_nombre`) — ignora mayúsculas/minúsculas y
+espacios de más al comparar. ⚠️ La comparación se hace en **Python**
+(`str.lower()`), no con el `LOWER()` de SQLite: SQLite solo pliega
+mayúsculas ASCII por defecto, así que con nombres acentuados
+("MATÍAS" vs "Matías") el `LOWER()` de la base los deja distintos. Como
+el nombre no es la clave primaria, `crear_usuario`/`modificar_usuario`
+rechazan (`ValueError`) que dos usuarios **activos** compartan nombre
+(ignorando mayúsculas/espacios, mismo criterio) — un usuario inactivo no
+cuenta, así que su nombre se puede reusar. `autenticar(usuario_id, clave)`
+por "Usuario Nº" sigue existiendo como función interna (la usan
+`cambiar_clave` y los tests), pero la pantalla de Login ya no la llama.
+Protección contra fuerza bruta en memoria (se resetea al reiniciar el
+programa): 5 intentos fallidos → bloqueo de 60s para ese nombre
+(`MAX_INTENTOS` / `BLOQUEO_SEGUNDOS`). No hay sesión persistida ni token
+más allá de la fila en `sesiones` (solo para el aviso de turnos
+faltantes) — el dict `usuario` (con su `rol`) simplemente se pasa por
+parámetro a cada ventana que se abre.
 
 `rol` es `ADMIN` o `EMPLEADA`. Las pantallas de administración ni siquiera
 aparecen en el menú para una Empleada (no es solo un botón deshabilitado).
