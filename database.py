@@ -20,7 +20,7 @@ import secrets
 import shutil
 import sys
 from contextlib import contextmanager
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 # Carpeta donde vive el archivo de la base de datos. Se guarda al lado del
 # programa, dentro de una carpeta "data" para no mezclar el archivo .db
@@ -414,11 +414,82 @@ def calcular_turno(fecha_hora: datetime) -> str:
     Esto es independiente de qué usuario esté logueado, así que aunque
     una empleada llegue tarde, cada venta se clasifica sola por su hora
     real.
+
+    EXCEPCIÓN: los domingos son distintos — solo hay 2 turnos de 12hs en
+    vez de 3. "MAÑANA" pasa a durar 06:00-17:59 (absorbe lo que sería
+    "TARDE", que no existe ese día) y "NOCHE" pasa a ser 18:00-05:59 del
+    lunes. El sábado a la noche sigue siendo el turno normal 22-06
+    (termina el domingo a la mañana), eso no cambia — por eso se mira el
+    día de `fecha_hora` tal cual, sin correcciones.
     """
+    domingo = fecha_hora.weekday() == 6  # Monday=0 ... Sunday=6
     hora = fecha_hora.hour
-    if 6 <= hora < 14:
+    fin_manana = 18 if domingo else 14
+    if 6 <= hora < fin_manana:
         return "MAÑANA"
-    elif 14 <= hora < 22:
+    elif not domingo and 14 <= hora < 22:
         return "TARDE"
     else:
         return "NOCHE"
+
+
+def es_domingo(fecha) -> bool:
+    """Acepta un date, un datetime, o un string 'YYYY-MM-DD' (o con hora
+    al final, se ignora)."""
+    if isinstance(fecha, datetime):
+        fecha = fecha.date()
+    elif isinstance(fecha, str):
+        fecha = date.fromisoformat(fecha[:10])
+    return fecha.weekday() == 6
+
+
+def etiqueta_turno(fecha, turno: str) -> str:
+    """
+    Nombre legible de un turno según el día calendario al que
+    pertenece: los domingos "MAÑANA"/"NOCHE" se muestran como "Domingo
+    T1"/"Domingo T2" en vez de "Mañana"/"Noche", porque ese día no
+    existe el turno Tarde — son 2 turnos de 12hs en vez de 3 (ver
+    calcular_turno). `fecha` acepta lo mismo que es_domingo().
+    """
+    if es_domingo(fecha):
+        if turno == "MAÑANA":
+            return "Domingo T1"
+        if turno == "NOCHE":
+            return "Domingo T2"
+    return turno.capitalize()
+
+
+# Cuántos minutos de gracia se le dan a un turno vencido antes de
+# considerarlo realmente "sin cerrar": quien cierra un turno tarda un
+# rato en cargarlo, así que no tiene sentido avisar apenas termina su
+# horario nominal — ver turno_vencimiento.
+TURNO_GRACIA_MIN = 40
+
+
+def turno_vencimiento(dia_base, turno: str) -> datetime:
+    """
+    Momento exacto en que el turno `turno` de un día calendario dado
+    (`dia_base`, acepta lo mismo que es_domingo()) queda vencido: fin de
+    su ventana nominal + TURNO_GRACIA_MIN de gracia. Se usa para saber
+    si un turno del mes en curso que todavía no tiene cierre cargado ya
+    "debería" estarlo, o si puede seguir en curso.
+
+    NOCHE cruza la medianoche, por eso vence a la madrugada del día
+    SIGUIENTE al que arrancó — esto no cambia los domingos: tanto la
+    noche normal como "Domingo T2" terminan igual a las 06:00 del día
+    siguiente, lo único que cambia es a qué hora arrancan.
+    """
+    if isinstance(dia_base, datetime):
+        dia_base = dia_base.date()
+    elif isinstance(dia_base, str):
+        dia_base = date.fromisoformat(dia_base[:10])
+    domingo = dia_base.weekday() == 6
+    inicio_dia = datetime(dia_base.year, dia_base.month, dia_base.day)
+
+    if turno == "MAÑANA":
+        hora_fin = 18 if domingo else 14
+        return inicio_dia.replace(hour=hora_fin, minute=TURNO_GRACIA_MIN)
+    if turno == "TARDE":
+        return inicio_dia.replace(hour=22, minute=TURNO_GRACIA_MIN)
+    # NOCHE: vence a la madrugada del día siguiente.
+    return (inicio_dia + timedelta(days=1)).replace(hour=6, minute=TURNO_GRACIA_MIN)

@@ -17,7 +17,7 @@ import hashlib
 import os
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from unittest import mock
 
 import database
@@ -61,6 +61,48 @@ class TestCalcularTurno(unittest.TestCase):
     def test_noche_cruza_la_medianoche(self):
         self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 0, 0)), "NOCHE")
         self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 5, 59)), "NOCHE")
+
+    # El 2026-01-04 es domingo, el 2026-01-03 es sábado (usados también en
+    # TestEtiquetaTurno / TestTurnoVencimiento / TestTurnosFaltantes).
+    def test_domingo_manana_dura_hasta_las_18(self):
+        self.assertEqual(database.calcular_turno(datetime(2026, 1, 4, 17, 59)), "MAÑANA")
+
+    def test_domingo_no_existe_el_turno_tarde(self):
+        # A las 14:00, un día de semana normal ya sería Tarde.
+        self.assertEqual(database.calcular_turno(datetime(2026, 1, 4, 14, 0)), "MAÑANA")
+
+    def test_domingo_noche_empieza_a_las_18(self):
+        self.assertEqual(database.calcular_turno(datetime(2026, 1, 4, 18, 0)), "NOCHE")
+
+    def test_sabado_a_la_noche_sigue_siendo_el_turno_normal(self):
+        self.assertEqual(database.calcular_turno(datetime(2026, 1, 3, 22, 0)), "NOCHE")
+
+
+class TestEtiquetaTurno(unittest.TestCase):
+    def test_dia_de_semana_usa_los_nombres_normales(self):
+        lunes = date(2026, 1, 5)
+        self.assertEqual(database.etiqueta_turno(lunes, "MAÑANA"), "Mañana")
+        self.assertEqual(database.etiqueta_turno(lunes, "TARDE"), "Tarde")
+        self.assertEqual(database.etiqueta_turno(lunes, "NOCHE"), "Noche")
+
+    def test_domingo_usa_las_etiquetas_de_2_turnos(self):
+        domingo = date(2026, 1, 4)
+        self.assertEqual(database.etiqueta_turno(domingo, "MAÑANA"), "Domingo T1")
+        self.assertEqual(database.etiqueta_turno(domingo, "NOCHE"), "Domingo T2")
+
+
+class TestTurnoVencimiento(unittest.TestCase):
+    def test_manana_vence_a_las_14_40_entre_semana(self):
+        lunes = date(2026, 1, 5)
+        self.assertEqual(database.turno_vencimiento(lunes, "MAÑANA"), datetime(2026, 1, 5, 14, 40))
+
+    def test_manana_vence_a_las_18_40_el_domingo(self):
+        domingo = date(2026, 1, 4)
+        self.assertEqual(database.turno_vencimiento(domingo, "MAÑANA"), datetime(2026, 1, 4, 18, 40))
+
+    def test_noche_vence_a_la_madrugada_del_dia_siguiente(self):
+        lunes = date(2026, 1, 5)
+        self.assertEqual(database.turno_vencimiento(lunes, "NOCHE"), datetime(2026, 1, 6, 6, 40))
 
 
 class TestHashClave(unittest.TestCase):
@@ -211,6 +253,104 @@ class TestEtiquetaDeTurnoEnElCierre(BaseConBaseTemporal):
         cierres = turnos_repo.listar_cierres()
         cierre_mas_reciente = cierres[0]
         self.assertEqual(cierre_mas_reciente["turno"], "MAÑANA")
+
+
+class TestFechaDelCierreEsElDiaQueArrancoElTurno(BaseConBaseTemporal):
+    def test_turno_noche_cerrado_pasada_la_medianoche_guarda_la_fecha_de_inicio(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+
+        # Primer cierre del sistema, ya entrada la Noche del 5 de enero.
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 5, 22, 5, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            turnos_repo.cerrar_turno(usuario_id)
+
+        # Se cierra recién a las 00:40 del día siguiente: el turno Noche
+        # arrancó el 5 (justo después del cierre anterior), no el 6 —
+        # "fecha" tiene que quedar en el día 5, aunque el cierre en sí se
+        # haga ya entrado el día 6 (mismo criterio que ya se usa para
+        # "turno", ver TestEtiquetaDeTurnoEnElCierre).
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 6, 0, 40, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            resultado = turnos_repo.cerrar_turno(usuario_id)
+
+        cierre = turnos_repo.listar_cierres()[0]
+        self.assertEqual(cierre["id"], resultado["id"])
+        self.assertEqual(cierre["fecha"], "2026-01-05")
+        self.assertEqual(cierre["turno"], "NOCHE")
+        self.assertEqual(resultado["turno_label"], "Noche")
+
+
+class TestTurnosFaltantes(BaseConBaseTemporal):
+    def test_turno_cerrado_no_aparece_pero_los_vencidos_sin_cerrar_si(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+
+        # Primer (y único) cierre: arranca a las 10:00 del lunes 5 de
+        # enero de 2026, turno MAÑANA.
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 5, 10, 0, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            turnos_repo.cerrar_turno(usuario_id)
+
+        # "Ahora" es ese mismo lunes a las 20:00: todos los turnos de los
+        # días 1 a 4 de enero (y el Mañana del día 5, recién cerrado) ya
+        # vencieron con su gracia de 40 min.
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 5, 20, 0, 0)
+            faltantes = turnos_repo.turnos_faltantes()
+
+        claves = {(f["fecha"], f["turno"]) for f in faltantes}
+
+        # El turno recién cerrado no figura como faltante...
+        self.assertNotIn((date(2026, 1, 5), "MAÑANA"), claves)
+        # ...pero un turno vencido de un día anterior que nunca se cerró, sí.
+        self.assertIn((date(2026, 1, 1), "TARDE"), claves)
+        # El domingo 4 de enero no tiene turno Tarde (2 turnos de 12hs).
+        self.assertIn((date(2026, 1, 4), "MAÑANA"), claves)
+        self.assertNotIn((date(2026, 1, 4), "TARDE"), claves)
+        # La Tarde de hoy (día 5) todavía no venció (recién son las 20:00,
+        # vence a las 22:40): no debería figurar todavía.
+        self.assertNotIn((date(2026, 1, 5), "TARDE"), claves)
+
+
+class TestUsuariosDeTurnoFaltante(BaseConBaseTemporal):
+    def _vender(self, usuario_id, momento):
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            ventas_repo.confirmar_venta(
+                usuario_id,
+                [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 1,
+                  "precio_unitario": 10.0, "subtotal": 10.0}],
+                [{"metodo": "EFECTIVO", "monto": 10.0}],
+            )
+
+    def test_turno_faltante_muestra_quien_vendio_incluyendo_noche_que_cruza_medianoche(self):
+        vendedora_id = usuarios_repo.crear_usuario("Vendedora Noche", "1234", "EMPLEADA")
+        articulos_repo.crear_articulo("COD9", "Producto", None, None, 10.0, 5.0, 0)
+        compras_repo.registrar_compra(vendedora_id, [{"codigo": "COD9", "cantidad": 5, "costo_unitario": 5.0}])
+
+        # Una venta a las 23:30 del 5 de enero (Noche, mismo día que
+        # arranca) y otra a las 02:00 del 6 (Noche, ya pasada la
+        # medianoche) — las dos tienen que atribuirse al turno Noche del
+        # día 5, no al del día 6.
+        self._vender(vendedora_id, datetime(2026, 1, 5, 23, 30, 0))
+        self._vender(vendedora_id, datetime(2026, 1, 6, 2, 0, 0))
+
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 6, 10, 0, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            faltantes = turnos_repo.turnos_faltantes()
+
+        slot_noche_5 = next(f for f in faltantes if f["fecha"] == date(2026, 1, 5) and f["turno"] == "NOCHE")
+        self.assertEqual(slot_noche_5["usuarios"], ["Vendedora Noche"])
+
+        slot_noche_6 = next((f for f in faltantes if f["fecha"] == date(2026, 1, 6) and f["turno"] == "NOCHE"), None)
+        self.assertIsNone(slot_noche_6)  # el 6 a las 10:00 el turno Noche del día 6 ni empezó a vencer
+
+        # Un turno vencido sin ninguna venta ni login muestra la lista vacía.
+        slot_manana_5 = next(f for f in faltantes if f["fecha"] == date(2026, 1, 5) and f["turno"] == "MAÑANA")
+        self.assertEqual(slot_manana_5["usuarios"], [])
 
 
 if __name__ == "__main__":

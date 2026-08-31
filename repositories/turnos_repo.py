@@ -11,8 +11,8 @@ Así, sin importar la hora exacta a la que alguien cierra, nunca se cuenta
 una venta dos veces ni se pierde ninguna.
 """
 
-from datetime import datetime
-from database import conexion_db, calcular_turno
+from datetime import date, datetime, timedelta
+from database import conexion_db, calcular_turno, etiqueta_turno, turno_vencimiento
 from repositories.config_repo import obtener_fondo_cambio
 
 
@@ -61,8 +61,12 @@ def resumen_turno_actual():
 
     fondo_cambio = obtener_fondo_cambio()
 
+    ahora_dt = datetime.now()
+    turno_actual = calcular_turno(ahora_dt)
+
     return {
-        "turno_actual": calcular_turno(datetime.now()),
+        "turno_actual": turno_actual,
+        "turno_actual_label": etiqueta_turno(ahora_dt.date(), turno_actual),
         "fondo_cambio": fondo_cambio,
         "ventas_efectivo": ventas_efectivo,
         "ventas_digital": ventas_digital,
@@ -100,6 +104,13 @@ def cerrar_turno(usuario_id: int):
         inicio_del_turno = datetime.fromisoformat(desde) if ultimo_cierre else ahora_dt
         turno = calcular_turno(inicio_del_turno)
 
+        # "fecha" guarda el día en que ARRANCÓ el turno (el mismo criterio
+        # que "turno", justo arriba) y no el día en que se lo cerró: para
+        # un turno Noche cerrado ya pasada la medianoche, esos dos días son
+        # distintos, y turnos_faltantes() necesita que coincida con el día
+        # que arma turnos_del_mes_actual() para poder cruzarlos.
+        fecha_turno = inicio_del_turno.date()
+
         cursor = conexion.execute(
             """
             INSERT INTO cierres_turno
@@ -108,7 +119,7 @@ def cerrar_turno(usuario_id: int):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                ahora_dt.date().isoformat(),
+                fecha_turno.isoformat(),
                 turno,
                 usuario_id,
                 ahora,
@@ -122,6 +133,8 @@ def cerrar_turno(usuario_id: int):
 
     return {
         "id": cierre_id,
+        "turno": turno,
+        "turno_label": etiqueta_turno(fecha_turno, turno),
         "fondo_cambio": fondo_cambio,
         "ventas_efectivo": ventas_efectivo,
         "ventas_digital": ventas_digital,
@@ -171,3 +184,91 @@ def verificar_cierre(cierre_id: int, monto_contado: float, usuario_admin_id: int
             """,
             (monto_contado, diferencia, usuario_admin_id, ahora, cierre_id),
         )
+
+
+def _vendedores_del_mes(conexion, inicio_mes):
+    """
+    Mapa (día, turno) -> nombres que registraron alguna venta CONFIRMADA
+    en esa ventana, para el mes en curso. Sirve para, ante un turno
+    faltante, saber quién vendió en ese horario y probablemente sea
+    quien se olvidó de cerrarlo (no hay ningún horario asignado por
+    empleada en el sistema — esto es una inferencia a partir de quién
+    facturó, no una certeza).
+
+    NOCHE cruza la medianoche: una venta de esas horas puede tener
+    fecha del día en que arrancó el turno (22-23:59) o del día
+    siguiente (00-05:59) — se le atribuye al día en que arrancó, mismo
+    criterio que turno_vencimiento().
+    """
+    filas = conexion.execute(
+        """
+        SELECT ventas.fecha, ventas.turno, usuarios.nombre
+        FROM ventas
+        JOIN usuarios ON usuarios.id = ventas.usuario_id
+        WHERE ventas.estado = 'CONFIRMADA' AND ventas.fecha >= ?
+        """,
+        (inicio_mes.isoformat(),),
+    ).fetchall()
+
+    vendedores = {}
+    for fila in filas:
+        momento = datetime.fromisoformat(fila["fecha"])
+        turno = fila["turno"]
+        dia_slot = momento.date()
+        if turno == "NOCHE" and momento.hour < 12:
+            dia_slot -= timedelta(days=1)
+        vendedores.setdefault((dia_slot, turno), set()).add(fila["nombre"])
+    return vendedores
+
+
+def turnos_del_mes_actual():
+    """
+    Los turnos esperados del mes en curso, de día 1 a hoy — domingo
+    tiene solo 2 (Mañana, Noche); el resto de los días tiene los 3 de
+    siempre (ver database.calcular_turno). Todavía no dice cuáles ya
+    tienen cierre cargado ni cuáles vencieron — eso lo hace
+    turnos_faltantes().
+    """
+    hoy = datetime.now().date()
+    dia = date(hoy.year, hoy.month, 1)
+    slots = []
+    while dia <= hoy:
+        turnos_del_dia = ("MAÑANA", "NOCHE") if dia.weekday() == 6 else ("MAÑANA", "TARDE", "NOCHE")
+        for turno in turnos_del_dia:
+            slots.append({"fecha": dia, "turno": turno})
+        dia += timedelta(days=1)
+    return slots
+
+
+def turnos_faltantes():
+    """
+    De los turnos esperados del mes en curso (turnos_del_mes_actual), los
+    que YA vencieron (ventana nominal + 40 min de gracia, ver
+    database.turno_vencimiento) y todavía no tienen un cierre cargado en
+    cierres_turno. Se usa en "Control de Cierres de Turno" para que el
+    Admin se entere de un turno sin cerrar antes de que se pierda en el
+    historial, en vez de notarlo recién a fin de mes. Cada resultado
+    incluye "usuarios": quién vendió durante esa ventana (ver
+    _vendedores_del_mes), para saber a quién preguntarle.
+    """
+    ahora = datetime.now()
+    hoy = ahora.date()
+    inicio_mes = date(hoy.year, hoy.month, 1)
+
+    with conexion_db() as conexion:
+        filas_cierres = conexion.execute(
+            "SELECT fecha, turno FROM cierres_turno WHERE fecha >= ?",
+            (inicio_mes.isoformat(),),
+        ).fetchall()
+        vendedores = _vendedores_del_mes(conexion, inicio_mes)
+    cerrados = {(fila["fecha"], fila["turno"]) for fila in filas_cierres}
+
+    faltantes = []
+    for slot in turnos_del_mes_actual():
+        if (slot["fecha"].isoformat(), slot["turno"]) in cerrados:
+            continue
+        if turno_vencimiento(slot["fecha"], slot["turno"]) <= ahora:
+            slot = dict(slot)
+            slot["usuarios"] = sorted(vendedores.get((slot["fecha"], slot["turno"]), ()))
+            faltantes.append(slot)
+    return faltantes

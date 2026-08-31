@@ -16,11 +16,12 @@ Y una tercera, solo para Admin, para controlar los cierres después
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QInputDialog
+    QTableWidgetItem, QHeaderView, QInputDialog, QWidget, QListWidget
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
+from database import etiqueta_turno
 from repositories import turnos_repo
 from ui.utils import formato_pesos, mostrar_info, confirmar, mostrar_error, manejar_errores, aplicar_clase
 
@@ -99,7 +100,7 @@ class CajaWindow(QDialog):
     @manejar_errores
     def _refrescar(self):
         resumen = turnos_repo.resumen_turno_actual()
-        self.titulo.setText(f"CAJA — Turno {resumen['turno_actual']}")
+        self.titulo.setText(f"CAJA — Turno {resumen['turno_actual_label']}")
         self.valor_fondo.setText(formato_pesos(resumen["fondo_cambio"]))
         self.valor_actual.setText(formato_pesos(resumen["caja_actual"]))
         self.valor_ventas.setText(formato_pesos(resumen["ventas_efectivo"]))
@@ -173,7 +174,7 @@ class CierreTurnoWindow(QDialog):
     @manejar_errores
     def _refrescar_vista_previa(self):
         resumen = turnos_repo.resumen_turno_actual()
-        self.titulo.setText(f"Cierre de Turno {resumen['turno_actual']}")
+        self.titulo.setText(f"Cierre de Turno {resumen['turno_actual_label']}")
         self.valor_fondo.setText(formato_pesos(resumen["fondo_cambio"]))
         self.valor_efectivo.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
@@ -187,7 +188,7 @@ class CierreTurnoWindow(QDialog):
         resultado = turnos_repo.cerrar_turno(self.usuario["id"])
         mostrar_info(
             self, "Turno cerrado",
-            f"Turno cerrado correctamente.\n\n"
+            f"Turno {resultado['turno_label']} cerrado correctamente.\n\n"
             f"Retirá: {formato_pesos(resultado['monto_a_retirar'])}\n"
             f"(dejando {formato_pesos(resultado['fondo_cambio'])} de fondo para el próximo turno)"
         )
@@ -195,18 +196,63 @@ class CierreTurnoWindow(QDialog):
 
 
 class ControlCierresWindow(QDialog):
-    """Pantalla de Admin para revisar el historial de cierres de turno y
-    cargar cuánto se contó realmente en cada sobre."""
+    """Pantalla de Admin para revisar el historial de cierres de turno,
+    cargar cuánto se contó realmente en cada sobre, y ver qué turnos del
+    mes en curso quedaron sin cerrar."""
 
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Control de Cierres de Turno")
-        self.resize(900, 450)
+        self.resize(900, 520)
         self._armar_interfaz()
         self._cargar()
 
     def _armar_interfaz(self):
+        # Aviso de turnos ya vencidos (ventana + 40 min de gracia) del mes
+        # en curso que todavía no tienen cierre cargado — ver
+        # turnos_repo.turnos_faltantes(). Es una QListWidget (no un QLabel
+        # de texto plano) para que cada línea se pueda seleccionar con el
+        # mouse como cualquier otra lista de la app, con su propio alto
+        # máximo y scroll interno — puede haber muchas líneas (un kiosko
+        # recién instalado, o varios meses sin revisar esta pantalla,
+        # fácilmente pasa el centenar) y no debe empujar la tabla ni los
+        # botones fuera de la ventana. Seleccionar una fila no dispara
+        # ninguna acción (ver nota debajo): en este sistema un turno
+        # vencido no se puede cargar por separado, así que es un aviso
+        # para que el Admin lo note, no una lista para "completar".
+        # Arranca oculto: solo se muestra si hay algo que avisar (ver
+        # _cargar_faltantes).
+        self.panel_faltantes = QWidget()
+        panel_layout = QVBoxLayout(self.panel_faltantes)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+        panel_layout.setSpacing(4)
+
+        self.titulo_faltantes = QLabel()
+        self.titulo_faltantes.setStyleSheet("color: #A6323C; font-weight: 600;")
+
+        self.lista_faltantes = QListWidget()
+        self.lista_faltantes.setMaximumHeight(140)
+        self.lista_faltantes.setStyleSheet(
+            "QListWidget { background-color: #FBEAEA; border: 1px solid #D9838A; "
+            "border-radius: 6px; color: #A6323C; } "
+            "QListWidget::item { padding: 3px 6px; } "
+            "QListWidget::item:selected { background-color: #F3D3D3; color: #A6323C; }"
+        )
+
+        nota_faltantes = QLabel(
+            "Un turno vencido no se carga por separado: al confirmar \"Cierre de "
+            "Turno\" ahora, todo lo vendido desde el último cierre se agrupa junto, "
+            "sin importar cuántos turnos nominales pasaron en el medio."
+        )
+        nota_faltantes.setWordWrap(True)
+        nota_faltantes.setStyleSheet("color: #A6323C; font-style: italic; font-size: 11px;")
+
+        panel_layout.addWidget(self.titulo_faltantes)
+        panel_layout.addWidget(self.lista_faltantes)
+        panel_layout.addWidget(nota_faltantes)
+        self.panel_faltantes.hide()
+
         self.tabla = QTableWidget(0, 8)
         self.tabla.setHorizontalHeaderLabels(
             ["Fecha", "Turno", "Empleada", "Fondo", "Ventas Ef.", "A Retirar", "Contado", "Diferencia"]
@@ -228,6 +274,7 @@ class ControlCierresWindow(QDialog):
         botones.addWidget(boton_salir)
 
         layout = QVBoxLayout()
+        layout.addWidget(self.panel_faltantes)
         layout.addWidget(self.tabla)
         layout.addLayout(botones)
         self.setLayout(layout)
@@ -248,7 +295,7 @@ class ControlCierresWindow(QDialog):
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
             self.tabla.setItem(fila, 0, QTableWidgetItem(cierre["fecha"]))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(cierre["turno"]))
+            self.tabla.setItem(fila, 1, QTableWidgetItem(etiqueta_turno(cierre["fecha"], cierre["turno"])))
             self.tabla.setItem(fila, 2, QTableWidgetItem(cierre["empleada"]))
             self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(cierre["fondo_cambio"])))
             self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(cierre["ventas_efectivo"])))
@@ -263,6 +310,28 @@ class ControlCierresWindow(QDialog):
                 item_diferencia.setForeground(Qt.red)
             self.tabla.setItem(fila, 7, item_diferencia)
 
+        self._cargar_faltantes()
+
+    def _cargar_faltantes(self):
+        """Turnos del mes en curso ya vencidos (+ 40 min de gracia) que
+        todavía no tienen cierre — ver turnos_repo.turnos_faltantes()."""
+        faltantes = turnos_repo.turnos_faltantes()
+        if not faltantes:
+            self.panel_faltantes.hide()
+            return
+        faltantes_ordenados = sorted(faltantes, key=lambda s: (s["fecha"], s["turno"]), reverse=True)
+        self.titulo_faltantes.setText(f"⚠️ TURNOS SIN CERRAR ESTE MES ({len(faltantes)}):")
+        self.lista_faltantes.clear()
+        for slot in faltantes_ordenados:
+            # "usuarios": quién vendió en esa ventana según las ventas
+            # registradas (no hay horarios asignados en el sistema, así
+            # que es una inferencia, no una certeza — ver
+            # turnos_repo._vendedores_del_mes).
+            quien = ", ".join(slot["usuarios"]) if slot["usuarios"] else "sin ventas registradas"
+            texto = f"{etiqueta_turno(slot['fecha'], slot['turno'])} — {slot['fecha'].strftime('%d/%m')} — {quien}"
+            self.lista_faltantes.addItem(texto)
+        self.panel_faltantes.show()
+
     @manejar_errores
     def _verificar(self):
         fila = self.tabla.currentRow()
@@ -273,7 +342,7 @@ class ControlCierresWindow(QDialog):
 
         monto, aceptado = QInputDialog.getDouble(
             self, "Monto contado",
-            f"Turno {cierre['turno']} del {cierre['fecha']} — {cierre['empleada']}\n"
+            f"Turno {etiqueta_turno(cierre['fecha'], cierre['turno'])} del {cierre['fecha']} — {cierre['empleada']}\n"
             f"Se esperaba retirar: {formato_pesos(cierre['monto_a_retirar'])}\n\n"
             "¿Cuánto contaste realmente en el sobre?",
             cierre["monto_a_retirar"], 0, 99_999_999, 2
