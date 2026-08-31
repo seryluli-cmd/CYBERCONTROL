@@ -26,6 +26,7 @@ class ReportesWindow(QDialog):
 
         pestañas = QTabWidget()
         pestañas.addTab(PestañaResumen(), "Resumen de Ventas")
+        pestañas.addTab(PestañaPorTurno(), "Por Turno")
         pestañas.addTab(PestañaRanking(), "Ranking de Ventas")
 
         layout = QVBoxLayout()
@@ -121,6 +122,78 @@ class PestañaResumen(QWidget):
         self.etiqueta_cantidad.setText(f"{resumen['cantidad_ventas']} venta(s)")
         self.etiqueta_efectivo.setText(f"Efectivo: {formato_pesos(resumen['efectivo'])}")
         self.etiqueta_digital.setText(f"Digital: {formato_pesos(resumen['digital'])}")
+
+
+class PestañaPorTurno(QWidget):
+    """Desglosa el total vendido en un rango de fechas por turno
+    (Mañana/Tarde/Noche), para responder "¿cuánto trabajó la Tarde esta
+    semana?" sin tener que sumar a mano los cierres cargados."""
+
+    def __init__(self):
+        super().__init__()
+        self._armar_interfaz()
+        self._buscar()
+
+    def _armar_interfaz(self):
+        self.fecha_desde = QDateEdit(QDate.currentDate())
+        self.fecha_desde.setCalendarPopup(True)
+        self.fecha_hasta = QDateEdit(QDate.currentDate())
+        self.fecha_hasta.setCalendarPopup(True)
+        boton_hoy = QPushButton("Solo Hoy")
+        boton_hoy.clicked.connect(self._poner_solo_hoy)
+        boton_buscar = QPushButton("Buscar")
+        boton_buscar.clicked.connect(self._buscar)
+        encadenar_enter(self.fecha_desde, self.fecha_hasta, accion_final=self._buscar)
+
+        filtros = QHBoxLayout()
+        filtros.addWidget(QLabel("Desde:"))
+        filtros.addWidget(self.fecha_desde)
+        filtros.addWidget(QLabel("Hasta:"))
+        filtros.addWidget(self.fecha_hasta)
+        filtros.addWidget(boton_hoy)
+        filtros.addWidget(boton_buscar)
+        filtros.addStretch()
+
+        self.tabla = QTableWidget(0, 5)
+        self.tabla.setHorizontalHeaderLabels(["Turno", "Total vendido", "Ventas", "Efectivo", "Digital"])
+        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabla.setAlternatingRowColors(True)
+        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+
+        layout = QVBoxLayout()
+        layout.addLayout(filtros)
+        layout.addSpacing(10)
+        layout.addWidget(self.tabla)
+        self.setLayout(layout)
+        # Evita que Qt elija automaticamente el primer boton como "default":
+        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
+        # codigo de barras) tambien activaba el primer boton de la pantalla,
+        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
+        # solo con escanear y apretar Enter).
+        for boton in self.findChildren(QPushButton):
+            boton.setAutoDefault(False)
+            boton.setDefault(False)
+
+    def _poner_solo_hoy(self):
+        self.fecha_desde.setDate(QDate.currentDate())
+        self.fecha_hasta.setDate(QDate.currentDate())
+        self._buscar()
+
+    @manejar_errores
+    def _buscar(self):
+        desde = self.fecha_desde.date().toString("yyyy-MM-dd")
+        hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
+        filas = reportes_repo.resumen_por_turno(desde, hasta)
+
+        self.tabla.setRowCount(0)
+        for fila_datos in filas:
+            fila = self.tabla.rowCount()
+            self.tabla.insertRow(fila)
+            self.tabla.setItem(fila, 0, QTableWidgetItem(fila_datos["turno"].capitalize()))
+            self.tabla.setItem(fila, 1, QTableWidgetItem(formato_pesos(fila_datos["total"])))
+            self.tabla.setItem(fila, 2, QTableWidgetItem(str(fila_datos["cantidad_ventas"])))
+            self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(fila_datos["efectivo"])))
+            self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(fila_datos["digital"])))
 
 
 class PestañaRanking(QWidget):

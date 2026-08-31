@@ -50,6 +50,51 @@ def resumen_ventas(desde: str, hasta: str):
     }
 
 
+def resumen_por_turno(desde: str, hasta: str):
+    """
+    Lo mismo que resumen_ventas(), pero desglosado por turno (Mañana/
+    Tarde/Noche) en vez de un único total — para responder "¿cuánto
+    trabajó la Tarde esta semana?" sin tener que sumar a mano los
+    cierres cargados en Control de Cierres de Turno. Devuelve siempre
+    los 3 turnos, en orden, aunque alguno no tenga ventas en el rango
+    (por ejemplo, si el rango son puros domingos, Tarde da $0 — ver
+    database.calcular_turno, que ese día no genera ventas con turno
+    "TARDE").
+    """
+    with conexion_db() as conexion:
+        por_turno = conexion.execute(
+            """
+            SELECT turno, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad_ventas
+            FROM ventas
+            WHERE estado = 'CONFIRMADA' AND date(fecha) BETWEEN date(?) AND date(?)
+            GROUP BY turno
+            """,
+            (desde, hasta),
+        ).fetchall()
+
+        pagos_por_turno = conexion.execute(
+            """
+            SELECT ventas.turno, venta_pagos.metodo, SUM(venta_pagos.monto) AS total
+            FROM venta_pagos
+            JOIN ventas ON ventas.id = venta_pagos.venta_id
+            WHERE ventas.estado = 'CONFIRMADA' AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            GROUP BY ventas.turno, venta_pagos.metodo
+            """,
+            (desde, hasta),
+        ).fetchall()
+
+    totales = {turno: {"total": 0.0, "cantidad_ventas": 0, "efectivo": 0.0, "digital": 0.0}
+               for turno in ("MAÑANA", "TARDE", "NOCHE")}
+    for fila in por_turno:
+        totales[fila["turno"]]["total"] = fila["total"]
+        totales[fila["turno"]]["cantidad_ventas"] = fila["cantidad_ventas"]
+    for fila in pagos_por_turno:
+        clave = "efectivo" if fila["metodo"] == "EFECTIVO" else "digital"
+        totales[fila["turno"]][clave] = fila["total"] or 0.0
+
+    return [{"turno": turno, **datos} for turno, datos in totales.items()]
+
+
 def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
     """
     Ranking de artículos vendidos entre dos fechas, con la cantidad total
