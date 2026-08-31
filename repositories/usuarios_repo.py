@@ -22,6 +22,11 @@ def autenticar(usuario_id: int, clave: str):
     formato nuevo en el momento — así todos los usuarios van quedando
     con el hash más seguro a medida que usan el sistema, sin que nadie
     tenga que reconfigurar nada a mano.
+
+    Cada login exitoso también queda registrado en `sesiones` — es la
+    pista que usa Control de Cierres de Turno para saber quién podría
+    ser responsable de un turno sin cerrar, incluso si no vendió nada
+    en esa ventana (ver turnos_repo._responsables_del_mes).
     """
     with conexion_db() as conexion:
         fila = conexion.execute(
@@ -38,6 +43,11 @@ def autenticar(usuario_id: int, clave: str):
                 "UPDATE usuarios SET clave_hash = ? WHERE id = ?",
                 (hash_clave(clave), fila["id"]),
             )
+
+        conexion.execute(
+            "INSERT INTO sesiones (usuario_id, fecha_hora) VALUES (?, ?)",
+            (fila["id"], datetime.now().isoformat(timespec="seconds")),
+        )
 
         return fila
 

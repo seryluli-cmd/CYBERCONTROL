@@ -243,7 +243,10 @@ class ControlCierresWindow(QDialog):
         nota_faltantes = QLabel(
             "Un turno vencido no se carga por separado: al confirmar \"Cierre de "
             "Turno\" ahora, todo lo vendido desde el último cierre se agrupa junto, "
-            "sin importar cuántos turnos nominales pasaron en el medio."
+            "sin importar cuántos turnos nominales pasaron en el medio. El nombre al "
+            "final de cada línea es quién vendió algo o inició sesión en ese horario "
+            "(no hay horarios asignados por empleada, así que es una pista de a quién "
+            "preguntarle, no una certeza)."
         )
         nota_faltantes.setWordWrap(True)
         nota_faltantes.setStyleSheet("color: #A6323C; font-style: italic; font-size: 11px;")
@@ -323,11 +326,11 @@ class ControlCierresWindow(QDialog):
         self.titulo_faltantes.setText(f"⚠️ TURNOS SIN CERRAR ESTE MES ({len(faltantes)}):")
         self.lista_faltantes.clear()
         for slot in faltantes_ordenados:
-            # "usuarios": quién vendió en esa ventana según las ventas
-            # registradas (no hay horarios asignados en el sistema, así
-            # que es una inferencia, no una certeza — ver
-            # turnos_repo._vendedores_del_mes).
-            quien = ", ".join(slot["usuarios"]) if slot["usuarios"] else "sin ventas registradas"
+            # "usuarios": quién vendió algo o inició sesión en esa
+            # ventana (no hay horarios asignados en el sistema, así que
+            # es una inferencia, no una certeza — ver
+            # turnos_repo._responsables_del_mes).
+            quien = ", ".join(slot["usuarios"]) if slot["usuarios"] else "sin actividad registrada"
             texto = f"{etiqueta_turno(slot['fecha'], slot['turno'])} — {slot['fecha'].strftime('%d/%m')} — {quien}"
             self.lista_faltantes.addItem(texto)
         self.panel_faltantes.show()

@@ -325,6 +325,11 @@ class TestUsuariosDeTurnoFaltante(BaseConBaseTemporal):
                 [{"metodo": "EFECTIVO", "monto": 10.0}],
             )
 
+    def _loguear(self, usuario_id, clave, momento):
+        with mock.patch("repositories.usuarios_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            usuarios_repo.autenticar(usuario_id, clave)
+
     def test_turno_faltante_muestra_quien_vendio_incluyendo_noche_que_cruza_medianoche(self):
         vendedora_id = usuarios_repo.crear_usuario("Vendedora Noche", "1234", "EMPLEADA")
         articulos_repo.crear_articulo("COD9", "Producto", None, None, 10.0, 5.0, 0)
@@ -351,6 +356,21 @@ class TestUsuariosDeTurnoFaltante(BaseConBaseTemporal):
         # Un turno vencido sin ninguna venta ni login muestra la lista vacía.
         slot_manana_5 = next(f for f in faltantes if f["fecha"] == date(2026, 1, 5) and f["turno"] == "MAÑANA")
         self.assertEqual(slot_manana_5["usuarios"], [])
+
+    def test_turno_faltante_sin_ventas_muestra_quien_se_logueo(self):
+        # Una empleada se loguea a las 07:00 del 5 de enero (turno Mañana)
+        # pero no llega a cargar ninguna venta: sin el login, ese turno
+        # faltante no tendría a quién preguntarle.
+        empleada_id = usuarios_repo.crear_usuario("Empleada Sin Ventas", "1234", "EMPLEADA")
+        self._loguear(empleada_id, "1234", datetime(2026, 1, 5, 7, 0, 0))
+
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 5, 20, 0, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            faltantes = turnos_repo.turnos_faltantes()
+
+        slot_manana_5 = next(f for f in faltantes if f["fecha"] == date(2026, 1, 5) and f["turno"] == "MAÑANA")
+        self.assertEqual(slot_manana_5["usuarios"], ["Empleada Sin Ventas"])
 
 
 if __name__ == "__main__":

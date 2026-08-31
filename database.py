@@ -329,6 +329,23 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # SESIONES (inicios de sesión)
+    # -------------------------------------------------------------------
+    # Una fila por cada login exitoso. El sistema no tiene un horario
+    # asignado por empleada, así que esto sirve como pista de quién
+    # estaba usando el sistema en un momento dado — en particular, para
+    # saber quién podría ser responsable de un turno que quedó sin
+    # cerrar aunque no haya vendido nada en esa ventana (ver
+    # turnos_repo._responsables_del_mes).
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sesiones (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+            fecha_hora  TEXT NOT NULL
+        )
+    """)
+
+    # -------------------------------------------------------------------
     # CONFIGURACION
     # -------------------------------------------------------------------
     # Tabla simple de "clave -> valor" para parámetros generales del
@@ -355,6 +372,7 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_venta_detalle_articulo ON venta_detalle(articulo_codigo)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_articulo ON compra_detalle(articulo_codigo)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_compra ON compra_detalle(compra_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_fecha ON sesiones(fecha_hora)")
 
     conexion.commit()
 
