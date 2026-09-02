@@ -160,7 +160,7 @@ class DialogoArticulo(QDialog):
         super().__init__(parent)
         self.codigo_existente = codigo_existente
         self.setWindowTitle("Modificación de Artículos" if codigo_existente else "Nuevo Artículo")
-        self.resize(420, 380)
+        self.resize(520, 380)
         self._armar_interfaz()
         if codigo_existente:
             self._cargar_datos(codigo_existente)
@@ -195,6 +195,27 @@ class DialogoArticulo(QDialog):
         self.spin_precio_compra.setMaximum(99_999_999)
         self.spin_precio_compra.setPrefix("$ ")
 
+        # Calculadora de margen: a veces se pierde la factura de compra y no
+        # se sabe el costo real, pero se puede averiguar el precio de venta
+        # de ese mismo artículo en otro local — con eso y un % de margen
+        # aproximado, se estima el costo (o al revés, con el costo conocido
+        # se estima la venta). El % es editable porque el margen no es
+        # siempre el mismo para todos los rubros. Es a botón, no en vivo:
+        # así no pisa un precio que ya se cargó a mano al tocar el otro campo.
+        self.spin_pct_desde_costo = QSpinBox()
+        self.spin_pct_desde_costo.setRange(0, 500)
+        self.spin_pct_desde_costo.setValue(80)
+        self.spin_pct_desde_costo.setSuffix("%")
+        boton_calc_venta = QPushButton("Calcular")
+        boton_calc_venta.clicked.connect(self._calcular_venta_desde_costo)
+
+        self.spin_pct_desde_venta = QSpinBox()
+        self.spin_pct_desde_venta.setRange(0, 500)
+        self.spin_pct_desde_venta.setValue(80)
+        self.spin_pct_desde_venta.setSuffix("%")
+        boton_calc_costo = QPushButton("Calcular")
+        boton_calc_costo.clicked.connect(self._calcular_costo_desde_venta)
+
         self.spin_stock_minimo = QSpinBox()
         self.spin_stock_minimo.setMaximum(999_999)
 
@@ -214,13 +235,25 @@ class DialogoArticulo(QDialog):
             accion_final=self._guardar,
         )
 
+        fila_precio_venta = QHBoxLayout()
+        fila_precio_venta.addWidget(self.spin_precio_venta)
+        fila_precio_venta.addWidget(QLabel("→ Costo al"))
+        fila_precio_venta.addWidget(self.spin_pct_desde_venta)
+        fila_precio_venta.addWidget(boton_calc_costo)
+
+        fila_precio_compra = QHBoxLayout()
+        fila_precio_compra.addWidget(self.spin_precio_compra)
+        fila_precio_compra.addWidget(QLabel("→ Venta al"))
+        fila_precio_compra.addWidget(self.spin_pct_desde_costo)
+        fila_precio_compra.addWidget(boton_calc_venta)
+
         formulario = QFormLayout()
         formulario.addRow("Código (de barras):", self.campo_codigo)
         formulario.addRow("Descripción:", self.campo_descripcion)
         formulario.addRow("Marca:", self.combo_marca)
         formulario.addRow("Rubro:", self.combo_rubro)
-        formulario.addRow("Precio Venta:", self.spin_precio_venta)
-        formulario.addRow("Precio Compra (costo):", self.spin_precio_compra)
+        formulario.addRow("Precio Venta:", fila_precio_venta)
+        formulario.addRow("Precio Compra (costo):", fila_precio_compra)
         formulario.addRow("Stock Mínimo:", self.spin_stock_minimo)
         formulario.addRow("Stock actual:", self.etiqueta_stock)
 
@@ -262,6 +295,16 @@ class DialogoArticulo(QDialog):
         self.spin_stock_minimo.setValue(articulo["stock_minimo"])
         self.etiqueta_stock.setText(str(articulo["stock"]))
         self.etiqueta_stock.setStyleSheet("color: red;" if articulo["stock"] < articulo["stock_minimo"] else "")
+
+    def _calcular_venta_desde_costo(self):
+        costo = self.spin_precio_compra.value()
+        porcentaje = self.spin_pct_desde_costo.value()
+        self.spin_precio_venta.setValue(round(costo * (1 + porcentaje / 100), 2))
+
+    def _calcular_costo_desde_venta(self):
+        venta = self.spin_precio_venta.value()
+        porcentaje = self.spin_pct_desde_venta.value()
+        self.spin_precio_compra.setValue(round(venta / (1 + porcentaje / 100), 2))
 
     def _resolver_marca_id(self):
         texto = self.combo_marca.currentText().strip()
