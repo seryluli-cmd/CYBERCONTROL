@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
+import dominio
 from repositories import ventas_repo
 from ui.utils import formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase
 
@@ -21,7 +22,7 @@ class ConsultaVentasWindow(QDialog):
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
-        self.es_admin = usuario["rol"] == "ADMIN"
+        self.es_admin = dominio.es_admin(usuario)
         self.setWindowTitle("Consulta de Ventas")
         self.resize(850, 500)
         self._armar_interfaz()
@@ -89,7 +90,7 @@ class ConsultaVentasWindow(QDialog):
             self.tabla.setItem(fila, 3, QTableWidgetItem(venta["vendedor"]))
             self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(venta["total"])))
             item_estado = QTableWidgetItem(venta["estado"])
-            if venta["estado"] == "ANULADA":
+            if venta["estado"] == dominio.VENTA_ANULADA:
                 item_estado.setForeground(Qt.red)
             self.tabla.setItem(fila, 5, item_estado)
         self.tabla_detalle.setRowCount(0)
@@ -121,7 +122,7 @@ class ConsultaVentasWindow(QDialog):
         if venta is None:
             mostrar_error(self, "Nada seleccionado", "Elegí primero una venta de la lista.")
             return
-        if venta["estado"] == "ANULADA":
+        if venta["estado"] == dominio.VENTA_ANULADA:
             mostrar_error(self, "Ya anulada", "Esa venta ya estaba anulada.")
             return
 

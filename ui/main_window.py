@@ -15,6 +15,7 @@ usuario logueado:
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, QFrame
 from PySide6.QtCore import Qt
 
+import dominio
 from repositories import usuarios_repo
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
@@ -35,7 +36,7 @@ class MainWindow(QMainWindow):
         """
         super().__init__()
         self.usuario = usuario
-        self.es_admin = usuario["rol"] == "ADMIN"
+        self.es_admin = dominio.es_admin(usuario)
         self._al_cerrar_sesion = al_cerrar_sesion
         self._armar_interfaz()
 

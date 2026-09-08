@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from repositories import articulos_repo
-from ui.utils import manejar_errores, aplicar_clase
+from ui.utils import manejar_errores, aplicar_clase, formato_pesos
 
 
 class DialogoBuscarArticulo(QDialog):
@@ -91,7 +91,7 @@ class DialogoBuscarArticulo(QDialog):
             self.tabla.setItem(fila, 0, QTableWidgetItem(articulo["codigo"]))
             self.tabla.setItem(fila, 1, QTableWidgetItem(articulo["descripcion"]))
             self.tabla.setItem(fila, 2, QTableWidgetItem(articulo["marca"] or ""))
-            self.tabla.setItem(fila, 3, QTableWidgetItem(f"{articulo['precio_venta']:.2f}"))
+            self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(articulo["precio_venta"])))
 
     def _elegir_seleccion(self):
         fila = self.tabla.currentRow()

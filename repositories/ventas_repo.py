@@ -14,7 +14,27 @@ Admin puede anularla después con `anular_venta`).
 """
 
 from datetime import datetime
-from database import conexion_db, calcular_turno
+
+import dominio
+from database import conexion_db
+from turnos import calcular_turno
+
+
+def subtotal_linea(linea) -> float:
+    """
+    Cuánto se cobra por un renglón del carrito. Hoy es simplemente
+    cantidad × precio, pero pasa por acá a propósito: es el único lugar
+    donde se decide esa cuenta, así que el día que haya un descuento por
+    cantidad o una promo 2x1, se cambia una sola función y la pantalla
+    de Ventas, el total y lo que se graba en la base quedan coherentes
+    solos.
+    """
+    return linea["cantidad"] * linea["precio_unitario"]
+
+
+def total_carrito(lineas: list) -> float:
+    """Total de una venta en curso, sumando el subtotal de cada renglón."""
+    return sum(subtotal_linea(linea) for linea in lineas)
 
 
 def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
@@ -22,9 +42,12 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     Graba una venta ya armada y cobrada.
 
     lineas: lista de diccionarios
-        {"codigo", "descripcion", "cantidad", "precio_unitario", "subtotal"}
+        {"codigo", "descripcion", "cantidad", "precio_unitario"}
+        El subtotal NO se recibe: se calcula acá con `subtotal_linea()`,
+        para que la pantalla no pueda mandar una cuenta distinta a la que
+        se graba en la base.
     pagos: lista de diccionarios
-        {"metodo": "EFECTIVO" | "DIGITAL", "monto": ...}
+        {"metodo": dominio.PAGO_EFECTIVO | dominio.PAGO_DIGITAL, "monto": ...}
         (puede haber más de uno, para pagos combinados)
 
     Descuenta el stock de cada artículo vendido (puede quedar negativo,
@@ -40,15 +63,15 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     ahora = datetime.now()
     ahora_iso = ahora.isoformat(timespec="seconds")
     turno = calcular_turno(ahora)
-    total = round(sum(linea["subtotal"] for linea in lineas), 2)
+    total = round(total_carrito(lineas), 2)
 
     with conexion_db() as conexion:
         cursor = conexion.execute(
             """
             INSERT INTO ventas (fecha, usuario_id, turno, total, estado)
-            VALUES (?, ?, ?, ?, 'CONFIRMADA')
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (ahora_iso, usuario_id, turno, total),
+            (ahora_iso, usuario_id, turno, total, dominio.VENTA_CONFIRMADA),
         )
         venta_id = cursor.lastrowid
 
@@ -60,7 +83,7 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (venta_id, linea["codigo"], linea["descripcion"], linea["cantidad"],
-                 round(linea["precio_unitario"], 2), round(linea["subtotal"], 2)),
+                 round(linea["precio_unitario"], 2), round(subtotal_linea(linea), 2)),
             )
             # Restamos el stock. Se permite que quede en negativo (ver
             # database.py / articulos_repo.py para la explicación completa).
@@ -90,7 +113,7 @@ def anular_venta(venta_id: int, usuario_admin_id: int, motivo: str):
         venta = conexion.execute("SELECT * FROM ventas WHERE id = ?", (venta_id,)).fetchone()
         if venta is None:
             raise ValueError("La venta no existe.")
-        if venta["estado"] == "ANULADA":
+        if venta["estado"] == dominio.VENTA_ANULADA:
             raise ValueError("Esa venta ya estaba anulada.")
 
         lineas = conexion.execute(
@@ -106,10 +129,10 @@ def anular_venta(venta_id: int, usuario_admin_id: int, motivo: str):
         conexion.execute(
             """
             UPDATE ventas
-            SET estado = 'ANULADA', anulada_por = ?, anulada_fecha = ?, anulada_motivo = ?
+            SET estado = ?, anulada_por = ?, anulada_fecha = ?, anulada_motivo = ?
             WHERE id = ?
             """,
-            (usuario_admin_id, ahora, motivo, venta_id),
+            (dominio.VENTA_ANULADA, usuario_admin_id, ahora, motivo, venta_id),
         )
 
 

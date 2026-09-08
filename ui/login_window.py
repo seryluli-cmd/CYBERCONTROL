@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette, QColor
 
+import dominio
 from database import verificar_clave
 from repositories.usuarios_repo import autenticar_por_nombre, listar_usuarios
 from ui.utils import mostrar_error, mostrar_aviso, manejar_errores, aplicar_clase
@@ -192,7 +193,7 @@ class LoginWindow(QWidget):
         # Aviso suave si el Admin todavía tiene la clave por defecto
         # ("1234") con la que se crea el primer usuario del sistema —
         # no bloquea el ingreso, solo recuerda cambiarla.
-        if usuario["rol"] == "ADMIN" and verificar_clave("1234", usuario["clave_hash"]):
+        if dominio.es_admin(usuario) and verificar_clave("1234", usuario["clave_hash"]):
             mostrar_aviso(
                 self, "Cambiá la clave por defecto",
                 "Este usuario Admin todavía tiene la clave de fábrica (1234).\n"

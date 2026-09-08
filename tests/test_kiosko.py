@@ -21,6 +21,8 @@ from datetime import date, datetime
 from unittest import mock
 
 import database
+import dominio
+import turnos
 from repositories import articulos_repo, compras_repo, reportes_repo, turnos_repo, usuarios_repo, ventas_repo
 
 
@@ -44,65 +46,114 @@ class BaseConBaseTemporal(unittest.TestCase):
 
 class TestCalcularTurno(unittest.TestCase):
     def test_manana_empieza_a_las_6(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 6, 0)), "MAÑANA")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 1, 6, 0)), "MAÑANA")
 
     def test_manana_hasta_las_13_59(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 13, 59)), "MAÑANA")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 1, 13, 59)), "MAÑANA")
 
     def test_tarde_empieza_a_las_14(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 14, 0)), "TARDE")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 1, 14, 0)), "TARDE")
 
     def test_tarde_hasta_las_21_59(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 21, 59)), "TARDE")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 1, 21, 59)), "TARDE")
 
     def test_noche_empieza_a_las_22(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 22, 0)), "NOCHE")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 1, 22, 0)), "NOCHE")
 
     def test_noche_cruza_la_medianoche(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 0, 0)), "NOCHE")
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 1, 5, 59)), "NOCHE")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 1, 0, 0)), "NOCHE")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 1, 5, 59)), "NOCHE")
 
     # El 2026-01-04 es domingo, el 2026-01-03 es sábado (usados también en
     # TestEtiquetaTurno / TestTurnoVencimiento / TestTurnosFaltantes).
     def test_domingo_manana_dura_hasta_las_18(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 4, 17, 59)), "MAÑANA")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 4, 17, 59)), "MAÑANA")
 
     def test_domingo_no_existe_el_turno_tarde(self):
         # A las 14:00, un día de semana normal ya sería Tarde.
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 4, 14, 0)), "MAÑANA")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 4, 14, 0)), "MAÑANA")
 
     def test_domingo_noche_empieza_a_las_18(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 4, 18, 0)), "NOCHE")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 4, 18, 0)), "NOCHE")
 
     def test_sabado_a_la_noche_sigue_siendo_el_turno_normal(self):
-        self.assertEqual(database.calcular_turno(datetime(2026, 1, 3, 22, 0)), "NOCHE")
+        self.assertEqual(turnos.calcular_turno(datetime(2026, 1, 3, 22, 0)), "NOCHE")
 
 
 class TestEtiquetaTurno(unittest.TestCase):
     def test_dia_de_semana_usa_los_nombres_normales(self):
         lunes = date(2026, 1, 5)
-        self.assertEqual(database.etiqueta_turno(lunes, "MAÑANA"), "Mañana")
-        self.assertEqual(database.etiqueta_turno(lunes, "TARDE"), "Tarde")
-        self.assertEqual(database.etiqueta_turno(lunes, "NOCHE"), "Noche")
+        self.assertEqual(turnos.etiqueta_turno(lunes, "MAÑANA"), "Mañana")
+        self.assertEqual(turnos.etiqueta_turno(lunes, "TARDE"), "Tarde")
+        self.assertEqual(turnos.etiqueta_turno(lunes, "NOCHE"), "Noche")
 
     def test_domingo_usa_las_etiquetas_de_2_turnos(self):
         domingo = date(2026, 1, 4)
-        self.assertEqual(database.etiqueta_turno(domingo, "MAÑANA"), "Domingo T1")
-        self.assertEqual(database.etiqueta_turno(domingo, "NOCHE"), "Domingo T2")
+        self.assertEqual(turnos.etiqueta_turno(domingo, "MAÑANA"), "Domingo T1")
+        self.assertEqual(turnos.etiqueta_turno(domingo, "NOCHE"), "Domingo T2")
+
+
+class TestTurnosDelDia(unittest.TestCase):
+    """`turnos_del_dia` es el único lugar donde se decide qué turnos
+    existen en un día; antes esa lista estaba escrita a mano en
+    turnos_repo."""
+
+    def test_dia_de_semana_tiene_los_tres_turnos(self):
+        lunes = date(2026, 1, 5)
+        self.assertEqual(
+            turnos.turnos_del_dia(lunes),
+            (dominio.TURNO_MANANA, dominio.TURNO_TARDE, dominio.TURNO_NOCHE),
+        )
+
+    def test_domingo_tiene_solo_dos_turnos_y_sin_tarde(self):
+        domingo = date(2026, 1, 4)
+        turnos_domingo = turnos.turnos_del_dia(domingo)
+        self.assertEqual(turnos_domingo, (dominio.TURNO_MANANA, dominio.TURNO_NOCHE))
+        self.assertNotIn(dominio.TURNO_TARDE, turnos_domingo)
+
+    def test_acepta_string_igual_que_es_domingo(self):
+        self.assertEqual(turnos.turnos_del_dia("2026-01-04"), dominio.TURNOS_DOMINGO)
+
+
+class TestSubtotalDeLinea(unittest.TestCase):
+    """El subtotal de un renglón se calcula en un solo lugar
+    (`ventas_repo.subtotal_linea`), y `confirmar_venta` lo usa en vez de
+    confiar en lo que le manda la pantalla."""
+
+    def test_subtotal_es_cantidad_por_precio(self):
+        linea = {"cantidad": 3, "precio_unitario": 100.0}
+        self.assertEqual(ventas_repo.subtotal_linea(linea), 300.0)
+
+    def test_total_del_carrito_suma_todos_los_renglones(self):
+        carrito = [
+            {"cantidad": 3, "precio_unitario": 100.0},
+            {"cantidad": 2, "precio_unitario": 50.5},
+        ]
+        self.assertEqual(ventas_repo.total_carrito(carrito), 401.0)
+
+    def test_carrito_vacio_da_cero(self):
+        self.assertEqual(ventas_repo.total_carrito([]), 0)
+
+
+class TestEsAdmin(unittest.TestCase):
+    def test_reconoce_el_rol_admin_y_rechaza_el_resto(self):
+        self.assertTrue(dominio.es_admin({"rol": dominio.ROL_ADMIN}))
+        self.assertFalse(dominio.es_admin({"rol": dominio.ROL_EMPLEADA}))
+        self.assertFalse(dominio.es_admin(None))
 
 
 class TestTurnoVencimiento(unittest.TestCase):
     def test_manana_vence_a_las_14_40_entre_semana(self):
         lunes = date(2026, 1, 5)
-        self.assertEqual(database.turno_vencimiento(lunes, "MAÑANA"), datetime(2026, 1, 5, 14, 40))
+        self.assertEqual(turnos.turno_vencimiento(lunes, "MAÑANA"), datetime(2026, 1, 5, 14, 40))
 
     def test_manana_vence_a_las_18_40_el_domingo(self):
         domingo = date(2026, 1, 4)
-        self.assertEqual(database.turno_vencimiento(domingo, "MAÑANA"), datetime(2026, 1, 4, 18, 40))
+        self.assertEqual(turnos.turno_vencimiento(domingo, "MAÑANA"), datetime(2026, 1, 4, 18, 40))
 
     def test_noche_vence_a_la_madrugada_del_dia_siguiente(self):
         lunes = date(2026, 1, 5)
-        self.assertEqual(database.turno_vencimiento(lunes, "NOCHE"), datetime(2026, 1, 6, 6, 40))
+        self.assertEqual(turnos.turno_vencimiento(lunes, "NOCHE"), datetime(2026, 1, 6, 6, 40))
 
 
 class TestHashClave(unittest.TestCase):
@@ -291,7 +342,7 @@ class TestGestionDeUsuarios(BaseConBaseTemporal):
         ventas_repo.confirmar_venta(
             vendedor_id,
             [{"codigo": "CODU", "descripcion": "Producto", "cantidad": 1,
-              "precio_unitario": 10.0, "subtotal": 10.0}],
+              "precio_unitario": 10.0}],
             [{"metodo": "EFECTIVO", "monto": 10.0}],
         )
 
@@ -348,7 +399,7 @@ class TestVentasYStock(BaseConBaseTemporal):
         ventas_repo.confirmar_venta(
             usuario_id,
             [{"codigo": "COD1", "descripcion": "Producto de prueba", "cantidad": 3,
-              "precio_unitario": 100.0, "subtotal": 300.0}],
+              "precio_unitario": 100.0}],
             [{"metodo": "EFECTIVO", "monto": 300.0}],
         )
         articulo = articulos_repo.buscar_por_codigo("COD1")
@@ -359,7 +410,7 @@ class TestVentasYStock(BaseConBaseTemporal):
         venta_id = ventas_repo.confirmar_venta(
             usuario_id,
             [{"codigo": "COD1", "descripcion": "Producto de prueba", "cantidad": 3,
-              "precio_unitario": 100.0, "subtotal": 300.0}],
+              "precio_unitario": 100.0}],
             [{"metodo": "EFECTIVO", "monto": 300.0}],
         )
         ventas_repo.anular_venta(venta_id, usuario_id, "prueba")
@@ -375,7 +426,7 @@ class TestVentasYStock(BaseConBaseTemporal):
         venta_id = ventas_repo.confirmar_venta(
             usuario_id,
             [{"codigo": "COD1", "descripcion": "Producto de prueba", "cantidad": 1,
-              "precio_unitario": 100.0, "subtotal": 100.0}],
+              "precio_unitario": 100.0}],
             [{"metodo": "EFECTIVO", "monto": 100.0}],
         )
         ventas_repo.anular_venta(venta_id, usuario_id, "prueba")
@@ -388,7 +439,7 @@ class TestVentasYStock(BaseConBaseTemporal):
         ventas_repo.confirmar_venta(
             usuario_id,
             [{"codigo": "COD1", "descripcion": "Producto de prueba", "cantidad": 3,
-              "precio_unitario": 33.333333, "subtotal": 99.999999}],
+              "precio_unitario": 33.333333}],
             [{"metodo": "EFECTIVO", "monto": 99.999999}],
         )
         venta = ventas_repo.listar_ventas_recientes(1)[0]
@@ -408,7 +459,7 @@ class TestBorrarArticuloProtegido(BaseConBaseTemporal):
         ventas_repo.confirmar_venta(
             usuario_id,
             [{"codigo": "CONVENTA", "descripcion": "Con venta", "cantidad": 1,
-              "precio_unitario": 10.0, "subtotal": 10.0}],
+              "precio_unitario": 10.0}],
             [{"metodo": "EFECTIVO", "monto": 10.0}],
         )
 
@@ -510,7 +561,7 @@ class TestUsuariosDeTurnoFaltante(BaseConBaseTemporal):
             ventas_repo.confirmar_venta(
                 usuario_id,
                 [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 1,
-                  "precio_unitario": 10.0, "subtotal": 10.0}],
+                  "precio_unitario": 10.0}],
                 [{"metodo": "EFECTIVO", "monto": 10.0}],
             )
 
@@ -569,7 +620,7 @@ class TestResumenPorTurno(BaseConBaseTemporal):
             ventas_repo.confirmar_venta(
                 usuario_id,
                 [{"codigo": "COD8", "descripcion": "Producto", "cantidad": 1,
-                  "precio_unitario": 10.0, "subtotal": 10.0}],
+                  "precio_unitario": 10.0}],
                 [{"metodo": metodo, "monto": 10.0}],
             )
 

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
+import dominio
 import database
 from repositories import usuarios_repo, config_repo
 from ui.utils import (
@@ -177,8 +178,8 @@ class DialogoUsuario(QDialog):
         if self.usuario_id:
             self.campo_clave.setPlaceholderText("(dejar vacío para no cambiarla)")
         self.combo_rol = QComboBox()
-        self.combo_rol.addItem("Empleada — según los permisos de abajo", "EMPLEADA")
-        self.combo_rol.addItem("Admin — acceso completo", "ADMIN")
+        self.combo_rol.addItem("Empleada — según los permisos de abajo", dominio.ROL_EMPLEADA)
+        self.combo_rol.addItem("Admin — acceso completo", dominio.ROL_ADMIN)
         self.combo_rol.currentIndexChanged.connect(self._actualizar_visibilidad_permisos)
 
         formulario = QFormLayout()
@@ -229,7 +230,7 @@ class DialogoUsuario(QDialog):
         """Un Admin ya tiene acceso a todo (ver usuarios_repo.tiene_permiso),
         así que la sección de permisos solo tiene sentido — y solo se
         muestra — para el rol Empleada."""
-        self.grupo_permisos.setVisible(self.combo_rol.currentData() == "EMPLEADA")
+        self.grupo_permisos.setVisible(self.combo_rol.currentData() == dominio.ROL_EMPLEADA)
 
     @manejar_errores
     def _cargar_datos(self, usuario_id):
