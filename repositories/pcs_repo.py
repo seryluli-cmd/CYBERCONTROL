@@ -171,6 +171,20 @@ def estado_estaciones():
     return resultado
 
 
+def estado_de_estacion(nombre: str):
+    """
+    Como estado_estaciones(), pero para una sola estación por nombre --
+    es lo que consulta el agente de bloqueo de cada PC cliente (ver
+    servidor_red.py y la carpeta hermana "AGENTE PC KIOSKO") para
+    decidir si debe mostrarse bloqueada o no. Devuelve None si no existe
+    una estación activa con ese nombre.
+    """
+    for item in estado_estaciones():
+        if item["estacion"]["nombre"] == nombre:
+            return item
+    return None
+
+
 def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: datetime, miembro_id: int = None) -> int:
     """
     Crea una sesión nueva para la estación si no tiene una activa, o le

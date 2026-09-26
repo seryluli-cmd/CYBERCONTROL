@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
 from database import inicializar_base_de_datos, hacer_backup_automatico
+from servidor_red import iniciar_servidor
 from ui.login_window import LoginWindow
 from ui.main_window import MainWindow
 
@@ -301,6 +302,10 @@ def main():
     sys.excepthook = _manejar_excepcion_no_capturada
     inicializar_base_de_datos()
     hacer_backup_automatico()
+    # Corre todo el tiempo que Kiosko esté abierto, sin importar quién
+    # esté logueado -- es lo que consultan las PCs bloqueadas del local
+    # (ver servidor_red.py y la carpeta hermana "AGENTE PC KIOSKO").
+    iniciar_servidor()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")  # look más limpio y consistente entre sistemas operativos
     app.setStyleSheet(HOJA_DE_ESTILOS)
