@@ -2,7 +2,7 @@
 main_window.py
 ================
 Ventana principal: aparece después del login y muestra de entrada la
-grilla de "Control de PCs" (`ui/pcs_window.py:PanelControlPcs`) — es lo
+grilla de "Control de PCs" (`control_pcs/ui/pcs_window.py:PanelControlPcs`) — es lo
 que se usa todo el día en el mostrador, así que es la pantalla misma, no
 una opción más de un menú. Desde la barra de arriba se llega a Vender
 (kiosko), a "Gestionar PCs" (catálogo de Estaciones/Bonos/Miembros) y,
@@ -38,8 +38,8 @@ from ui.consulta_ventas_window import ConsultaVentasWindow
 from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
-from ui.pcs_window import PanelControlPcs, DialogoGestionEstaciones, DialogoGestionBonos
-from ui.miembros_window import MiembrosWindow
+from control_pcs.ui.pcs_window import PanelControlPcs, DialogoGestionEstaciones, DialogoGestionBonos
+from control_pcs.ui.miembros_window import MiembrosWindow
 from ui.utils import aplicar_clase
 
 

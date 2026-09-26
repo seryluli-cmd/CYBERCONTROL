@@ -24,28 +24,32 @@ def _obtener_ultimo_cierre(conexion):
     ).fetchone()
 
 
-def _sumar_ventas_por_metodo(conexion, desde: str, hasta: str):
+def _sumar_ventas_por_origen_y_metodo(conexion, desde: str, hasta: str):
     """
-    Devuelve (total_efectivo, total_digital) vendidos entre `desde`
-    (exclusivo) y `hasta` (inclusive), considerando solo ventas
+    Como antes, pero separado también por origen (ver dominio.ORIGENES_VENTA)
+    y no solo por método de pago: es lo que le permite al dueño ver, en
+    Caja y en Cierre de Turno, cuánto entró por productos de kiosko contra
+    cuánto por alquiler de PCs, en vez de un solo total mezclado.
+    Devuelve {origen: {metodo: total}}, considerando solo ventas
     CONFIRMADAS (una venta anulada no debe contar en la caja).
     """
     filas = conexion.execute(
         """
-        SELECT venta_pagos.metodo, SUM(venta_pagos.monto) AS total
+        SELECT ventas.origen AS origen, venta_pagos.metodo AS metodo,
+               SUM(venta_pagos.monto) AS total
         FROM venta_pagos
         JOIN ventas ON ventas.id = venta_pagos.venta_id
         WHERE ventas.estado = ?
           AND ventas.fecha > ?
           AND ventas.fecha <= ?
-        GROUP BY venta_pagos.metodo
+        GROUP BY ventas.origen, venta_pagos.metodo
         """,
         (dominio.VENTA_CONFIRMADA, desde, hasta),
     ).fetchall()
-    totales = {metodo: 0.0 for metodo in dominio.METODOS_PAGO}
+    totales = {origen: {metodo: 0.0 for metodo in dominio.METODOS_PAGO} for origen in dominio.ORIGENES_VENTA}
     for fila in filas:
-        totales[fila["metodo"]] = fila["total"] or 0.0
-    return totales[dominio.PAGO_EFECTIVO], totales[dominio.PAGO_DIGITAL]
+        totales[fila["origen"]][fila["metodo"]] = fila["total"] or 0.0
+    return totales
 
 
 def resumen_turno_actual():
@@ -59,7 +63,14 @@ def resumen_turno_actual():
         ultimo_cierre = _obtener_ultimo_cierre(conexion)
         desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else "0000-01-01T00:00:00"
         ahora = datetime.now().isoformat(timespec="seconds")
-        ventas_efectivo, ventas_digital = _sumar_ventas_por_metodo(conexion, desde, ahora)
+        totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
+
+    kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
+    kiosko_digital = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_DIGITAL]
+    pcs_efectivo = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_EFECTIVO]
+    pcs_digital = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_DIGITAL]
+    ventas_efectivo = kiosko_efectivo + pcs_efectivo
+    ventas_digital = kiosko_digital + pcs_digital
 
     fondo_cambio = obtener_fondo_cambio()
 
@@ -72,6 +83,10 @@ def resumen_turno_actual():
         "fondo_cambio": fondo_cambio,
         "ventas_efectivo": ventas_efectivo,
         "ventas_digital": ventas_digital,
+        "kiosko_efectivo": kiosko_efectivo,
+        "kiosko_digital": kiosko_digital,
+        "pcs_efectivo": pcs_efectivo,
+        "pcs_digital": pcs_digital,
         "caja_actual": fondo_cambio + ventas_efectivo,
         "desde": desde,
         "hasta": ahora,
@@ -93,7 +108,13 @@ def cerrar_turno(usuario_id: int):
         ahora_dt = datetime.now()
         ahora = ahora_dt.isoformat(timespec="seconds")
 
-        ventas_efectivo, ventas_digital = _sumar_ventas_por_metodo(conexion, desde, ahora)
+        totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
+        kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
+        kiosko_digital = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_DIGITAL]
+        pcs_efectivo = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_EFECTIVO]
+        pcs_digital = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_DIGITAL]
+        ventas_efectivo = kiosko_efectivo + pcs_efectivo
+        ventas_digital = kiosko_digital + pcs_digital
         monto_a_retirar = ventas_efectivo
 
         # El turno que queda etiquetado en el cierre es el que empezó
@@ -117,8 +138,9 @@ def cerrar_turno(usuario_id: int):
             """
             INSERT INTO cierres_turno
                 (fecha, turno, usuario_id, fecha_cierre, fondo_cambio,
-                 ventas_efectivo, ventas_digital, monto_a_retirar)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ventas_efectivo, ventas_digital, monto_a_retirar,
+                 kiosko_efectivo, kiosko_digital, pcs_efectivo, pcs_digital)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 fecha_turno.isoformat(),
@@ -129,6 +151,10 @@ def cerrar_turno(usuario_id: int):
                 ventas_efectivo,
                 ventas_digital,
                 monto_a_retirar,
+                kiosko_efectivo,
+                kiosko_digital,
+                pcs_efectivo,
+                pcs_digital,
             ),
         )
         cierre_id = cursor.lastrowid
@@ -140,6 +166,10 @@ def cerrar_turno(usuario_id: int):
         "fondo_cambio": fondo_cambio,
         "ventas_efectivo": ventas_efectivo,
         "ventas_digital": ventas_digital,
+        "kiosko_efectivo": kiosko_efectivo,
+        "kiosko_digital": kiosko_digital,
+        "pcs_efectivo": pcs_efectivo,
+        "pcs_digital": pcs_digital,
         "monto_a_retirar": monto_a_retirar,
     }
 

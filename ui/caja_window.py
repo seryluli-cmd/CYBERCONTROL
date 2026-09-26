@@ -21,9 +21,17 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
+import dominio
 from turnos import etiqueta_turno
 from repositories import turnos_repo
 from ui.utils import formato_pesos, mostrar_info, confirmar, mostrar_error, manejar_errores, aplicar_clase
+
+
+def _texto_desglose(efectivo: float, digital: float) -> str:
+    """"$X ef. + $Y dig." -- una sola línea para mostrar el desglose de un
+    origen (Kiosko o Alquiler de PCs) sin ocupar dos etiquetas por cada
+    uno, ver CajaWindow/CierreTurnoWindow."""
+    return f"{formato_pesos(efectivo)} ef. + {formato_pesos(digital)} dig."
 
 
 def _etiqueta_dato(titulo, valor_texto):
@@ -46,7 +54,7 @@ class CajaWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Caja")
-        self.resize(420, 300)
+        self.resize(460, 360)
         self._armar_interfaz()
         self._refrescar()
 
@@ -67,6 +75,16 @@ class CajaWindow(QDialog):
         fila2.addLayout(layout_ventas)
         fila2.addLayout(layout_digital)
 
+        fila3 = QHBoxLayout()
+        layout_kiosko, self.valor_kiosko = _etiqueta_dato(
+            f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO]}", ""
+        )
+        layout_pcs, self.valor_pcs = _etiqueta_dato(
+            f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS]}", ""
+        )
+        fila3.addLayout(layout_kiosko)
+        fila3.addLayout(layout_pcs)
+
         nota = QLabel("La Caja Actual suma solo el EFECTIVO; no incluye lo cobrado por Digital.")
         nota.setWordWrap(True)
         nota.setStyleSheet("color: gray; font-style: italic;")
@@ -84,6 +102,7 @@ class CajaWindow(QDialog):
         layout.addWidget(self.titulo)
         layout.addLayout(fila1)
         layout.addLayout(fila2)
+        layout.addLayout(fila3)
         layout.addWidget(nota)
         layout.addStretch()
         layout.addLayout(botones)
@@ -105,6 +124,8 @@ class CajaWindow(QDialog):
         self.valor_actual.setText(formato_pesos(resumen["caja_actual"]))
         self.valor_ventas.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
+        self.valor_kiosko.setText(_texto_desglose(resumen["kiosko_efectivo"], resumen["kiosko_digital"]))
+        self.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
 
 
 class CierreTurnoWindow(QDialog):
@@ -115,7 +136,7 @@ class CierreTurnoWindow(QDialog):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Cierre de Turno")
-        self.resize(420, 340)
+        self.resize(460, 400)
         self._armar_interfaz()
         self._refrescar_vista_previa()
 
@@ -135,6 +156,16 @@ class CierreTurnoWindow(QDialog):
         layout_retirar, self.valor_retirar = _etiqueta_dato("A RETIRAR EN EFECTIVO", "")
         fila2.addLayout(layout_digital)
         fila2.addLayout(layout_retirar)
+
+        fila3 = QHBoxLayout()
+        layout_kiosko, self.valor_kiosko = _etiqueta_dato(
+            dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO], ""
+        )
+        layout_pcs, self.valor_pcs = _etiqueta_dato(
+            dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS], ""
+        )
+        fila3.addLayout(layout_kiosko)
+        fila3.addLayout(layout_pcs)
 
         nota = QLabel(
             "Retirá el efectivo indicado y guardalo en el sobre. Dejá el fondo de "
@@ -158,6 +189,7 @@ class CierreTurnoWindow(QDialog):
         layout.addWidget(self.titulo)
         layout.addLayout(fila1)
         layout.addLayout(fila2)
+        layout.addLayout(fila3)
         layout.addWidget(nota)
         layout.addStretch()
         layout.addLayout(botones)
@@ -179,6 +211,8 @@ class CierreTurnoWindow(QDialog):
         self.valor_efectivo.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
         self.valor_retirar.setText(formato_pesos(resumen["ventas_efectivo"]))
+        self.valor_kiosko.setText(_texto_desglose(resumen["kiosko_efectivo"], resumen["kiosko_digital"]))
+        self.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
 
     @manejar_errores
     def _cerrar_turno(self):
@@ -204,7 +238,7 @@ class ControlCierresWindow(QDialog):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Control de Cierres de Turno")
-        self.resize(900, 520)
+        self.resize(1050, 520)
         self._armar_interfaz()
         self._cargar()
 
@@ -256,9 +290,10 @@ class ControlCierresWindow(QDialog):
         panel_layout.addWidget(nota_faltantes)
         self.panel_faltantes.hide()
 
-        self.tabla = QTableWidget(0, 8)
+        self.tabla = QTableWidget(0, 10)
         self.tabla.setHorizontalHeaderLabels(
-            ["Fecha", "Turno", "Empleada", "Fondo", "Ventas Ef.", "A Retirar", "Contado", "Diferencia"]
+            ["Fecha", "Turno", "Empleada", "Fondo", "Ventas Ef.", "Kiosko", "Alquiler PCs",
+             "A Retirar", "Contado", "Diferencia"]
         )
         self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -302,16 +337,22 @@ class ControlCierresWindow(QDialog):
             self.tabla.setItem(fila, 2, QTableWidgetItem(cierre["empleada"]))
             self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(cierre["fondo_cambio"])))
             self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(cierre["ventas_efectivo"])))
-            self.tabla.setItem(fila, 5, QTableWidgetItem(formato_pesos(cierre["monto_a_retirar"])))
+            self.tabla.setItem(fila, 5, QTableWidgetItem(
+                formato_pesos(cierre["kiosko_efectivo"] + cierre["kiosko_digital"])
+            ))
+            self.tabla.setItem(fila, 6, QTableWidgetItem(
+                formato_pesos(cierre["pcs_efectivo"] + cierre["pcs_digital"])
+            ))
+            self.tabla.setItem(fila, 7, QTableWidgetItem(formato_pesos(cierre["monto_a_retirar"])))
 
             contado = cierre["monto_contado"]
-            self.tabla.setItem(fila, 6, QTableWidgetItem(formato_pesos(contado) if contado is not None else "—"))
+            self.tabla.setItem(fila, 8, QTableWidgetItem(formato_pesos(contado) if contado is not None else "—"))
 
             diferencia = cierre["diferencia"]
             item_diferencia = QTableWidgetItem(formato_pesos(diferencia) if diferencia is not None else "—")
             if diferencia is not None and abs(diferencia) > 0.01:
                 item_diferencia.setForeground(Qt.red)
-            self.tabla.setItem(fila, 7, item_diferencia)
+            self.tabla.setItem(fila, 9, item_diferencia)
 
         self._cargar_faltantes()
 

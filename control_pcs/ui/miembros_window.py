@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (
     QHeaderView, QDoubleSpinBox, QStackedWidget, QWidget
 )
 
-from repositories import config_repo, miembros_repo, pcs_repo
+from repositories import config_repo
+from control_pcs.repositories import miembros_repo, pcs_repo
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter,

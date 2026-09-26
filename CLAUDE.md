@@ -32,6 +32,14 @@ importa nada de `ui/`. `database.py` no sabe que existen las pantallas.
 funciones y constantes puras, sin base de datos ni Qt, así que las puede
 usar cualquier capa sin ensuciar la dirección de las flechas.
 
+**Dos negocios, un solo programa.** Desde el 2026-09-26, Control de
+PCs/Miembros/Bonos/Historiales vive en su propio paquete `control_pcs/`
+(con su propio `ui/` y `repositories/` adentro), separado del `ui/` y
+`repositories/` de arriba que quedan solo para el negocio de kiosko —
+son dos negocios distintos para el dueño, aunque comparten programa,
+login y base de datos. Ver "Qué no cambiar sin que el dueño lo pida
+explícitamente" y "Estado" más abajo para el detalle.
+
 ---
 
 ## Las 15 reglas
@@ -76,6 +84,7 @@ desde ahí, nunca escritos a mano:
 | Estado de venta | `VENTA_CONFIRMADA`, `VENTA_ANULADA` |
 | Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` |
 | Turno | `TURNO_MANANA`, `TURNO_TARDE`, `TURNO_NOCHE`, `TURNOS` |
+| Origen de una venta | `ORIGEN_KIOSKO`, `ORIGEN_ALQUILER_PCS`, `ORIGENES_VENTA` |
 
 Un typo en uno de esos strings **no falla ruidosamente**: la consulta
 devuelve cero filas y nadie se entera hasta que falta plata en un cierre.
@@ -181,6 +190,7 @@ abra no alcanza si los tests no pasan.
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
 | `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono |
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
+| `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
 | `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter |
@@ -224,6 +234,13 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   (`pcs_repo.asignar_bono`), abrir con saldo de socio es autoservicio de
   autenticación pura (`miembros_repo.abrir_estacion_por_miembro`), sin
   que el Operador decida cuánto tiempo darle.
+- **Toda venta sin artículo real de por medio pasa por
+  `ventas_repo.registrar_venta_sin_detalle`, nunca un `INSERT INTO ventas`
+  a mano.** Es lo único que le pone el `origen` correcto
+  (`dominio.ORIGENES_VENTA`) — sin eso, el desglose Kiosko/Alquiler de PCs
+  de Caja y Cierre de Turno queda mal. El dueño pidió este desglose
+  explícitamente para poder auditar la caja (sospecha de faltantes), así
+  que un error acá no es solo un bug visual.
 
 ---
 
@@ -234,9 +251,14 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   Nunca hora libre ni minuto suelto, y una PC sin bono/saldo activo queda
   bloqueada — no "abierta y se cobra después". Esto no es un detalle
   técnico, es una decisión de negocio del dueño del Cyber.
-- **La estructura de carpetas (`ui/`, `repositories/`).** Reorganizar el
-  árbol de archivos es una decisión de fondo que se charla antes, no algo
-  que se infiere de "quedaría más prolijo".
+- **La estructura de carpetas.** Hoy hay DOS árboles a propósito: `ui/` +
+  `repositories/` (kiosko) y `control_pcs/ui/` + `control_pcs/repositories/`
+  (PCs/Miembros/Bonos/Historiales) — el dueño pidió esta separación
+  explícitamente el 2026-09-26 ("son dos cosas completamente diferentes a
+  lo que es vender productos de kiosko"), no es desprolijidad para
+  "limpiar" fusionándolos de nuevo. Cualquier reorganización más allá de
+  esta sigue siendo una decisión de fondo que se charla antes, no algo que
+  se infiere de "quedaría más prolijo".
 - **`data/`, a mano.** Ahí vive la base real del negocio (está en
   `.gitignore` a propósito, no llega a git). No asumas que su contenido es
   descartable ni lo edites por fuera de una migración.
@@ -249,19 +271,17 @@ Nada de esto está construido todavía — se deja anotado para que una
 sesión nueva no lo reinvente ni asuma que "no está" significa "no
 importa":
 
-- **Agente de bloqueo de pantalla por PC cliente.** Hoy Control de PCs
-  solo cubre gestión y facturación (vender/asignar un bono, ver tiempo
-  restante) desde la PC de caja — no hay nada corriendo en las PCs de los
-  clientes. La segunda etapa es un programa aparte (fuera de este repo o
-  en una carpeta hermana) instalado en cada PC del local, que consulta el
-  estado de "su" estación contra Kiosko y bloquea la pantalla si no hay
-  bono/saldo activo o si el tiempo llegó a cero. Kiosko hoy no tiene
-  ninguna dependencia de red (`requirements.txt` solo declara `PySide6`),
-  así que esto implica sumar un servidor liviano embebido (hilo de fondo
-  con `http.server`/`socketserver` de la stdlib, algo como
-  `GET /estado?estacion=PC3`) y un cliente que hace polling en cada PC.
-  El esquema de `sesiones_pc` (estado, `fecha_fin_prevista`) ya deja
-  lista la información que ese agente va a necesitar leer.
+- **Agente de bloqueo de pantalla por PC cliente — en curso, no en este
+  repo.** El servidor ya existe acá (`servidor_red.py`, hilo de fondo
+  embebido desde `main.py`, expone `GET /estado?estacion=<nombre>` de
+  solo lectura contra `pcs_repo.estado_de_estacion`). El cliente vive en
+  la carpeta hermana `AGENTE PC KIOSKO/` (proyecto Python aparte, sin
+  relación de código con este repo): Etapa 1 (bloqueo con hook de teclado
+  + pantalla completa, sin tocar Windows) confirmada funcionando en una
+  PC real; falta Etapa 2 (reemplazo del shell de Windows vía registro,
+  para que la pantalla de bloqueo aparezca antes que el escritorio) y el
+  endpoint de login de Miembro directo desde la PC cliente (hoy el `GET
+  /estado` es de solo lectura).
 - **Reportes específicos de PCs** (ej. "horas vendidas por día"). Se
   puede sumar reutilizando `sesion_bonos`, no hace falta tocar el
   esquema.
@@ -295,15 +315,25 @@ precio con `formato_pesos()`, constantes en `dominio.py`, los dos
 archivos grandes partidos, y `*.log` en el `.gitignore`.
 
 Desde entonces se sumó el módulo de **Control de PCs** (alquiler de PCs
-por tiempo: estaciones, bonos, sesiones — `repositories/pcs_repo.py` +
-`ui/pcs_window.py`) y **Miembros** (socios con saldo prepago de tiempo —
-`repositories/miembros_repo.py` + `ui/miembros_window.py`), y se
-reorganizó `ui/main_window.py`: la grilla de PCs es la pantalla
-principal, con "Gestionar PCs" como botón propio de la barra superior.
-Ese código todavía no adoptó las constantes de `dominio.py` para sus
-propios strings fijos (`'ACTIVA'`/`'FINALIZADA'`,
+por tiempo: estaciones, bonos, sesiones) y **Miembros** (socios con saldo
+prepago de tiempo), y se reorganizó `ui/main_window.py`: la grilla de PCs
+es la pantalla principal, con "Gestionar PCs" como botón propio de la
+barra superior. Ese código todavía no adoptó las constantes de
+`dominio.py` para sus propios strings fijos (`'ACTIVA'`/`'FINALIZADA'`,
 `'CARGA'`/`'CONSUMO'`/`'REINTEGRO'`) — candidato a alinear la próxima vez
 que se toquen esos archivos, no urge un pase aparte solo para eso.
 
-Próximo candidato a mirar cuando toque crecer: `ui/articulos_window.py`
-(524 líneas).
+El 2026-09-26 ese módulo se movió de `repositories/pcs_repo.py` +
+`ui/pcs_window.py` (y equivalentes de Miembros) a su propio paquete
+**`control_pcs/`** (`control_pcs/repositories/`, `control_pcs/ui/`),
+separado del resto de la app (ver "Qué no cambiar..." arriba) — mismo
+programa, mismo login, misma base de datos, pero código físicamente
+aparte. El mismo día se agregó `ventas.origen` (`dominio.ORIGENES_VENTA`)
+para poder desglosar, en Caja y Cierre de Turno, cuánto se vendió de
+kiosko contra cuánto de alquiler de PCs — pedido explícito del dueño para
+poder auditar la caja.
+
+Próximos candidatos a mirar cuando toque crecer: `control_pcs/ui/pcs_window.py`
+(más de 600 líneas, ya con varias clases bien separadas adentro — partirlo
+en archivos dentro de `control_pcs/ui/` sería mecánico) y
+`ui/articulos_window.py` (524 líneas).

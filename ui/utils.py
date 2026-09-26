@@ -91,9 +91,11 @@ def formato_pesos(monto) -> str:
 def formato_tiempo(segundos: int) -> str:
     """
     Convierte segundos en un texto legible ("2h 05m" o "45m 12s"). Vive
-    acá (y no en un solo módulo de Control de PCs) porque tanto
-    ui/pcs_window.py como ui/miembros_window.py lo necesitan — puesto
-    en cualquiera de los dos, el otro tendría que importarlo cruzado.
+    acá (y no en control_pcs/) porque tanto control_pcs/ui/pcs_window.py
+    como control_pcs/ui/miembros_window.py lo necesitan, y ui/utils.py ya
+    es el módulo compartido genérico que ambos lados de la app usan (ver
+    CLAUDE.md) — puesto en cualquiera de los dos, el otro tendría que
+    importarlo cruzado.
     """
     horas, resto = divmod(segundos, 3600)
     minutos, seg = divmod(resto, 60)

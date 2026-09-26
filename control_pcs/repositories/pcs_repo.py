@@ -17,7 +17,7 @@ stock. Forzarlo como un artículo falso solo para poder facturarlo iba a
 terminar ensuciando el catálogo de Artículos y las alertas de stock bajo
 con productos que no son productos.
 
-Los Miembros (socios con saldo prepago, ver `repositories/miembros_repo.py`)
+Los Miembros (socios con saldo prepago, ver `miembros_repo.py`, mismo paquete)
 usan una estación distinto a un bono: en vez de comprarlo en el momento,
 gastan de un saldo que ya tenían cargado. `_abrir_o_extender_sesion` es
 el mecanismo compartido entre ambos flujos — lo único que cambia es de
@@ -26,8 +26,9 @@ dónde sale el tiempo.
 
 import sqlite3
 from datetime import datetime, timedelta
+import dominio
 from database import conexion_db
-from turnos import calcular_turno
+from repositories import ventas_repo
 
 
 # ---------------------------------------------------------------------
@@ -242,23 +243,12 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, metodo_pago: s
         raise ValueError("Ese bono ya no está disponible.")
 
     ahora = datetime.now()
-    ahora_iso = ahora.isoformat(timespec="seconds")
-    turno = calcular_turno(ahora)
 
     with conexion_db() as conexion:
         sesion_id = _abrir_o_extender_sesion(conexion, estacion_id, bono["minutos"], ahora)
 
-        cursor = conexion.execute(
-            """
-            INSERT INTO ventas (fecha, usuario_id, turno, total, estado)
-            VALUES (?, ?, ?, ?, 'CONFIRMADA')
-            """,
-            (ahora_iso, usuario_id, turno, round(bono["precio"], 2)),
-        )
-        venta_id = cursor.lastrowid
-        conexion.execute(
-            "INSERT INTO venta_pagos (venta_id, metodo, monto) VALUES (?, ?, ?)",
-            (venta_id, metodo_pago, round(bono["precio"], 2)),
+        venta_id = ventas_repo.registrar_venta_sin_detalle(
+            conexion, usuario_id, bono["precio"], metodo_pago, dominio.ORIGEN_ALQUILER_PCS, ahora
         )
         conexion.execute(
             """
@@ -322,7 +312,7 @@ def actividad_reciente(limite: int = 30):
     todo esto por otras razones (facturación, auditoría de saldo de
     socios) — acá solo se junta todo, se ordena por fecha y se corta a
     `limite`. Devuelve datos crudos; el texto para mostrar se arma en la
-    UI (ver ui/pcs_window.py:_texto_evento), no acá.
+    UI (ver control_pcs/ui/pcs_window.py:_texto_evento), no acá.
     """
     eventos = []
     with conexion_db() as conexion:

@@ -68,10 +68,10 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     with conexion_db() as conexion:
         cursor = conexion.execute(
             """
-            INSERT INTO ventas (fecha, usuario_id, turno, total, estado)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO ventas (fecha, usuario_id, turno, total, estado, origen)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (ahora_iso, usuario_id, turno, total, dominio.VENTA_CONFIRMADA),
+            (ahora_iso, usuario_id, turno, total, dominio.VENTA_CONFIRMADA, dominio.ORIGEN_KIOSKO),
         )
         venta_id = cursor.lastrowid
 
@@ -150,6 +150,46 @@ def buscar_venta(venta_id: int):
             "SELECT * FROM venta_pagos WHERE venta_id = ?", (venta_id,)
         ).fetchall()
         return venta, detalle, pagos
+
+
+def registrar_venta_sin_detalle(
+    conexion, usuario_id: int, monto: float, metodo_pago: str, origen: str, ahora: datetime
+) -> int:
+    """
+    Cabecera de venta compartida para lo que se cobra sin un artículo real
+    de por medio -- un bono de PC o una carga de saldo de Miembro (ver
+    control_pcs/repositories/pcs_repo.asignar_bono y
+    control_pcs/repositories/miembros_repo._registrar_carga). No hay fila
+    de venta_detalle porque esa tabla exige un articulo_codigo real.
+
+    A diferencia de confirmar_venta(), recibe una conexión YA ABIERTA: el
+    que llama a esta función ya está adentro de su propio `with
+    conexion_db()` (por ejemplo, junto con el INSERT de sesion_bonos o el
+    UPDATE del saldo del socio), y todo tiene que quedar en la misma
+    transacción. Es el único lugar que arma una venta sin detalle -- antes
+    cada llamador insertaba su propio "INSERT INTO ventas" casi idéntico.
+
+    También recibe `ahora` en vez de llamar a su propio `datetime.now()`:
+    el llamador ya calculó un `ahora` para el resto de la operación (la
+    sesión de PC, el movimiento de saldo) y tiene que ser exactamente el
+    mismo instante en los dos lados, no uno un poco después del otro.
+    """
+    ahora_iso = ahora.isoformat(timespec="seconds")
+    turno = calcular_turno(ahora)
+
+    cursor = conexion.execute(
+        """
+        INSERT INTO ventas (fecha, usuario_id, turno, total, estado, origen)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (ahora_iso, usuario_id, turno, round(monto, 2), dominio.VENTA_CONFIRMADA, origen),
+    )
+    venta_id = cursor.lastrowid
+    conexion.execute(
+        "INSERT INTO venta_pagos (venta_id, metodo, monto) VALUES (?, ?, ?)",
+        (venta_id, metodo_pago, round(monto, 2)),
+    )
+    return venta_id
 
 
 def listar_ventas_recientes(limite: int = 50):

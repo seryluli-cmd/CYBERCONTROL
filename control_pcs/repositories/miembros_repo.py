@@ -5,7 +5,7 @@ Socios del Cyber con cuenta propia y saldo prepago de tiempo (en
 minutos). Se cargan de dos formas — pagando un monto en pesos que se
 convierte a minutos según una tarifa configurable (ver
 config_repo.obtener_tarifa_hora_miembro), o comprando uno de los bonos
-fijos del catálogo (repositories/pcs_repo.listar_bonos) — y se gastan
+fijos del catálogo (pcs_repo.listar_bonos, mismo paquete) — y se gastan
 abriendo una estación con el usuario/clave del socio, sin que el
 mostrador decida cuánto tiempo asignarle: un Miembro se loguea solo y
 usa TODO lo que tenga disponible en ese momento (ver
@@ -22,9 +22,10 @@ tiene que poder auditarse.
 
 import sqlite3
 from datetime import datetime
+import dominio
 from database import conexion_db, hash_clave, verificar_clave
-from turnos import calcular_turno
-from repositories import config_repo, pcs_repo
+from repositories import config_repo, ventas_repo
+from control_pcs.repositories import pcs_repo
 
 MINUTOS_POR_FRACCION = 30
 
@@ -128,25 +129,18 @@ def autenticar_miembro(usuario: str, clave: str):
 def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, metodo_pago: str,
                       usuario_operador_id: int, bono_id: int = None) -> int:
     """Núcleo común de cargar_saldo_por_monto/cargar_saldo_por_bono: la
-    venta se registra directo en ventas/venta_pagos (mismo patrón sin
-    venta_detalle que pcs_repo.asignar_bono, por la misma razón: no hay
-    un artículo real de por medio), se suma el saldo, y queda el
-    movimiento CARGA en el ledger. A diferencia de abrir_estacion_por_miembro
+    venta se registra vía ventas_repo.registrar_venta_sin_detalle (mismo
+    mecanismo que pcs_repo.asignar_bono, por la misma razón: no hay un
+    artículo real de por medio), se suma el saldo, y queda el movimiento
+    CARGA en el ledger. A diferencia de abrir_estacion_por_miembro
     (autoservicio puro), cargar saldo siempre lo hace el Operador porque
     implica cobrar plata — por eso necesita `usuario_operador_id`, igual
     que cualquier otra venta del sistema."""
     ahora = datetime.now()
     ahora_iso = ahora.isoformat(timespec="seconds")
-    turno = calcular_turno(ahora)
 
-    cursor = conexion.execute(
-        "INSERT INTO ventas (fecha, usuario_id, turno, total, estado) VALUES (?, ?, ?, ?, 'CONFIRMADA')",
-        (ahora_iso, usuario_operador_id, turno, round(precio, 2)),
-    )
-    venta_id = cursor.lastrowid
-    conexion.execute(
-        "INSERT INTO venta_pagos (venta_id, metodo, monto) VALUES (?, ?, ?)",
-        (venta_id, metodo_pago, round(precio, 2)),
+    venta_id = ventas_repo.registrar_venta_sin_detalle(
+        conexion, usuario_operador_id, precio, metodo_pago, dominio.ORIGEN_ALQUILER_PCS, ahora
     )
     conexion.execute(
         "UPDATE miembros SET saldo_minutos = saldo_minutos + ? WHERE id = ?",

@@ -78,6 +78,28 @@ def nombre_metodo(metodo: str) -> str:
 
 
 # --------------------------------------------------------------------
+# Origen de una venta (Kiosko vs. Alquiler de PCs)
+# --------------------------------------------------------------------
+# Vender productos de kiosko y alquilar PCs (bonos + saldo de Miembros)
+# son dos negocios distintos para el dueño, aunque comparten la misma
+# caja: "ventas" y "cierres_turno" necesitan saber de cuál vino cada
+# peso para que el cierre de turno pueda mostrar el desglose exacto (ver
+# ventas_repo.registrar_venta_sin_detalle y turnos_repo._sumar_ventas_por_origen_y_metodo).
+# ORIGEN_ALQUILER_PCS describe una categoría de reporte ("Kiosko vs.
+# Alquiler de PCs", con las palabras del dueño) y a propósito no
+# coincide con el nombre del módulo de código (control_pcs).
+ORIGEN_KIOSKO = "KIOSKO"
+ORIGEN_ALQUILER_PCS = "ALQUILER_PCS"
+
+ORIGENES_VENTA = (ORIGEN_KIOSKO, ORIGEN_ALQUILER_PCS)
+
+NOMBRE_ORIGEN_VENTA = {
+    ORIGEN_KIOSKO: "Kiosko",
+    ORIGEN_ALQUILER_PCS: "Alquiler de PCs",
+}
+
+
+# --------------------------------------------------------------------
 # Turnos
 # --------------------------------------------------------------------
 # El local abre las 24 hs. De lunes a sábado son 3 turnos de 8 hs; los

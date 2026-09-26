@@ -281,6 +281,13 @@ def inicializar_base_de_datos():
     # "estado" es CONFIRMADA o ANULADA. Nunca se borra una venta: si el
     # Admin necesita corregir un error después de cobrada, se anula (queda
     # el rastro de quién, cuándo y por qué) y el stock se repone solo.
+    #
+    # "origen" separa cuánto se vendió de productos de kiosko (KIOSKO) de
+    # cuánto entró por alquiler de PCs -- bonos y cargas de saldo de
+    # Miembros (ALQUILER_PCS) -- para que Caja/Cierre de Turno puedan
+    # mostrar el desglose exacto entre los dos negocios (ver
+    # dominio.ORIGENES_VENTA, ventas_repo.registrar_venta_sin_detalle y
+    # _migrar_columna_origen_en_ventas para el backfill de bases viejas).
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ventas (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -291,7 +298,8 @@ def inicializar_base_de_datos():
             estado            TEXT NOT NULL DEFAULT 'CONFIRMADA' CHECK (estado IN ('CONFIRMADA', 'ANULADA')),
             anulada_por        INTEGER REFERENCES usuarios(id),
             anulada_fecha      TEXT,
-            anulada_motivo     TEXT
+            anulada_motivo     TEXT,
+            origen             TEXT NOT NULL DEFAULT 'KIOSKO' CHECK (origen IN ('KIOSKO', 'ALQUILER_PCS'))
         )
     """)
     cursor.execute("""
@@ -325,6 +333,13 @@ def inicializar_base_de_datos():
     # efectivo de ese turno) para que la empleada se lleve la diferencia.
     # Más tarde, el Admin puede cargar "monto_contado" (lo que realmente
     # había en el sobre) para llevar un control por empleada y por turno.
+    #
+    # "kiosko_*"/"pcs_*" repiten el mismo desglose que "ventas_efectivo"/
+    # "ventas_digital" pero separado por origen (ver dominio.ORIGENES_VENTA):
+    # el dueño necesita poder controlar, turno por turno, cuánto entró por
+    # productos de kiosko contra cuánto por alquiler de PCs, no solo el
+    # total mezclado. Quedan guardados en el cierre (no solo calculados al
+    # vuelo) para que el historial sea auditable después, no solo "ahora".
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cierres_turno (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -339,9 +354,14 @@ def inicializar_base_de_datos():
             monto_contado       REAL,
             diferencia          REAL,
             verificado_por      INTEGER REFERENCES usuarios(id),
-            fecha_verificacion  TEXT
+            fecha_verificacion  TEXT,
+            kiosko_efectivo     REAL NOT NULL DEFAULT 0,
+            kiosko_digital      REAL NOT NULL DEFAULT 0,
+            pcs_efectivo        REAL NOT NULL DEFAULT 0,
+            pcs_digital         REAL NOT NULL DEFAULT 0
         )
     """)
+    _migrar_columnas_origen_en_cierres(conexion)
 
     # -------------------------------------------------------------------
     # SESIONES (inicios de sesión)
@@ -463,6 +483,12 @@ def inicializar_base_de_datos():
     """)
     _migrar_columna_miembro_en_sesiones(conexion)
 
+    # Esta migración necesita leer "sesion_bonos" y "movimientos_saldo_miembro"
+    # para el backfill (ver la función más abajo), así que va acá -- recién
+    # ahora existen esas dos tablas -- y NO junto al CREATE TABLE de
+    # "ventas", más arriba en este archivo.
+    _migrar_columna_origen_en_ventas(conexion)
+
     # -------------------------------------------------------------------
     # CONFIGURACION
     # -------------------------------------------------------------------
@@ -531,6 +557,50 @@ def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(sesiones_pc)")}
     if "miembro_id" not in columnas_actuales:
         conexion.execute("ALTER TABLE sesiones_pc ADD COLUMN miembro_id INTEGER REFERENCES miembros(id)")
+    conexion.commit()
+
+
+def _migrar_columna_origen_en_ventas(conexion: sqlite3.Connection):
+    """
+    Para una base creada antes de que "ventas" distinguiera de dónde vino
+    cada venta: agrega "origen" (ver dominio.ORIGENES_VENTA) y, la
+    primera vez, reclasifica a ALQUILER_PCS las ventas viejas que en
+    realidad fueron un bono de PC o una carga de saldo de Miembro --
+    quedaron con el valor por defecto KIOSKO al agregar la columna, y sin
+    este backfill el desglose de Caja/Cierre de Turno mentiría sobre el
+    historial ya cargado.
+
+    El backfill va DENTRO del mismo "if" que el ALTER TABLE (no suelto
+    después) a propósito: así corre una sola vez, no en cada arranque del
+    programa -- con años de ventas cargadas, repetir este JOIN en cada
+    inicio saldría caro para nada.
+    """
+    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(ventas)")}
+    if "origen" not in columnas_actuales:
+        conexion.execute(
+            "ALTER TABLE ventas ADD COLUMN origen TEXT NOT NULL DEFAULT 'KIOSKO' "
+            "CHECK (origen IN ('KIOSKO', 'ALQUILER_PCS'))"
+        )
+        conexion.execute("""
+            UPDATE ventas SET origen = 'ALQUILER_PCS'
+            WHERE id IN (SELECT venta_id FROM sesion_bonos WHERE venta_id IS NOT NULL)
+               OR id IN (SELECT venta_id FROM movimientos_saldo_miembro WHERE venta_id IS NOT NULL)
+        """)
+    conexion.commit()
+
+
+def _migrar_columnas_origen_en_cierres(conexion: sqlite3.Connection):
+    """
+    Para una base creada antes del desglose Kiosko/Alquiler de PCs en el
+    cierre de turno: agrega las 4 columnas nuevas de cierres_turno en 0 --
+    los cierres viejos ya cerrados no se pueden reconstruir con el
+    desglose (no queda registro de qué parte de esas ventas ya era de
+    PCs), así que quedan en 0 en vez de inventar un número.
+    """
+    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(cierres_turno)")}
+    for columna in ("kiosko_efectivo", "kiosko_digital", "pcs_efectivo", "pcs_digital"):
+        if columna not in columnas_actuales:
+            conexion.execute(f"ALTER TABLE cierres_turno ADD COLUMN {columna} REAL NOT NULL DEFAULT 0")
     conexion.commit()
 
 

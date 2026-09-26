@@ -21,7 +21,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from repositories import pcs_repo
+from control_pcs.repositories import pcs_repo
 
 PUERTO_SERVIDOR = 8899
 
