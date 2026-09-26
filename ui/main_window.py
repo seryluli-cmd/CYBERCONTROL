@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
+import dominio
 from repositories import usuarios_repo
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
@@ -51,7 +52,7 @@ class MainWindow(QMainWindow):
         """
         super().__init__()
         self.usuario = usuario
-        self.es_admin = usuario["rol"] == "ADMIN"
+        self.es_admin = dominio.es_admin(usuario)
         # "Encargado" no es un rol propio en la base — es un Admin, o una
         # Empleada con al menos uno de los permisos de administración de
         # usuarios_repo.PERMISOS_EMPLEADA. Es el mismo criterio que ya

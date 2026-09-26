@@ -8,6 +8,7 @@ GROUP BY), apoyadas en los índices que se crean en database.py — por
 eso van a ser rápidas incluso con años de ventas acumuladas.
 """
 
+import dominio
 from database import conexion_db
 
 
@@ -22,9 +23,9 @@ def resumen_ventas(desde: str, hasta: str):
             """
             SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad_ventas
             FROM ventas
-            WHERE estado = 'CONFIRMADA' AND date(fecha) BETWEEN date(?) AND date(?)
+            WHERE estado = ? AND date(fecha) BETWEEN date(?) AND date(?)
             """,
-            (desde, hasta),
+            (dominio.VENTA_CONFIRMADA, desde, hasta),
         ).fetchone()
 
         por_metodo = conexion.execute(
@@ -32,21 +33,21 @@ def resumen_ventas(desde: str, hasta: str):
             SELECT venta_pagos.metodo, SUM(venta_pagos.monto) AS total
             FROM venta_pagos
             JOIN ventas ON ventas.id = venta_pagos.venta_id
-            WHERE ventas.estado = 'CONFIRMADA' AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
             GROUP BY venta_pagos.metodo
             """,
-            (desde, hasta),
+            (dominio.VENTA_CONFIRMADA, desde, hasta),
         ).fetchall()
 
-    totales_por_metodo = {"EFECTIVO": 0.0, "DIGITAL": 0.0}
+    totales_por_metodo = {metodo: 0.0 for metodo in dominio.METODOS_PAGO}
     for fila in por_metodo:
         totales_por_metodo[fila["metodo"]] = fila["total"] or 0.0
 
     return {
         "total": total_general["total"],
         "cantidad_ventas": total_general["cantidad_ventas"],
-        "efectivo": totales_por_metodo["EFECTIVO"],
-        "digital": totales_por_metodo["DIGITAL"],
+        "efectivo": totales_por_metodo[dominio.PAGO_EFECTIVO],
+        "digital": totales_por_metodo[dominio.PAGO_DIGITAL],
     }
 
 
@@ -58,7 +59,7 @@ def resumen_por_turno(desde: str, hasta: str):
     cierres cargados en Control de Cierres de Turno. Devuelve siempre
     los 3 turnos, en orden, aunque alguno no tenga ventas en el rango
     (por ejemplo, si el rango son puros domingos, Tarde da $0 — ver
-    database.calcular_turno, que ese día no genera ventas con turno
+    turnos.calcular_turno, que ese día no genera ventas con turno
     "TARDE").
     """
     with conexion_db() as conexion:
@@ -66,10 +67,10 @@ def resumen_por_turno(desde: str, hasta: str):
             """
             SELECT turno, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad_ventas
             FROM ventas
-            WHERE estado = 'CONFIRMADA' AND date(fecha) BETWEEN date(?) AND date(?)
+            WHERE estado = ? AND date(fecha) BETWEEN date(?) AND date(?)
             GROUP BY turno
             """,
-            (desde, hasta),
+            (dominio.VENTA_CONFIRMADA, desde, hasta),
         ).fetchall()
 
         pagos_por_turno = conexion.execute(
@@ -77,19 +78,19 @@ def resumen_por_turno(desde: str, hasta: str):
             SELECT ventas.turno, venta_pagos.metodo, SUM(venta_pagos.monto) AS total
             FROM venta_pagos
             JOIN ventas ON ventas.id = venta_pagos.venta_id
-            WHERE ventas.estado = 'CONFIRMADA' AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
             GROUP BY ventas.turno, venta_pagos.metodo
             """,
-            (desde, hasta),
+            (dominio.VENTA_CONFIRMADA, desde, hasta),
         ).fetchall()
 
     totales = {turno: {"total": 0.0, "cantidad_ventas": 0, "efectivo": 0.0, "digital": 0.0}
-               for turno in ("MAÑANA", "TARDE", "NOCHE")}
+               for turno in dominio.TURNOS}
     for fila in por_turno:
         totales[fila["turno"]]["total"] = fila["total"]
         totales[fila["turno"]]["cantidad_ventas"] = fila["cantidad_ventas"]
     for fila in pagos_por_turno:
-        clave = "efectivo" if fila["metodo"] == "EFECTIVO" else "digital"
+        clave = "efectivo" if fila["metodo"] == dominio.PAGO_EFECTIVO else "digital"
         totales[fila["turno"]][clave] = fila["total"] or 0.0
 
     return [{"turno": turno, **datos} for turno, datos in totales.items()]
@@ -114,9 +115,9 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 SUM(venta_detalle.subtotal) AS importe
             FROM venta_detalle
             JOIN ventas ON ventas.id = venta_detalle.venta_id
-            WHERE ventas.estado = 'CONFIRMADA' AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
             GROUP BY venta_detalle.articulo_codigo, venta_detalle.descripcion
             ORDER BY {columna_orden} DESC
             """,
-            (desde, hasta),
+            (dominio.VENTA_CONFIRMADA, desde, hasta),
         ).fetchall()

@@ -12,6 +12,7 @@ historial de "Movimientos" siempre sea confiable.
 
 import sqlite3
 from datetime import datetime
+import dominio
 from database import conexion_db
 
 
@@ -216,10 +217,10 @@ def obtener_movimientos(codigo: str, desde: str, hasta: str):
             FROM venta_detalle
             JOIN ventas ON ventas.id = venta_detalle.venta_id
             WHERE venta_detalle.articulo_codigo = ?
-              AND ventas.estado = 'CONFIRMADA'
+              AND ventas.estado = ?
               AND date(ventas.fecha) BETWEEN date(?) AND date(?)
 
             ORDER BY fecha
             """,
-            (codigo, desde, hasta, codigo, desde, hasta),
+            (codigo, desde, hasta, codigo, dominio.VENTA_CONFIRMADA, desde, hasta),
         ).fetchall()

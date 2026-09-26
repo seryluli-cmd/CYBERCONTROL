@@ -142,7 +142,7 @@ class PanelControlPcs(QWidget):
         # Cualquier sesión que ya llegó a 0 se da de baja acá mismo, sin
         # esperar a que alguien abra la pantalla de nuevo: es el "job de
         # vencimiento" de este módulo (mismo criterio que
-        # database.turno_vencimiento, se resuelve por comparación de
+        # turnos.turno_vencimiento, se resuelve por comparación de
         # fecha en cada refresco, no con un temporizador que dispare una
         # alarma en el medio).
         alguna_vencio = False

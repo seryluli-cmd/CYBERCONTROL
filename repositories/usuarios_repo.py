@@ -9,6 +9,7 @@ cambia cómo se guardan los usuarios, solo hay que tocar este archivo.
 
 import sqlite3
 from datetime import datetime
+import dominio
 from database import conexion_db, hash_clave, verificar_clave
 
 # (columna en `usuarios`, etiqueta para mostrar en la UI) de cada
@@ -38,7 +39,7 @@ def tiene_permiso(usuario, clave_permiso: str) -> bool:
     `clave_permiso` (una de las claves de PERMISOS_EMPLEADA). Un ADMIN
     siempre puede, pase lo que pase en sus columnas permiso_*.
     """
-    if usuario["rol"] == "ADMIN":
+    if dominio.es_admin(usuario):
         return True
     return bool(usuario[clave_permiso])
 

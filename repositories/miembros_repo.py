@@ -22,7 +22,8 @@ tiene que poder auditarse.
 
 import sqlite3
 from datetime import datetime
-from database import conexion_db, calcular_turno, hash_clave, verificar_clave
+from database import conexion_db, hash_clave, verificar_clave
+from turnos import calcular_turno
 from repositories import config_repo, pcs_repo
 
 MINUTOS_POR_FRACCION = 30

@@ -12,7 +12,9 @@ una venta dos veces ni se pierde ninguna.
 """
 
 from datetime import date, datetime, timedelta
-from database import conexion_db, calcular_turno, etiqueta_turno, turno_vencimiento
+import dominio
+from database import conexion_db
+from turnos import calcular_turno, etiqueta_turno, turno_vencimiento, turnos_del_dia
 from repositories.config_repo import obtener_fondo_cambio
 
 
@@ -33,17 +35,17 @@ def _sumar_ventas_por_metodo(conexion, desde: str, hasta: str):
         SELECT venta_pagos.metodo, SUM(venta_pagos.monto) AS total
         FROM venta_pagos
         JOIN ventas ON ventas.id = venta_pagos.venta_id
-        WHERE ventas.estado = 'CONFIRMADA'
+        WHERE ventas.estado = ?
           AND ventas.fecha > ?
           AND ventas.fecha <= ?
         GROUP BY venta_pagos.metodo
         """,
-        (desde, hasta),
+        (dominio.VENTA_CONFIRMADA, desde, hasta),
     ).fetchall()
-    totales = {"EFECTIVO": 0.0, "DIGITAL": 0.0}
+    totales = {metodo: 0.0 for metodo in dominio.METODOS_PAGO}
     for fila in filas:
         totales[fila["metodo"]] = fila["total"] or 0.0
-    return totales["EFECTIVO"], totales["DIGITAL"]
+    return totales[dominio.PAGO_EFECTIVO], totales[dominio.PAGO_DIGITAL]
 
 
 def resumen_turno_actual():
@@ -190,7 +192,7 @@ def turnos_del_mes_actual():
     """
     Los turnos esperados del mes en curso, de día 1 a hoy — domingo
     tiene solo 2 (Mañana, Noche); el resto de los días tiene los 3 de
-    siempre (ver database.calcular_turno). Todavía no dice cuáles ya
+    siempre (ver turnos.calcular_turno). Todavía no dice cuáles ya
     tienen cierre cargado ni cuáles vencieron — eso lo hace
     turnos_faltantes().
     """
@@ -198,8 +200,7 @@ def turnos_del_mes_actual():
     dia = date(hoy.year, hoy.month, 1)
     slots = []
     while dia <= hoy:
-        turnos_del_dia = ("MAÑANA", "NOCHE") if dia.weekday() == 6 else ("MAÑANA", "TARDE", "NOCHE")
-        for turno in turnos_del_dia:
+        for turno in turnos_del_dia(dia):
             slots.append({"fecha": dia, "turno": turno})
         dia += timedelta(days=1)
     return slots
@@ -225,7 +226,7 @@ def _responsables_del_mes(conexion, inicio_mes):
 
     def agregar(momento, turno, nombre):
         dia_slot = momento.date()
-        if turno == "NOCHE" and momento.hour < 12:
+        if turno == dominio.TURNO_NOCHE and momento.hour < 12:
             dia_slot -= timedelta(days=1)
         responsables.setdefault((dia_slot, turno), set()).add(nombre)
 
@@ -234,9 +235,9 @@ def _responsables_del_mes(conexion, inicio_mes):
         SELECT ventas.fecha, ventas.turno, usuarios.nombre
         FROM ventas
         JOIN usuarios ON usuarios.id = ventas.usuario_id
-        WHERE ventas.estado = 'CONFIRMADA' AND ventas.fecha >= ?
+        WHERE ventas.estado = ? AND ventas.fecha >= ?
         """,
-        (inicio_mes.isoformat(),),
+        (dominio.VENTA_CONFIRMADA, inicio_mes.isoformat()),
     ).fetchall()
     for fila in filas_ventas:
         agregar(datetime.fromisoformat(fila["fecha"]), fila["turno"], fila["nombre"])
@@ -265,7 +266,7 @@ def turnos_faltantes():
     """
     De los turnos esperados del mes en curso (turnos_del_mes_actual), los
     que YA vencieron (ventana nominal + 40 min de gracia, ver
-    database.turno_vencimiento) y todavía no tienen un cierre cargado en
+    turnos.turno_vencimiento) y todavía no tienen un cierre cargado en
     cierres_turno. Se usa en "Control de Cierres de Turno" para que el
     Admin se entere de un turno sin cerrar antes de que se pierda en el
     historial, en vez de notarlo recién a fin de mes. Cada resultado

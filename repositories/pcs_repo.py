@@ -26,7 +26,8 @@ dónde sale el tiempo.
 
 import sqlite3
 from datetime import datetime, timedelta
-from database import conexion_db, calcular_turno
+from database import conexion_db
+from turnos import calcular_turno
 
 
 # ---------------------------------------------------------------------
@@ -137,7 +138,7 @@ def estado_estaciones():
     Para el dashboard de "Control de PCs": cada estación activa, con su
     sesión en curso (si tiene) y cuántos segundos le quedan, calculado al
     vuelo contra datetime.now() — mismo enfoque que
-    database.turno_vencimiento, no se guarda un contador que haya que ir
+    turnos.turno_vencimiento, no se guarda un contador que haya que ir
     actualizando aparte. Si la sesión es de un Miembro, también trae su
     nombre (para mostrarlo en la tabla en vez de un simple "Activa").
     """
