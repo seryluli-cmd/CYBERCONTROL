@@ -191,7 +191,8 @@ def inicializar_base_de_datos():
             permiso_compras          INTEGER NOT NULL DEFAULT 0,
             permiso_consulta_ventas  INTEGER NOT NULL DEFAULT 0,
             permiso_reportes         INTEGER NOT NULL DEFAULT 0,
-            permiso_control_cierres  INTEGER NOT NULL DEFAULT 0
+            permiso_control_cierres  INTEGER NOT NULL DEFAULT 0,
+            permiso_control_pcs      INTEGER NOT NULL DEFAULT 0
         )
     """)
     _migrar_columnas_permisos(conexion)
@@ -358,6 +359,109 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # ESTACIONES y BONOS DE TIEMPO (Control de PCs)
+    # -------------------------------------------------------------------
+    # "estaciones" es el catálogo de PCs físicas del local (ej. "PC 1"...
+    # "PC 10"), igual de simple que marcas/rubros. "bonos_tiempo" es el
+    # catálogo de combos vendibles ("3 horas" -> 180 min / $X) que arma
+    # el Admin: acá NUNCA se cobra por minuto suelto ni por hora libre,
+    # solo por estos bonos prearmados. "activo" en ambas tablas permite
+    # dar de baja una sin romper el historial de sesiones que ya la usaron
+    # (mismo criterio que articulos.stock: nunca se borra, se desactiva).
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS estaciones (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre  TEXT NOT NULL UNIQUE,
+            activa  INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bonos_tiempo (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre  TEXT NOT NULL,
+            minutos INTEGER NOT NULL,
+            precio  REAL NOT NULL,
+            activo  INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+
+    # Una fila por uso continuo de una estación. Al vender un bono a una
+    # estación sin sesión activa se crea una fila nueva; al vender un
+    # bono adicional a una que YA está activa (el cliente sigue jugando)
+    # se extiende "fecha_fin_prevista" de esta misma fila en vez de crear
+    # otra — así "agregar tiempo" es sumar otro bono a la sesión abierta,
+    # sin necesitar un concepto aparte de "extender por minutos sueltos".
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sesiones_pc (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id         INTEGER NOT NULL REFERENCES estaciones(id),
+            fecha_inicio        TEXT NOT NULL,
+            fecha_fin_prevista  TEXT NOT NULL,
+            estado              TEXT NOT NULL DEFAULT 'ACTIVA' CHECK (estado IN ('ACTIVA', 'FINALIZADA')),
+            fecha_fin_real      TEXT
+        )
+    """)
+    # Detalle de qué bono(s) se cargaron a cada sesión, con el venta_id de
+    # la venta que generó ese cobro (se factura igual que cualquier venta
+    # de kiosko, ver pcs_repo.asignar_bono) — trazabilidad completa entre
+    # "se vendió este bono a esta PC" y "esto es lo que se facturó".
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sesion_bonos (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            sesion_id  INTEGER NOT NULL REFERENCES sesiones_pc(id),
+            bono_id    INTEGER NOT NULL REFERENCES bonos_tiempo(id),
+            minutos    INTEGER NOT NULL,
+            precio     REAL NOT NULL,
+            venta_id   INTEGER REFERENCES ventas(id)
+        )
+    """)
+
+    # -------------------------------------------------------------------
+    # MIEMBROS (socios con saldo prepago de tiempo)
+    # -------------------------------------------------------------------
+    # A diferencia de un bono (lo habilita el mostrador, se paga y se usa
+    # en el momento, sin reintegro), un Miembro tiene una cuenta propia:
+    # se loguea solo con "usuario"/clave para abrir una PC con SU saldo
+    # (ver pcs_repo._abrir_o_extender_sesion / miembros_repo.abrir_estacion_por_miembro).
+    # "usuario" acá SÍ es UNIQUE de verdad (a diferencia de usuarios.nombre,
+    # que solo se valida en Python) porque es un campo de login real, no
+    # un nombre para mostrar. "email" es el único dato realmente opcional.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS miembros (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario         TEXT NOT NULL UNIQUE,
+            clave_hash      TEXT NOT NULL,
+            nombre          TEXT NOT NULL,
+            dni             TEXT NOT NULL,
+            telefono        TEXT NOT NULL,
+            email           TEXT,
+            saldo_minutos   INTEGER NOT NULL DEFAULT 0,
+            activo          INTEGER NOT NULL DEFAULT 1,
+            fecha_creacion  TEXT NOT NULL
+        )
+    """)
+    # Ledger de auditoría de todo movimiento de saldo: CARGA (siempre con
+    # venta_id, porque implica cobrar plata real — y bono_id si se cargó
+    # comprando un bono en vez de un monto libre), CONSUMO (sesion_id,
+    # al abrir una PC con saldo) y REINTEGRO (sesion_id, cuando se corta
+    # antes de tiempo y se devuelve lo no usado). Como esto maneja plata
+    # de terceros, poder reconstruir "por qué le queda tal saldo a este
+    # socio" no es opcional.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS movimientos_saldo_miembro (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+            tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
+            minutos     INTEGER NOT NULL,
+            fecha       TEXT NOT NULL,
+            venta_id    INTEGER REFERENCES ventas(id),
+            bono_id     INTEGER REFERENCES bonos_tiempo(id),
+            sesion_id   INTEGER REFERENCES sesiones_pc(id)
+        )
+    """)
+    _migrar_columna_miembro_en_sesiones(conexion)
+
+    # -------------------------------------------------------------------
     # CONFIGURACION
     # -------------------------------------------------------------------
     # Tabla simple de "clave -> valor" para parámetros generales del
@@ -385,6 +489,8 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_articulo ON compra_detalle(articulo_codigo)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_compra ON compra_detalle(compra_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_fecha ON sesiones(fecha_hora)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_estacion ON sesiones_pc(estacion_id, estado)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_saldo_miembro ON movimientos_saldo_miembro(miembro_id)")
 
     conexion.commit()
 
@@ -405,10 +511,24 @@ def _migrar_columnas_permisos(conexion: sqlite3.Connection):
     columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(usuarios)")}
     for columna in (
         "permiso_articulos", "permiso_compras", "permiso_consulta_ventas",
-        "permiso_reportes", "permiso_control_cierres",
+        "permiso_reportes", "permiso_control_cierres", "permiso_control_pcs",
     ):
         if columna not in columnas_actuales:
             conexion.execute(f"ALTER TABLE usuarios ADD COLUMN {columna} INTEGER NOT NULL DEFAULT 0")
+    conexion.commit()
+
+
+def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
+    """
+    Para una base creada antes de que existiera "Miembros": agrega
+    sesiones_pc.miembro_id (NULL = sesión de bono/walk-in, como siempre
+    fue; con valor = sesión abierta con el saldo de ese socio). Mismo
+    motivo que _migrar_columnas_permisos: ALTER TABLE porque
+    CREATE TABLE IF NOT EXISTS no toca una tabla que ya existe.
+    """
+    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(sesiones_pc)")}
+    if "miembro_id" not in columnas_actuales:
+        conexion.execute("ALTER TABLE sesiones_pc ADD COLUMN miembro_id INTEGER REFERENCES miembros(id)")
     conexion.commit()
 
 
@@ -436,6 +556,13 @@ def _cargar_datos_iniciales(conexion: sqlite3.Connection):
     if cursor.fetchone()["cantidad"] == 0:
         cursor.execute(
             "INSERT INTO configuracion (clave, valor) VALUES ('fondo_cambio', '50000')"
+        )
+        conexion.commit()
+
+    cursor.execute("SELECT COUNT(*) AS cantidad FROM configuracion WHERE clave = 'tarifa_hora_miembro'")
+    if cursor.fetchone()["cantidad"] == 0:
+        cursor.execute(
+            "INSERT INTO configuracion (clave, valor) VALUES ('tarifa_hora_miembro', '1000')"
         )
         conexion.commit()
 

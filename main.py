@@ -268,7 +268,7 @@ class Aplicacion:
     def _al_loguearse(self, usuario):
         self.ventana_login.close()
         self.ventana_principal = MainWindow(usuario, al_cerrar_sesion=self._mostrar_login)
-        self.ventana_principal.show()
+        self.ventana_principal.showMaximized()
 
 
 def _manejar_excepcion_no_capturada(tipo, valor, tb):

@@ -13,17 +13,21 @@ from database import conexion_db, hash_clave, verificar_clave
 
 # (columna en `usuarios`, etiqueta para mostrar en la UI) de cada
 # permiso que un Admin puede sumarle a una empleada además de lo que ya
-# puede hacer por defecto (Ventas / Caja / Cierre de Turno / Cambiar mi
-# Clave). Un ADMIN los tiene todos siempre — ver tiene_permiso() — y no
-# se le pueden sacar desde acá. "Usuarios" (crear/borrar gente,
-# resetear claves) y "Anular Venta" quedan exclusivos de ADMIN a
-# propósito, no están en esta lista.
+# puede hacer por defecto (Ventas / operar la grilla de PCs / Caja /
+# Cierre de Turno / Cambiar mi Clave — asignarle un bono a una PC es una
+# venta más, no un privilegio). Un ADMIN los tiene todos siempre — ver
+# tiene_permiso() — y no se le pueden sacar desde acá. "Usuarios"
+# (crear/borrar gente, resetear claves) y "Anular Venta" quedan
+# exclusivos de ADMIN a propósito, no están en esta lista. Todos estos
+# permisos son lo que separa a un "encargado" de un empleado común en
+# ui/main_window.py: quien tenga al menos uno ve "Administrar Kiosko".
 PERMISOS_EMPLEADA = [
     ("permiso_articulos", "Artículos (crear/editar productos y precios)"),
     ("permiso_compras", "Compras (cargar mercadería / stock)"),
     ("permiso_consulta_ventas", "Consulta de Ventas (sin poder anular)"),
     ("permiso_reportes", "Reportes"),
     ("permiso_control_cierres", "Control de Cierres de Turno"),
+    ("permiso_control_pcs", "Administrar catálogo de PCs (Estaciones/Bonos/Miembros)"),
 ]
 
 

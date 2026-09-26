@@ -88,6 +88,20 @@ def formato_pesos(monto) -> str:
     return f"$ {texto}"
 
 
+def formato_tiempo(segundos: int) -> str:
+    """
+    Convierte segundos en un texto legible ("2h 05m" o "45m 12s"). Vive
+    acá (y no en un solo módulo de Control de PCs) porque tanto
+    ui/pcs_window.py como ui/miembros_window.py lo necesitan — puesto
+    en cualquiera de los dos, el otro tendría que importarlo cruzado.
+    """
+    horas, resto = divmod(segundos, 3600)
+    minutos, seg = divmod(resto, 60)
+    if horas:
+        return f"{horas}h {minutos:02d}m"
+    return f"{minutos}m {seg:02d}s"
+
+
 def aplicar_clase(widget, clase: str):
     """
     Marca un botón como "primario" (acción principal, ej. Cobrar,

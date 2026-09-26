@@ -25,3 +25,22 @@ def actualizar_fondo_cambio(nuevo_valor: float):
             "UPDATE configuracion SET valor = ? WHERE clave = 'fondo_cambio'",
             (str(round(nuevo_valor, 2)),),
         )
+
+
+def obtener_tarifa_hora_miembro() -> float:
+    """Cuántos pesos vale una hora de saldo para un Miembro (ver
+    miembros_repo.cargar_saldo_por_monto). Modificable por el Admin."""
+    with conexion_db() as conexion:
+        fila = conexion.execute(
+            "SELECT valor FROM configuracion WHERE clave = 'tarifa_hora_miembro'"
+        ).fetchone()
+        return float(fila["valor"]) if fila else 1000.0
+
+
+def actualizar_tarifa_hora_miembro(nuevo_valor: float):
+    """Solo el Admin puede llamar a esto (se valida en la pantalla)."""
+    with conexion_db() as conexion:
+        conexion.execute(
+            "UPDATE configuracion SET valor = ? WHERE clave = 'tarifa_hora_miembro'",
+            (str(round(nuevo_valor, 2)),),
+        )
