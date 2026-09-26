@@ -227,6 +227,54 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 
 ---
 
+## Qué no cambiar sin que el dueño lo pida explícitamente
+
+- **El modelo de cobro de Control de PCs.** Siempre bonos de tiempo fijos
+  prearmados (ej. "3 horas" = 180 min / $X, en fracciones de 30 min).
+  Nunca hora libre ni minuto suelto, y una PC sin bono/saldo activo queda
+  bloqueada — no "abierta y se cobra después". Esto no es un detalle
+  técnico, es una decisión de negocio del dueño del Cyber.
+- **La estructura de carpetas (`ui/`, `repositories/`).** Reorganizar el
+  árbol de archivos es una decisión de fondo que se charla antes, no algo
+  que se infiere de "quedaría más prolijo".
+- **`data/`, a mano.** Ahí vive la base real del negocio (está en
+  `.gitignore` a propósito, no llega a git). No asumas que su contenido es
+  descartable ni lo edites por fuera de una migración.
+
+---
+
+## Roadmap (a futuro, fuera de alcance hoy)
+
+Nada de esto está construido todavía — se deja anotado para que una
+sesión nueva no lo reinvente ni asuma que "no está" significa "no
+importa":
+
+- **Agente de bloqueo de pantalla por PC cliente.** Hoy Control de PCs
+  solo cubre gestión y facturación (vender/asignar un bono, ver tiempo
+  restante) desde la PC de caja — no hay nada corriendo en las PCs de los
+  clientes. La segunda etapa es un programa aparte (fuera de este repo o
+  en una carpeta hermana) instalado en cada PC del local, que consulta el
+  estado de "su" estación contra Kiosko y bloquea la pantalla si no hay
+  bono/saldo activo o si el tiempo llegó a cero. Kiosko hoy no tiene
+  ninguna dependencia de red (`requirements.txt` solo declara `PySide6`),
+  así que esto implica sumar un servidor liviano embebido (hilo de fondo
+  con `http.server`/`socketserver` de la stdlib, algo como
+  `GET /estado?estacion=PC3`) y un cliente que hace polling en cada PC.
+  El esquema de `sesiones_pc` (estado, `fecha_fin_prevista`) ya deja
+  lista la información que ese agente va a necesitar leer.
+- **Reportes específicos de PCs** (ej. "horas vendidas por día"). Se
+  puede sumar reutilizando `sesion_bonos`, no hace falta tocar el
+  esquema.
+- **Separar "Cargar Saldo" de Miembros de la gestión completa de
+  socios.** Hoy vive dentro de "Gestionar Miembros" (bajo "Gestionar
+  PCs", permiso `permiso_control_pcs`), aunque cargar saldo es una venta
+  como cualquier otra. Si en algún momento se quiere que un empleado
+  común pueda cobrarle saldo a un socio sin tener acceso a dar de
+  alta/baja Miembros ni editar su tarifa, hace falta un permiso separado
+  — decisión consciente de no hacerlo hasta que el dueño lo pida.
+
+---
+
 ## Cómo trabajar en este repo
 
 - **Idioma: español (rioplatense).** UI, comentarios, mensajes de commit y
