@@ -273,15 +273,22 @@ importa":
 
 - **Agente de bloqueo de pantalla por PC cliente — en curso, no en este
   repo.** El servidor ya existe acá (`servidor_red.py`, hilo de fondo
-  embebido desde `main.py`, expone `GET /estado?estacion=<nombre>` de
-  solo lectura contra `pcs_repo.estado_de_estacion`). El cliente vive en
-  la carpeta hermana `AGENTE PC KIOSKO/` (proyecto Python aparte, sin
-  relación de código con este repo): Etapa 1 (bloqueo con hook de teclado
-  + pantalla completa, sin tocar Windows) confirmada funcionando en una
-  PC real; falta Etapa 2 (reemplazo del shell de Windows vía registro,
-  para que la pantalla de bloqueo aparezca antes que el escritorio) y el
-  endpoint de login de Miembro directo desde la PC cliente (hoy el `GET
-  /estado` es de solo lectura).
+  embebido desde `main.py`): `GET /estado?estacion=<nombre>` (solo
+  lectura, contra `pcs_repo.estado_de_estacion`), `POST /login` (un
+  Miembro se loguea directo desde su PC contra
+  `miembros_repo.abrir_estacion_por_miembro`) y `POST /logout` (corta su
+  propia sesión contra `pcs_repo.finalizar_sesion`, mismo reintegro
+  redondeado a bloques de 30 min que "Finalizar antes de tiempo" desde
+  Gestionar PCs). El cliente vive en la carpeta hermana
+  `AGENTE PC KIOSKO/` (proyecto Python aparte, sin relación de código con
+  este repo): Etapa 1 (bloqueo con hook de teclado + pantalla completa,
+  sin tocar Windows) confirmada funcionando en una PC real; login/logout
+  en red ya integrados del lado del cliente también. Falta solo la
+  Etapa 2: reemplazo del shell de Windows vía registro, para que la
+  pantalla de bloqueo aparezca antes que el escritorio — el `.reg`/`.bat`
+  de rescate y el procedimiento ya están preparados (ver el README de
+  ese proyecto, sección "Plan de rescate"), falta probarlo en una PC de
+  repuesto.
 - **Reportes específicos de PCs** (ej. "horas vendidas por día"). Se
   puede sumar reutilizando `sesion_bonos`, no hace falta tocar el
   esquema.
