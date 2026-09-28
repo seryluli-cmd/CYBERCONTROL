@@ -439,6 +439,31 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # COMANDOS_PC (control remoto de una estación desde el mostrador)
+    # -------------------------------------------------------------------
+    # El mostrador no tiene ninguna conexión directa hacia la PC cliente
+    # (evita el lío de firewall/puertos entrantes que ya se vio con el
+    # servidor de Kiosko) -- en cambio, deja un comando "pendiente" acá, y
+    # el agente de esa estación lo recoge solo en su próxima consulta de
+    # `GET /estado` (cada 5s, ver servidor_red.py y la carpeta hermana
+    # "AGENTE PC KIOSKO"). "resultado" solo se usa para SCREENSHOT: guarda
+    # la ruta relativa (dentro de data/) del archivo que subió el agente
+    # después de entregado -- para REINICIAR/APAGAR/MENSAJE queda en NULL,
+    # no hay nada que el agente tenga que devolver.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS comandos_pc (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id     INTEGER NOT NULL REFERENCES estaciones(id),
+            tipo            TEXT NOT NULL CHECK (tipo IN ('REINICIAR', 'APAGAR', 'MENSAJE', 'SCREENSHOT')),
+            payload         TEXT,
+            fecha_creacion  TEXT NOT NULL,
+            estado          TEXT NOT NULL DEFAULT 'PENDIENTE' CHECK (estado IN ('PENDIENTE', 'ENTREGADO')),
+            resultado       TEXT
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_comandos_pc_estacion ON comandos_pc(estacion_id, estado)")
+
+    # -------------------------------------------------------------------
     # MIEMBROS (socios con saldo prepago de tiempo)
     # -------------------------------------------------------------------
     # A diferencia de un bono (lo habilita el mostrador, se paga y se usa

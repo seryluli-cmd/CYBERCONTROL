@@ -21,22 +21,30 @@ desde `AdministrarKioskoWindow` (ui/main_window.py), no desde este panel
 — esa es la parte reservada a encargados.
 """
 
+import os
 from datetime import datetime
 
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QTableWidget, QTableWidgetItem, QPushButton, QButtonGroup, QLineEdit,
     QLabel, QComboBox, QTextEdit, QHeaderView, QInputDialog, QSpinBox,
-    QDoubleSpinBox,
+    QDoubleSpinBox, QMenu,
 )
 from PySide6.QtCore import Qt, QTimer
 
-from control_pcs.repositories import miembros_repo, pcs_repo
+import database
+from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter,
 )
+
+# Cuántos segundos se espera, como máximo, la captura de pantalla que
+# sube el agente después de un comando SCREENSHOT (ver DialogoCaptura) --
+# tiene que ser más que INTERVALO_CONSULTA_MS del agente (5s) para darle
+# margen a que la reciba en su próximo ciclo y la suba.
+SEGUNDOS_ESPERA_CAPTURA = 20
 
 # Cada cuántos milisegundos se recalcula el tiempo restante de las
 # estaciones activas y se dan de baja solas las sesiones vencidas.
@@ -121,6 +129,8 @@ class PanelControlPcs(QWidget):
         for columna in (1, 2, 3):
             encabezado.setSectionResizeMode(columna, QHeaderView.ResizeToContents)
         self.tabla.itemSelectionChanged.connect(self._al_cambiar_seleccion)
+        self.tabla.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tabla.customContextMenuRequested.connect(self._mostrar_menu_contextual)
 
         self.panel_detalle = PanelDetalleEstacion(self.usuario, self._refrescar, self)
 
@@ -208,6 +218,72 @@ class PanelControlPcs(QWidget):
         else:
             self._estacion_id_seleccionada = None
             self.panel_detalle.mostrar(None)
+
+    def _mostrar_menu_contextual(self, posicion):
+        """
+        Control remoto de la estación (clic derecho sobre una fila):
+        reiniciar, apagar, mandar un mensaje o pedir una captura de
+        pantalla. No pasa por el panel lateral porque son acciones sobre
+        la PC física, no sobre la sesión de tiempo -- no tiene sentido
+        "seleccionarlas" de la misma forma que un bono. Viajan al agente
+        de esa estación como un comando pendiente (ver
+        comandos_pc_repo.py); no son instantáneas, tardan hasta el
+        próximo ciclo de 5s del agente.
+        """
+        fila = self.tabla.rowAt(posicion.y())
+        if fila < 0 or fila >= len(self._estados):
+            return
+        self.tabla.selectRow(fila)
+        estacion = self._estados[fila]["estacion"]
+
+        menu = QMenu(self)
+        accion_reiniciar = menu.addAction("🔄 Reiniciar PC")
+        accion_apagar = menu.addAction("⏻ Apagar PC")
+        menu.addSeparator()
+        accion_mensaje = menu.addAction("💬 Enviar mensaje...")
+        accion_captura = menu.addAction("📷 Sacar captura de pantalla")
+        elegida = menu.exec(self.tabla.viewport().mapToGlobal(posicion))
+
+        if elegida == accion_reiniciar:
+            self._confirmar_y_encolar(
+                estacion, comandos_pc_repo.TIPO_REINICIAR,
+                f"¿Reiniciar '{estacion['nombre']}' ahora?\n"
+                "Se pierde cualquier trabajo sin guardar en esa PC.",
+            )
+        elif elegida == accion_apagar:
+            self._confirmar_y_encolar(
+                estacion, comandos_pc_repo.TIPO_APAGAR,
+                f"¿Apagar '{estacion['nombre']}' ahora?\n"
+                "Se pierde cualquier trabajo sin guardar en esa PC.",
+            )
+        elif elegida == accion_mensaje:
+            self._enviar_mensaje(estacion)
+        elif elegida == accion_captura:
+            DialogoCaptura(estacion, self).exec()
+
+    @manejar_errores
+    def _confirmar_y_encolar(self, estacion, tipo, texto_confirmacion):
+        if not confirmar(self, "Confirmar", texto_confirmacion):
+            return
+        comandos_pc_repo.encolar_comando(estacion["id"], tipo)
+        mostrar_info(
+            self, "Enviado",
+            f"Se le va a avisar a '{estacion['nombre']}' en los próximos segundos.",
+        )
+
+    @manejar_errores
+    def _enviar_mensaje(self, estacion):
+        texto, aceptado = QInputDialog.getMultiLineText(
+            self, f"Mensaje para {estacion['nombre']}", "Texto del mensaje:"
+        )
+        texto = texto.strip()
+        if not aceptado or not texto:
+            return
+        comandos_pc_repo.encolar_comando(estacion["id"], comandos_pc_repo.TIPO_MENSAJE, texto)
+        mostrar_info(
+            self, "Enviado",
+            f"El mensaje le va a aparecer a '{estacion['nombre']}' en los próximos segundos.",
+        )
 
 
 class PanelDetalleEstacion(QFrame):
@@ -433,6 +509,66 @@ class DialogoLoginMiembro(QDialog):
             f"{formato_tiempo(resultado['minutos_usados'] * 60)} de tu saldo."
         )
         self.accept()
+
+
+class DialogoCaptura(QDialog):
+    """
+    Pide una captura de pantalla a una estación y la muestra apenas
+    llega. No es instantáneo: el agente de esa PC recién la toma y la
+    sube cuando le llega el comando en su próxima consulta de estado
+    (hasta 5s, ver comandos_pc_repo.py) -- por eso este diálogo se queda
+    revisando con un QTimer en vez de traer la imagen de una sola vez.
+    """
+
+    def __init__(self, estacion, parent=None):
+        super().__init__(parent)
+        self.estacion = estacion
+        self.setWindowTitle(f"Captura de pantalla — {estacion['nombre']}")
+        self.resize(520, 420)
+
+        self.etiqueta_estado = QLabel("Esperando que la PC responda...")
+        self.etiqueta_estado.setAlignment(Qt.AlignCenter)
+        self.etiqueta_imagen = QLabel()
+        self.etiqueta_imagen.setAlignment(Qt.AlignCenter)
+        boton_cerrar = QPushButton("Cerrar")
+        boton_cerrar.clicked.connect(self.close)
+        boton_cerrar.setAutoDefault(False)
+        boton_cerrar.setDefault(False)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.etiqueta_estado)
+        layout.addWidget(self.etiqueta_imagen, 1)
+        layout.addWidget(boton_cerrar)
+        self.setLayout(layout)
+
+        self.comando_id = comandos_pc_repo.encolar_comando(estacion["id"], comandos_pc_repo.TIPO_SCREENSHOT)
+        self._segundos_esperados = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._revisar)
+        self._timer.start()
+
+    def _revisar(self):
+        self._segundos_esperados += 1
+        fila = comandos_pc_repo.obtener_comando(self.comando_id)
+        if fila is not None and fila["resultado"]:
+            self._timer.stop()
+            ruta_completa = os.path.join(database.DATA_DIR, fila["resultado"])
+            pixmap = QPixmap(ruta_completa)
+            if pixmap.isNull():
+                self.etiqueta_estado.setText("Llegó una respuesta pero no se pudo leer la imagen.")
+                return
+            self.etiqueta_estado.setText(f"Captura de '{self.estacion['nombre']}':")
+            self.etiqueta_imagen.setPixmap(
+                pixmap.scaled(480, 340, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
+            return
+        if self._segundos_esperados >= SEGUNDOS_ESPERA_CAPTURA:
+            self._timer.stop()
+            self.etiqueta_estado.setText(
+                "No llegó respuesta a tiempo — revisá que la PC esté prendida "
+                "y conectada a la red, o probá de nuevo."
+            )
 
 
 class DialogoGestionEstaciones(QDialog):

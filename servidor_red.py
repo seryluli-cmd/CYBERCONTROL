@@ -8,9 +8,15 @@ en un hilo de fondo desde que arranca el programa (ver main.py), sin
 importar quién esté logueado ni qué pantalla esté abierta -- las PCs
 clientes tienen que poder preguntar en cualquier momento.
 
-Expone tres endpoints:
+Expone estos endpoints:
 - GET /estado?estacion=<nombre> -- solo lectura, consultado cada pocos
   segundos por cada PC cliente para saber si debe mostrarse bloqueada.
+  De paso, si el mostrador dejó un comando remoto pendiente para esa
+  estación (reiniciar, apagar, mensaje, screenshot -- ver
+  control_pcs/repositories/comandos_pc_repo.py y el menú contextual de
+  Control de PCs), viaja en el mismo viaje de red como "comando" en vez
+  de necesitar un endpoint aparte -- el agente ya está preguntando cada
+  5s de todas formas.
 - POST /login -- un Miembro se loguea directo desde su PC cliente con
   TODO su saldo (mismo mecanismo que miembros_repo.abrir_estacion_por_miembro,
   el que ya usa la pantalla de Miembros del lado de Kiosko). Body JSON
@@ -21,6 +27,10 @@ Expone tres endpoints:
   cerrar su propia sesión sin pasar por el mostrador. Body JSON
   {"estacion"} -- no pide usuario/clave: alcanza con estar físicamente
   en esa PC, mismo criterio de confianza que ya usa el resto del sistema.
+- POST /comando_resultado -- el agente lo llama después de ejecutar un
+  comando SCREENSHOT, para subir la imagen capturada (los otros tipos de
+  comando no tienen nada que devolver). Body JSON
+  {"comando_id", "imagen_base64"}.
 
 Puerto en PUERTO_SERVIDOR más abajo: un solo lugar para cambiarlo.
 """
@@ -30,7 +40,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from control_pcs.repositories import miembros_repo, pcs_repo
+from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo
 
 PUERTO_SERVIDOR = 8899
 
@@ -42,7 +52,7 @@ def _estado_a_json(item):
         # Estación desconocida (nombre mal escrito en el config.json del
         # cliente, o borrada de Kiosko): bloqueada, nunca se regala el
         # beneficio de la duda.
-        return {"existe": False, "bloqueada": True, "segundos_restantes": None, "quien": None}
+        return {"existe": False, "bloqueada": True, "segundos_restantes": None, "quien": None, "comando": None}
     sesion = item["sesion"]
     segundos = item["segundos_restantes"]
     bloqueada = sesion is None or (segundos is not None and segundos <= 0)
@@ -52,6 +62,7 @@ def _estado_a_json(item):
         "bloqueada": bloqueada,
         "segundos_restantes": segundos,
         "quien": quien,
+        "comando": None,  # lo completa do_GET si hay uno pendiente para esta estación
     }
 
 
@@ -89,7 +100,19 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        self._responder_json(200, _estado_a_json(item))
+        cuerpo = _estado_a_json(item)
+        if item is not None:
+            try:
+                comando = comandos_pc_repo.proximo_comando_pendiente(item["estacion"]["id"])
+                if comando is not None:
+                    comandos_pc_repo.marcar_entregado(comando["id"])
+                    cuerpo["comando"] = {
+                        "id": comando["id"], "tipo": comando["tipo"], "payload": comando["payload"],
+                    }
+            except Exception:
+                pass  # un comando remoto que falla no puede romper la consulta de bloqueo, lo esencial
+
+        self._responder_json(200, cuerpo)
 
     def _leer_cuerpo_json(self) -> dict:
         largo = int(self.headers.get("Content-Length", 0))
@@ -120,6 +143,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self._manejar_login()
         elif ruta.path == "/logout":
             self._manejar_logout()
+        elif ruta.path == "/comando_resultado":
+            self._manejar_comando_resultado()
         else:
             self._responder_json(404, {"ok": False, "error": "No existe."})
 
@@ -170,6 +195,32 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         try:
             pcs_repo.finalizar_sesion(item["sesion"]["id"])
+        except Exception:
+            self._responder_json(500, {"ok": False, "error": "Error interno."})
+            return
+
+        self._responder_json(200, {"ok": True})
+
+    def _manejar_comando_resultado(self):
+        """
+        El agente sube acá la captura de pantalla de un comando SCREENSHOT
+        ya ejecutado (ver comandos_pc_repo.guardar_screenshot). No hace
+        falta validar que la estación exista o que el comando siga
+        "pendiente": si alguien tarda en mandarlo, guardarlo igual no
+        rompe nada -- lo único que mira pcs_window.py es si a ESE
+        comando_id ya le llegó un resultado.
+        """
+        try:
+            cuerpo = self._leer_cuerpo_json()
+            comando_id = int(cuerpo["comando_id"])
+            imagen_base64 = str(cuerpo["imagen_base64"])
+        except Exception:
+            self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+            return
+
+        try:
+            ruta_relativa = comandos_pc_repo.guardar_screenshot(comando_id, imagen_base64)
+            comandos_pc_repo.marcar_resultado(comando_id, ruta_relativa)
         except Exception:
             self._responder_json(500, {"ok": False, "error": "Error interno."})
             return

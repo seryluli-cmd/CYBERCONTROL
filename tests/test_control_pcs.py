@@ -9,12 +9,15 @@ la app (ver CLAUDE.md). Corre igual que el resto de la suite:
     python -m unittest discover tests
 """
 
+import base64
+import os
 import unittest
 from datetime import datetime
 from unittest import mock
 
+import database
 from repositories import config_repo, usuarios_repo, ventas_repo
-from control_pcs.repositories import miembros_repo, pcs_repo
+from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo
 from base import BaseConBaseTemporal
 
 
@@ -270,6 +273,58 @@ class TestMiembrosRepo(BaseConBaseTemporal):
             pcs_repo.finalizar_sesion(sesion_id)
 
         self.assertIsNone(pcs_repo.estado_estaciones()[0]["sesion"])
+
+
+class TestComandosPcRepo(BaseConBaseTemporal):
+    """Control remoto de una estación (reiniciar, apagar, mensaje,
+    screenshot) desde el mostrador -- ver docstring de comandos_pc_repo.py."""
+
+    def test_proximo_comando_pendiente_devuelve_el_mas_viejo_primero(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        comandos_pc_repo.encolar_comando(estacion_id, comandos_pc_repo.TIPO_REINICIAR)
+        id_mensaje = comandos_pc_repo.encolar_comando(estacion_id, comandos_pc_repo.TIPO_MENSAJE, "Hola")
+
+        primero = comandos_pc_repo.proximo_comando_pendiente(estacion_id)
+        self.assertEqual(primero["tipo"], comandos_pc_repo.TIPO_REINICIAR)
+
+        comandos_pc_repo.marcar_entregado(primero["id"])
+        segundo = comandos_pc_repo.proximo_comando_pendiente(estacion_id)
+        self.assertEqual(segundo["id"], id_mensaje)
+        self.assertEqual(segundo["payload"], "Hola")
+
+    def test_marcar_entregado_lo_saca_de_pendientes_para_siempre(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        comando_id = comandos_pc_repo.encolar_comando(estacion_id, comandos_pc_repo.TIPO_APAGAR)
+
+        comandos_pc_repo.marcar_entregado(comando_id)
+
+        self.assertIsNone(comandos_pc_repo.proximo_comando_pendiente(estacion_id))
+        self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["estado"], "ENTREGADO")
+
+    def test_comandos_pendientes_de_otra_estacion_no_se_mezclan(self):
+        estacion_1 = pcs_repo.crear_estacion("PC 1")
+        estacion_2 = pcs_repo.crear_estacion("PC 2")
+        comandos_pc_repo.encolar_comando(estacion_1, comandos_pc_repo.TIPO_REINICIAR)
+
+        self.assertIsNone(comandos_pc_repo.proximo_comando_pendiente(estacion_2))
+
+    def test_guardar_screenshot_deja_el_archivo_en_la_carpeta_temporal_de_datos(self):
+        # No en la carpeta "data" real -- database.DATA_DIR está apuntado
+        # a un directorio temporal por BaseConBaseTemporal.setUp(), y
+        # guardar_screenshot tiene que respetar eso (ver el comentario en
+        # comandos_pc_repo.py sobre por qué no es una constante de módulo).
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        comando_id = comandos_pc_repo.encolar_comando(estacion_id, comandos_pc_repo.TIPO_SCREENSHOT)
+        imagen_falsa = base64.b64encode(b"no es un PNG real, solo bytes de prueba").decode("ascii")
+
+        ruta_relativa = comandos_pc_repo.guardar_screenshot(comando_id, imagen_falsa)
+        comandos_pc_repo.marcar_resultado(comando_id, ruta_relativa)
+
+        ruta_completa = os.path.join(database.DATA_DIR, ruta_relativa)
+        self.assertTrue(os.path.exists(ruta_completa))
+        with open(ruta_completa, "rb") as archivo:
+            self.assertEqual(archivo.read(), b"no es un PNG real, solo bytes de prueba")
+        self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["resultado"], ruta_relativa)
 
 
 if __name__ == "__main__":
