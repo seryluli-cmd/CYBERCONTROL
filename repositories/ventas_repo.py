@@ -153,7 +153,7 @@ def buscar_venta(venta_id: int):
 
 
 def registrar_venta_sin_detalle(
-    conexion, usuario_id: int, monto: float, metodo_pago: str, origen: str, ahora: datetime
+    conexion, usuario_id: int, monto: float, pagos: list, origen: str, ahora: datetime
 ) -> int:
     """
     Cabecera de venta compartida para lo que se cobra sin un artículo real
@@ -161,6 +161,15 @@ def registrar_venta_sin_detalle(
     control_pcs/repositories/pcs_repo.asignar_bono y
     control_pcs/repositories/miembros_repo._registrar_carga). No hay fila
     de venta_detalle porque esa tabla exige un articulo_codigo real.
+
+    `monto` es el total real de la operación (precio del bono, o el monto
+    cargado de saldo) y es lo que se graba en `ventas.total`, tal cual,
+    sin importar lo que haya circulado en `pagos` -- mismo criterio que
+    confirmar_venta(), donde el total sale del carrito y no de la suma de
+    los pagos (un pago en Efectivo puede superar el total si hay vuelto
+    de por medio). `pagos` es una lista de {"metodo", "monto"} -- puede
+    traer más de una fila para un cobro Mixto (Efectivo + Digital), ver
+    ui/dialogo_pago.DialogoPago, reutilizado tal cual para este caso.
 
     A diferencia de confirmar_venta(), recibe una conexión YA ABIERTA: el
     que llama a esta función ya está adentro de su propio `with
@@ -185,10 +194,11 @@ def registrar_venta_sin_detalle(
         (ahora_iso, usuario_id, turno, round(monto, 2), dominio.VENTA_CONFIRMADA, origen),
     )
     venta_id = cursor.lastrowid
-    conexion.execute(
-        "INSERT INTO venta_pagos (venta_id, metodo, monto) VALUES (?, ?, ?)",
-        (venta_id, metodo_pago, round(monto, 2)),
-    )
+    for pago in pagos:
+        conexion.execute(
+            "INSERT INTO venta_pagos (venta_id, metodo, monto) VALUES (?, ?, ?)",
+            (venta_id, pago["metodo"], round(pago["monto"], 2)),
+        )
     return venta_id
 
 

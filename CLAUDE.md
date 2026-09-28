@@ -82,7 +82,7 @@ desde ahí, nunca escritos a mano:
 |---|---|
 | Rol | `ROL_ADMIN`, `ROL_EMPLEADA` — y `dominio.es_admin(usuario)` |
 | Estado de venta | `VENTA_CONFIRMADA`, `VENTA_ANULADA` |
-| Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` |
+| Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` — y `PAGO_MIXTO`, que NUNCA se guarda (ver más abajo) |
 | Turno | `TURNO_MANANA`, `TURNO_TARDE`, `TURNO_NOCHE`, `TURNOS` |
 | Origen de una venta | `ORIGEN_KIOSKO`, `ORIGEN_ALQUILER_PCS`, `ORIGENES_VENTA` |
 
@@ -188,7 +188,8 @@ abra no alcanza si los tests no pasan.
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
-| `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono |
+| `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono COMÚN (walk-in) |
+| `bonos_miembro_repo.listar_bonos()` / `.obtener_bono(id)` | catálogo de bonos EXCLUSIVO de socios (no confundir con `pcs_repo`) |
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
@@ -241,6 +242,35 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   de Caja y Cierre de Turno queda mal. El dueño pidió este desglose
   explícitamente para poder auditar la caja (sospecha de faltantes), así
   que un error acá no es solo un bug visual.
+- **`dominio.PAGO_MIXTO` no es un método de pago real: nunca llega a
+  `venta_pagos`.** Es una opción del combo en Control de PCs (bono, carga
+  de saldo) que abre `ui.dialogo_pago.DialogoPago` para repartir el monto
+  entre Efectivo y Digital — termina grabando una o dos filas reales de
+  `PAGO_EFECTIVO`/`PAGO_DIGITAL`, igual que un pago combinado de una venta
+  de kiosko. Por eso no está en `METODOS_PAGO` ni en el `CHECK` de
+  `venta_pagos.metodo`: agregarlo ahí rompería el desglose Efectivo/Digital
+  de Caja y Cierre de Turno, que no sabría de dónde sacar el
+  Efectivo/Digital de un pago "mixto" sin desglosar. Ver
+  `PanelDetalleEstacion._resolver_pagos` (pcs_window.py) y
+  `DialogoCargarSaldo._resolver_pagos` (miembros_window.py).
+- **`ventas_repo.registrar_venta_sin_detalle` recibe `pagos` (lista), no
+  un único método.** El `monto`/total de la venta se pasa aparte y se
+  graba tal cual en `ventas.total` — nunca se lo deduce sumando `pagos`,
+  porque un pago en Efectivo puede superar el total si hay vuelto de por
+  medio (mismo criterio que `confirmar_venta`, que calcula el total desde
+  el carrito y no desde los pagos).
+- **Hay DOS catálogos de bonos, nunca la misma tabla.** `bonos_tiempo`
+  (`pcs_repo`) es para cualquiera que entra al local sin ser socio
+  (walk-in, `pcs_repo.asignar_bono`). `bonos_miembro` (`bonos_miembro_repo`)
+  es exclusivo de Miembros, usado solo desde "Cargar Saldo" -> "Bono fijo"
+  (`miembros_repo.cargar_saldo_por_bono`). El dueño pidió la separación
+  explícitamente (2026-09-28) para poder ofrecerle a los socios combos
+  propios sin tocar el catálogo del mostrador. Crear/editar/desactivar un
+  bono de `bonos_miembro` es exclusivo de ADMIN, sin excepción (ver
+  `MiembrosWindow.es_admin` en `control_pcs/ui/miembros_window.py`) —
+  a diferencia de `bonos_tiempo`, delegable con `permiso_control_pcs`.
+  No fusionar estos catálogos "para simplificar": son dos negocios
+  distintos con reglas de permiso distintas.
 
 ---
 
@@ -344,3 +374,14 @@ Próximos candidatos a mirar cuando toque crecer: `control_pcs/ui/pcs_window.py`
 (más de 600 líneas, ya con varias clases bien separadas adentro — partirlo
 en archivos dentro de `control_pcs/ui/` sería mecánico) y
 `ui/articulos_window.py` (524 líneas).
+
+**2026-09-28:** se sumó método de pago **Mixto** (`dominio.PAGO_MIXTO`,
+nunca persistido, ver "Trampas conocidas") a los combos de Control de
+PCs, y el catálogo **`bonos_miembro`** (exclusivo de socios,
+`bonos_miembro_repo`, separado de `bonos_tiempo` — ver "Trampas
+conocidas"), gestionable solo por ADMIN desde "Gestionar Miembros" ->
+"Gestionar Bonos de Socios". También se corrigió un crash del menú
+contextual de "Control de PCs" (clic derecho sobre una estación) que
+saltaba si el refresco automático de 5s disparaba con el menú todavía
+abierto (`PanelControlPcs._mostrar_menu_contextual`, ahora pausa el
+timer mientras el menú está abierto).

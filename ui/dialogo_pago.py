@@ -305,3 +305,27 @@ class DialogoPago(QDialog):
 
     def _confirmar(self):
         self.accept()
+
+
+def resolver_pagos(parent, metodo, monto):
+    """
+    Único lugar donde se resuelve "qué método eligió la usuaria" a una
+    lista de pagos lista para mandarle al repo. Si el medio elegido es
+    Mixto, abre este mismo DialogoPago para repartir el monto entre
+    Efectivo y Digital -- no existe un tercer método "MIXTO" en la base,
+    siempre termina siendo una o dos filas reales de Efectivo/Digital.
+    Devuelve None si se canceló ese cuadro (el llamador no debe seguir).
+
+    Compartido entre control_pcs/ui/pcs_window.py (bono de PC) y
+    control_pcs/ui/miembros_window.py (cargar saldo de un socio) -- antes
+    cada pantalla tenía su propia copia de esta lógica, ver CLAUDE.md
+    regla 2. `monto <= 0` no abre el cuadro (no tiene sentido cobrar un
+    total en cero): el llamador que permite un monto libre en $ (Cargar
+    Saldo) ya valida eso aparte antes de llegar a grabar nada.
+    """
+    if metodo == dominio.PAGO_MIXTO and monto > 0:
+        dialogo = DialogoPago(parent, monto)
+        if not dialogo.exec():
+            return None
+        return dialogo.pagos
+    return [{"metodo": metodo, "monto": monto}]

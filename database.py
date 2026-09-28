@@ -487,12 +487,34 @@ def inicializar_base_de_datos():
             fecha_creacion  TEXT NOT NULL
         )
     """)
+    # Catálogo de bonos EXCLUSIVO para Miembros -- mismo esquema que
+    # bonos_tiempo (nombre/minutos/precio/activo) pero a propósito una
+    # tabla aparte, nunca la misma fila: bonos_tiempo es lo que se le
+    # vende a cualquiera que entra al local (walk-in, ver
+    # pcs_repo.asignar_bono), bonos_miembro es lo que un socio puede
+    # cargarse a su saldo desde "Cargar Saldo" -> "Bono fijo" (ver
+    # miembros_repo.cargar_saldo_por_bono) -- el dueño pidió poder
+    # ofrecerle a los socios combos propios, distintos de los del
+    # mostrador. Solo ADMIN puede crear/editar/dar de baja un bono de
+    # ESTE catálogo (ver control_pcs/ui/miembros_window.MiembrosWindow) --
+    # a diferencia de bonos_tiempo, que cualquiera con 'permiso_control_pcs'
+    # puede administrar.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bonos_miembro (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre  TEXT NOT NULL,
+            minutos INTEGER NOT NULL,
+            precio  REAL NOT NULL,
+            activo  INTEGER NOT NULL DEFAULT 1
+        )
+    """)
     # Ledger de auditoría de todo movimiento de saldo: CARGA (siempre con
     # venta_id, porque implica cobrar plata real — y bono_id si se cargó
-    # comprando un bono en vez de un monto libre), CONSUMO (sesion_id,
-    # al abrir una PC con saldo) y REINTEGRO (sesion_id, cuando se corta
-    # antes de tiempo y se devuelve lo no usado). Como esto maneja plata
-    # de terceros, poder reconstruir "por qué le queda tal saldo a este
+    # comprando un bono en vez de un monto libre, SIEMPRE del catálogo
+    # bonos_miembro, nunca de bonos_tiempo), CONSUMO (sesion_id, al abrir
+    # una PC con saldo) y REINTEGRO (sesion_id, cuando se corta antes de
+    # tiempo y se devuelve lo no usado). Como esto maneja plata de
+    # terceros, poder reconstruir "por qué le queda tal saldo a este
     # socio" no es opcional.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movimientos_saldo_miembro (
@@ -502,11 +524,19 @@ def inicializar_base_de_datos():
             minutos     INTEGER NOT NULL,
             fecha       TEXT NOT NULL,
             venta_id    INTEGER REFERENCES ventas(id),
-            bono_id     INTEGER REFERENCES bonos_tiempo(id),
+            bono_id     INTEGER REFERENCES bonos_miembro(id),
             sesion_id   INTEGER REFERENCES sesiones_pc(id)
         )
     """)
     _migrar_columna_miembro_en_sesiones(conexion)
+
+    # En una base que ya tenía "movimientos_saldo_miembro" de antes de
+    # que existiera "bonos_miembro" (2026-09-28), el CREATE TABLE de
+    # arriba no le tocó nada -- la tabla sigue con bono_id apuntando a
+    # bonos_tiempo, la referencia vieja. Necesita su propia migración
+    # (reconstruir la tabla, no un ALTER TABLE) porque SQLite no deja
+    # cambiar el REFERENCES de una columna que ya existe.
+    _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion)
 
     # Esta migración necesita leer "sesion_bonos" y "movimientos_saldo_miembro"
     # para el backfill (ver la función más abajo), así que va acá -- recién
@@ -582,6 +612,59 @@ def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(sesiones_pc)")}
     if "miembro_id" not in columnas_actuales:
         conexion.execute("ALTER TABLE sesiones_pc ADD COLUMN miembro_id INTEGER REFERENCES miembros(id)")
+    conexion.commit()
+
+
+def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Connection):
+    """
+    Para una base creada antes de que existiera "bonos_miembro"
+    (2026-09-28): movimientos_saldo_miembro.bono_id quedó con la
+    referencia vieja (bonos_tiempo, el catálogo de walk-ins) grabada en
+    el propio esquema de la tabla -- CREATE TABLE IF NOT EXISTS no la
+    toca porque la tabla ya existe (mismo motivo que las demás
+    migraciones de este archivo), y a diferencia de agregar una columna,
+    SQLite no deja cambiar el REFERENCES de una que ya existe con
+    ALTER TABLE. Con PRAGMA foreign_keys en ON (ver conexion_db()), sin
+    esta migración miembros_repo.cargar_saldo_por_bono rompía con
+    "FOREIGN KEY constraint failed" apenas se cargara un bono de socios
+    cuyo id no existiera también en bonos_tiempo -- silencioso al
+    principio (los dos catálogos arrancan en 1) y recién notorio cuando
+    las dos secuencias de ids se separan.
+
+    Se reconstruye la tabla entera (única forma soportada por SQLite de
+    cambiar una referencia ya grabada): crear la nueva con el esquema
+    correcto, copiar las filas tal cual, borrar la vieja, y listo. Mira
+    la definición ya guardada en sqlite_master para saber si hace falta
+    -- segura de correr en cada arranque, no repite el trabajo si ya se
+    migró o si la tabla es nueva (creada directo con el esquema de
+    arriba).
+    """
+    definicion = conexion.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro'"
+    ).fetchone()
+    if definicion is None or "bonos_miembro(id)" in definicion["sql"]:
+        return
+
+    conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
+    conexion.execute("""
+        CREATE TABLE movimientos_saldo_miembro (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+            tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
+            minutos     INTEGER NOT NULL,
+            fecha       TEXT NOT NULL,
+            venta_id    INTEGER REFERENCES ventas(id),
+            bono_id     INTEGER REFERENCES bonos_miembro(id),
+            sesion_id   INTEGER REFERENCES sesiones_pc(id)
+        )
+    """)
+    conexion.execute("""
+        INSERT INTO movimientos_saldo_miembro
+            (id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id)
+        SELECT id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id
+        FROM movimientos_saldo_miembro_viejo
+    """)
+    conexion.execute("DROP TABLE movimientos_saldo_miembro_viejo")
     conexion.commit()
 
 

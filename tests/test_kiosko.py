@@ -24,7 +24,7 @@ import turnos
 from repositories import (
     articulos_repo, compras_repo, config_repo, reportes_repo, turnos_repo, usuarios_repo, ventas_repo,
 )
-from control_pcs.repositories import miembros_repo, pcs_repo
+from control_pcs.repositories import bonos_miembro_repo, miembros_repo, pcs_repo
 from base import BaseConBaseTemporal
 
 
@@ -694,6 +694,76 @@ class TestMigracionOrigenEnVentas(BaseConBaseTemporal):
             )
 
 
+class TestMigracionReferenciaBonoEnMovimientosSaldoMiembro(BaseConBaseTemporal):
+    def test_reconstruye_la_tabla_con_la_referencia_nueva_sin_perder_filas(self):
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+
+        with database.conexion_db() as conexion:
+            # Se simula una base "vieja" (de antes de que existiera
+            # bonos_miembro, 2026-09-28): se recrea la tabla a mano con
+            # la referencia original a bonos_tiempo, y se le mete una
+            # fila real -- igual que TestMigracionOrigenEnVentas simula
+            # la base de antes saliéndose de columnas nuevas.
+            conexion.execute("DROP TABLE movimientos_saldo_miembro")
+            conexion.execute("""
+                CREATE TABLE movimientos_saldo_miembro (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+                    tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
+                    minutos     INTEGER NOT NULL,
+                    fecha       TEXT NOT NULL,
+                    venta_id    INTEGER REFERENCES ventas(id),
+                    bono_id     INTEGER REFERENCES bonos_tiempo(id),
+                    sesion_id   INTEGER REFERENCES sesiones_pc(id)
+                )
+            """)
+            movimiento_id = conexion.execute(
+                "INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha) "
+                "VALUES (?, 'CONSUMO', ?, ?)",
+                (miembro_id, 60, "2026-01-01T10:00:00"),
+            ).lastrowid
+
+            database._migrar_referencia_bono_en_movimientos_saldo_miembro(conexion)
+
+            definicion = conexion.execute(
+                "SELECT sql FROM sqlite_master WHERE name = 'movimientos_saldo_miembro'"
+            ).fetchone()["sql"]
+            self.assertIn("bonos_miembro(id)", definicion)
+            self.assertNotIn("bonos_tiempo(id)", definicion)
+
+            fila = conexion.execute(
+                "SELECT * FROM movimientos_saldo_miembro WHERE id = ?", (movimiento_id,)
+            ).fetchone()
+            self.assertEqual(fila["miembro_id"], miembro_id)
+            self.assertEqual(fila["minutos"], 60)
+
+    def test_cargar_un_bono_de_socios_con_id_que_no_existe_en_bonos_tiempo_ya_no_rompe(self):
+        # Reproduce el escenario real que motivó el fix: un bono de
+        # socios cuyo id no coincide con ningún walk-in -- antes de la
+        # migración esto rompía con "FOREIGN KEY constraint failed"
+        # porque bono_id seguía apuntando a bonos_tiempo en cualquier
+        # base ya existente. BaseConBaseTemporal ya corre
+        # inicializar_base_de_datos() (con la migración incluida) en su
+        # setUp, así que este test cubre el caso de una base NUEVA
+        # (nunca migrada a mano) para que no se rompa al revés.
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+
+        # Solo 1 bono común (bonos_tiempo, id 1) contra 3 de socios
+        # (bonos_miembro, ids 1-3) -- el tercero (id 3) no tiene ningún
+        # id equivalente en bonos_tiempo.
+        pcs_repo.crear_bono("1 hora (común)", 60, 3000)
+        bonos_miembro_repo.crear_bono("1 hora (socios)", 60, 3000)
+        bonos_miembro_repo.crear_bono("2 horas (socios)", 120, 6000)
+        bono_id = bonos_miembro_repo.crear_bono("3 horas (socios)", 180, 9000)
+
+        miembros_repo.cargar_saldo_por_bono(
+            miembro_id, bono_id, [{"metodo": "EFECTIVO", "monto": 9000}], operador_id
+        )
+
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 180)
+
+
 class TestDesglosePorOrigenEnCierreDeTurno(BaseConBaseTemporal):
     def test_cierre_de_turno_separa_kiosko_de_alquiler_de_pcs(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
@@ -718,12 +788,14 @@ class TestDesglosePorOrigenEnCierreDeTurno(BaseConBaseTemporal):
         with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = momento
             datetime_mock.fromisoformat = datetime.fromisoformat
-            pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, "DIGITAL")
+            pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "DIGITAL", "monto": 3000}])
 
         # Una carga de saldo de Miembro en efectivo.
         with mock.patch("control_pcs.repositories.miembros_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = momento
-            miembros_repo.cargar_saldo_por_monto(miembro_id, 2000, "EFECTIVO", usuario_id)
+            miembros_repo.cargar_saldo_por_monto(
+                miembro_id, 2000, [{"metodo": "EFECTIVO", "monto": 2000}], usuario_id
+            )
 
         resumen = turnos_repo.resumen_turno_actual()
         self.assertEqual(resumen["kiosko_efectivo"], 100.0)

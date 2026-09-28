@@ -17,16 +17,19 @@ from unittest import mock
 
 import database
 from repositories import config_repo, usuarios_repo, ventas_repo
-from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo
+from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo, bonos_miembro_repo
 from base import BaseConBaseTemporal
 
 
 class TestPcsRepo(BaseConBaseTemporal):
-    def _asignar(self, estacion_id, bono_id, usuario_id, momento, metodo="EFECTIVO"):
+    def _asignar(self, estacion_id, bono_id, usuario_id, momento, metodo="EFECTIVO", pagos=None):
+        if pagos is None:
+            precio = pcs_repo.obtener_bono(bono_id)["precio"]
+            pagos = [{"metodo": metodo, "monto": precio}]
         with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = momento
             datetime_mock.fromisoformat = datetime.fromisoformat
-            return pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, metodo)
+            return pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, pagos)
 
     def test_asignar_bono_a_estacion_libre_crea_sesion(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
@@ -103,7 +106,7 @@ class TestPcsRepo(BaseConBaseTemporal):
         pcs_repo.desactivar_bono(bono_id)
 
         with self.assertRaises(ValueError):
-            pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, "EFECTIVO")
+            pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": 3000}])
 
     def test_asignar_bono_genera_una_venta_por_el_total_del_bono(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
@@ -120,16 +123,39 @@ class TestPcsRepo(BaseConBaseTemporal):
         self.assertEqual(pagos[0]["metodo"], "DIGITAL")
         self.assertEqual(pagos[0]["monto"], 9000)
 
+    def test_asignar_bono_con_pago_mixto_graba_las_dos_filas_de_pago(self):
+        # "Mixto" nunca es un método que se guarde: la pantalla reparte el
+        # precio del bono en Efectivo + Digital (ver
+        # control_pcs/ui/pcs_window.PanelDetalleEstacion._resolver_pagos)
+        # y acá le llegan ya las dos filas armadas.
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        bono_id = pcs_repo.crear_bono("3 horas", 180, 9000)
+
+        venta_id = self._asignar(
+            estacion_id, bono_id, usuario_id, datetime(2026, 1, 1, 10, 0, 0),
+            pagos=[{"metodo": "EFECTIVO", "monto": 4000}, {"metodo": "DIGITAL", "monto": 5000}],
+        )
+
+        venta, _detalle, pagos = ventas_repo.buscar_venta(venta_id)
+        self.assertEqual(venta["total"], 9000)
+        self.assertEqual(len(pagos), 2)
+        totales = {pago["metodo"]: pago["monto"] for pago in pagos}
+        self.assertEqual(totales["EFECTIVO"], 4000)
+        self.assertEqual(totales["DIGITAL"], 5000)
+
     def test_actividad_reciente_incluye_bono_carga_y_consumo_ordenados_por_fecha(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_bono = pcs_repo.crear_estacion("PC 1")
         estacion_miembro = pcs_repo.crear_estacion("PC 2")
         bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
-        pcs_repo.asignar_bono(estacion_bono, bono_id, operador_id, "EFECTIVO")
+        pcs_repo.asignar_bono(estacion_bono, bono_id, operador_id, [{"metodo": "EFECTIVO", "monto": 3000}])
 
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
         config_repo.actualizar_tarifa_hora_miembro(1000)
-        miembros_repo.cargar_saldo_por_monto(miembro_id, 3000, "EFECTIVO", operador_id)
+        miembros_repo.cargar_saldo_por_monto(
+            miembro_id, 3000, [{"metodo": "EFECTIVO", "monto": 3000}], operador_id
+        )
         miembros_repo.abrir_estacion_por_miembro(estacion_miembro, "juan", "clave123")
 
         eventos = pcs_repo.actividad_reciente()
@@ -161,7 +187,9 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
         config_repo.actualizar_tarifa_hora_miembro(1000)
 
-        venta_id = miembros_repo.cargar_saldo_por_monto(miembro_id, 13000, "EFECTIVO", operador_id)
+        venta_id = miembros_repo.cargar_saldo_por_monto(
+            miembro_id, 13000, [{"metodo": "EFECTIVO", "monto": 13000}], operador_id
+        )
 
         miembro = miembros_repo.obtener_miembro(miembro_id)
         self.assertEqual(miembro["saldo_minutos"], 780)  # 13 horas exactas
@@ -177,7 +205,9 @@ class TestMiembrosRepo(BaseConBaseTemporal):
 
         # $1300 a $1000/hora = 78 min exactos -> el bloque de 30 más
         # cercano hacia abajo es 60, nunca se regala tiempo de más.
-        miembros_repo.cargar_saldo_por_monto(miembro_id, 1300, "EFECTIVO", operador_id)
+        miembros_repo.cargar_saldo_por_monto(
+            miembro_id, 1300, [{"metodo": "EFECTIVO", "monto": 1300}], operador_id
+        )
 
         miembro = miembros_repo.obtener_miembro(miembro_id)
         self.assertEqual(miembro["saldo_minutos"], 60)
@@ -188,24 +218,74 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         config_repo.actualizar_tarifa_hora_miembro(1000)
 
         with self.assertRaises(ValueError):
-            miembros_repo.cargar_saldo_por_monto(miembro_id, 100, "EFECTIVO", operador_id)
+            miembros_repo.cargar_saldo_por_monto(
+                miembro_id, 100, [{"metodo": "EFECTIVO", "monto": 100}], operador_id
+            )
 
     def test_cargar_saldo_por_bono(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        bono_id = pcs_repo.crear_bono("5 horas", 300, 15000)
+        bono_id = bonos_miembro_repo.crear_bono("5 horas", 300, 15000)
 
-        miembros_repo.cargar_saldo_por_bono(miembro_id, bono_id, "DIGITAL", operador_id)
+        miembros_repo.cargar_saldo_por_bono(miembro_id, bono_id, [{"metodo": "DIGITAL", "monto": 15000}], operador_id)
 
         miembro = miembros_repo.obtener_miembro(miembro_id)
         self.assertEqual(miembro["saldo_minutos"], 300)
+
+    def test_cargar_saldo_por_bono_usa_el_catalogo_exclusivo_de_socios_no_el_de_walk_ins(self):
+        # bonos_tiempo (walk-ins) y bonos_miembro (socios) son catálogos
+        # separados a propósito -- un id que existe en uno no tiene que
+        # "colar" en el otro. Se crea un bono común con MISMO precio para
+        # confirmar que cargar_saldo_por_bono usa el catálogo de socios
+        # (300 min / $15000) y no el común (60 min / $3000).
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        pcs_repo.crear_bono("1 hora (común)", 60, 3000)
+        bono_id = bonos_miembro_repo.crear_bono("5 horas (socios)", 300, 15000)
+
+        venta_id = miembros_repo.cargar_saldo_por_bono(
+            miembro_id, bono_id, [{"metodo": "EFECTIVO", "monto": 15000}], operador_id
+        )
+
+        miembro = miembros_repo.obtener_miembro(miembro_id)
+        self.assertEqual(miembro["saldo_minutos"], 300)
+        venta, _detalle, _pagos = ventas_repo.buscar_venta(venta_id)
+        self.assertEqual(venta["total"], 15000)
+
+    def test_no_se_puede_cargar_un_bono_de_socios_desactivado(self):
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        bono_id = bonos_miembro_repo.crear_bono("5 horas", 300, 15000)
+        bonos_miembro_repo.desactivar_bono(bono_id)
+
+        with self.assertRaises(ValueError):
+            miembros_repo.cargar_saldo_por_bono(
+                miembro_id, bono_id, [{"metodo": "EFECTIVO", "monto": 15000}], operador_id
+            )
+
+    def test_cargar_saldo_por_bono_con_pago_mixto_graba_las_dos_filas_de_pago(self):
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        bono_id = bonos_miembro_repo.crear_bono("5 horas", 300, 15000)
+
+        venta_id = miembros_repo.cargar_saldo_por_bono(
+            miembro_id, bono_id,
+            [{"metodo": "EFECTIVO", "monto": 10000}, {"metodo": "DIGITAL", "monto": 5000}],
+            operador_id,
+        )
+
+        venta, _detalle, pagos = ventas_repo.buscar_venta(venta_id)
+        self.assertEqual(venta["total"], 15000)
+        totales = {pago["metodo"]: pago["monto"] for pago in pagos}
+        self.assertEqual(totales["EFECTIVO"], 10000)
+        self.assertEqual(totales["DIGITAL"], 5000)
 
     def test_abrir_estacion_por_miembro_usa_todo_el_saldo_disponible(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_id = pcs_repo.crear_estacion("PC 1")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        bono_id = pcs_repo.crear_bono("3 horas", 180, 9000)
-        miembros_repo.cargar_saldo_por_bono(miembro_id, bono_id, "EFECTIVO", operador_id)
+        bono_id = bonos_miembro_repo.crear_bono("3 horas", 180, 9000)
+        miembros_repo.cargar_saldo_por_bono(miembro_id, bono_id, [{"metodo": "EFECTIVO", "monto": 9000}], operador_id)
 
         with mock.patch("control_pcs.repositories.miembros_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0)
@@ -237,8 +317,8 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_id = pcs_repo.crear_estacion("PC 1")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        bono_id = pcs_repo.crear_bono("3 horas", 180, 9000)
-        miembros_repo.cargar_saldo_por_bono(miembro_id, bono_id, "EFECTIVO", operador_id)
+        bono_id = bonos_miembro_repo.crear_bono("3 horas", 180, 9000)
+        miembros_repo.cargar_saldo_por_bono(miembro_id, bono_id, [{"metodo": "EFECTIVO", "monto": 9000}], operador_id)
 
         with mock.patch("control_pcs.repositories.miembros_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0)
@@ -263,7 +343,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0)
             datetime_mock.fromisoformat = datetime.fromisoformat
-            pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, "EFECTIVO")
+            pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": 9000}])
 
         sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
 

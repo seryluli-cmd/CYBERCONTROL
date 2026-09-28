@@ -73,6 +73,16 @@ HOJA_DE_ESTILOS = """
         background-color: #F5F6F8;
         border-color: #E1E4E9;
     }
+    QPushButton:checked {
+        background-color: #2F6FED;
+        border: 1px solid #2F6FED;
+        color: #FFFFFF;
+        font-weight: 600;
+    }
+    QPushButton:checked:hover {
+        background-color: #255BC7;
+        border-color: #255BC7;
+    }
     QPushButton[clase="primario"] {
         background-color: #2F6FED;
         border: 1px solid #2F6FED;

@@ -5,8 +5,9 @@ Socios del Cyber con cuenta propia y saldo prepago de tiempo (en
 minutos). Se cargan de dos formas — pagando un monto en pesos que se
 convierte a minutos según una tarifa configurable (ver
 config_repo.obtener_tarifa_hora_miembro), o comprando uno de los bonos
-fijos del catálogo (pcs_repo.listar_bonos, mismo paquete) — y se gastan
-abriendo una estación con el usuario/clave del socio, sin que el
+del catálogo EXCLUSIVO de socios (bonos_miembro_repo.listar_bonos, no el
+de walk-ins de pcs_repo — ver ese módulo para la diferencia) — y se
+gastan abriendo una estación con el usuario/clave del socio, sin que el
 mostrador decida cuánto tiempo asignarle: un Miembro se loguea solo y
 usa TODO lo que tenga disponible en ese momento (ver
 abrir_estacion_por_miembro).
@@ -25,7 +26,7 @@ from datetime import datetime
 import dominio
 from database import conexion_db, hash_clave, verificar_clave
 from repositories import config_repo, ventas_repo
-from control_pcs.repositories import pcs_repo
+from control_pcs.repositories import pcs_repo, bonos_miembro_repo
 
 MINUTOS_POR_FRACCION = 30
 
@@ -126,7 +127,7 @@ def autenticar_miembro(usuario: str, clave: str):
     return fila
 
 
-def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, metodo_pago: str,
+def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pagos: list,
                       usuario_operador_id: int, bono_id: int = None) -> int:
     """Núcleo común de cargar_saldo_por_monto/cargar_saldo_por_bono: la
     venta se registra vía ventas_repo.registrar_venta_sin_detalle (mismo
@@ -135,12 +136,15 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, met
     CARGA en el ledger. A diferencia de abrir_estacion_por_miembro
     (autoservicio puro), cargar saldo siempre lo hace el Operador porque
     implica cobrar plata — por eso necesita `usuario_operador_id`, igual
-    que cualquier otra venta del sistema."""
+    que cualquier otra venta del sistema.
+
+    `pagos`: lista de {"metodo", "monto"} — ver
+    ventas_repo.registrar_venta_sin_detalle."""
     ahora = datetime.now()
     ahora_iso = ahora.isoformat(timespec="seconds")
 
     venta_id = ventas_repo.registrar_venta_sin_detalle(
-        conexion, usuario_operador_id, precio, metodo_pago, dominio.ORIGEN_ALQUILER_PCS, ahora
+        conexion, usuario_operador_id, precio, pagos, dominio.ORIGEN_ALQUILER_PCS, ahora
     )
     conexion.execute(
         "UPDATE miembros SET saldo_minutos = saldo_minutos + ? WHERE id = ?",
@@ -156,7 +160,7 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, met
     return venta_id
 
 
-def cargar_saldo_por_monto(miembro_id: int, monto: float, metodo_pago: str, usuario_operador_id: int) -> int:
+def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int) -> int:
     """
     Convierte un pago en pesos a minutos de saldo, según
     config_repo.obtener_tarifa_hora_miembro() ($/hora). Se redondea
@@ -174,18 +178,19 @@ def cargar_saldo_por_monto(miembro_id: int, monto: float, metodo_pago: str, usua
             f"(${tarifa_hora:.0f}/hora)."
         )
     with conexion_db() as conexion:
-        return _registrar_carga(conexion, miembro_id, minutos, monto, metodo_pago, usuario_operador_id)
+        return _registrar_carga(conexion, miembro_id, minutos, monto, pagos, usuario_operador_id)
 
 
-def cargar_saldo_por_bono(miembro_id: int, bono_id: int, metodo_pago: str, usuario_operador_id: int) -> int:
-    """Agrega al saldo del socio un bono del mismo catálogo que se usa
-    para venderle tiempo a un walk-in (pcs_repo.listar_bonos) — ya viene
-    en minutos múltiplos de 30 por construcción del catálogo."""
-    bono = pcs_repo.obtener_bono(bono_id)
+def cargar_saldo_por_bono(miembro_id: int, bono_id: int, pagos: list, usuario_operador_id: int) -> int:
+    """Agrega al saldo del socio un bono del catálogo EXCLUSIVO de socios
+    (bonos_miembro_repo, no pcs_repo.listar_bonos -- ese es para
+    walk-ins) — ya viene en minutos múltiplos de 30 por construcción del
+    catálogo."""
+    bono = bonos_miembro_repo.obtener_bono(bono_id)
     if bono is None or not bono["activo"]:
         raise ValueError("Ese bono ya no está disponible.")
     with conexion_db() as conexion:
-        return _registrar_carga(conexion, miembro_id, bono["minutos"], bono["precio"], metodo_pago,
+        return _registrar_carga(conexion, miembro_id, bono["minutos"], bono["precio"], pagos,
                                  usuario_operador_id, bono_id=bono_id)
 
 

@@ -33,8 +33,10 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer
 
+import dominio
 import database
 from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo
+from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter,
@@ -242,7 +244,20 @@ class PanelControlPcs(QWidget):
         menu.addSeparator()
         accion_mensaje = menu.addAction("💬 Enviar mensaje...")
         accion_captura = menu.addAction("📷 Sacar captura de pantalla")
-        elegida = menu.exec(self.tabla.viewport().mapToGlobal(posicion))
+
+        # menu.exec() abre un bucle de eventos anidado: mientras el menú
+        # sigue abierto, el timer de refresco (cada 5s) puede disparar
+        # igual y reconstruir toda la tabla de estaciones por debajo. Si
+        # el mostrador tarda un poco en elegir una opción, eso llegó a
+        # borrar el propio menú a mitad de camino y explotaba con
+        # "libshiboken: Internal C++ object (QMenu) already deleted" justo
+        # al leer qué se eligió. Se pausa el refresco mientras el menú
+        # está abierto y se reanuda apenas se cierra (elija algo o no).
+        self._timer.stop()
+        try:
+            elegida = menu.exec(self.tabla.viewport().mapToGlobal(posicion))
+        finally:
+            self._timer.start()
 
         if elegida == accion_reiniciar:
             self._confirmar_y_encolar(
@@ -318,8 +333,8 @@ class PanelDetalleEstacion(QFrame):
         self.layout_bonos = QVBoxLayout()
 
         self.combo_metodo = QComboBox()
-        self.combo_metodo.addItem("Efectivo", "EFECTIVO")
-        self.combo_metodo.addItem("Digital (Mercado Pago / Transferencia)", "DIGITAL")
+        for metodo in (dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL, dominio.PAGO_MIXTO):
+            self.combo_metodo.addItem(dominio.NOMBRE_METODO_PAGO[metodo], metodo)
 
         self.boton_iniciar = QPushButton("Iniciar Sesión")
         aplicar_clase(self.boton_iniciar, "primario")
@@ -403,8 +418,12 @@ class PanelDetalleEstacion(QFrame):
                                               "creá uno primero desde 'Gestionar Bonos'.")
             return
         bono_id = self.grupo_bonos.checkedId()
+        bono = next(b for b in self.bonos if b["id"] == bono_id)
         metodo = self.combo_metodo.currentData()
-        pcs_repo.asignar_bono(self.item["estacion"]["id"], bono_id, self.usuario["id"], metodo)
+        pagos = resolver_pagos(self, metodo, bono["precio"])
+        if pagos is None:
+            return
+        pcs_repo.asignar_bono(self.item["estacion"]["id"], bono_id, self.usuario["id"], pagos)
         self._avisar_cambio()
 
     def _abrir_con_miembro(self):

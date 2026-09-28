@@ -64,10 +64,20 @@ PAGO_DIGITAL = "DIGITAL"
 
 METODOS_PAGO = (PAGO_EFECTIVO, PAGO_DIGITAL)
 
+# MIXTO nunca se guarda en venta_pagos (por eso no está en METODOS_PAGO
+# ni en el CHECK del esquema): es una opción de pantalla para Control de
+# PCs (bono, carga de saldo) que dispara el mismo DialogoPago que ya usa
+# Ventas para repartir el cobro entre Efectivo y Digital, y termina
+# grabando esas dos filas reales — igual que un pago combinado de
+# kiosko. Así Caja y Cierre de Turno nunca ven un tercer balde "mixto"
+# sin desglosar (ver control_pcs/ui/pcs_window.py y miembros_window.py).
+PAGO_MIXTO = "MIXTO"
+
 # Cómo se le muestra cada método a la usuaria.
 NOMBRE_METODO_PAGO = {
     PAGO_EFECTIVO: "Efectivo",
     PAGO_DIGITAL: "Digital (Mercado Pago / Transferencia)",
+    PAGO_MIXTO: "Mixto (Efectivo + Digital)",
 }
 
 
@@ -97,6 +107,23 @@ NOMBRE_ORIGEN_VENTA = {
     ORIGEN_KIOSKO: "Kiosko",
     ORIGEN_ALQUILER_PCS: "Alquiler de PCs",
 }
+
+
+# --------------------------------------------------------------------
+# Bonos de tiempo (reglas compartidas por los dos catálogos)
+# --------------------------------------------------------------------
+# Hay dos catálogos de bonos -- pcs_repo.bonos_tiempo (walk-ins) y
+# bonos_miembro_repo (exclusivo de socios) -- deliberadamente separados
+# (distinta tabla, distinto permiso para administrarlos), pero un bono
+# es un bono: mismas tres reglas en los dos. Vive acá para no repetirla
+# en cada repo (ver CLAUDE.md, regla 2).
+def validar_datos_bono(nombre: str, minutos: int, precio: float):
+    if not nombre.strip():
+        raise ValueError("El nombre del bono no puede quedar vacío.")
+    if minutos <= 0:
+        raise ValueError("Los minutos del bono tienen que ser mayores a 0.")
+    if precio <= 0:
+        raise ValueError("El precio del bono tiene que ser mayor a 0.")
 
 
 # --------------------------------------------------------------------

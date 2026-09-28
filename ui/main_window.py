@@ -66,7 +66,7 @@ class MainWindow(QMainWindow):
         self._armar_interfaz()
 
     def _armar_interfaz(self):
-        self.setWindowTitle(f"Kiosko - {self.usuario['nombre']} ({self.usuario['rol']})")
+        self.setWindowTitle(f"CYBERBIOS - {self.usuario['nombre']} ({self.usuario['rol']})")
         self.resize(980, 680)
 
         # Misma tarjeta blanca "#encabezadoInicio" que usaba el menú

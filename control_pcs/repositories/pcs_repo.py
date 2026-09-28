@@ -95,17 +95,8 @@ def obtener_bono(bono_id: int):
         return conexion.execute("SELECT * FROM bonos_tiempo WHERE id = ?", (bono_id,)).fetchone()
 
 
-def _validar_datos_bono(nombre: str, minutos: int, precio: float):
-    if not nombre.strip():
-        raise ValueError("El nombre del bono no puede quedar vacío.")
-    if minutos <= 0:
-        raise ValueError("Los minutos del bono tienen que ser mayores a 0.")
-    if precio <= 0:
-        raise ValueError("El precio del bono tiene que ser mayor a 0.")
-
-
 def crear_bono(nombre: str, minutos: int, precio: float) -> int:
-    _validar_datos_bono(nombre, minutos, precio)
+    dominio.validar_datos_bono(nombre, minutos, precio)
     with conexion_db() as conexion:
         cursor = conexion.execute(
             "INSERT INTO bonos_tiempo (nombre, minutos, precio) VALUES (?, ?, ?)",
@@ -115,7 +106,7 @@ def crear_bono(nombre: str, minutos: int, precio: float) -> int:
 
 
 def modificar_bono(bono_id: int, nombre: str, minutos: int, precio: float):
-    _validar_datos_bono(nombre, minutos, precio)
+    dominio.validar_datos_bono(nombre, minutos, precio)
     with conexion_db() as conexion:
         conexion.execute(
             "UPDATE bonos_tiempo SET nombre = ?, minutos = ?, precio = ? WHERE id = ?",
@@ -231,12 +222,16 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
     return sesion["id"]
 
 
-def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, metodo_pago: str) -> int:
+def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -> int:
     """
     Vende un bono de tiempo para una estación: si no tiene sesión activa,
     arranca una nueva; si ya tiene una en curso (el cliente sigue
     jugando), le suma los minutos del bono a la que ya está abierta en
     vez de crear otra. Devuelve el id de la venta generada.
+
+    `pagos`: lista de {"metodo", "monto"} -- una sola fila para Efectivo
+    o Digital, dos filas (Efectivo + Digital) para un cobro Mixto, ver
+    control_pcs/ui/pcs_window.PanelDetalleEstacion._resolver_pagos.
     """
     bono = obtener_bono(bono_id)
     if bono is None or not bono["activo"]:
@@ -248,7 +243,7 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, metodo_pago: s
         sesion_id = _abrir_o_extender_sesion(conexion, estacion_id, bono["minutos"], ahora)
 
         venta_id = ventas_repo.registrar_venta_sin_detalle(
-            conexion, usuario_id, bono["precio"], metodo_pago, dominio.ORIGEN_ALQUILER_PCS, ahora
+            conexion, usuario_id, bono["precio"], pagos, dominio.ORIGEN_ALQUILER_PCS, ahora
         )
         conexion.execute(
             """
