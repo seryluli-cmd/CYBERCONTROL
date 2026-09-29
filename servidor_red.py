@@ -32,6 +32,13 @@ Expone estos endpoints:
   comando no tienen nada que devolver). Body JSON
   {"comando_id", "imagen_base64"}.
 
+Todo pedido (GET y POST) exige la cabecera `Authorization: Bearer <clave>`
+con la clave generada en Control de PCs -> Gestionar Estaciones ->
+Generar/renovar clave de agentes (ver `control_pcs/repositories/agentes_repo.py`)
+-- UNA sola clave compartida por todas las estaciones. Sin clave generada
+todavía, o con una que no coincide, el servidor responde 403 sin tocar la
+base: ver `_ManejadorEstado._autorizado`.
+
 Puerto en PUERTO_SERVIDOR más abajo: un solo lugar para cambiarlo.
 """
 
@@ -40,7 +47,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo
+from control_pcs.repositories import agentes_repo, comandos_pc_repo, miembros_repo, pcs_repo
 
 PUERTO_SERVIDOR = 8899
 
@@ -78,7 +85,26 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(cuerpo)
 
+    def _autorizado(self) -> bool:
+        """
+        Todo pedido de un agente viaja con `Authorization: Bearer <clave>`
+        (ver `red_kiosko._cabeceras_agente` en AGENTE PC KIOSKO). Si en
+        Kiosko todavía no se generó ninguna clave (Control de PCs ->
+        Gestionar Estaciones -> Generar/renovar clave de agentes), no se
+        regala el beneficio de la duda -- mismo criterio fail-safe que
+        `_estado_a_json` con una estación desconocida.
+        """
+        clave_configurada = agentes_repo.obtener_clave_agentes()
+        if not clave_configurada:
+            return False
+        return self.headers.get("Authorization") == "Bearer " + clave_configurada
+
     def do_GET(self):
+        if not self._autorizado():
+            self.send_response(403)
+            self.end_headers()
+            return
+
         ruta = urlparse(self.path)
         if ruta.path != "/estado":
             self.send_response(404)
@@ -112,6 +138,15 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             except Exception:
                 pass  # un comando remoto que falla no puede romper la consulta de bloqueo, lo esencial
 
+        try:
+            # Viaja en TODO pedido de estado (exista o no la estación) para
+            # que cada PC cliente la mantenga al día sola en un archivo
+            # local propio, sin tener que ir PC por PC cuando se cambia --
+            # ver agentes_repo y el panel admin ("A") de agente_bloqueo.py.
+            cuerpo["clave_admin"] = agentes_repo.obtener_clave_admin_pcs()
+        except Exception:
+            pass
+
         self._responder_json(200, cuerpo)
 
     def _leer_cuerpo_json(self) -> dict:
@@ -138,6 +173,11 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         return item
 
     def do_POST(self):
+        if not self._autorizado():
+            self.send_response(403)
+            self.end_headers()
+            return
+
         ruta = urlparse(self.path)
         if ruta.path == "/login":
             self._manejar_login()

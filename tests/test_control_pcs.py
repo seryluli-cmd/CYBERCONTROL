@@ -17,7 +17,7 @@ from unittest import mock
 
 import database
 from repositories import config_repo, usuarios_repo, ventas_repo
-from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo, bonos_miembro_repo
+from control_pcs.repositories import agentes_repo, comandos_pc_repo, miembros_repo, pcs_repo, bonos_miembro_repo
 from base import BaseConBaseTemporal
 
 
@@ -405,6 +405,38 @@ class TestComandosPcRepo(BaseConBaseTemporal):
         with open(ruta_completa, "rb") as archivo:
             self.assertEqual(archivo.read(), b"no es un PNG real, solo bytes de prueba")
         self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["resultado"], ruta_relativa)
+
+
+class TestAgentesRepo(BaseConBaseTemporal):
+    def test_sin_clave_generada_todavia_devuelve_vacio(self):
+        self.assertEqual(agentes_repo.obtener_clave_agentes(), "")
+
+    def test_generar_clave_agentes_la_deja_disponible_para_leer(self):
+        clave = agentes_repo.generar_clave_agentes()
+
+        self.assertGreaterEqual(len(clave), 32)
+        self.assertEqual(agentes_repo.obtener_clave_agentes(), clave)
+
+    def test_generar_clave_agentes_de_nuevo_rota_la_anterior(self):
+        clave_vieja = agentes_repo.generar_clave_agentes()
+        clave_nueva = agentes_repo.generar_clave_agentes()
+
+        self.assertNotEqual(clave_vieja, clave_nueva)
+        self.assertEqual(agentes_repo.obtener_clave_agentes(), clave_nueva)
+
+    def test_sin_clave_admin_pcs_todavia_devuelve_vacio(self):
+        self.assertEqual(agentes_repo.obtener_clave_admin_pcs(), "")
+
+    def test_establecer_clave_admin_pcs_la_deja_disponible_para_leer(self):
+        agentes_repo.establecer_clave_admin_pcs("1234")
+
+        self.assertEqual(agentes_repo.obtener_clave_admin_pcs(), "1234")
+
+    def test_establecer_clave_admin_pcs_de_nuevo_reemplaza_la_anterior(self):
+        agentes_repo.establecer_clave_admin_pcs("1234")
+        agentes_repo.establecer_clave_admin_pcs("5678")
+
+        self.assertEqual(agentes_repo.obtener_clave_admin_pcs(), "5678")
 
 
 if __name__ == "__main__":

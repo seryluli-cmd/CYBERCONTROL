@@ -35,7 +35,7 @@ from PySide6.QtCore import Qt, QTimer
 
 import dominio
 import database
-from control_pcs.repositories import comandos_pc_repo, miembros_repo, pcs_repo
+from control_pcs.repositories import agentes_repo, comandos_pc_repo, miembros_repo, pcs_repo
 from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
@@ -224,21 +224,31 @@ class PanelControlPcs(QWidget):
     def _mostrar_menu_contextual(self, posicion):
         """
         Control remoto de la estación (clic derecho sobre una fila):
-        reiniciar, apagar, mandar un mensaje o pedir una captura de
-        pantalla. No pasa por el panel lateral porque son acciones sobre
-        la PC física, no sobre la sesión de tiempo -- no tiene sentido
-        "seleccionarlas" de la misma forma que un bono. Viajan al agente
-        de esa estación como un comando pendiente (ver
-        comandos_pc_repo.py); no son instantáneas, tardan hasta el
-        próximo ciclo de 5s del agente.
+        cerrar la sesión ya (aunque tenga tiempo/saldo sin usar) y dejar
+        la PC lista para el próximo cliente, reiniciar, apagar, mandar un
+        mensaje o pedir una captura de pantalla. No pasa por el panel
+        lateral porque son acciones sobre la PC física (o que necesitan
+        efecto inmediato), no sobre la sesión de tiempo como elegir un
+        bono. Reiniciar/Apagar/Mensaje/Captura viajan al agente de esa
+        estación como un comando pendiente (ver comandos_pc_repo.py); no
+        son instantáneas, tardan hasta el próximo ciclo de 5s del agente
+        -- "Cerrar sesión" sí corta el tiempo ya mismo en la base (mismo
+        mecanismo que "Finalizar Sesión" del panel lateral) y de paso
+        encola el reinicio.
         """
         fila = self.tabla.rowAt(posicion.y())
         if fila < 0 or fila >= len(self._estados):
             return
         self.tabla.selectRow(fila)
-        estacion = self._estados[fila]["estacion"]
+        item = self._estados[fila]
+        estacion = item["estacion"]
+        sesion = item["sesion"]
+        segundos_restantes = item["segundos_restantes"]
 
         menu = QMenu(self)
+        accion_cerrar_sesion = menu.addAction("🔒 Cerrar sesión y reiniciar")
+        accion_cerrar_sesion.setEnabled(sesion is not None)
+        menu.addSeparator()
         accion_reiniciar = menu.addAction("🔄 Reiniciar PC")
         accion_apagar = menu.addAction("⏻ Apagar PC")
         menu.addSeparator()
@@ -259,7 +269,9 @@ class PanelControlPcs(QWidget):
         finally:
             self._timer.start()
 
-        if elegida == accion_reiniciar:
+        if elegida == accion_cerrar_sesion:
+            self._cerrar_sesion_y_reiniciar(estacion, sesion, segundos_restantes)
+        elif elegida == accion_reiniciar:
             self._confirmar_y_encolar(
                 estacion, comandos_pc_repo.TIPO_REINICIAR,
                 f"¿Reiniciar '{estacion['nombre']}' ahora?\n"
@@ -275,6 +287,43 @@ class PanelControlPcs(QWidget):
             self._enviar_mensaje(estacion)
         elif elegida == accion_captura:
             DialogoCaptura(estacion, self).exec()
+
+    @manejar_errores
+    def _cerrar_sesion_y_reiniciar(self, estacion, sesion, segundos_restantes):
+        """
+        Caso típico: el cliente pidió un bono de 3hs y se va antes de
+        tiempo -- el mostrador tiene que poder liberar la PC ya mismo,
+        sin esperar a que se le acabe el tiempo pago, y dejarla lista
+        para el que sigue. Corta la sesión en la base YA (mismo mecanismo
+        que "Finalizar Sesión" del panel lateral, `pcs_repo.finalizar_sesion`
+        -- un bono no reintegra el tiempo no usado, pero el saldo de un
+        Miembro sí) y de paso encola un reinicio: sin reiniciar, la PC
+        queda con la sesión de Windows del cliente anterior abierta y sus
+        programas corriendo, no "lista para usar" para el próximo.
+        """
+        if sesion is None:
+            return
+        if segundos_restantes:
+            aviso = (
+                f"Todavía le quedan {formato_tiempo(segundos_restantes)} disponibles a "
+                f"'{estacion['nombre']}'.\n\n¿Cerrar la sesión y reiniciar la PC de todas "
+                "formas? El tiempo no usado no se reintegra."
+            )
+        else:
+            aviso = (
+                f"¿Cerrar la sesión de '{estacion['nombre']}' y reiniciar la PC?\n"
+                "El tiempo que no se llegó a usar no se reintegra."
+            )
+        if not confirmar(self, "Confirmar", aviso):
+            return
+        pcs_repo.finalizar_sesion(sesion["id"])
+        comandos_pc_repo.encolar_comando(estacion["id"], comandos_pc_repo.TIPO_REINICIAR)
+        mostrar_info(
+            self, "Listo",
+            f"Sesión cerrada. '{estacion['nombre']}' se va a reiniciar en los próximos "
+            "segundos y va a quedar lista para el próximo cliente.",
+        )
+        self._refrescar()
 
     @manejar_errores
     def _confirmar_y_encolar(self, estacion, tipo, texto_confirmacion):
@@ -438,9 +487,23 @@ class PanelDetalleEstacion(QFrame):
         if self.item is None or self.item["sesion"] is None:
             return
         estacion_nombre = self.item["estacion"]["nombre"]
-        if confirmar(self, "Confirmar",
-                     f"¿Finalizar la sesión de '{estacion_nombre}'? "
-                     "El tiempo que no se llegó a usar no se reintegra."):
+        segundos_restantes = self.item["segundos_restantes"]
+        # Caso típico: el cliente pidió un bono de 3hs y se va antes -- el
+        # mostrador tiene que poder cerrarle la PC ya mismo aunque le
+        # quede tiempo pago, por eso el aviso deja bien claro cuánto se
+        # está por perder en vez de una advertencia genérica.
+        if segundos_restantes:
+            aviso = (
+                f"Todavía le quedan {formato_tiempo(segundos_restantes)} disponibles a "
+                f"'{estacion_nombre}'.\n\n¿Cerrarla de todas formas? El tiempo no usado "
+                "no se reintegra."
+            )
+        else:
+            aviso = (
+                f"¿Finalizar la sesión de '{estacion_nombre}'? "
+                "El tiempo que no se llegó a usar no se reintegra."
+            )
+        if confirmar(self, "Confirmar", aviso):
             pcs_repo.finalizar_sesion(self.item["sesion"]["id"])
             self._avisar_cambio()
 
@@ -629,6 +692,12 @@ class DialogoGestionEstaciones(QDialog):
         fila_acciones.addWidget(boton_renombrar)
         fila_acciones.addWidget(boton_desactivar)
 
+        boton_clave_agentes = QPushButton("Generar/renovar clave de agentes...")
+        boton_clave_agentes.clicked.connect(self._generar_clave_agentes)
+
+        boton_clave_admin = QPushButton("Cambiar contraseña de PC clientes...")
+        boton_clave_admin.clicked.connect(self._cambiar_clave_admin_pcs)
+
         boton_cerrar = QPushButton("Cerrar")
         boton_cerrar.clicked.connect(self.close)
 
@@ -637,6 +706,8 @@ class DialogoGestionEstaciones(QDialog):
         layout.addWidget(self.lista)
         layout.addLayout(fila_agregar)
         layout.addLayout(fila_acciones)
+        layout.addWidget(boton_clave_agentes)
+        layout.addWidget(boton_clave_admin)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
         for boton in self.findChildren(QPushButton):
@@ -694,6 +765,72 @@ class DialogoGestionEstaciones(QDialog):
                      "historial de sesiones se conserva."):
             pcs_repo.desactivar_estacion(estacion["id"])
             self._cargar()
+
+    @manejar_errores
+    def _generar_clave_agentes(self):
+        """
+        Genera (o rota) la clave única que exige `servidor_red.py` en el
+        header `Authorization` de cada agente (ver AGENTE PC KIOSKO,
+        `red_kiosko._cabeceras_agente`). Al rotarla, la clave anterior
+        deja de servir para CUALQUIER PC hasta que se la actualice ahí --
+        por eso pide confirmación explícita si ya había una generada.
+        """
+        clave_actual = agentes_repo.obtener_clave_agentes()
+        if clave_actual:
+            aviso = (
+                "Se va a generar una clave nueva para los agentes.\n\n"
+                "Esto ROTA la clave de las estaciones que ya están conectadas: "
+                "la anterior deja de servir para cualquier PC hasta que se "
+                "actualice ahí con la nueva. ¿Continuar?"
+            )
+        else:
+            aviso = "Se va a generar la clave que necesitan los agentes de bloqueo para conectarse a este servidor. ¿Continuar?"
+        if not confirmar(self, "Generar/renovar clave de agentes", aviso):
+            return
+        clave_nueva = agentes_repo.generar_clave_agentes()
+        QInputDialog.getText(
+            self, "Clave de agentes generada",
+            "Copiá esta clave (Ctrl+A, Ctrl+C) y pegala en el config.json\n"
+            "o en el asistente de configuración de cada PC cliente:",
+            text=clave_nueva,
+        )
+
+    @manejar_errores
+    def _cambiar_clave_admin_pcs(self):
+        """
+        Contraseña que destraba el panel admin en la pantalla de bloqueo
+        de cada PC cliente (ícono "A", ver agente_bloqueo.py). A
+        diferencia de la clave de agentes, la elige el dueño (tiene que
+        poder recordarla) y cada PC cliente la actualiza sola en su
+        próximo `GET /estado` -- no hace falta ir PC por PC.
+        """
+        nueva, aceptado = QInputDialog.getText(
+            self, "Cambiar contraseña de PC clientes",
+            "Nueva contraseña de administrador:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not aceptado:
+            return
+        if len(nueva) < 4:
+            mostrar_error(self, "Contraseña muy corta", "Usá al menos 4 caracteres.")
+            return
+        confirmacion, aceptado = QInputDialog.getText(
+            self, "Cambiar contraseña de PC clientes",
+            "Repetí la contraseña:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not aceptado:
+            return
+        if confirmacion != nueva:
+            mostrar_error(self, "No coincide", "Las dos contraseñas no son iguales.")
+            return
+        agentes_repo.establecer_clave_admin_pcs(nueva)
+        mostrar_info(
+            self, "Listo",
+            "Contraseña actualizada. Cada PC cliente la va a tomar sola "
+            "la próxima vez que se conecte con el Servidor (hasta 5 "
+            "segundos, si ya está prendida y conectada)."
+        )
 
 
 class DialogoGestionBonos(QDialog):
