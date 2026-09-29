@@ -390,13 +390,19 @@ def inicializar_base_de_datos():
     # solo por estos bonos prearmados. "activo" en ambas tablas permite
     # dar de baja una sin romper el historial de sesiones que ya la usaron
     # (mismo criterio que articulos.stock: nunca se borra, se desactiva).
+    # "ultima_conexion" la actualiza servidor_red.py en cada GET /estado
+    # que recibe de esa estación (el agente pregunta cada 5s mientras está
+    # prendido y con red) -- es lo que usa pcs_repo.estado_estaciones()
+    # para decidir si una estación está "enlazada" sin sesión de por medio.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS estaciones (
-            id      INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre  TEXT NOT NULL UNIQUE,
-            activa  INTEGER NOT NULL DEFAULT 1
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre           TEXT NOT NULL UNIQUE,
+            activa           INTEGER NOT NULL DEFAULT 1,
+            ultima_conexion  TEXT
         )
     """)
+    _migrar_columna_ultima_conexion_estaciones(conexion)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bonos_tiempo (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -598,6 +604,20 @@ def _migrar_columnas_permisos(conexion: sqlite3.Connection):
     ):
         if columna not in columnas_actuales:
             conexion.execute(f"ALTER TABLE usuarios ADD COLUMN {columna} INTEGER NOT NULL DEFAULT 0")
+    conexion.commit()
+
+
+def _migrar_columna_ultima_conexion_estaciones(conexion: sqlite3.Connection):
+    """
+    Para una base creada antes de que el agente de bloqueo reportara su
+    propio "estoy vivo" (ver servidor_red.py): agrega
+    estaciones.ultima_conexion. Mismo motivo que _migrar_columnas_permisos:
+    ALTER TABLE porque CREATE TABLE IF NOT EXISTS no toca una tabla que ya
+    existe.
+    """
+    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(estaciones)")}
+    if "ultima_conexion" not in columnas_actuales:
+        conexion.execute("ALTER TABLE estaciones ADD COLUMN ultima_conexion TEXT")
     conexion.commit()
 
 

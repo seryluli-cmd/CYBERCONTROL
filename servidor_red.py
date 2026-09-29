@@ -16,7 +16,10 @@ Expone estos endpoints:
   control_pcs/repositories/comandos_pc_repo.py y el menú contextual de
   Control de PCs), viaja en el mismo viaje de red como "comando" en vez
   de necesitar un endpoint aparte -- el agente ya está preguntando cada
-  5s de todas formas.
+  5s de todas formas. Cada pedido válido también deja constancia de
+  "última conexión" (`pcs_repo.registrar_conexion`) -- es el latido que
+  usa el dashboard de Control de PCs para saber si una estación sigue
+  prendida y con red, no solo si tiene sesión.
 - POST /login -- un Miembro se loguea directo desde su PC cliente con
   TODO su saldo (mismo mecanismo que miembros_repo.abrir_estacion_por_miembro,
   el que ya usa la pantalla de Miembros del lado de Kiosko). Body JSON
@@ -128,6 +131,14 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         cuerpo = _estado_a_json(item)
         if item is not None:
+            try:
+                # Que haya llegado hasta acá (autorizado, estación
+                # conocida) ya prueba que el agente está prendido y con
+                # red -- es la señal que usa el dashboard de Control de
+                # PCs para distinguir "disponible" de "sin conexión".
+                pcs_repo.registrar_conexion(item["estacion"]["id"])
+            except Exception:
+                pass  # no puede romper la consulta de bloqueo por esto
             try:
                 comando = comandos_pc_repo.proximo_comando_pendiente(item["estacion"]["id"])
                 if comando is not None:

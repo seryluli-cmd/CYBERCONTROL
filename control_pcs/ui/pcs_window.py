@@ -52,15 +52,19 @@ SEGUNDOS_ESPERA_CAPTURA = 20
 # estaciones activas y se dan de baja solas las sesiones vencidas.
 INTERVALO_REFRESCO_MS = 5000
 
-# Por debajo de este tiempo restante, una fila activa pasa a mostrarse en
-# ámbar (⚠) en vez de verde, como aviso de que hay que renovarla pronto.
+# Por debajo de este tiempo restante, una fila en uso pasa a mostrarse en
+# ámbar (⚠) en vez de amarillo, como aviso de que hay que renovarla pronto.
 UMBRAL_POR_VENCER_SEGUNDOS = 5 * 60
 
 # Colores de fondo de fila según estado (mismo criterio en toda la
-# pantalla: rojo bloqueada, verde activa, ámbar por vencer).
-COLOR_BLOQUEADA = QColor("#F8D7D9")
-COLOR_ACTIVA = QColor("#DCF3E1")
+# pantalla: verde disponible (prendida y enlazada, sin nadie usándola),
+# amarillo en uso (con sesión activa, ámbar si está por vencer), rojo sin
+# conexión (apagada, agente caído, o sin red hacia el mostrador -- ver
+# pcs_repo.registrar_conexion/UMBRAL_ENLACE_SEGUNDOS).
+COLOR_DISPONIBLE = QColor("#DCF3E1")
+COLOR_EN_USO = QColor("#FDF1C7")
 COLOR_POR_VENCER = QColor("#FCEBD2")
+COLOR_DESCONECTADA = QColor("#F8D7D9")
 
 
 def _texto_evento(evento) -> str:
@@ -182,16 +186,19 @@ class PanelControlPcs(QWidget):
             sesion = item["sesion"]
             segundos = item["segundos_restantes"]
 
-            if sesion is None:
-                icono, texto_estado, color = "🔒", "Bloqueada", COLOR_BLOQUEADA
-                restante_texto, quien_texto = "—", "—"
-            else:
+            if sesion is not None:
                 quien_texto = sesion["miembro_nombre"] or "Bono"
                 restante_texto = formato_tiempo(segundos)
                 if segundos <= UMBRAL_POR_VENCER_SEGUNDOS:
                     icono, texto_estado, color = "⚠", "Por vencer", COLOR_POR_VENCER
                 else:
-                    icono, texto_estado, color = "▶", "Activa", COLOR_ACTIVA
+                    icono, texto_estado, color = "▶", "En uso", COLOR_EN_USO
+            elif item["enlazada"]:
+                icono, texto_estado, color = "✓", "Disponible", COLOR_DISPONIBLE
+                restante_texto, quien_texto = "—", "—"
+            else:
+                icono, texto_estado, color = "🔌", "Sin conexión", COLOR_DESCONECTADA
+                restante_texto, quien_texto = "—", "—"
 
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)

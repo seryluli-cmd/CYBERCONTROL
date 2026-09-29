@@ -30,6 +30,13 @@ import dominio
 from database import conexion_db
 from repositories import ventas_repo
 
+# Más que el intervalo de consulta del agente (5s, ver
+# control_pcs/ui/pcs_window.py) para darle margen de red antes de
+# considerar "sin conexión" a una estación que en realidad sigue
+# prendida -- se resetea a "enlazada" en su próxima consulta, sin
+# necesitar que nadie la reinicie a mano.
+UMBRAL_ENLACE_SEGUNDOS = 15
+
 
 # ---------------------------------------------------------------------
 # Estaciones (catálogo de PCs físicas)
@@ -75,6 +82,22 @@ def desactivar_estacion(estacion_id: int):
     """
     with conexion_db() as conexion:
         conexion.execute("UPDATE estaciones SET activa = 0 WHERE id = ?", (estacion_id,))
+
+
+def registrar_conexion(estacion_id: int):
+    """
+    Deja constancia de que el agente de esa estación acaba de preguntar
+    su estado (GET /estado en servidor_red.py) -- es la única señal que
+    tenemos de que la PC física está prendida, con el agente corriendo y
+    con red hacia el mostrador. Se llama en TODO pedido válido, exista o
+    no una sesión activa: una estación "enlazada" sin sesión es la que se
+    muestra disponible en el dashboard.
+    """
+    with conexion_db() as conexion:
+        conexion.execute(
+            "UPDATE estaciones SET ultima_conexion = ? WHERE id = ?",
+            (datetime.now().isoformat(timespec="seconds"), estacion_id),
+        )
 
 
 # ---------------------------------------------------------------------
@@ -133,6 +156,12 @@ def estado_estaciones():
     turnos.turno_vencimiento, no se guarda un contador que haya que ir
     actualizando aparte. Si la sesión es de un Miembro, también trae su
     nombre (para mostrarlo en la tabla en vez de un simple "Activa").
+
+    También trae "enlazada": si el agente de esa PC preguntó su estado
+    (ver registrar_conexion, actualizado desde servidor_red.py) hace
+    UMBRAL_ENLACE_SEGUNDOS o menos. Es la única forma de distinguir una
+    estación prendida-pero-libre de una apagada o sin red -- sin sesión
+    activa, las dos se ven igual de "sin uso" si no se mira esto.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
@@ -155,10 +184,17 @@ def estado_estaciones():
         if sesion is not None:
             fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
             segundos_restantes = max(0, int((fin_previsto - ahora).total_seconds()))
+
+        enlazada = False
+        if estacion["ultima_conexion"] is not None:
+            ultima_conexion = datetime.fromisoformat(estacion["ultima_conexion"])
+            enlazada = (ahora - ultima_conexion).total_seconds() <= UMBRAL_ENLACE_SEGUNDOS
+
         resultado.append({
             "estacion": estacion,
             "sesion": sesion,
             "segundos_restantes": segundos_restantes,
+            "enlazada": enlazada,
         })
     return resultado
 
