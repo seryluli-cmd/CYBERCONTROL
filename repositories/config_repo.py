@@ -9,6 +9,7 @@ cambiar el esquema de la base de datos.
 
 import json
 
+import dominio
 from database import conexion_db
 
 
@@ -76,8 +77,11 @@ def obtener_tramos_tarifa_hora_miembro() -> list:
 
 
 def guardar_tramos_tarifa_hora_miembro(tramos: list):
-    """Solo el Admin puede llamar a esto (se valida en la pantalla, con
-    dominio.validar_tramos_tarifa_hora_miembro antes de llegar acá)."""
+    """Solo el Admin puede llamar a esto (ya se valida en la pantalla, pero
+    se repite acá para que este repo nunca dependa de que el llamador se
+    acuerde de validar antes -- mismo criterio que el resto de las reglas
+    de negocio, que viven en el repo y no en la pantalla)."""
+    dominio.validar_tramos_tarifa_hora_miembro(tramos)
     with conexion_db() as conexion:
         conexion.execute(
             "INSERT OR REPLACE INTO configuracion (clave, valor) VALUES (?, ?)",
