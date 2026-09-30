@@ -17,7 +17,6 @@ import sqlite3
 import hashlib
 import os
 import secrets
-import shutil
 import sys
 from contextlib import contextmanager
 from datetime import datetime, date
@@ -115,6 +114,38 @@ def conexion_db():
         conexion.close()
 
 
+def _backup_consistente(destino: str):
+    """
+    Copia la base de datos a `destino` usando la Online Backup API de
+    SQLite (`sqlite3.Connection.backup`), no una copia de archivo cruda
+    (`shutil.copy`). El programa sigue corriendo mientras se hace un
+    backup -- el servidor de red (servidor_red.py) sigue atendiendo
+    pedidos de las PCs cliente en su propio hilo, y cualquier pantalla
+    puede estar a mitad de una operación de varias tablas (ver
+    ventas_repo.confirmar_venta: cabecera, detalle, pagos y stock se
+    graban juntos, todo o nada). Copiar el archivo .db a mano justo en
+    ese instante puede capturarlo a mitad de esa escritura -- sin el
+    archivo de journal al lado que le permitiría a SQLite deshacerla
+    sola, así que la copia queda con esa operación a medio grabar, y al
+    abrirla más tarde parece una base válida en vez de avisar que algo
+    quedó incompleto. `Connection.backup()` usa el mecanismo oficial de
+    SQLite para este caso: toma una foto consistente de un instante
+    puntual aunque haya otra conexión escribiendo al mismo tiempo,
+    reintentando sola si choca con una escritura en curso -- nunca deja
+    un archivo a medio grabar.
+    """
+    os.makedirs(os.path.dirname(destino) or ".", exist_ok=True)
+    origen = sqlite3.connect(DB_PATH)
+    try:
+        con_destino = sqlite3.connect(destino)
+        try:
+            origen.backup(con_destino)
+        finally:
+            con_destino.close()
+    finally:
+        origen.close()
+
+
 def hacer_backup_automatico():
     """
     Guarda una copia de la base de datos en data/backups/ una vez por
@@ -133,7 +164,7 @@ def hacer_backup_automatico():
     if os.path.exists(destino):
         return  # ya se hizo el backup de hoy
 
-    shutil.copy2(DB_PATH, destino)
+    _backup_consistente(destino)
 
     backups_existentes = sorted(
         f for f in os.listdir(BACKUPS_DIR) if f.startswith("kiosko_") and f.endswith(".db")
@@ -154,7 +185,7 @@ def copiar_backup_a(carpeta_destino: str) -> str:
     """
     ahora = datetime.now().strftime("%Y%m%d_%H%M%S")
     destino = os.path.join(carpeta_destino, f"kiosko_backup_{ahora}.db")
-    shutil.copy2(DB_PATH, destino)
+    _backup_consistente(destino)
     return destino
 
 
