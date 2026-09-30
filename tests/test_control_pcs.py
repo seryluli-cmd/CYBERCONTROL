@@ -555,6 +555,53 @@ class TestMiembrosRepo(BaseConBaseTemporal):
 
         self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 30)
 
+    def test_finalizar_sesion_ordena_bien_aportes_del_mismo_segundo(self):
+        # Reproduce el bug real: un bono y un consumo de saldo caen
+        # DENTRO DEL MISMO SEGUNDO (ej. el mostrador asigna un bono y,
+        # casi enseguida, un socio se loguea solo en la misma estación).
+        # Antes, el consumo del socio se grababa con precisión de
+        # SEGUNDO mientras que la venta del bono ya usaba microsegundos
+        # -- al ordenar los aportes por fecha, el string truncado del
+        # socio ("...10:00:00") quedaba ANTES que el del bono
+        # ("...10:00:00.100000") aunque el socio se haya logueado 800ms
+        # DESPUÉS. _reintegros_por_miembro recorre los aportes de más
+        # nuevo a más viejo hasta agotar el tiempo restante: con el orden
+        # invertido, el tramo sin usar se le atribuía al bono (que nunca
+        # reintegra) en vez de al socio, y este perdía su saldo entero.
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        bono_mostrador_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE miembros SET saldo_minutos = 60 WHERE id = ?", (miembro_id,))
+
+        # El bono arranca la sesión a las 10:00:00.100000 (fin: 11:00:00).
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0, 100000)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.asignar_bono(
+                estacion_id, bono_mostrador_id, operador_id, [{"metodo": "EFECTIVO", "monto": 3000}]
+            )
+
+        # El socio se loguea 800ms más tarde -- MISMO segundo de reloj
+        # (10:00:00), pero después -- y extiende la misma sesión con sus
+        # 60 min de saldo (fin queda en 12:00:00).
+        with mock.patch("control_pcs.repositories.miembros_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0, 900000)
+            miembros_repo.abrir_estacion_por_miembro(estacion_id, "juan", "clave123")
+
+        sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+
+        # Corta a las 11:30: quedan 30 min -- son el tramo del socio (el
+        # aporte más nuevo), no del bono. Le corresponde ese reintegro
+        # entero, no cero.
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 11, 30, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.finalizar_sesion(sesion_id)
+
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 30)
+
     def test_finalizar_sesion_reintegra_al_socio_que_extendio_una_sesion_de_bono(self):
         # Caso inverso: una sesión arranca con un bono del mostrador y,
         # mientras sigue activa, un socio la extiende logueándose con su

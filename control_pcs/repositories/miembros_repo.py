@@ -286,7 +286,20 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> di
     se le rechaza en vez de duplicarle el tiempo.
     """
     ahora = datetime.now()
-    ahora_iso = ahora.isoformat(timespec="seconds")
+    # Microsegundos, no segundos: este "fecha" es el que
+    # pcs_repo._contribuciones_de_sesion usa para ordenar cronológicamente
+    # los aportes de una sesión (bonos y consumos de saldo mezclados) y
+    # así saber, al cortarla antes de tiempo, a quién devolverle el tramo
+    # sin usar (ver pcs_repo._reintegros_por_miembro). El aporte de un
+    # bono se graba con microsegundos (ventas.fecha, ver ventas_repo). Si
+    # este quedara truncado a segundos, dos aportes -- un bono y este
+    # consumo -- caídos en el mismo segundo podían ordenarse al revés (el
+    # string truncado de este consumo "10:00:00" ordena ANTES que
+    # "10:00:00.900000" del bono, aunque el consumo real haya pasado
+    # después), y el tramo sin usar del socio terminaba atribuido al bono
+    # -- que nunca reintegra nada -- en vez de a él. Mismo motivo que
+    # ventas_repo.confirmar_venta / turnos_repo.cerrar_turno.
+    ahora_iso = ahora.isoformat(timespec="microseconds")
 
     with conexion_db() as conexion:
         conexion.execute("BEGIN IMMEDIATE")
