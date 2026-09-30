@@ -77,6 +77,10 @@ def _estado_a_json(item):
         "bloqueada": bloqueada,
         "segundos_restantes": segundos,
         "quien": quien,
+        # El agente lo guarda (ver red_kiosko.consultar_estado) para
+        # mandarlo de vuelta en su próximo POST /logout -- ver
+        # _manejar_logout sobre por qué hace falta.
+        "sesion_id": sesion["id"] if sesion is not None else None,
         "comando": None,  # lo completa do_GET si hay uno pendiente para esta estación
     }
 
@@ -238,9 +242,31 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         self._responder_json(200, {"ok": True, **resumen})
 
     def _manejar_logout(self):
+        """
+        Cierra la sesión activa de una estación -- pero solo si sigue
+        siendo la MISMA sesión para la que el agente pidió el cierre.
+
+        `sesion_id` es opcional en el body (un agente viejo que todavía
+        no lo manda sigue funcionando igual que antes, cerrando lo que
+        esté activo) pero si viene, tiene que coincidir con la sesión
+        activa actual de la estación. Sin este chequeo, un pedido de
+        cierre que tarda en procesarse (demora de red, o el servidor
+        ocupado con otra cosa) podía llegar DESPUÉS de que esa sesión ya
+        se hubiera cerrado por otro lado (el mostrador la finalizó a
+        mano) y de que se hubiera abierto una sesión NUEVA en la misma
+        estación para otro cliente -- el código de acá solo miraba "qué
+        sesión está activa ahora en esta estación" y la cerraba, sin
+        importar si era la misma que el agente tenía en mente. Resultado:
+        un pedido de cierre viejo de Juan terminaba cortándole la sesión
+        recién pagada a María. Si `sesion_id` no coincide, la sesión que
+        el agente quería cerrar ya no existe -- responde OK sin tocar
+        nada, en vez de error (el objetivo del agente, "que esa sesión
+        esté cerrada", ya se cumplió).
+        """
         try:
             cuerpo = self._leer_cuerpo_json()
             nombre_estacion = str(cuerpo["estacion"])
+            sesion_id_pedida = cuerpo.get("sesion_id")
         except Exception:
             self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
             return
@@ -251,6 +277,10 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         if item["sesion"] is None:
             self._responder_json(400, {"ok": False, "error": "No hay ninguna sesión activa en esta estación."})
+            return
+
+        if sesion_id_pedida is not None and sesion_id_pedida != item["sesion"]["id"]:
+            self._responder_json(200, {"ok": True})
             return
 
         try:

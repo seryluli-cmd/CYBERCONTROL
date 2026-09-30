@@ -329,4 +329,4 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> di
             (miembro["id"], minutos_a_usar, ahora_iso, sesion_id),
         )
 
-    return {"miembro": miembro["nombre"], "minutos_usados": minutos_a_usar}
+    return {"miembro": miembro["nombre"], "minutos_usados": minutos_a_usar, "sesion_id": sesion_id}

@@ -10,14 +10,18 @@ la app (ver CLAUDE.md). Corre igual que el resto de la suite:
 """
 
 import base64
+import http.client
+import json
 import os
 import threading
 import unittest
 from datetime import datetime
+from http.server import ThreadingHTTPServer
 from unittest import mock
 
 import database
 import dominio
+import servidor_red
 from repositories import config_repo, usuarios_repo, ventas_repo
 from control_pcs.repositories import (
     agentes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo, bonos_miembro_repo,
@@ -864,6 +868,116 @@ class TestConfigRedRepo(BaseConBaseTemporal):
         self.assertFalse(config_red_repo.es_ip_valida("no es una ip"))
         self.assertFalse(config_red_repo.es_ip_valida(""))
         self.assertFalse(config_red_repo.es_ip_valida("192.168.1"))
+
+
+class TestServidorRedLogout(BaseConBaseTemporal):
+    """
+    POST /logout contra un servidor real (puerto efímero, mismo
+    manejador que usa main.py) -- a diferencia del resto de la suite,
+    acá hace falta ir hasta la capa HTTP: el bug que se prueba está en
+    cómo servidor_red.py arma su respuesta, no en pcs_repo/miembros_repo
+    (que ya funcionan bien solos).
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._clave = agentes_repo.generar_clave_agentes()
+        self._servidor = ThreadingHTTPServer(("127.0.0.1", 0), servidor_red._ManejadorEstado)
+        self._puerto = self._servidor.server_address[1]
+        self._hilo = threading.Thread(target=self._servidor.serve_forever, daemon=True)
+        self._hilo.start()
+
+    def tearDown(self):
+        self._servidor.shutdown()
+        self._hilo.join(timeout=5)
+        self._servidor.server_close()
+        super().tearDown()
+
+    def _post(self, ruta: str, cuerpo: dict):
+        conexion = http.client.HTTPConnection("127.0.0.1", self._puerto, timeout=5)
+        try:
+            conexion.request(
+                "POST", ruta, body=json.dumps(cuerpo),
+                headers={"Authorization": "Bearer " + self._clave, "Content-Type": "application/json"},
+            )
+            respuesta = conexion.getresponse()
+            return respuesta.status, json.loads(respuesta.read().decode("utf-8"))
+        finally:
+            conexion.close()
+
+    def test_logout_con_sesion_id_vieja_no_toca_la_sesion_nueva(self):
+        # Reproduce el bug real: un pedido de cierre que tarda en
+        # llegar/procesarse puede hacerlo DESPUÉS de que esa sesión ya se
+        # cerró (el mostrador la finalizó a mano) y de que se abrió una
+        # sesión NUEVA en la misma estación para otro cliente. Antes,
+        # /logout solo miraba "qué sesión está activa ahora en esta
+        # estación" y la cerraba, sin importar si era la que el agente
+        # tenía en mente -- un pedido viejo de Juan terminaba cortándole
+        # a María la sesión recién pagada.
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 8")
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+
+        # Sesión 1: Juan.
+        pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": 3000}])
+        sesion_1_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+
+        # El mostrador ya la cerró (Juan avisó que se iba).
+        pcs_repo.finalizar_sesion(sesion_1_id)
+
+        # Se habilita la misma PC para María -- sesión 2, nueva.
+        pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": 3000}])
+        sesion_2_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+        self.assertNotEqual(sesion_1_id, sesion_2_id)
+
+        # Recién ahora se procesa el pedido de cierre VIEJO de Juan --
+        # todavía referencia la sesión 1, que ya no existe.
+        status, datos = self._post("/logout", {"estacion": "PC 8", "sesion_id": sesion_1_id})
+
+        self.assertEqual(status, 200)
+        self.assertTrue(datos["ok"])
+        item = pcs_repo.estado_estaciones()[0]
+        self.assertIsNotNone(item["sesion"], "la sesion de Maria no tenia que haberse cerrado")
+        self.assertEqual(item["sesion"]["id"], sesion_2_id)
+
+    def test_logout_sin_sesion_id_sigue_cerrando_lo_que_este_activo(self):
+        # Compatibilidad con un agente viejo que todavía no manda
+        # sesion_id: se sigue comportando como antes (cierra lo que esté
+        # activo en la estación).
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 8")
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": 3000}])
+
+        status, datos = self._post("/logout", {"estacion": "PC 8"})
+
+        self.assertEqual(status, 200)
+        self.assertTrue(datos["ok"])
+        self.assertIsNone(pcs_repo.estado_estaciones()[0]["sesion"])
+
+    def test_estado_y_login_devuelven_el_sesion_id(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 8")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE miembros SET saldo_minutos = 60 WHERE id = ?", (miembro_id,))
+
+        status, datos = self._post("/login", {"estacion": "PC 8", "usuario": "juan", "clave": "clave123"})
+        self.assertEqual(status, 200)
+        sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+        self.assertEqual(datos["sesion_id"], sesion_id)
+
+        conexion = http.client.HTTPConnection("127.0.0.1", self._puerto, timeout=5)
+        try:
+            conexion.request(
+                "GET", "/estado?estacion=PC+8",
+                headers={"Authorization": "Bearer " + self._clave},
+            )
+            respuesta = conexion.getresponse()
+            datos_estado = json.loads(respuesta.read().decode("utf-8"))
+        finally:
+            conexion.close()
+        self.assertEqual(datos_estado["sesion_id"], sesion_id)
 
 
 if __name__ == "__main__":
