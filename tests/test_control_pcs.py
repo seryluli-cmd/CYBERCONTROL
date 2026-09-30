@@ -443,6 +443,60 @@ class TestMiembrosRepo(BaseConBaseTemporal):
 
         self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 120)
 
+    def test_finalizar_sesion_dos_pedidos_simultaneos_no_duplican_el_reintegro(self):
+        # Reproduce el bug real: el socio cerrando desde su PC (POST
+        # /logout) y la empleada tocando "Finalizar antes de tiempo" desde
+        # el mostrador -- dos pedidos legítimos, cada uno en su propio
+        # hilo -- podían los dos leer la sesión todavía ACTIVA antes de
+        # que cualquiera terminara de cerrarla, y reintegrar el tiempo
+        # restante los dos: un socio con 30 minutos por devolver terminaba
+        # con 60 acreditados. Con el BEGIN IMMEDIATE de finalizar_sesion,
+        # el segundo pedido espera a que el primero termine y recién ahí
+        # la lee ya FINALIZADA, sin volver a reintegrar (mismo patrón que
+        # test_abrir_estacion_por_miembro_dos_pedidos_simultaneos_no_duplican_el_saldo).
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE miembros SET saldo_minutos = 60 WHERE id = ?", (miembro_id,))
+
+        with mock.patch("control_pcs.repositories.miembros_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0)
+            miembros_repo.abrir_estacion_por_miembro(estacion_id, "juan", "clave123")
+
+        sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+
+        barrera = threading.Barrier(2)
+
+        def cerrar():
+            barrera.wait(timeout=5)
+            pcs_repo.finalizar_sesion(sesion_id)
+
+        # El mock se aplica UNA sola vez, desde este hilo, antes de lanzar
+        # los otros dos -- nunca dos mock.patch() sobre el MISMO objetivo
+        # desde hilos distintos: cada entrada/salida del "with" guarda y
+        # restaura pcs_repo.datetime, y dos hilos hacíendolo a la vez
+        # sobre el mismo atributo es en sí mismo una carrera -- el
+        # restaurado final podía quedar en un Mock a medio pisar en vez
+        # de en el datetime real, rompiendo (en silencio, sin ningún
+        # AssertionError acá) TODOS los tests que corrieran después en la
+        # misma corrida de la suite (se confirmó así: sacando este test
+        # con git stash, el resto de la suite volvía a pasar entera).
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            # 10 min usados de los 60 -> quedan 50 -> se redondea hacia
+            # abajo a bloques de 30 -> corresponde reintegrar 30.
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 10, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+
+            hilos = [threading.Thread(target=cerrar) for _ in range(2)]
+            for hilo in hilos:
+                hilo.start()
+            for hilo in hilos:
+                hilo.join(timeout=10)
+
+        self.assertFalse(any(hilo.is_alive() for hilo in hilos), "un hilo quedó colgado")
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 30)
+
     def test_finalizar_sesion_de_bono_no_reintegra_nada(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_id = pcs_repo.crear_estacion("PC 1")

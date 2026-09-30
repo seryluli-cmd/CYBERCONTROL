@@ -424,9 +424,25 @@ def finalizar_sesion(sesion_id: int):
     mezclando un bono del mostrador de por medio. A diferencia de un bono
     (consumible de una sola vez, sin reintegro), el saldo de un socio es
     plata suya: cortar antes no se la hace perder.
+
+    Todo esto corre con "BEGIN IMMEDIATE" (toma el lock de escritura de
+    entrada, antes de leer nada) -- mismo motivo que
+    miembros_repo.abrir_estacion_por_miembro: comprobar que la sesión
+    sigue ACTIVA y cerrarla eran dos pasos separados, así que el socio
+    cerrando desde su PC (POST /logout) y la empleada tocando "Finalizar
+    antes de tiempo" desde el mostrador -- dos pedidos legítimos, cada uno
+    en su propio hilo -- podían los dos leer la sesión todavía ACTIVA
+    antes de que cualquiera terminara de cerrarla, y los dos reintegraban
+    el tiempo restante por separado: un socio con 30 minutos por devolver
+    terminaba con 60 acreditados. Con el lock tomado de entrada, el
+    segundo pedido espera a que el primero termine de commitear y recién
+    ahí la lee ya FINALIZADA -- entra en el "return" de acá abajo y no
+    reintegra nada de nuevo.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+
         sesion = conexion.execute(
             "SELECT * FROM sesiones_pc WHERE id = ? AND estado = 'ACTIVA'", (sesion_id,)
         ).fetchone()
