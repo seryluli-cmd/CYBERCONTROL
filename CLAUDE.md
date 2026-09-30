@@ -266,11 +266,13 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   (`miembros_repo.cargar_saldo_por_bono`). El dueño pidió la separación
   explícitamente (2026-09-28) para poder ofrecerle a los socios combos
   propios sin tocar el catálogo del mostrador. Crear/editar/desactivar un
-  bono de `bonos_miembro` es exclusivo de ADMIN, sin excepción (ver
-  `MiembrosWindow.es_admin` en `control_pcs/ui/miembros_window.py`) —
-  a diferencia de `bonos_tiempo`, delegable con `permiso_control_pcs`.
-  No fusionar estos catálogos "para simplificar": son dos negocios
-  distintos con reglas de permiso distintas.
+  bono, de cualquiera de los dos catálogos, es exclusivo de ADMIN desde
+  "Configuración ADMIN" (`ui/main_window.ConfiguracionAdminWindow` —
+  pedido explícito del dueño, 2026-09-28: editar el catálogo es tarea de
+  super admin; *usar* un bono ya creado sigue delegable con
+  `permiso_control_pcs`). No fusionar estos catálogos "para simplificar":
+  son dos negocios distintos con reglas de negocio propias, aunque ahora
+  compartan el mismo nivel de permiso para editarlos.
 
 ---
 
@@ -323,12 +325,14 @@ importa":
   puede sumar reutilizando `sesion_bonos`, no hace falta tocar el
   esquema.
 - **Separar "Cargar Saldo" de Miembros de la gestión completa de
-  socios.** Hoy vive dentro de "Gestionar Miembros" (bajo "Gestionar
-  PCs", permiso `permiso_control_pcs`), aunque cargar saldo es una venta
-  como cualquier otra. Si en algún momento se quiere que un empleado
-  común pueda cobrarle saldo a un socio sin tener acceso a dar de
-  alta/baja Miembros ni editar su tarifa, hace falta un permiso separado
-  — decisión consciente de no hacerlo hasta que el dueño lo pida.
+  socios.** Hoy vive dentro de "Miembros" (botón propio de la barra
+  superior, permiso `permiso_control_pcs`), aunque cargar saldo es una
+  venta como cualquier otra. Editar la tarifa y el catálogo de Bonos de
+  Socios ya quedó exclusivo de ADMIN desde "Configuración ADMIN"
+  (2026-09-28) — lo que falta, si en algún momento se quiere, es un
+  permiso aparte para que un empleado común pueda cobrarle saldo a un
+  socio sin tener acceso a dar de alta/baja Miembros — decisión
+  consciente de no hacerlo hasta que el dueño lo pida.
 
 ---
 
@@ -379,9 +383,155 @@ en archivos dentro de `control_pcs/ui/` sería mecánico) y
 nunca persistido, ver "Trampas conocidas") a los combos de Control de
 PCs, y el catálogo **`bonos_miembro`** (exclusivo de socios,
 `bonos_miembro_repo`, separado de `bonos_tiempo` — ver "Trampas
-conocidas"), gestionable solo por ADMIN desde "Gestionar Miembros" ->
+conocidas"), gestionable solo por ADMIN desde "Configuración ADMIN" ->
 "Gestionar Bonos de Socios". También se corrigió un crash del menú
 contextual de "Control de PCs" (clic derecho sobre una estación) que
 saltaba si el refresco automático de 5s disparaba con el menú todavía
 abierto (`PanelControlPcs._mostrar_menu_contextual`, ahora pausa el
 timer mientras el menú está abierto).
+
+**2026-09-28 (más tarde):** reorganización de menú pedida explícitamente
+por el dueño, separando "editar el catálogo" (Admin) de "usar el
+catálogo" (cualquier operador con `permiso_control_pcs`):
+- **"Miembros"** (antes "Gestionar Miembros", colgado de "Gestionar
+  PCs"): ahora botón propio de la barra superior, entre "Vender" y
+  "Administrar Kiosko". Solo conserva lo operativo — alta de socio,
+  modificar datos, cargar saldo, desactivar.
+- **"Configuración ADMIN"** (`ui/main_window.ConfiguracionAdminWindow`):
+  botón nuevo, exclusivo de ADMIN sin excepción (no hay permiso
+  delegable). Agrupa las cuatro pantallas de edición de catálogo que
+  antes eran delegables o estaban repartidas: Gestionar Estaciones
+  (agregar/quitar/renombrar PC, antes con `permiso_control_pcs`),
+  Gestionar Bonos de walk-ins (antes con `permiso_control_pcs`), Tarifa
+  por Hora de Socios y Gestionar Bonos de Socios (estas dos ya eran
+  Admin-only, solo cambió de dónde se accede).
+- **El botón "Gestionar PCs" desapareció** — lo que tenía (Estaciones,
+  Bonos, Miembros) se repartió entre "Configuración ADMIN" y "Miembros".
+- La etiqueta del permiso `permiso_control_pcs` en Usuarios se actualizó
+  a "Operar PCs y Miembros (asignar bonos, abrir con socio, cargar
+  saldo)" para reflejar que ya no habilita editar Estaciones ni Bonos.
+
+**2026-09-29:** se corrigieron seis bugs de plata/datos reportados por el
+dueño, todos con test nuevo (94 -> 109 tests):
+- **Vuelto contado como ingreso.** Una venta de $1.000 pagada con un
+  billete de $2.000 sumaba $2.000 a caja aunque se hayan devuelto $1.000
+  de vuelto. `ui/dialogo_pago.DialogoPago._confirmar` ahora descuenta el
+  vuelto de los pagos en Efectivo antes de devolverlos (ver
+  `dominio.pagos_netos_de_vuelto`, la única función que decide esto).
+- **Migración frágil de `movimientos_saldo_miembro`.** Podía romper con
+  "FOREIGN KEY constraint failed" si un `bono_id` heredado no existía en
+  `bonos_miembro`, y un corte de luz a mitad de camino podía dejar el
+  historial real atrapado, invisible, en una tabla "_viejo" para
+  siempre. Ver `database._migrar_referencia_bono_en_movimientos_saldo_miembro`.
+- **Reintegro al socio equivocado.** Una sesión de PC creada por un socio
+  y extendida después con un bono del mostrador (o al revés) le
+  reintegraba a un solo `miembro_id` (el grabado al crear la sesión)
+  TODO el tiempo restante, aunque parte viniera de un bono (que nunca
+  reintegra) o de otro socio. `pcs_repo.finalizar_sesion` ahora
+  reconstruye de qué fuente salió cada tramo (`_reintegros_por_miembro`)
+  y reintegra solo lo que le corresponde a cada uno.
+- **Saldo duplicado por carrera.** Dos pedidos `/login` simultáneos del
+  mismo socio (`ThreadingHTTPServer`, doble clic o reintento de red)
+  podían autenticarse leyendo el mismo saldo y gastarlo los dos.
+  `miembros_repo.abrir_estacion_por_miembro` ahora autentica y consume
+  DENTRO de una transacción con `BEGIN IMMEDIATE`, que serializa los
+  pedidos concurrentes.
+- **Cierre en el mismo segundo.** `ventas.fecha` y
+  `cierres_turno.fecha_cierre` se grababan con precisión de un segundo;
+  una venta y un cierre que empataran en el mismo segundo quedaban
+  afuera de los DOS turnos (el `>` estricto entre ventanas los excluía a
+  los dos). Ahora se graban con microsegundos.
+- **Anulación que no revierte el beneficio.** Anular desde Consulta de
+  Ventas una venta que había cargado saldo a un socio le sacaba la plata
+  del cierre/caja pero le dejaba los minutos intactos. Nueva función
+  `miembros_repo.anular_carga` (usada por `ui/consulta_ventas_window`
+  cuando `origen == ALQUILER_PCS`) revierte la carga del saldo actual
+  (topeada a lo que le quede) y deja un movimiento `ANULACION` propio en
+  el ledger — tipo nuevo, migración de CHECK incluida (ver
+  `database._migrar_check_tipo_en_movimientos_saldo_miembro`).
+
+**2026-09-29 (más tarde):** dos comandos remotos nuevos en el menú
+contextual de Control de PCs, mismo mecanismo que
+Reiniciar/Apagar/Mensaje/Captura (`comandos_pc_repo.py`,
+`TIPO_CAMBIAR_RED`/`TIPO_VOLUMEN`):
+- **"Cambiar red..."**: el Cyber tiene varios módems en paralelo (ej.
+  192.168.1.201/.202), cada uno con su propia puerta de enlace en el
+  mismo rango; si uno se cae, esto le cambia a una estación la puerta de
+  enlace y el DNS al otro módem sin ir hasta la PC (las PCs cliente
+  tienen IP fija propia, confirmado con el dueño). Catálogo de módems
+  nuevo, `control_pcs/repositories/config_red_repo.py` (JSON en la
+  tabla `configuracion` existente, sin migración), editable desde el
+  mismo diálogo. A diferencia de Reiniciar/Apagar, sí puede fallar del
+  lado de la PC (necesita permisos de Administrador ahí — confirmado que
+  las cuentas cliente los tienen), así que el agente sube el resultado
+  de vuelta por `POST /comando_resultado` con un `texto` corto
+  ("OK"/"ERROR: ...") en vez del `imagen_base64` que ya usaba
+  SCREENSHOT — `servidor_red.py:_manejar_comando_resultado` ahora acepta
+  cualquiera de los dos.
+- **"Ajustar volumen..."**: slider 0-100% que le manda a una estación su
+  nivel exacto de volumen maestro (agente del lado cliente usa pycaw,
+  ver README de AGENTE PC KIOSKO) — fire-and-forget como Mensaje, no
+  necesita Administrador así que no hace falta reportar resultado.
+
+114 tests (109 -> 114, 5 nuevos en `TestConfigRedRepo`). Detalle técnico
+completo del lado cliente (PowerShell usado, por qué no `netsh`,
+dependencias nuevas) en el README de `AGENTE PC KIOSKO`, sección
+"Cambiar red... y Ajustar volumen...".
+
+**2026-09-29 (más tarde todavía):** nueva pestaña **"Kiosko vs. PCs"** en
+Reportes (pedido explícito del dueño: quería ver cuánto se facturó de
+Kiosko contra Alquiler de PCs, por turno/día/semana/rango de fechas).
+`reportes_repo.resumen_por_origen(desde, hasta, agrupar_por)` es la
+única función que decide esto -- agrupa por `"turno"` (siempre las 3,
+mismo criterio que `resumen_por_turno`), `"dia"`, `"semana"` (lunes a
+domingo, vía el modismo `date(fecha, 'weekday 0', '-6 days')` de SQLite
+para hallar el lunes de la semana) o `"rango"` (un solo total, default).
+Usa `ventas.total` agrupado por `ventas.origen`, no `venta_pagos`: acá
+no importa el método de pago. La pestaña agrega una fila TOTAL en negrita
+al pie cuando el agrupamiento deja más de un período listado. 119 tests
+(114 -> 119, 5 nuevos en `TestResumenPorOrigen`).
+
+**2026-09-29 (más tarde todavía, otra vez):** encontrado y arreglado el
+origen real de una familia de crashes que venía apareciendo hacía días en
+`data/errores.log` sin poder explicarse ("Internal C++ object (QTimer) /
+(PanelActividad) / (PanelControlPcs) already deleted") y que el dueño
+reportó como "entro al programa y se cierra solo" estando en la grilla de
+PCs, sin ninguna acción puntual de por medio. Causa: `PanelControlPcs`
+conecta su timer de refresco a un método propio
+(`self._timer.timeout.connect(self._refrescar)`,
+`control_pcs/ui/pcs_window.py`), lo que arma un ciclo de referencias
+Python que solo el recolector *cíclico* rompe -- y ese recolector puede
+dispararse desde CUALQUIER hilo que esté asignando memoria en ese
+momento, no necesariamente el hilo dueño del QObject. `servidor_red.py`
+corre un hilo de fondo real (`threading.Thread`, no `QThread`) todo el
+tiempo que Kiosko está abierto: si ese hilo disparaba la recolección
+justo cuando le tocaba destruir un QTimer de la interfaz, Qt tiraba
+`QObject::killTimer: Timers cannot be stopped from another thread` y
+dejaba el objeto C++ roto, listo para explotar como "already deleted" en
+cualquier pantalla que lo tocara después. Arreglo: `gc.disable()` en
+`main.py:main()`, antes de crear la `QApplication` -- los `QObject` ya se
+liberan solos por relación padre/hijo de Qt (`QTimer(self)`) y el resto
+del programa se apoya en refcounting normal, no en ciclos, así que
+desactivar el recolector cíclico no pierde nada que importe en un
+programa que se reinicia a diario.
+
+**2026-09-30:** dos pedidos del dueño sobre Control de PCs, confirmados
+tras una prueba real (abrir un bono, apagar la PC cliente, verificar que
+el tiempo restante siguió bajando solo del lado del Servidor -- el
+mecanismo ya era correcto):
+- **Alerta "SIN AGENTE"**: una estación con sesión activa (Bono o
+  Miembro) que deja de estar "enlazada" ahora parpadea en rojo en vez de
+  quedar en el amarillo normal de "En uso" -- aviso al operador de que
+  hay tiempo pago corriendo sin que el agente de esa PC esté reportando
+  conexión (posible cliente que encontró la forma de cerrarlo). Ver
+  `COLOR_ALERTA_SESION_SIN_AGENTE` / `_alternar_parpadeo` en
+  `control_pcs/ui/pcs_window.py` -- timer aparte de 500ms, no toca
+  `pcs_repo` ni el esquema.
+- **Sincronización al reconectar, siempre el menor**: pedido de
+  seguridad extra del lado del cliente (`AGENTE PC KIOSKO`, no en este
+  repo) -- ante cualquier diferencia entre el conteo local del agente y
+  el `segundos_restantes` que manda este Servidor, el agente ahora usa
+  siempre el menor de los dos, para no regalar tiempo de sesión por un
+  desfasaje de reloj entre PCs. No requirió ningún cambio acá (el
+  Servidor ya mandaba el dato correcto); ver el README de
+  `AGENTE PC KIOSKO` para el detalle.

@@ -266,11 +266,13 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   (`miembros_repo.cargar_saldo_por_bono`). El dueño pidió la separación
   explícitamente (2026-09-28) para poder ofrecerle a los socios combos
   propios sin tocar el catálogo del mostrador. Crear/editar/desactivar un
-  bono de `bonos_miembro` es exclusivo de ADMIN, sin excepción (ver
-  `MiembrosWindow.es_admin` en `control_pcs/ui/miembros_window.py`) —
-  a diferencia de `bonos_tiempo`, delegable con `permiso_control_pcs`.
-  No fusionar estos catálogos "para simplificar": son dos negocios
-  distintos con reglas de permiso distintas.
+  bono, de cualquiera de los dos catálogos, es exclusivo de ADMIN desde
+  "Configuración ADMIN" (`ui/main_window.ConfiguracionAdminWindow` —
+  pedido explícito del dueño, 2026-09-28: editar el catálogo es tarea de
+  super admin; *usar* un bono ya creado sigue delegable con
+  `permiso_control_pcs`). No fusionar estos catálogos "para simplificar":
+  son dos negocios distintos con reglas de negocio propias, aunque ahora
+  compartan el mismo nivel de permiso para editarlos.
 
 ---
 
@@ -323,12 +325,14 @@ importa":
   puede sumar reutilizando `sesion_bonos`, no hace falta tocar el
   esquema.
 - **Separar "Cargar Saldo" de Miembros de la gestión completa de
-  socios.** Hoy vive dentro de "Gestionar Miembros" (bajo "Gestionar
-  PCs", permiso `permiso_control_pcs`), aunque cargar saldo es una venta
-  como cualquier otra. Si en algún momento se quiere que un empleado
-  común pueda cobrarle saldo a un socio sin tener acceso a dar de
-  alta/baja Miembros ni editar su tarifa, hace falta un permiso separado
-  — decisión consciente de no hacerlo hasta que el dueño lo pida.
+  socios.** Hoy vive dentro de "Miembros" (botón propio de la barra
+  superior, permiso `permiso_control_pcs`), aunque cargar saldo es una
+  venta como cualquier otra. Editar la tarifa y el catálogo de Bonos de
+  Socios ya quedó exclusivo de ADMIN desde "Configuración ADMIN"
+  (2026-09-28) — lo que falta, si en algún momento se quiere, es un
+  permiso aparte para que un empleado común pueda cobrarle saldo a un
+  socio sin tener acceso a dar de alta/baja Miembros — decisión
+  consciente de no hacerlo hasta que el dueño lo pida.
 
 ---
 
@@ -379,9 +383,69 @@ en archivos dentro de `control_pcs/ui/` sería mecánico) y
 nunca persistido, ver "Trampas conocidas") a los combos de Control de
 PCs, y el catálogo **`bonos_miembro`** (exclusivo de socios,
 `bonos_miembro_repo`, separado de `bonos_tiempo` — ver "Trampas
-conocidas"), gestionable solo por ADMIN desde "Gestionar Miembros" ->
+conocidas"), gestionable solo por ADMIN desde "Configuración ADMIN" ->
 "Gestionar Bonos de Socios". También se corrigió un crash del menú
 contextual de "Control de PCs" (clic derecho sobre una estación) que
 saltaba si el refresco automático de 5s disparaba con el menú todavía
 abierto (`PanelControlPcs._mostrar_menu_contextual`, ahora pausa el
 timer mientras el menú está abierto).
+
+**2026-09-28 (más tarde):** reorganización de menú pedida explícitamente
+por el dueño, separando "editar el catálogo" (Admin) de "usar el
+catálogo" (cualquier operador con `permiso_control_pcs`):
+- **"Miembros"** (antes "Gestionar Miembros", colgado de "Gestionar
+  PCs"): ahora botón propio de la barra superior, entre "Vender" y
+  "Administrar Kiosko". Solo conserva lo operativo — alta de socio,
+  modificar datos, cargar saldo, desactivar.
+- **"Configuración ADMIN"** (`ui/main_window.ConfiguracionAdminWindow`):
+  botón nuevo, exclusivo de ADMIN sin excepción (no hay permiso
+  delegable). Agrupa las cuatro pantallas de edición de catálogo que
+  antes eran delegables o estaban repartidas: Gestionar Estaciones
+  (agregar/quitar/renombrar PC, antes con `permiso_control_pcs`),
+  Gestionar Bonos de walk-ins (antes con `permiso_control_pcs`), Tarifa
+  por Hora de Socios y Gestionar Bonos de Socios (estas dos ya eran
+  Admin-only, solo cambió de dónde se accede).
+- **El botón "Gestionar PCs" desapareció** — lo que tenía (Estaciones,
+  Bonos, Miembros) se repartió entre "Configuración ADMIN" y "Miembros".
+- La etiqueta del permiso `permiso_control_pcs` en Usuarios se actualizó
+  a "Operar PCs y Miembros (asignar bonos, abrir con socio, cargar
+  saldo)" para reflejar que ya no habilita editar Estaciones ni Bonos.
+
+**2026-09-29:** se corrigieron seis bugs de plata/datos reportados por el
+dueño, todos con test nuevo (94 -> 109 tests):
+- **Vuelto contado como ingreso.** Una venta de $1.000 pagada con un
+  billete de $2.000 sumaba $2.000 a caja aunque se hayan devuelto $1.000
+  de vuelto. `ui/dialogo_pago.DialogoPago._confirmar` ahora descuenta el
+  vuelto de los pagos en Efectivo antes de devolverlos (ver
+  `dominio.pagos_netos_de_vuelto`, la única función que decide esto).
+- **Migración frágil de `movimientos_saldo_miembro`.** Podía romper con
+  "FOREIGN KEY constraint failed" si un `bono_id` heredado no existía en
+  `bonos_miembro`, y un corte de luz a mitad de camino podía dejar el
+  historial real atrapado, invisible, en una tabla "_viejo" para
+  siempre. Ver `database._migrar_referencia_bono_en_movimientos_saldo_miembro`.
+- **Reintegro al socio equivocado.** Una sesión de PC creada por un socio
+  y extendida después con un bono del mostrador (o al revés) le
+  reintegraba a un solo `miembro_id` (el grabado al crear la sesión)
+  TODO el tiempo restante, aunque parte viniera de un bono (que nunca
+  reintegra) o de otro socio. `pcs_repo.finalizar_sesion` ahora
+  reconstruye de qué fuente salió cada tramo (`_reintegros_por_miembro`)
+  y reintegra solo lo que le corresponde a cada uno.
+- **Saldo duplicado por carrera.** Dos pedidos `/login` simultáneos del
+  mismo socio (`ThreadingHTTPServer`, doble clic o reintento de red)
+  podían autenticarse leyendo el mismo saldo y gastarlo los dos.
+  `miembros_repo.abrir_estacion_por_miembro` ahora autentica y consume
+  DENTRO de una transacción con `BEGIN IMMEDIATE`, que serializa los
+  pedidos concurrentes.
+- **Cierre en el mismo segundo.** `ventas.fecha` y
+  `cierres_turno.fecha_cierre` se grababan con precisión de un segundo;
+  una venta y un cierre que empataran en el mismo segundo quedaban
+  afuera de los DOS turnos (el `>` estricto entre ventanas los excluía a
+  los dos). Ahora se graban con microsegundos.
+- **Anulación que no revierte el beneficio.** Anular desde Consulta de
+  Ventas una venta que había cargado saldo a un socio le sacaba la plata
+  del cierre/caja pero le dejaba los minutos intactos. Nueva función
+  `miembros_repo.anular_carga` (usada por `ui/consulta_ventas_window`
+  cuando `origen == ALQUILER_PCS`) revierte la carga del saldo actual
+  (topeada a lo que le quede) y deja un movimiento `ANULACION` propio en
+  el ledger — tipo nuevo, migración de CHECK incluida (ver
+  `database._migrar_check_tipo_en_movimientos_saldo_miembro`).

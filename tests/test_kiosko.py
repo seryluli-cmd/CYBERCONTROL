@@ -119,6 +119,47 @@ class TestSubtotalDeLinea(unittest.TestCase):
         self.assertEqual(ventas_repo.total_carrito([]), 0)
 
 
+class TestPagosNetosDeVuelto(unittest.TestCase):
+    """Reproduce el bug real: una venta de $1.000 pagada con un billete
+    de $2.000 sumaba $2.000 a caja aunque se hayan devuelto $1.000 de
+    vuelto. dominio.pagos_netos_de_vuelto es lo que usa
+    ui/dialogo_pago.DialogoPago._confirmar antes de devolver self.pagos,
+    para que lo que se graba en venta_pagos sea neto del vuelto."""
+
+    def test_descuenta_el_vuelto_del_unico_pago_en_efectivo(self):
+        pagos = [{"metodo": dominio.PAGO_EFECTIVO, "monto": 2000.0}]
+        resultado = dominio.pagos_netos_de_vuelto(pagos, vuelto=1000.0)
+        self.assertEqual(resultado, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0}])
+
+    def test_no_toca_el_pago_digital(self):
+        pagos = [
+            {"metodo": dominio.PAGO_DIGITAL, "monto": 500.0},
+            {"metodo": dominio.PAGO_EFECTIVO, "monto": 1200.0},
+        ]
+        # Total real $1.500: $500 digital + $1.000 efectivo: sobraron $200.
+        resultado = dominio.pagos_netos_de_vuelto(pagos, vuelto=200.0)
+        self.assertEqual(resultado, [
+            {"metodo": dominio.PAGO_DIGITAL, "monto": 500.0},
+            {"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0},
+        ])
+
+    def test_descarta_un_pago_que_queda_en_cero(self):
+        # Un pago en Efectivo que era EXACTAMENTE el vuelto que se llevó
+        # puesto (por ejemplo, dos pagos en efectivo donde el segundo
+        # sobraba entero) no debe dejar una fila de $0 en venta_pagos.
+        pagos = [
+            {"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0},
+            {"metodo": dominio.PAGO_EFECTIVO, "monto": 500.0},
+        ]
+        resultado = dominio.pagos_netos_de_vuelto(pagos, vuelto=500.0)
+        self.assertEqual(resultado, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0}])
+
+    def test_no_modifica_la_lista_original(self):
+        pagos = [{"metodo": dominio.PAGO_EFECTIVO, "monto": 2000.0}]
+        dominio.pagos_netos_de_vuelto(pagos, vuelto=1000.0)
+        self.assertEqual(pagos, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 2000.0}])
+
+
 class TestEsAdmin(unittest.TestCase):
     def test_reconoce_el_rol_admin_y_rechaza_el_resto(self):
         self.assertTrue(dominio.es_admin({"rol": dominio.ROL_ADMIN}))
@@ -506,6 +547,83 @@ class TestFechaDelCierreEsElDiaQueArrancoElTurno(BaseConBaseTemporal):
         self.assertEqual(resultado["turno_label"], "Noche")
 
 
+class TestDetalleCierre(BaseConBaseTemporal):
+    def _vender(self, usuario_id, momento, total=10.0):
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            return ventas_repo.confirmar_venta(
+                usuario_id,
+                [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 1,
+                  "precio_unitario": total}],
+                [{"metodo": "EFECTIVO", "monto": total}],
+            )
+
+    def _cerrar(self, usuario_id, momento):
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return turnos_repo.cerrar_turno(usuario_id)
+
+    def test_cada_cierre_solo_trae_las_ventas_de_su_propia_ventana(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        articulos_repo.crear_articulo("COD9", "Producto", None, None, 10.0, 5.0, 0)
+        compras_repo.registrar_compra(usuario_id, [{"codigo": "COD9", "cantidad": 5, "costo_unitario": 5.0}])
+
+        venta_1 = self._vender(usuario_id, datetime(2026, 1, 1, 9, 0, 0))
+        cierre_1 = self._cerrar(usuario_id, datetime(2026, 1, 1, 10, 0, 0))
+
+        venta_2 = self._vender(usuario_id, datetime(2026, 1, 1, 11, 0, 0))
+        cierre_2 = self._cerrar(usuario_id, datetime(2026, 1, 1, 14, 0, 0))
+
+        detalle_1 = turnos_repo.detalle_cierre(cierre_1["id"])
+        self.assertEqual([v["id"] for v in detalle_1["ventas"]], [venta_1])
+
+        detalle_2 = turnos_repo.detalle_cierre(cierre_2["id"])
+        self.assertEqual([v["id"] for v in detalle_2["ventas"]], [venta_2])
+
+    def test_incluye_ventas_anuladas_de_la_ventana_pero_no_cuentan_para_el_total(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        articulos_repo.crear_articulo("COD9", "Producto", None, None, 10.0, 5.0, 0)
+        compras_repo.registrar_compra(usuario_id, [{"codigo": "COD9", "cantidad": 5, "costo_unitario": 5.0}])
+
+        venta_ok = self._vender(usuario_id, datetime(2026, 1, 1, 9, 0, 0))
+        venta_anulada = self._vender(usuario_id, datetime(2026, 1, 1, 9, 30, 0))
+        ventas_repo.anular_venta(venta_anulada, usuario_id, "Test")
+
+        cierre = self._cerrar(usuario_id, datetime(2026, 1, 1, 10, 0, 0))
+
+        # El total del cierre solo contó la confirmada (la anulada no
+        # suma, ver _sumar_ventas_por_origen_y_metodo).
+        self.assertEqual(cierre["ventas_efectivo"], 10.0)
+
+        detalle = turnos_repo.detalle_cierre(cierre["id"])
+        ids = {v["id"]: v["estado"] for v in detalle["ventas"]}
+        self.assertEqual(ids[venta_ok], dominio.VENTA_CONFIRMADA)
+        self.assertEqual(ids[venta_anulada], dominio.VENTA_ANULADA)
+
+    def test_venta_en_el_mismo_segundo_que_un_cierre_no_se_pierde(self):
+        # Reproduce el bug real: una venta hecha justo al abrir el turno
+        # siguiente, en el MISMO segundo de reloj que el cierre anterior
+        # (pero microsegundos después). Con fecha_cierre y ventas.fecha
+        # grabados con precisión de un solo segundo, los dos strings
+        # empataban y esta venta quedaba afuera de los DOS turnos: no la
+        # contaba el cierre que se estaba cerrando (llegó después del
+        # corte) ni el siguiente (el ">" estricto la excluía por el
+        # empate) -- ver el porqué de la precisión de microsegundos en
+        # ventas_repo.confirmar_venta / turnos_repo.cerrar_turno.
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        articulos_repo.crear_articulo("COD9", "Producto", None, None, 10.0, 5.0, 0)
+        compras_repo.registrar_compra(usuario_id, [{"codigo": "COD9", "cantidad": 5, "costo_unitario": 5.0}])
+
+        cierre_1 = self._cerrar(usuario_id, datetime(2026, 1, 1, 10, 0, 0, 500000))
+        venta_2 = self._vender(usuario_id, datetime(2026, 1, 1, 10, 0, 0, 800000))
+        cierre_2 = self._cerrar(usuario_id, datetime(2026, 1, 1, 11, 0, 0))
+
+        detalle_2 = turnos_repo.detalle_cierre(cierre_2["id"])
+        self.assertEqual([v["id"] for v in detalle_2["ventas"]], [venta_2])
+        self.assertEqual(cierre_2["ventas_efectivo"], 10.0)
+
+
 class TestTurnosFaltantes(BaseConBaseTemporal):
     def test_turno_cerrado_no_aparece_pero_los_vencidos_sin_cerrar_si(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
@@ -632,6 +750,93 @@ class TestResumenPorTurno(BaseConBaseTemporal):
 
         self.assertEqual(por_turno["NOCHE"]["total"], 0.0)
         self.assertEqual(por_turno["NOCHE"]["cantidad_ventas"], 0)
+
+
+class TestResumenPorOrigen(BaseConBaseTemporal):
+    """reportes_repo.resumen_por_origen: desglose Kiosko vs. Alquiler de
+    PCs por turno/día/semana/rango, para la pestaña "Kiosko vs. PCs" de
+    Reportes."""
+
+    def _preparar_articulo(self, usuario_id):
+        articulos_repo.crear_articulo("COD9", "Producto", None, None, 100.0, 50.0, 0)
+        compras_repo.registrar_compra(usuario_id, [{"codigo": "COD9", "cantidad": 1000, "costo_unitario": 50.0}])
+
+    def _vender_kiosko(self, usuario_id, momento, monto=100.0):
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            ventas_repo.confirmar_venta(
+                usuario_id,
+                [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 1, "precio_unitario": monto}],
+                [{"metodo": "EFECTIVO", "monto": monto}],
+            )
+
+    def _vender_pcs(self, usuario_id, momento, monto=200.0):
+        # Estación y bono nuevos por venta -- evita depender de la lógica
+        # de "extender sesión existente" de asignar_bono, que no viene al
+        # caso acá (solo interesa que la plata quede clasificada ALQUILER_PCS).
+        estacion_id = pcs_repo.crear_estacion(f"PC {momento.isoformat()}")
+        bono_id = pcs_repo.crear_bono(f"Bono {momento.isoformat()}", 60, monto)
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": monto}])
+
+    def test_rango_separa_kiosko_de_pcs(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self._preparar_articulo(usuario_id)
+        self._vender_kiosko(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 100.0)
+        self._vender_pcs(usuario_id, datetime(2026, 1, 5, 9, 0, 0), 3000.0)
+
+        filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")
+
+        self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 100.0, "pcs": 3000.0, "total": 3100.0}])
+
+    def test_rango_sin_ventas_devuelve_una_fila_en_cero(self):
+        filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")
+
+        self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 0.0, "pcs": 0.0, "total": 0.0}])
+
+    def test_turno_siempre_devuelve_los_tres_aunque_falten_ventas(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self._preparar_articulo(usuario_id)
+        self._vender_kiosko(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 100.0)  # Mañana
+
+        filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "turno")
+        por_turno = {f["etiqueta"]: f for f in filas}
+
+        self.assertEqual(set(por_turno.keys()), {"Mañana", "Tarde", "Noche"})
+        self.assertEqual(por_turno["Mañana"]["kiosko"], 100.0)
+        self.assertEqual(por_turno["Tarde"]["total"], 0.0)
+        self.assertEqual(por_turno["Noche"]["total"], 0.0)
+
+    def test_dia_una_fila_por_cada_dia_con_ventas(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self._preparar_articulo(usuario_id)
+        self._vender_kiosko(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 100.0)
+        self._vender_pcs(usuario_id, datetime(2026, 1, 6, 9, 0, 0), 3000.0)
+
+        filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-06", "dia")
+
+        self.assertEqual([f["etiqueta"] for f in filas], ["05/01/2026", "06/01/2026"])
+        self.assertEqual(filas[0]["kiosko"], 100.0)
+        self.assertEqual(filas[0]["pcs"], 0.0)
+        self.assertEqual(filas[1]["pcs"], 3000.0)
+
+    def test_semana_junta_lunes_a_domingo_y_corta_en_el_lunes_siguiente(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self._preparar_articulo(usuario_id)
+        # 2026-01-05 es lunes; 2026-01-11 es domingo de la misma semana;
+        # 2026-01-12 ya es lunes de la semana siguiente.
+        self._vender_kiosko(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 100.0)
+        self._vender_kiosko(usuario_id, datetime(2026, 1, 11, 8, 0, 0), 50.0)
+        self._vender_kiosko(usuario_id, datetime(2026, 1, 12, 8, 0, 0), 25.0)
+
+        filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-12", "semana")
+
+        self.assertEqual(len(filas), 2)
+        self.assertEqual(filas[0]["etiqueta"], "Semana del 05/01 al 11/01/2026")
+        self.assertEqual(filas[0]["kiosko"], 150.0)
+        self.assertEqual(filas[1]["etiqueta"], "Semana del 12/01 al 18/01/2026")
+        self.assertEqual(filas[1]["kiosko"], 25.0)
 
 
 class TestMigracionOrigenEnVentas(BaseConBaseTemporal):
@@ -762,6 +967,175 @@ class TestMigracionReferenciaBonoEnMovimientosSaldoMiembro(BaseConBaseTemporal):
         )
 
         self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 180)
+
+    def test_no_rompe_si_el_bono_id_heredado_no_existe_en_bonos_miembro(self):
+        # Reproduce el otro escenario real (además del de arriba): bajo el
+        # esquema viejo, bono_id apuntaba a bonos_tiempo y una CARGA con
+        # bono_id=1 era perfectamente válida ahí. Migrar esa fila tal cual
+        # a la tabla nueva (bono_id -> bonos_miembro) rompía con FK si
+        # bonos_miembro nunca tuvo un bono con ese mismo id -- antes esto
+        # cortaba la migración ENTERA a mitad de copiar.
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        bono_tiempo_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+
+        with database.conexion_db() as conexion:
+            conexion.execute("DROP TABLE movimientos_saldo_miembro")
+            conexion.execute("""
+                CREATE TABLE movimientos_saldo_miembro (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+                    tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
+                    minutos     INTEGER NOT NULL,
+                    fecha       TEXT NOT NULL,
+                    venta_id    INTEGER REFERENCES ventas(id),
+                    bono_id     INTEGER REFERENCES bonos_tiempo(id),
+                    sesion_id   INTEGER REFERENCES sesiones_pc(id)
+                )
+            """)
+            movimiento_id = conexion.execute(
+                "INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, bono_id) "
+                "VALUES (?, 'CARGA', ?, ?, ?)",
+                (miembro_id, 60, "2026-01-01T10:00:00", bono_tiempo_id),
+            ).lastrowid
+
+            # bonos_miembro nunca tuvo ningún bono creado: el id heredado
+            # no existe ahí, aunque sí era válido en bonos_tiempo.
+            self.assertIsNone(bonos_miembro_repo.obtener_bono(bono_tiempo_id))
+
+            database._migrar_referencia_bono_en_movimientos_saldo_miembro(conexion)
+
+            fila = conexion.execute(
+                "SELECT * FROM movimientos_saldo_miembro WHERE id = ?", (movimiento_id,)
+            ).fetchone()
+            self.assertEqual(fila["bono_id"], bono_tiempo_id)
+
+    def test_recupera_movimientos_de_una_tabla_viejo_dejada_por_un_corte_anterior(self):
+        # Simula el escenario del corte de luz: la tabla nueva ya quedó con
+        # el esquema correcto (recreada de cero por el propio
+        # CREATE TABLE IF NOT EXISTS del arranque siguiente) pero VACÍA,
+        # mientras el historial real quedó atrapado en "..._viejo" porque
+        # el programa se cerró antes de terminar de copiarlo la vez
+        # anterior. Antes, ver la tabla nueva con el esquema ya correcto
+        # bastaba para dar la migración por terminada, perdiendo ese
+        # historial para siempre (invisible, nunca más migrado).
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+
+        with database.conexion_db() as conexion:
+            conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
+            movimiento_id = conexion.execute(
+                "INSERT INTO movimientos_saldo_miembro_viejo (miembro_id, tipo, minutos, fecha) "
+                "VALUES (?, 'CONSUMO', ?, ?)",
+                (miembro_id, 45, "2026-01-01T10:00:00"),
+            ).lastrowid
+            conexion.execute("""
+                CREATE TABLE movimientos_saldo_miembro (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+                    tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
+                    minutos     INTEGER NOT NULL,
+                    fecha       TEXT NOT NULL,
+                    venta_id    INTEGER REFERENCES ventas(id),
+                    bono_id     INTEGER REFERENCES bonos_miembro(id),
+                    sesion_id   INTEGER REFERENCES sesiones_pc(id)
+                )
+            """)
+
+            database._migrar_referencia_bono_en_movimientos_saldo_miembro(conexion)
+
+            fila = conexion.execute(
+                "SELECT * FROM movimientos_saldo_miembro WHERE id = ?", (movimiento_id,)
+            ).fetchone()
+            self.assertIsNotNone(fila)
+            self.assertEqual(fila["minutos"], 45)
+            tabla_vieja = conexion.execute(
+                "SELECT name FROM sqlite_master WHERE name = 'movimientos_saldo_miembro_viejo'"
+            ).fetchone()
+            self.assertIsNone(tabla_vieja)
+
+
+class TestMigracionCheckTipoEnMovimientosSaldoMiembro(BaseConBaseTemporal):
+    def test_agrega_anulacion_al_check_sin_perder_filas(self):
+        # Simula una base "vieja" (de antes de que existiera ANULACION,
+        # 2026-09-29): recrea la tabla a mano con el CHECK original (solo
+        # CARGA/CONSUMO/REINTEGRO) y una fila real, igual que
+        # TestMigracionReferenciaBonoEnMovimientosSaldoMiembro simula la
+        # base de antes de bonos_miembro.
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+
+        with database.conexion_db() as conexion:
+            conexion.execute("DROP TABLE movimientos_saldo_miembro")
+            conexion.execute("""
+                CREATE TABLE movimientos_saldo_miembro (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+                    tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
+                    minutos     INTEGER NOT NULL,
+                    fecha       TEXT NOT NULL,
+                    venta_id    INTEGER REFERENCES ventas(id),
+                    bono_id     INTEGER REFERENCES bonos_miembro(id),
+                    sesion_id   INTEGER REFERENCES sesiones_pc(id)
+                )
+            """)
+            movimiento_id = conexion.execute(
+                "INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha) "
+                "VALUES (?, 'CONSUMO', ?, ?)",
+                (miembro_id, 60, "2026-01-01T10:00:00"),
+            ).lastrowid
+
+            database._migrar_check_tipo_en_movimientos_saldo_miembro(conexion)
+
+            # El CHECK viejo hubiera rechazado esto con
+            # "CHECK constraint failed" -- si no rompe, ya se migró.
+            conexion.execute(
+                "INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, venta_id) "
+                "VALUES (?, 'ANULACION', ?, ?, ?)",
+                (miembro_id, 30, "2026-01-01T10:05:00", None),
+            )
+
+            fila = conexion.execute(
+                "SELECT * FROM movimientos_saldo_miembro WHERE id = ?", (movimiento_id,)
+            ).fetchone()
+            self.assertEqual(fila["minutos"], 60)
+
+    def test_recupera_movimientos_de_una_tabla_viejo_dejada_por_un_corte_anterior(self):
+        # Mismo escenario de corte de luz que la migración hermana (ver
+        # TestMigracionReferenciaBonoEnMovimientosSaldoMiembro): la tabla
+        # nueva ya quedó con el CHECK correcto (recreada de cero por el
+        # CREATE TABLE IF NOT EXISTS del arranque siguiente) pero VACÍA,
+        # mientras el historial real quedó atrapado en "..._viejo".
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+
+        with database.conexion_db() as conexion:
+            conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
+            movimiento_id = conexion.execute(
+                "INSERT INTO movimientos_saldo_miembro_viejo (miembro_id, tipo, minutos, fecha) "
+                "VALUES (?, 'CONSUMO', ?, ?)",
+                (miembro_id, 45, "2026-01-01T10:00:00"),
+            ).lastrowid
+            conexion.execute("""
+                CREATE TABLE movimientos_saldo_miembro (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+                    tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO', 'ANULACION')),
+                    minutos     INTEGER NOT NULL,
+                    fecha       TEXT NOT NULL,
+                    venta_id    INTEGER REFERENCES ventas(id),
+                    bono_id     INTEGER REFERENCES bonos_miembro(id),
+                    sesion_id   INTEGER REFERENCES sesiones_pc(id)
+                )
+            """)
+
+            database._migrar_check_tipo_en_movimientos_saldo_miembro(conexion)
+
+            fila = conexion.execute(
+                "SELECT * FROM movimientos_saldo_miembro WHERE id = ?", (movimiento_id,)
+            ).fetchone()
+            self.assertIsNotNone(fila)
+            self.assertEqual(fila["minutos"], 45)
+            tabla_vieja = conexion.execute(
+                "SELECT name FROM sqlite_master WHERE name = 'movimientos_saldo_miembro_viejo'"
+            ).fetchone()
+            self.assertIsNone(tabla_vieja)
 
 
 class TestDesglosePorOrigenEnCierreDeTurno(BaseConBaseTemporal):

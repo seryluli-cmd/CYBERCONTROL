@@ -2,11 +2,14 @@
 reportes_repo.py
 ==================
 Consultas para la sección de Reportes: el Resumen (cuánta plata se
-trabajó en un rango de fechas) y el Ranking de Ventas por artículo
-(qué se vende más). Son solo dos consultas SQL con agregación (SUM,
+trabajó en un rango de fechas), el desglose Kiosko vs. Alquiler de PCs
+(por turno, día, semana o el rango completo) y el Ranking de Ventas por
+artículo (qué se vende más). Son solo consultas SQL con agregación (SUM,
 GROUP BY), apoyadas en los índices que se crean en database.py — por
 eso van a ser rápidas incluso con años de ventas acumuladas.
 """
+
+from datetime import date, timedelta
 
 import dominio
 from database import conexion_db
@@ -94,6 +97,90 @@ def resumen_por_turno(desde: str, hasta: str):
         totales[fila["turno"]][clave] = fila["total"] or 0.0
 
     return [{"turno": turno, **datos} for turno, datos in totales.items()]
+
+
+_COLUMNA_AGRUPACION = {
+    "turno": "ventas.turno",
+    "dia": "date(ventas.fecha)",
+    # 'weekday 0' avanza a el próximo domingo (0 = domingo) y '-6 days'
+    # retrocede al lunes de esa misma semana -- modismo estándar de
+    # SQLite para "lunes de la semana que contiene esta fecha".
+    "semana": "date(ventas.fecha, 'weekday 0', '-6 days')",
+    "rango": "1",
+}
+
+
+def _etiqueta_agrupacion(clave, agrupar_por: str) -> str:
+    if agrupar_por == "turno":
+        return clave.capitalize()
+    if agrupar_por == "rango":
+        return "Total del período"
+    fecha = date.fromisoformat(clave)
+    if agrupar_por == "dia":
+        return fecha.strftime("%d/%m/%Y")
+    # "semana": la columna de agrupación ya devuelve el lunes de esa semana.
+    fin_semana = fecha + timedelta(days=6)
+    return f"Semana del {fecha.strftime('%d/%m')} al {fin_semana.strftime('%d/%m/%Y')}"
+
+
+def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
+    """
+    Desglosa lo facturado en Kiosko vs. Alquiler de PCs (ver
+    dominio.ORIGENES_VENTA) entre dos fechas, agrupado según
+    `agrupar_por`:
+      - "rango" (default): una sola fila con el total del período completo.
+      - "turno": una fila por turno (Mañana/Tarde/Noche), siempre las 3
+        aunque alguno no tenga ventas en el rango -- mismo criterio que
+        resumen_por_turno().
+      - "dia": una fila por día calendario con al menos una venta.
+      - "semana": una fila por semana (lunes a domingo) con al menos una
+        venta.
+    Cada fila trae "etiqueta" (ya lista para mostrar), "kiosko", "pcs" y
+    "total" (= kiosko + pcs). Usa `ventas.total` (no venta_pagos): acá
+    no importa el medio de pago, solo de qué negocio vino cada peso.
+    """
+    columna_grupo = _COLUMNA_AGRUPACION[agrupar_por]
+
+    with conexion_db() as conexion:
+        filas = conexion.execute(
+            f"""
+            SELECT {columna_grupo} AS clave, ventas.origen AS origen,
+                   COALESCE(SUM(ventas.total), 0) AS total
+            FROM ventas
+            WHERE estado = ? AND date(fecha) BETWEEN date(?) AND date(?)
+            GROUP BY clave, ventas.origen
+            """,
+            (dominio.VENTA_CONFIRMADA, desde, hasta),
+        ).fetchall()
+
+    totales_por_clave = {}
+    for fila in filas:
+        totales = totales_por_clave.setdefault(
+            fila["clave"], {origen: 0.0 for origen in dominio.ORIGENES_VENTA}
+        )
+        totales[fila["origen"]] = fila["total"] or 0.0
+
+    if agrupar_por == "turno":
+        claves = list(dominio.TURNOS)
+    elif agrupar_por == "rango":
+        claves = [1]
+    else:
+        claves = sorted(totales_por_clave.keys())
+    for clave in claves:
+        totales_por_clave.setdefault(clave, {origen: 0.0 for origen in dominio.ORIGENES_VENTA})
+
+    resultado = []
+    for clave in claves:
+        totales = totales_por_clave[clave]
+        kiosko = totales[dominio.ORIGEN_KIOSKO]
+        pcs = totales[dominio.ORIGEN_ALQUILER_PCS]
+        resultado.append({
+            "etiqueta": _etiqueta_agrupacion(clave, agrupar_por),
+            "kiosko": kiosko,
+            "pcs": pcs,
+            "total": kiosko + pcs,
+        })
+    return resultado
 
 
 def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):

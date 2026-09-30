@@ -2,20 +2,26 @@
 comandos_pc_repo.py
 =====================
 Control remoto de una estación desde el mostrador: reiniciar, apagar,
-mandar un mensaje o pedir una captura de pantalla. Como el mostrador no
-tiene conexión directa hacia la PC cliente, esto solo deja un comando
+mandar un mensaje, pedir una captura de pantalla, cambiar la puerta de
+enlace/DNS de red o ajustar el volumen. Como el mostrador no tiene
+conexión directa hacia la PC cliente, esto solo deja un comando
 "pendiente" en la base -- el agente de esa estación (carpeta hermana
 "AGENTE PC KIOSKO") lo recoge solo en su próxima consulta de
 `GET /estado`, cada 5 segundos (ver servidor_red.py).
 
 Por eso una acción acá no es instantánea: el Operador puede ver el
 resultado tardar hasta esos 5 segundos (más lo que tarde la PC en
-ejecutar la acción). Para REINICIAR/APAGAR/MENSAJE no hace falta ningún
-resultado de vuelta -- entregado es entregado. Para SCREENSHOT sí: el
-agente sube la imagen aparte con `POST /comando_resultado`, y
-`guardar_screenshot` la deja en disco (no en la fila de la base, para no
-inflar el .db con binarios) devolviendo la ruta relativa que se guarda en
-`comandos_pc.resultado`.
+ejecutar la acción). Para REINICIAR/APAGAR/MENSAJE/VOLUMEN no hace falta
+ningún resultado de vuelta -- entregado es entregado. Para SCREENSHOT y
+CAMBIAR_RED sí: el agente sube un resultado aparte con
+`POST /comando_resultado` -- la imagen para SCREENSHOT
+(`guardar_screenshot` la deja en disco, no en la fila de la base, para no
+inflar el .db con binarios, devolviendo la ruta relativa) o un texto
+corto "OK"/"ERROR: ..." para CAMBIAR_RED (directo en `comandos_pc.resultado`,
+ver `marcar_resultado`) -- a diferencia de reiniciar/apagar, cambiar de
+módem sí puede fallar del lado de la PC (adaptador no encontrado, sin
+permisos) y vale la pena que el mostrador se entere sin tener que ir
+hasta ahí a revisar.
 """
 
 import base64
@@ -29,6 +35,8 @@ TIPO_REINICIAR = "REINICIAR"
 TIPO_APAGAR = "APAGAR"
 TIPO_MENSAJE = "MENSAJE"
 TIPO_SCREENSHOT = "SCREENSHOT"
+TIPO_CAMBIAR_RED = "CAMBIAR_RED"
+TIPO_VOLUMEN = "VOLUMEN"
 
 
 def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:

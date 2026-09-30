@@ -61,7 +61,17 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     acumulando venta tras venta a lo largo de los años.
     """
     ahora = datetime.now()
-    ahora_iso = ahora.isoformat(timespec="seconds")
+    # Microsegundos, no segundos: turnos_repo compara "ventas.fecha" contra
+    # "cierres_turno.fecha_cierre" con un corte estricto (> / <=) para
+    # decidir a qué turno pertenece cada venta. Con precisión de un solo
+    # segundo, una venta y un cierre que cayeran en el mismo segundo (una
+    # venta hecha justo al abrir el turno siguiente, por ejemplo) podían
+    # empatar en el string de fecha y la venta quedaba afuera de los DOS
+    # turnos -- ni en el que se estaba cerrando (llegó después del corte)
+    # ni en el siguiente (el ">" estricto la excluía por el empate). Ver
+    # turnos_repo.cerrar_turno, que graba fecha_cierre con la misma
+    # precisión por la misma razón.
+    ahora_iso = ahora.isoformat(timespec="microseconds")
     turno = calcular_turno(ahora)
     total = round(total_carrito(lineas), 2)
 
@@ -101,6 +111,40 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
         return venta_id
 
 
+def _anular_venta(conexion, venta_id: int, usuario_admin_id: int, motivo: str):
+    """
+    Núcleo de anular_venta que opera sobre una conexión YA ABIERTA -- lo
+    necesita control_pcs.repositories.miembros_repo.anular_carga para que
+    anular una venta que había cargado saldo de un socio, y revertir esa
+    carga (ver ahí), queden en la MISMA transacción: o se anulan y
+    revierten juntas, o no se anula nada.
+    """
+    venta = conexion.execute("SELECT * FROM ventas WHERE id = ?", (venta_id,)).fetchone()
+    if venta is None:
+        raise ValueError("La venta no existe.")
+    if venta["estado"] == dominio.VENTA_ANULADA:
+        raise ValueError("Esa venta ya estaba anulada.")
+
+    lineas = conexion.execute(
+        "SELECT articulo_codigo, cantidad FROM venta_detalle WHERE venta_id = ?", (venta_id,)
+    ).fetchall()
+    for linea in lineas:
+        conexion.execute(
+            "UPDATE articulos SET stock = stock + ? WHERE codigo = ?",
+            (linea["cantidad"], linea["articulo_codigo"]),
+        )
+
+    ahora = datetime.now().isoformat(timespec="seconds")
+    conexion.execute(
+        """
+        UPDATE ventas
+        SET estado = ?, anulada_por = ?, anulada_fecha = ?, anulada_motivo = ?
+        WHERE id = ?
+        """,
+        (dominio.VENTA_ANULADA, usuario_admin_id, ahora, motivo, venta_id),
+    )
+
+
 def anular_venta(venta_id: int, usuario_admin_id: int, motivo: str):
     """
     Anula una venta ya confirmada (solo lo puede hacer un Admin, eso se
@@ -108,32 +152,15 @@ def anular_venta(venta_id: int, usuario_admin_id: int, motivo: str):
     vendido y deja constancia de quién anuló, cuándo, y por qué — la
     venta NUNCA se borra de la base, solo cambia su estado a ANULADA,
     para no perder el rastro.
+
+    Si la venta había cargado saldo a un socio (control_pcs, "Cargar
+    Saldo"), usar control_pcs.repositories.miembros_repo.anular_carga en
+    su lugar -- esta función solo sabe de ventas/stock, y anular una
+    carga sin revertir el saldo le dejaría al socio minutos que ya nadie
+    cobró (ver ese repo).
     """
     with conexion_db() as conexion:
-        venta = conexion.execute("SELECT * FROM ventas WHERE id = ?", (venta_id,)).fetchone()
-        if venta is None:
-            raise ValueError("La venta no existe.")
-        if venta["estado"] == dominio.VENTA_ANULADA:
-            raise ValueError("Esa venta ya estaba anulada.")
-
-        lineas = conexion.execute(
-            "SELECT articulo_codigo, cantidad FROM venta_detalle WHERE venta_id = ?", (venta_id,)
-        ).fetchall()
-        for linea in lineas:
-            conexion.execute(
-                "UPDATE articulos SET stock = stock + ? WHERE codigo = ?",
-                (linea["cantidad"], linea["articulo_codigo"]),
-            )
-
-        ahora = datetime.now().isoformat(timespec="seconds")
-        conexion.execute(
-            """
-            UPDATE ventas
-            SET estado = ?, anulada_por = ?, anulada_fecha = ?, anulada_motivo = ?
-            WHERE id = ?
-            """,
-            (dominio.VENTA_ANULADA, usuario_admin_id, ahora, motivo, venta_id),
-        )
+        _anular_venta(conexion, venta_id, usuario_admin_id, motivo)
 
 
 def buscar_venta(venta_id: int):
@@ -183,7 +210,9 @@ def registrar_venta_sin_detalle(
     sesión de PC, el movimiento de saldo) y tiene que ser exactamente el
     mismo instante en los dos lados, no uno un poco después del otro.
     """
-    ahora_iso = ahora.isoformat(timespec="seconds")
+    # Microsegundos, no segundos: ver el mismo comentario en
+    # confirmar_venta -- acá aplica igual, esto también graba "ventas.fecha".
+    ahora_iso = ahora.isoformat(timespec="microseconds")
     turno = calcular_turno(ahora)
 
     cursor = conexion.execute(

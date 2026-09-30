@@ -12,6 +12,8 @@ Punto de entrada del programa. Al ejecutar este archivo:
 Para arrancar el sistema, se ejecuta:  python main.py
 """
 
+import gc
+import socket
 import sys
 import traceback
 from pathlib import Path
@@ -22,6 +24,34 @@ from database import inicializar_base_de_datos, hacer_backup_automatico
 from servidor_red import iniciar_servidor
 from ui.login_window import LoginWindow
 from ui.main_window import MainWindow
+
+# Puerto dedicado SOLO para detectar una segunda copia de Kiosko abierta
+# en la misma PC -- no tiene nada que ver con servidor_red.PUERTO_SERVIDOR
+# (8899, el que hablan los agentes de las PCs cliente). Bindear un socket
+# TCP en localhost es un "mutex" de instancia única liviano y sin
+# dependencias nuevas: el sistema operativo libera el puerto solo en
+# cuanto el proceso termina, sea un cierre normal o un crash, así que
+# nunca queda un candado colgado que obligue a reiniciar Windows para
+# poder volver a abrir el programa.
+PUERTO_INSTANCIA_UNICA = 8898
+
+# Referencia viva al socket-candado: si se dejara que el recolector de
+# basura la destruya, el socket se cerraría solo y el "candado" dejaría de
+# valer apenas terminara main(). Mantenerla acá arriba lo mantiene abierto
+# mientras el proceso siga vivo.
+_candado_instancia_unica = None
+
+
+def _ya_hay_una_copia_abierta() -> bool:
+    global _candado_instancia_unica
+    candado = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        candado.bind(("127.0.0.1", PUERTO_INSTANCIA_UNICA))
+    except OSError:
+        candado.close()
+        return True
+    _candado_instancia_unica = candado
+    return False
 
 # Carpeta del programa (donde está este archivo), para ubicar el ícono
 # sin importar desde qué directorio se lo ejecute.
@@ -309,14 +339,44 @@ def _manejar_excepcion_no_capturada(tipo, valor, tb):
 
 
 def main():
+    # Desactivado a propósito: un QTimer conectado a un método propio (ej.
+    # PanelControlPcs._timer -> self._refrescar) arma un ciclo de
+    # referencias Python que solo el recolector CÍCLICO puede romper -- y
+    # ese recolector puede dispararse desde CUALQUIER hilo que esté
+    # asignando memoria en ese momento, no solo el hilo dueño del QObject.
+    # servidor_red.py corre un hilo de fondo real (threading.Thread, no
+    # QThread) todo el tiempo que Kiosko está abierto: si ese hilo dispara
+    # la recolección justo cuando le toca destruir un QTimer de la
+    # interfaz, Qt tira "QObject::killTimer: Timers cannot be stopped from
+    # another thread" y deja el objeto C++ roto -- exactamente el origen
+    # de los crashes "Internal C++ object already deleted" que veníamos
+    # viendo en data/errores.log (PanelControlPcs, PanelActividad, QTimer)
+    # antes de encontrar la causa real. Qt ya libera sus QObject solos por
+    # relación padre/hijo (QTimer(self)) y el resto del programa se apoya
+    # en refcounting normal, no en ciclos -- lo único que se pierde acá es
+    # no limpiar los pocos ciclos puramente Python que arma la propia UI
+    # (uno por pantalla con timer, no uno por refresco), que en un programa
+    # que se reinicia a diario no llega a pesar en memoria.
+    gc.disable()
     sys.excepthook = _manejar_excepcion_no_capturada
+    # QApplication se crea PRIMERO (antes de tocar la base o el servidor)
+    # porque el cartel de "ya hay una copia abierta" necesita una
+    # QApplication viva para poder mostrarse.
+    app = QApplication(sys.argv)
+    if _ya_hay_una_copia_abierta():
+        QMessageBox.warning(
+            None, "Kiosko ya está abierto",
+            "Ya hay una copia de Kiosko abierta en esta PC.\n\n"
+            "Cerrala antes de abrir otra -- tener dos copias a la vez "
+            "puede pisar cambios entre ellas."
+        )
+        sys.exit(0)
     inicializar_base_de_datos()
     hacer_backup_automatico()
     # Corre todo el tiempo que Kiosko esté abierto, sin importar quién
     # esté logueado -- es lo que consultan las PCs bloqueadas del local
     # (ver servidor_red.py y la carpeta hermana "AGENTE PC KIOSKO").
     iniciar_servidor()
-    app = QApplication(sys.argv)
     app.setStyle("Fusion")  # look más limpio y consistente entre sistemas operativos
     app.setStyleSheet(HOJA_DE_ESTILOS)
     # Ícono de la caja registradora: al ponerlo en la aplicación (y no en

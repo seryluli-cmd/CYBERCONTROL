@@ -202,10 +202,17 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   venta" (solo si `self.es_admin`) pide motivo obligatorio y llama a
   `ventas_repo.anular_venta`, que **repone el stock** de cada línea y
   marca `estado='ANULADA'` con auditoría (quién/cuándo/por qué).
-- **Reportes** (`reportes_window.py`, `ReportesWindow`) — tabs Resumen
-  (`reportes_repo.resumen_ventas`: total + desglose efectivo/digital por
-  rango de fechas, atajo "Solo Hoy") y Ranking
-  (`reportes_repo.ranking_ventas`, por cantidad o por monto).
+- **Reportes** (`reportes_window.py`, `ReportesWindow`) — 4 tabs, todas
+  con filtro Desde/Hasta y atajo "Solo Hoy": **Resumen de Ventas**
+  (`reportes_repo.resumen_ventas`: total + desglose efectivo/digital),
+  **Por Turno** (`reportes_repo.resumen_por_turno`: mismo desglose pero
+  separado por Mañana/Tarde/Noche, siempre las 3 aunque alguna quede en
+  $0), **Kiosko vs. PCs** (`reportes_repo.resumen_por_origen`: cuánto se
+  facturó de Kiosko contra Alquiler de PCs — ver `dominio.ORIGENES_VENTA`
+  —, con un combo para agrupar por Turno/Día/Semana o el total del rango
+  completo; agrega una fila TOTAL al pie cuando hay más de un período
+  listado) y **Ranking de Ventas** (`reportes_repo.ranking_ventas`, por
+  cantidad o por monto).
 - **Control de Cierres de Turno** (`caja_window.py`,
   `ControlCierresWindow`) — lista `turnos_repo.listar_cierres()` (columna
   Turno con la etiqueta de `etiqueta_turno`, incluye "Domingo T1"/"T2"),

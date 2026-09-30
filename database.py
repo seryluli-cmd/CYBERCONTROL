@@ -403,6 +403,7 @@ def inicializar_base_de_datos():
         )
     """)
     _migrar_columna_ultima_conexion_estaciones(conexion)
+    _migrar_columna_ultima_ip_estaciones(conexion)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bonos_tiempo (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -501,10 +502,10 @@ def inicializar_base_de_datos():
     # cargarse a su saldo desde "Cargar Saldo" -> "Bono fijo" (ver
     # miembros_repo.cargar_saldo_por_bono) -- el dueño pidió poder
     # ofrecerle a los socios combos propios, distintos de los del
-    # mostrador. Solo ADMIN puede crear/editar/dar de baja un bono de
-    # ESTE catálogo (ver control_pcs/ui/miembros_window.MiembrosWindow) --
-    # a diferencia de bonos_tiempo, que cualquiera con 'permiso_control_pcs'
-    # puede administrar.
+    # mostrador. Crear/editar/dar de baja un bono de ESTE catálogo, igual
+    # que uno de bonos_tiempo, es exclusivo de ADMIN (ver
+    # ui/main_window.ConfiguracionAdminWindow) -- cualquiera con
+    # 'permiso_control_pcs' puede usar un bono ya creado, no editarlo.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bonos_miembro (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -518,15 +519,17 @@ def inicializar_base_de_datos():
     # venta_id, porque implica cobrar plata real — y bono_id si se cargó
     # comprando un bono en vez de un monto libre, SIEMPRE del catálogo
     # bonos_miembro, nunca de bonos_tiempo), CONSUMO (sesion_id, al abrir
-    # una PC con saldo) y REINTEGRO (sesion_id, cuando se corta antes de
-    # tiempo y se devuelve lo no usado). Como esto maneja plata de
-    # terceros, poder reconstruir "por qué le queda tal saldo a este
-    # socio" no es opcional.
+    # una PC con saldo), REINTEGRO (sesion_id, cuando se corta antes de
+    # tiempo y se devuelve lo no usado) y ANULACION (venta_id, cuando un
+    # Admin anula desde Consulta de Ventas la venta que había originado
+    # una CARGA -- ver ventas_repo.anular_venta / miembros_repo.anular_carga).
+    # Como esto maneja plata de terceros, poder reconstruir "por qué le
+    # queda tal saldo a este socio" no es opcional.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movimientos_saldo_miembro (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
-            tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
+            tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO', 'ANULACION')),
             minutos     INTEGER NOT NULL,
             fecha       TEXT NOT NULL,
             venta_id    INTEGER REFERENCES ventas(id),
@@ -543,6 +546,12 @@ def inicializar_base_de_datos():
     # (reconstruir la tabla, no un ALTER TABLE) porque SQLite no deja
     # cambiar el REFERENCES de una columna que ya existe.
     _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion)
+
+    # Mismo motivo que la migración de arriba, pero para el CHECK de
+    # "tipo" en vez del REFERENCES de "bono_id": una base que ya tenía la
+    # tabla de antes de que existiera ANULACION (2026-09-29) sigue con el
+    # CHECK viejo, y el CREATE TABLE de arriba tampoco la toca.
+    _migrar_check_tipo_en_movimientos_saldo_miembro(conexion)
 
     # Esta migración necesita leer "sesion_bonos" y "movimientos_saldo_miembro"
     # para el backfill (ver la función más abajo), así que va acá -- recién
@@ -621,6 +630,22 @@ def _migrar_columna_ultima_conexion_estaciones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columna_ultima_ip_estaciones(conexion: sqlite3.Connection):
+    """
+    Agrega estaciones.ultima_ip: la IP LAN desde la que llegó el último
+    GET /estado de esa estación (servidor_red.py la saca de
+    self.client_address, no la manda el agente). Es lo que usa el botón
+    "Traer IP" de Gestionar Estaciones -- solo tiene valor una vez que la
+    estación ya existe en esta tabla Y el agente de esa PC hizo al menos
+    un pedido después de creada (una estación recién tipeada y todavía no
+    guardada no tiene fila que actualizar).
+    """
+    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(estaciones)")}
+    if "ultima_ip" not in columnas_actuales:
+        conexion.execute("ALTER TABLE estaciones ADD COLUMN ultima_ip TEXT")
+    conexion.commit()
+
+
 def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     """
     Para una base creada antes de que existiera "Miembros": agrega
@@ -658,34 +683,159 @@ def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Conne
     -- segura de correr en cada arranque, no repite el trabajo si ya se
     migró o si la tabla es nueva (creada directo con el esquema de
     arriba).
+
+    Dos casos más, además del cambio de REFERENCES en sí, para que esta
+    migración no pueda dejar movimientos históricos fuera del historial
+    visible (bug reportado 2026-09-29):
+
+    1. **Corte a mitad de camino.** Si el programa se cierra entre que
+       esta función renombra la tabla vieja y termina de copiarla (por
+       ejemplo, un corte de luz), el PRÓXIMO arranque encuentra la tabla
+       "movimientos_saldo_miembro" ya recreada -- por el propio
+       CREATE TABLE IF NOT EXISTS de inicializar_base_de_datos(), que
+       corre ANTES que esta función en cada arranque -- pero VACÍA,
+       mientras el historial real quedó atrapado en
+       "movimientos_saldo_miembro_viejo" sin que nadie vuelva a mirarla.
+       Guiarse solo por "¿la tabla ya tiene el esquema nuevo?" daba por
+       terminada una migración que en realidad se cortó. Por eso primero
+       se chequea si queda una "_viejo" pendiente de un corte anterior, y
+       si es así se la termina de absorber en vez de darla por perdida.
+    2. **bono_id heredado que ya no existe en el catálogo nuevo.** Bajo
+       el esquema viejo, un bono_id era válido contra bonos_tiempo; al
+       copiarlo tal cual a la tabla nueva (bono_id -> bonos_miembro), con
+       PRAGMA foreign_keys en ON, la fila podía no tener ningún bono con
+       ese mismo id en el catálogo nuevo -- silencioso al principio (los
+       dos catálogos arrancan en 1) y recién notorio cuando las dos
+       secuencias de ids se separan (ver el resto de este docstring). Eso
+       rompía la migración ENTERA con "FOREIGN KEY constraint failed" a
+       mitad de copiar, dejando la base sin migrar. Por eso el chequeo de
+       FK se apaga solo durante esta copia puntual de datos históricos
+       (nunca durante el uso normal del programa): preservar el bono_id
+       tal cual, aunque ya no matchee ningún bono vigente, es mejor que
+       perder el movimiento entero.
     """
+    tabla_vieja_pendiente = conexion.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro_viejo'"
+    ).fetchone() is not None
+
     definicion = conexion.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro'"
     ).fetchone()
-    if definicion is None or "bonos_miembro(id)" in definicion["sql"]:
-        return
+    if definicion is None:
+        return  # base nueva: la tabla ni existe todavía, nada que migrar
 
-    conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
-    conexion.execute("""
-        CREATE TABLE movimientos_saldo_miembro (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
-            tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
-            minutos     INTEGER NOT NULL,
-            fecha       TEXT NOT NULL,
-            venta_id    INTEGER REFERENCES ventas(id),
-            bono_id     INTEGER REFERENCES bonos_miembro(id),
-            sesion_id   INTEGER REFERENCES sesiones_pc(id)
-        )
-    """)
-    conexion.execute("""
-        INSERT INTO movimientos_saldo_miembro
-            (id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id)
-        SELECT id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id
-        FROM movimientos_saldo_miembro_viejo
-    """)
-    conexion.execute("DROP TABLE movimientos_saldo_miembro_viejo")
+    ya_tiene_esquema_nuevo = "bonos_miembro(id)" in definicion["sql"]
+    if ya_tiene_esquema_nuevo and not tabla_vieja_pendiente:
+        return  # ya se migró en un arranque anterior, sin cortes de por medio
+
+    if not ya_tiene_esquema_nuevo:
+        conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
+        conexion.execute("""
+            CREATE TABLE movimientos_saldo_miembro (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+                tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
+                minutos     INTEGER NOT NULL,
+                fecha       TEXT NOT NULL,
+                venta_id    INTEGER REFERENCES ventas(id),
+                bono_id     INTEGER REFERENCES bonos_miembro(id),
+                sesion_id   INTEGER REFERENCES sesiones_pc(id)
+            )
+        """)
+
+    # A este punto "movimientos_saldo_miembro_viejo" existe siempre -- recién
+    # renombrada arriba, o ya estaba de un corte anterior (ver punto 1). Se
+    # copia con FK apagado (punto 2) y con INSERT OR IGNORE: si el corte
+    # anterior pasó DESPUÉS de copiar pero ANTES de borrar la vieja, algunas
+    # filas ya están de las dos veces y no hace falta duplicarlas ni romper
+    # por choque de "id".
+    #
+    # "PRAGMA foreign_keys" es un no-op silencioso si queda una transacción
+    # pendiente (por ejemplo, si quien llamó a esta función venía de hacer
+    # un INSERT propio sin comitear todavía, como en un test) -- por eso se
+    # comitea antes de tocarlo, para no apagar el chequeo "en el papel" y
+    # que la FK siga rompiendo igual.
     conexion.commit()
+    conexion.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conexion.execute("""
+            INSERT OR IGNORE INTO movimientos_saldo_miembro
+                (id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id)
+            SELECT id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id
+            FROM movimientos_saldo_miembro_viejo
+        """)
+        conexion.execute("DROP TABLE movimientos_saldo_miembro_viejo")
+        conexion.commit()
+    finally:
+        conexion.execute("PRAGMA foreign_keys = ON")
+
+
+def _migrar_check_tipo_en_movimientos_saldo_miembro(conexion: sqlite3.Connection):
+    """
+    Agrega 'ANULACION' a los tipos válidos de movimientos_saldo_miembro.tipo
+    (el CHECK (tipo IN (...)) del esquema) -- lo necesita
+    miembros_repo.anular_carga para poder revertir del saldo de un socio
+    una CARGA cuya venta se anuló desde Consulta de Ventas, dejando un
+    movimiento propio en el ledger en vez de disimularlo como un CONSUMO o
+    un REINTEGRO que no fueron (bug reportado 2026-09-29: antes, anular
+    esa venta le sacaba la plata del cierre/caja pero le dejaba los
+    minutos intactos al socio).
+
+    SQLite no deja tocar un CHECK ya grabado con ALTER TABLE, así que se
+    reconstruye la tabla entera -- mismo patrón, y mismas dos
+    salvaguardas (corte a mitad de camino / tabla "_viejo" pendiente de
+    un arranque anterior), que _migrar_referencia_bono_en_movimientos_saldo_miembro
+    (ver esa función para el detalle de cada una). Esta corre siempre
+    DESPUÉS en inicializar_base_de_datos(), así que el REFERENCES de
+    bono_id puede llegar ya corregido o no -- esta migración no lo toca,
+    solo agrega el valor nuevo al CHECK, preservando el que ya esté.
+    """
+    tabla_vieja_pendiente = conexion.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro_viejo'"
+    ).fetchone() is not None
+
+    definicion = conexion.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro'"
+    ).fetchone()
+    if definicion is None:
+        return  # base nueva: la tabla ni existe todavía, nada que migrar
+
+    ya_tiene_check_nuevo = "'ANULACION'" in definicion["sql"]
+    if ya_tiene_check_nuevo and not tabla_vieja_pendiente:
+        return  # ya se migró en un arranque anterior, sin cortes de por medio
+
+    if not ya_tiene_check_nuevo:
+        referencia_bono = "bonos_miembro(id)" if "bonos_miembro(id)" in definicion["sql"] else "bonos_tiempo(id)"
+        conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
+        conexion.execute(f"""
+            CREATE TABLE movimientos_saldo_miembro (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+                tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO', 'ANULACION')),
+                minutos     INTEGER NOT NULL,
+                fecha       TEXT NOT NULL,
+                venta_id    INTEGER REFERENCES ventas(id),
+                bono_id     INTEGER REFERENCES {referencia_bono},
+                sesion_id   INTEGER REFERENCES sesiones_pc(id)
+            )
+        """)
+
+    # Ver el mismo comentario en la migración hermana: el commit de acá
+    # evita que "PRAGMA foreign_keys" sea un no-op silencioso si queda
+    # una transacción pendiente de quien llamó a esta función.
+    conexion.commit()
+    conexion.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conexion.execute("""
+            INSERT OR IGNORE INTO movimientos_saldo_miembro
+                (id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id)
+            SELECT id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id
+            FROM movimientos_saldo_miembro_viejo
+        """)
+        conexion.execute("DROP TABLE movimientos_saldo_miembro_viejo")
+        conexion.commit()
+    finally:
+        conexion.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrar_columna_origen_en_ventas(conexion: sqlite3.Connection):

@@ -1,7 +1,7 @@
 """
 caja_window.py
 ================
-Dos pantallas relacionadas con la plata del día a día:
+Pantallas relacionadas con la plata del día a día:
 
 - CajaWindow: consulta rápida de "cómo viene la caja" en cualquier
   momento, sin cerrar nada (equivalente a la pantalla "Caja" del
@@ -10,8 +10,13 @@ Dos pantallas relacionadas con la plata del día a día:
   retirar la empleada (dejando el fondo de cambio fijo para el próximo
   turno) y lo deja guardado.
 
-Y una tercera, solo para Admin, para controlar los cierres después
-(cargar lo que realmente se contó en cada sobre).
+Y dos más, solo para Admin, para controlar los cierres después:
+- ControlCierresWindow: historial de cierres (uno por turno cerrado) con
+  los totales de cada sobre, y para cargar lo que realmente se contó.
+- DialogoDetalleCierre: el detalle de un cierre puntual -- venta por
+  venta (ver turnos_repo.detalle_cierre), para entender cómo se llegó a
+  esos totales sin tener que ir a buscarlas por separado en Consulta de
+  Ventas.
 """
 
 from PySide6.QtWidgets import (
@@ -23,7 +28,7 @@ from PySide6.QtGui import QFont
 
 import dominio
 from turnos import etiqueta_turno
-from repositories import turnos_repo
+from repositories import turnos_repo, ventas_repo
 from ui.utils import formato_pesos, mostrar_info, confirmar, mostrar_error, manejar_errores, aplicar_clase
 
 
@@ -299,7 +304,10 @@ class ControlCierresWindow(QDialog):
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setAlternatingRowColors(True)
         self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tabla.doubleClicked.connect(self._ver_detalle)
 
+        boton_detalle = QPushButton("Ver Detalle del cierre seleccionado")
+        boton_detalle.clicked.connect(self._ver_detalle)
         boton_verificar = QPushButton("Cargar monto contado en el cierre seleccionado")
         aplicar_clase(boton_verificar, "primario")
         boton_verificar.clicked.connect(self._verificar)
@@ -307,6 +315,7 @@ class ControlCierresWindow(QDialog):
         boton_salir.clicked.connect(self.close)
 
         botones = QHBoxLayout()
+        botones.addWidget(boton_detalle)
         botones.addWidget(boton_verificar)
         botones.addStretch()
         botones.addWidget(boton_salir)
@@ -377,6 +386,15 @@ class ControlCierresWindow(QDialog):
         self.panel_faltantes.show()
 
     @manejar_errores
+    def _ver_detalle(self):
+        fila = self.tabla.currentRow()
+        if fila < 0:
+            mostrar_error(self, "Nada seleccionado", "Elegí primero un cierre de la lista.")
+            return
+        cierre = self.cierres[fila]
+        DialogoDetalleCierre(cierre, self).exec()
+
+    @manejar_errores
     def _verificar(self):
         fila = self.tabla.currentRow()
         if fila < 0:
@@ -396,3 +414,115 @@ class ControlCierresWindow(QDialog):
 
         turnos_repo.verificar_cierre(cierre["id"], monto, self.usuario["id"])
         self._cargar()
+
+
+class DialogoDetalleCierre(QDialog):
+    """
+    Detalle de un cierre puntual: la lista de ventas que cayeron dentro
+    de ese turno (ver turnos_repo.detalle_cierre), para que el Admin
+    pueda ver venta por venta cómo se llegó al total del sobre en vez de
+    confiar solo en los números agregados de la tabla de Control de
+    Cierres. Mismo patrón maestro-detalle que ConsultaVentasWindow: al
+    seleccionar una venta, abajo aparecen sus artículos -- una venta sin
+    detalle real (bono de PC, carga de saldo de Miembro) simplemente deja
+    esa tabla vacía, no hace falta un caso especial.
+    """
+
+    def __init__(self, cierre, parent=None):
+        super().__init__(parent)
+        self.cierre = cierre
+        self.setWindowTitle(
+            f"Detalle — Turno {etiqueta_turno(cierre['fecha'], cierre['turno'])} del {cierre['fecha']}"
+        )
+        self.resize(820, 560)
+        self._armar_interfaz()
+        self._cargar()
+
+    def _armar_interfaz(self):
+        self.encabezado = QLabel()
+        self.encabezado.setWordWrap(True)
+        self.encabezado.setStyleSheet("font-weight: 600;")
+
+        self.tabla = QTableWidget(0, 6)
+        self.tabla.setHorizontalHeaderLabels(["Hora", "Vendedor", "Origen", "Total", "Método", "Estado"])
+        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabla.setAlternatingRowColors(True)
+        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.tabla.itemSelectionChanged.connect(self._mostrar_detalle_venta)
+
+        self.tabla_detalle = QTableWidget(0, 4)
+        self.tabla_detalle.setHorizontalHeaderLabels(["Código", "Descripción", "Cantidad", "Subtotal"])
+        self.tabla_detalle.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabla_detalle.setAlternatingRowColors(True)
+        self.tabla_detalle.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+
+        boton_cerrar = QPushButton("Cerrar")
+        boton_cerrar.clicked.connect(self.close)
+        botones = QHBoxLayout()
+        botones.addStretch()
+        botones.addWidget(boton_cerrar)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.encabezado)
+        layout.addWidget(QLabel("Ventas del turno:"))
+        layout.addWidget(self.tabla)
+        layout.addWidget(QLabel("Artículos de la venta seleccionada (vacío si es bono de PC o carga de saldo):"))
+        layout.addWidget(self.tabla_detalle)
+        layout.addLayout(botones)
+        self.setLayout(layout)
+        for boton in self.findChildren(QPushButton):
+            boton.setAutoDefault(False)
+            boton.setDefault(False)
+
+    @manejar_errores
+    def _cargar(self):
+        resultado = turnos_repo.detalle_cierre(self.cierre["id"])
+        self.ventas = resultado["ventas"]
+
+        # "desde" y "fecha_cierre" son ISO "YYYY-MM-DDTHH:MM:SS" -- solo
+        # se muestra el rango horario acá, la fecha ya está en el título.
+        desde_hora = resultado["desde"][11:16]
+        hasta_hora = self.cierre["fecha_cierre"][11:16]
+        self.encabezado.setText(
+            f"Empleada: {self.cierre['empleada']}   ·   Rango: {desde_hora} → {hasta_hora}   ·   "
+            f"A retirar: {formato_pesos(self.cierre['monto_a_retirar'])}"
+        )
+
+        self.tabla.setRowCount(0)
+        for venta in self.ventas:
+            fila = self.tabla.rowCount()
+            self.tabla.insertRow(fila)
+            self.tabla.setItem(fila, 0, QTableWidgetItem(venta["fecha"][11:16]))
+            self.tabla.setItem(fila, 1, QTableWidgetItem(venta["vendedor"]))
+            self.tabla.setItem(fila, 2, QTableWidgetItem(dominio.NOMBRE_ORIGEN_VENTA[venta["origen"]]))
+            self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(venta["total"])))
+            metodos = venta["metodos"].split(",") if venta["metodos"] else []
+            texto_metodos = " + ".join(dominio.NOMBRE_METODO_PAGO[metodo] for metodo in metodos)
+            self.tabla.setItem(fila, 4, QTableWidgetItem(texto_metodos))
+            item_estado = QTableWidgetItem(venta["estado"])
+            if venta["estado"] == dominio.VENTA_ANULADA:
+                item_estado.setForeground(Qt.red)
+            self.tabla.setItem(fila, 5, item_estado)
+        self.tabla_detalle.setRowCount(0)
+
+    def _venta_seleccionada(self):
+        fila = self.tabla.currentRow()
+        if fila < 0:
+            return None
+        return self.ventas[fila]
+
+    @manejar_errores
+    def _mostrar_detalle_venta(self):
+        venta = self._venta_seleccionada()
+        self.tabla_detalle.setRowCount(0)
+        if venta is None:
+            return
+        _venta, detalle, _pagos = ventas_repo.buscar_venta(venta["id"])
+        for linea in detalle:
+            fila = self.tabla_detalle.rowCount()
+            self.tabla_detalle.insertRow(fila)
+            self.tabla_detalle.setItem(fila, 0, QTableWidgetItem(linea["articulo_codigo"]))
+            self.tabla_detalle.setItem(fila, 1, QTableWidgetItem(linea["descripcion"]))
+            self.tabla_detalle.setItem(fila, 2, QTableWidgetItem(str(linea["cantidad"])))
+            self.tabla_detalle.setItem(fila, 3, QTableWidgetItem(formato_pesos(linea["subtotal"])))

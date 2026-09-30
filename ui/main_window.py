@@ -5,23 +5,27 @@ Ventana principal: aparece después del login y muestra de entrada la
 grilla de "Control de PCs" (`control_pcs/ui/pcs_window.py:PanelControlPcs`) — es lo
 que se usa todo el día en el mostrador, así que es la pantalla misma, no
 una opción más de un menú. Desde la barra de arriba se llega a Vender
-(kiosko), a "Gestionar PCs" (catálogo de Estaciones/Bonos/Miembros) y,
-para "encargados", a "Administrar Kiosko" (el resto de las pantallas de
-gestión). "Gestionar PCs" se sacó como botón propio de la barra en vez de
-quedar un paso adentro de "Administrar Kiosko" porque el operador del
-cyber necesita llegar rápido (alta de PC, bono nuevo, carga de saldo a un
-socio) — no es una tarea ocasional como Reportes o Compras. Qué se ve
-depende del rol y los permisos:
+(kiosko), a "Miembros" (alta/carga de saldo de socios) y, para
+"encargados", a "Administrar Kiosko" (el resto de las pantallas de
+gestión) y, solo para Admin, a "Configuración ADMIN". Qué se ve depende
+del rol y los permisos:
 
-- Cualquiera logueado: operar la grilla de PCs (asignar un bono, abrir
-  con Miembro, finalizar sesión — es una venta más, como Vender), Vender,
-  Caja, Cierre de Turno, y Cambiar mi Clave.
-- Con `permiso_control_pcs` (o Admin): además ve "Gestionar PCs"
-  (Estaciones/Bonos/Miembros).
+- Cualquiera logueado: operar la grilla de PCs (asignar un bono ya
+  creado, abrir con Miembro, finalizar sesión — es una venta más, como
+  Vender), Vender, Caja, Cierre de Turno, y Cambiar mi Clave.
+- Con `permiso_control_pcs` (o Admin): además ve "Miembros" (alta,
+  modificar datos, cargar saldo, desactivar — usa la tarifa y los bonos
+  ya definidos, no los edita).
 - "Encargado" (ADMIN, o EMPLEADA con al menos uno de los permisos de
   usuarios_repo.PERMISOS_EMPLEADA): además ve "Administrar Kiosko", que
   agrupa Artículos/Compras/Consulta de Ventas/Reportes/Control de
   Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos).
+- Solo ADMIN, sin excepción: "Configuración ADMIN" — Gestionar
+  Estaciones (agregar/quitar/renombrar PC), Gestionar Bonos (catálogo de
+  walk-ins), Tarifa por Hora de Socios y Gestionar Bonos de Socios.
+  Pedido explícito del dueño (2026-09-28): editar estos catálogos es
+  tarea de super admin; usarlos (asignar un bono, cobrar con la tarifa
+  ya fijada) sigue delegable con `permiso_control_pcs`.
 """
 
 from PySide6.QtWidgets import (
@@ -30,7 +34,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 import dominio
-from repositories import usuarios_repo
+from repositories import usuarios_repo, config_repo
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
 from ui.ventas_window import VentasWindow
@@ -39,8 +43,8 @@ from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs, DialogoGestionEstaciones, DialogoGestionBonos
-from control_pcs.ui.miembros_window import MiembrosWindow
-from ui.utils import aplicar_clase
+from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTarifaMiembro, DialogoGestionBonosMiembro
+from ui.utils import aplicar_clase, manejar_errores, mostrar_info
 
 
 class MainWindow(QMainWindow):
@@ -85,9 +89,11 @@ class MainWindow(QMainWindow):
 
         self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
         if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"):
-            self._agregar_boton_barra(layout_barra, "🖥️  Gestionar PCs", self._abrir_gestionar_pcs)
+            self._agregar_boton_barra(layout_barra, "🧑‍🤝‍🧑  Miembros", self._abrir_miembros)
         if self._es_encargado:
             self._agregar_boton_barra(layout_barra, "🛠️  Administrar Kiosko", self._abrir_administrar_kiosko)
+        if self.es_admin:
+            self._agregar_boton_barra(layout_barra, "⚙️  Configuración ADMIN", self._abrir_configuracion_admin)
         self._agregar_boton_barra(layout_barra, "💵  Caja", self._abrir_caja)
         self._agregar_boton_barra(layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno)
         self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
@@ -144,8 +150,11 @@ class MainWindow(QMainWindow):
     def _abrir_administrar_kiosko(self):
         AdministrarKioskoWindow(self.usuario, self.es_admin, self).exec()
 
-    def _abrir_gestionar_pcs(self):
-        GestionarPcsWindow(self.usuario, self.es_admin, self).exec()
+    def _abrir_miembros(self):
+        MiembrosWindow(self.usuario, self).exec()
+
+    def _abrir_configuracion_admin(self):
+        ConfiguracionAdminWindow(self).exec()
 
     def _cerrar_sesion(self):
         self.close()
@@ -159,9 +168,7 @@ class AdministrarKioskoWindow(QDialog):
     Kiosko") visible solo para encargados (ver MainWindow._es_encargado).
     Mismo criterio de permisos que usaba el menú viejo: un Admin las ve
     todas, una Empleada solo las que tenga habilitadas en
-    usuarios_repo.PERMISOS_EMPLEADA. La gestión del catálogo de PCs
-    (Estaciones/Bonos/Miembros) se cuelga acá por ahora, hasta que exista
-    una sección de Configuración propia.
+    usuarios_repo.PERMISOS_EMPLEADA.
     """
 
     # Mismo criterio que el viejo menú principal: todos los botones del
@@ -240,32 +247,34 @@ class AdministrarKioskoWindow(QDialog):
         UsuariosWindow(self.usuario, self).exec()
 
 
-class GestionarPcsWindow(QDialog):
+class ConfiguracionAdminWindow(QDialog):
     """
-    Administración del catálogo de PCs (Estaciones/Bonos/Miembros), como
-    botón propio de la barra superior en vez de un paso más adentro de
-    "Administrar Kiosko" — el operador del cyber necesita llegar rápido
-    (alta de PC, bono nuevo, carga de saldo a un socio), no es una tarea
-    ocasional como Reportes o Compras. Mismo permiso de siempre
-    (permiso_control_pcs / Admin), solo cambia dónde se accede.
+    Agrupa las cuatro pantallas de EDICIÓN de catálogos que antes vivían
+    repartidas en "Gestionar PCs" y "Administración de Miembros":
+    Estaciones, Bonos de Tiempo (walk-in), Tarifa por Hora de Socios y
+    Bonos de Socios. Exclusiva de ADMIN, sin excepción — no hay permiso
+    delegable para esto (ver MainWindow._armar_interfaz). *Usar* esos
+    catálogos (asignarle un bono ya creado a una PC, cargar saldo con la
+    tarifa ya fijada) sigue abierto a cualquier operador con
+    permiso_control_pcs desde la grilla de PCs y "Miembros" — separación
+    pedida explícitamente por el dueño (2026-09-28): editar el catálogo
+    es tarea de super admin, usarlo no.
     """
 
     ANCHO_BOTON = 320
     ALTO_BOTON = 48
 
-    def __init__(self, usuario, es_admin, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.usuario = usuario
-        self.es_admin = es_admin
-        self.setWindowTitle("Gestionar PCs")
-        self.resize(360, 320)
+        self.setWindowTitle("Configuración ADMIN")
+        self.resize(360, 400)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
         layout = QVBoxLayout()
         layout.setContentsMargins(24, 24, 24, 24)
 
-        titulo = QLabel("Gestionar PCs")
+        titulo = QLabel("Configuración ADMIN")
         titulo.setAlignment(Qt.AlignCenter)
         titulo.setStyleSheet("font-size: 17px; font-weight: 700; color: #1B2233;")
         layout.addWidget(titulo)
@@ -273,7 +282,8 @@ class GestionarPcsWindow(QDialog):
 
         self._agregar_boton(layout, "🖥️  Gestionar Estaciones", self._abrir_estaciones)
         self._agregar_boton(layout, "🎟️  Gestionar Bonos", self._abrir_bonos)
-        self._agregar_boton(layout, "🧑‍🤝‍🧑  Gestionar Miembros", self._abrir_miembros)
+        self._agregar_boton(layout, "💲  Tarifa por Hora de Socios", self._configurar_tarifa)
+        self._agregar_boton(layout, "🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro)
 
         layout.addStretch()
         self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
@@ -297,5 +307,13 @@ class GestionarPcsWindow(QDialog):
     def _abrir_bonos(self):
         DialogoGestionBonos(self).exec()
 
-    def _abrir_miembros(self):
-        MiembrosWindow(self.usuario, self).exec()
+    @manejar_errores
+    def _configurar_tarifa(self):
+        actual = config_repo.obtener_tarifa_hora_miembro()
+        dialogo = DialogoTarifaMiembro(self, actual)
+        if dialogo.exec():
+            config_repo.actualizar_tarifa_hora_miembro(dialogo.spin_tarifa.value())
+            mostrar_info(self, "Guardado", "Se actualizó la tarifa por hora para socios.")
+
+    def _abrir_bonos_miembro(self):
+        DialogoGestionBonosMiembro(self).exec()

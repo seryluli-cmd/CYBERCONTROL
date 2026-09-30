@@ -109,6 +109,23 @@ def obtener_miembro(miembro_id: int):
         return conexion.execute("SELECT * FROM miembros WHERE id = ?", (miembro_id,)).fetchone()
 
 
+def _buscar_miembro_autenticado(conexion, usuario: str, clave: str):
+    """
+    Núcleo compartido de autenticar_miembro y abrir_estacion_por_miembro:
+    busca al socio por usuario/clave usando una conexión YA ABIERTA. Existe
+    aparte de autenticar_miembro (que abre la suya propia) para que
+    abrir_estacion_por_miembro pueda autenticar DENTRO de su propia
+    transacción con lock -- ver el porqué en su docstring -- en vez de en
+    una lectura aparte, ya cerrada y comiteada, como hacía antes.
+    """
+    fila = conexion.execute(
+        "SELECT * FROM miembros WHERE usuario = ? AND activo = 1", (usuario.strip(),)
+    ).fetchone()
+    if fila is None or not verificar_clave(clave, fila["clave_hash"]):
+        return None
+    return fila
+
+
 def autenticar_miembro(usuario: str, clave: str):
     """
     Devuelve la fila del socio si el usuario/clave coinciden y está
@@ -119,12 +136,7 @@ def autenticar_miembro(usuario: str, clave: str):
     socio abriendo una PC).
     """
     with conexion_db() as conexion:
-        fila = conexion.execute(
-            "SELECT * FROM miembros WHERE usuario = ? AND activo = 1", (usuario.strip(),)
-        ).fetchone()
-    if fila is None or not verificar_clave(clave, fila["clave_hash"]):
-        return None
-    return fila
+        return _buscar_miembro_autenticado(conexion, usuario, clave)
 
 
 def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pagos: list,
@@ -194,6 +206,59 @@ def cargar_saldo_por_bono(miembro_id: int, bono_id: int, pagos: list, usuario_op
                                  usuario_operador_id, bono_id=bono_id)
 
 
+def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):
+    """
+    Anula, desde Consulta de Ventas, una venta que había cargado saldo a
+    un socio (ver _registrar_carga) -- y revierte esa carga del saldo
+    actual, todo en la MISMA transacción que la anulación en sí (ver
+    ventas_repo._anular_venta). Antes, "Anular" en Consulta de Ventas
+    (que no distingue de dónde vino cada venta) usaba
+    ventas_repo.anular_venta para TODAS: eso le sacaba la plata del
+    cierre/caja a una carga anulada, pero le dejaba los minutos intactos
+    al socio, como si el negocio le hubiera regalado ese tiempo (bug
+    reportado 2026-09-29).
+
+    La reversión queda topeada a lo que el socio TENGA en este momento:
+    si ya gastó parte o todo el saldo cargado (abriendo una PC, ver
+    abrir_estacion_por_miembro) antes de que alguien anule la carga, no
+    se le puede sacar más de lo que le queda -- ahí ya es plata/tiempo
+    que se usó de verdad, revertir no puede dejarlo en saldo negativo. El
+    movimiento que se deja en el ledger es 'ANULACION', nunca un CONSUMO
+    ni un REINTEGRO disimulados: son conceptos distintos y mezclarlos
+    rompería la trazabilidad que este ledger existe para dar.
+
+    Sirve para CUALQUIER venta, no solo una carga: si la venta no tiene
+    ninguna CARGA asociada (un bono de PC walk-in, por ejemplo), se
+    comporta exactamente igual que ventas_repo.anular_venta.
+    """
+    with conexion_db() as conexion:
+        ventas_repo._anular_venta(conexion, venta_id, usuario_admin_id, motivo)
+
+        ahora_iso = datetime.now().isoformat(timespec="seconds")
+        cargas = conexion.execute(
+            "SELECT * FROM movimientos_saldo_miembro WHERE venta_id = ? AND tipo = 'CARGA'",
+            (venta_id,),
+        ).fetchall()
+        for carga in cargas:
+            saldo_actual = conexion.execute(
+                "SELECT saldo_minutos FROM miembros WHERE id = ?", (carga["miembro_id"],)
+            ).fetchone()["saldo_minutos"]
+            a_revertir = min(carga["minutos"], saldo_actual)
+            if a_revertir <= 0:
+                continue
+            conexion.execute(
+                "UPDATE miembros SET saldo_minutos = saldo_minutos - ? WHERE id = ?",
+                (a_revertir, carga["miembro_id"]),
+            )
+            conexion.execute(
+                """
+                INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, venta_id)
+                VALUES (?, 'ANULACION', ?, ?, ?)
+                """,
+                (carga["miembro_id"], a_revertir, ahora_iso, venta_id),
+            )
+
+
 def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> dict:
     """
     El socio se loguea solo (usuario/clave) para abrir una estación con
@@ -201,21 +266,38 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> di
     tiempo asignarle, es autoservicio puro. Levanta ValueError si las
     credenciales no coinciden o si no le queda al menos un bloque de 30
     minutos. Devuelve un resumen simple para mostrar en pantalla.
-    """
-    miembro = autenticar_miembro(usuario, clave)
-    if miembro is None:
-        raise ValueError("Usuario o contraseña incorrectos.")
-    if miembro["saldo_minutos"] < MINUTOS_POR_FRACCION:
-        raise ValueError(
-            f"{miembro['nombre']} no tiene saldo suficiente (le quedan "
-            f"{miembro['saldo_minutos']} minutos, hace falta al menos {MINUTOS_POR_FRACCION})."
-        )
 
-    minutos_a_usar = miembro["saldo_minutos"]
+    Autentica y consume el saldo DENTRO de una sola transacción con
+    "BEGIN IMMEDIATE" (toma el lock de escritura de entrada, antes de
+    leer nada) -- antes, autenticar_miembro corría en su propia
+    transacción, ya cerrada y comiteada, antes de llegar acá. Con el
+    servidor de red atendiendo cada pedido en su propio hilo (ver
+    servidor_red.ThreadingHTTPServer), dos POST /login simultáneos del
+    MISMO socio (doble clic, reintento de red) podían autenticarse los
+    dos leyendo el mismo saldo_minutos, y terminar gastándolo los dos:
+    un socio con 60 minutos disponibles podía terminar con 120 asignados
+    entre dos sesiones. Con el lock tomado de entrada, el segundo pedido
+    espera a que el primero termine de commitear y recién ahí lee el
+    saldo ya en 0 -- coherente con MINUTOS_POR_FRACCION, no le alcanza y
+    se le rechaza en vez de duplicarle el tiempo.
+    """
     ahora = datetime.now()
     ahora_iso = ahora.isoformat(timespec="seconds")
 
     with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+
+        miembro = _buscar_miembro_autenticado(conexion, usuario, clave)
+        if miembro is None:
+            raise ValueError("Usuario o contraseña incorrectos.")
+        if miembro["saldo_minutos"] < MINUTOS_POR_FRACCION:
+            raise ValueError(
+                f"{miembro['nombre']} no tiene saldo suficiente (le quedan "
+                f"{miembro['saldo_minutos']} minutos, hace falta al menos {MINUTOS_POR_FRACCION})."
+            )
+
+        minutos_a_usar = miembro["saldo_minutos"]
+
         sesion_id = pcs_repo._abrir_o_extender_sesion(
             conexion, estacion_id, minutos_a_usar, ahora, miembro_id=miembro["id"]
         )

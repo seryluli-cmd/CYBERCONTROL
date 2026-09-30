@@ -62,7 +62,10 @@ def resumen_turno_actual():
     with conexion_db() as conexion:
         ultimo_cierre = _obtener_ultimo_cierre(conexion)
         desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else "0000-01-01T00:00:00"
-        ahora = datetime.now().isoformat(timespec="seconds")
+        # Microsegundos, no segundos: mismo motivo que ventas_repo (ver ahí)
+        # -- acá "ahora" se compara contra "ventas.fecha" para armar la
+        # vista en vivo de Caja.
+        ahora = datetime.now().isoformat(timespec="microseconds")
         totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
 
     kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
@@ -106,7 +109,16 @@ def cerrar_turno(usuario_id: int):
         ultimo_cierre = _obtener_ultimo_cierre(conexion)
         desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else "0000-01-01T00:00:00"
         ahora_dt = datetime.now()
-        ahora = ahora_dt.isoformat(timespec="seconds")
+        # Microsegundos, no segundos: esto graba "cierres_turno.fecha_cierre",
+        # el límite que separa un turno del siguiente (ver
+        # _sumar_ventas_por_origen_y_metodo, fecha > desde AND fecha <=
+        # hasta). Con precisión de un segundo, una venta hecha justo al
+        # abrir el turno siguiente podía caer en el mismo segundo que este
+        # cierre y quedar afuera de los DOS turnos -- ni en el que se
+        # estaba cerrando (llegó después del corte) ni en el siguiente (el
+        # ">" estricto la excluía por el empate). Ver el mismo comentario
+        # en ventas_repo.confirmar_venta / registrar_venta_sin_detalle.
+        ahora = ahora_dt.isoformat(timespec="microseconds")
 
         totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
         kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
@@ -190,6 +202,53 @@ def listar_cierres(limite: int = 100):
             """,
             (limite,),
         ).fetchall()
+
+
+def detalle_cierre(cierre_id: int):
+    """
+    Las ventas que componen un cierre puntual -- las que cayeron entre el
+    cierre anterior y este (mismo criterio de rango que cerrar_turno() /
+    resumen_turno_actual(): "desde" es el fecha_cierre del cierre previo
+    por id, o el principio de los tiempos si es el primer cierre que
+    existe). Es lo que le permite al Admin, desde "Control de Cierres de
+    Turno", ver venta por venta cómo se llegó al total de un sobre en vez
+    de confiar solo en el número agregado.
+
+    Incluye ventas ANULADAS que hayan caído en la ventana (no se
+    filtran): no suman al total ya grabado en el cierre (ese total se
+    calculó en su momento solo con CONFIRMADAS, ver
+    _sumar_ventas_por_origen_y_metodo), pero conviene poder verlas acá
+    para entender un cierre que no cuadra. La pantalla las remarca aparte
+    (mismo criterio que Consulta de Ventas), nunca se ocultan.
+    """
+    with conexion_db() as conexion:
+        cierre = conexion.execute(
+            "SELECT * FROM cierres_turno WHERE id = ?", (cierre_id,)
+        ).fetchone()
+        if cierre is None:
+            raise ValueError("El cierre no existe.")
+
+        anterior = conexion.execute(
+            "SELECT fecha_cierre FROM cierres_turno WHERE id < ? ORDER BY id DESC LIMIT 1",
+            (cierre_id,),
+        ).fetchone()
+        desde = anterior["fecha_cierre"] if anterior else "0000-01-01T00:00:00"
+
+        ventas = conexion.execute(
+            """
+            SELECT ventas.*, usuarios.nombre AS vendedor,
+                   GROUP_CONCAT(DISTINCT venta_pagos.metodo) AS metodos
+            FROM ventas
+            JOIN usuarios ON usuarios.id = ventas.usuario_id
+            LEFT JOIN venta_pagos ON venta_pagos.venta_id = ventas.id
+            WHERE ventas.fecha > ? AND ventas.fecha <= ?
+            GROUP BY ventas.id
+            ORDER BY ventas.fecha
+            """,
+            (desde, cierre["fecha_cierre"]),
+        ).fetchall()
+
+    return {"cierre": cierre, "desde": desde, "ventas": ventas}
 
 
 def verificar_cierre(cierre_id: int, monto_contado: float, usuario_admin_id: int):

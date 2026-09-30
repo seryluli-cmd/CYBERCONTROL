@@ -29,13 +29,15 @@ from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QTableWidget, QTableWidgetItem, QPushButton, QButtonGroup, QLineEdit,
     QLabel, QComboBox, QTextEdit, QHeaderView, QInputDialog, QSpinBox,
-    QDoubleSpinBox, QMenu,
+    QDoubleSpinBox, QMenu, QSlider,
 )
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
 import database
-from control_pcs.repositories import agentes_repo, comandos_pc_repo, miembros_repo, pcs_repo
+from control_pcs.repositories import (
+    agentes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo,
+)
 from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
@@ -65,6 +67,24 @@ COLOR_DISPONIBLE = QColor("#DCF3E1")
 COLOR_EN_USO = QColor("#FDF1C7")
 COLOR_POR_VENCER = QColor("#FCEBD2")
 COLOR_DESCONECTADA = QColor("#F8D7D9")
+
+# Alerta especial (pedido explícito del dueño, 2026-09-30): sesión activa
+# (Bono o Miembro) en una estación que dejó de estar "enlazada" -- el
+# agente de esa PC no reportó conexión en el último UMBRAL_ENLACE_SEGUNDOS
+# a pesar de tener tiempo pago corriendo. A diferencia del rojo fijo de
+# "Sin conexión" (esa es sin sesión, sin apuro: la PC está apagada o
+# libre), acá SÍ hay plata/tiempo en juego sin que nadie lo esté viendo
+# -- puede ser que un cliente haya encontrado la forma de cerrar el
+# agente para seguir usando la PC sin que se le descuente. Parpadea entre
+# estos dos colores para llamar la atención del operador (ver
+# PanelControlPcs._alternar_parpadeo) en vez de quedar en el amarillo
+# normal de "En uso", que pasaría desapercibido.
+COLOR_ALERTA_SESION_SIN_AGENTE = QColor("#F5A3A8")
+COLOR_ALERTA_SESION_SIN_AGENTE_APAGADA = QColor("#FFFFFF")
+
+# Cada cuánto alterna el parpadeo de una fila en alerta -- rápido a
+# propósito, tiene que notarse a simple vista sin mirar fijo la pantalla.
+INTERVALO_PARPADEO_MS = 500
 
 
 def _texto_evento(evento) -> str:
@@ -109,6 +129,8 @@ class PanelControlPcs(QWidget):
         self.usuario = usuario
         self._estados = []
         self._estacion_id_seleccionada = None
+        self._filas_en_alerta = []
+        self._parpadeo_encendido = True
         self._armar_interfaz()
         self._refrescar()
 
@@ -117,8 +139,19 @@ class PanelControlPcs(QWidget):
         self._timer.timeout.connect(self._refrescar)
         self._timer.start()
 
+        # Timer aparte, mucho más rápido, solo para el parpadeo de
+        # "sesión activa sin agente" (ver COLOR_ALERTA_SESION_SIN_AGENTE) --
+        # no puede compartir el timer de arriba, que reconstruye la tabla
+        # entera cada 5s (perdería la selección y el parpadeo se vería a
+        # los tumbos en vez de parejo).
+        self._timer_parpadeo = QTimer(self)
+        self._timer_parpadeo.setInterval(INTERVALO_PARPADEO_MS)
+        self._timer_parpadeo.timeout.connect(self._alternar_parpadeo)
+        self._timer_parpadeo.start()
+
     def detener_actualizacion(self):
         self._timer.stop()
+        self._timer_parpadeo.stop()
 
     def _armar_interfaz(self):
         self.tabla = QTableWidget(0, 4)
@@ -181,12 +214,22 @@ class PanelControlPcs(QWidget):
         self.tabla.blockSignals(True)
         self.tabla.setRowCount(0)
         fila_a_seleccionar = -1
+        self._filas_en_alerta = []
+        self._parpadeo_encendido = True
         for item in self._estados:
             estacion = item["estacion"]
             sesion = item["sesion"]
             segundos = item["segundos_restantes"]
 
-            if sesion is not None:
+            if sesion is not None and not item["enlazada"]:
+                # Hay tiempo pago corriendo pero el agente de esa PC dejó
+                # de responder -- ver COLOR_ALERTA_SESION_SIN_AGENTE. Esto
+                # va ANTES que "por vencer"/"en uso": importa más avisar
+                # que nadie está viendo esa PC que cuánto tiempo le queda.
+                quien_texto = sesion["miembro_nombre"] or "Bono"
+                restante_texto = formato_tiempo(segundos)
+                icono, texto_estado, color = "🚨", "SIN AGENTE (revisar)", COLOR_ALERTA_SESION_SIN_AGENTE
+            elif sesion is not None:
                 quien_texto = sesion["miembro_nombre"] or "Bono"
                 restante_texto = formato_tiempo(segundos)
                 if segundos <= UMBRAL_POR_VENCER_SEGUNDOS:
@@ -208,6 +251,9 @@ class PanelControlPcs(QWidget):
                 celda.setBackground(color)
                 self.tabla.setItem(fila, columna, celda)
 
+            if sesion is not None and not item["enlazada"]:
+                self._filas_en_alerta.append(fila)
+
             if estacion["id"] == self._estacion_id_seleccionada:
                 fila_a_seleccionar = fila
 
@@ -218,6 +264,33 @@ class PanelControlPcs(QWidget):
             self._estacion_id_seleccionada = None
             self.panel_detalle.mostrar(None)
 
+    def _alternar_parpadeo(self):
+        """
+        Alterna el fondo de las filas en `self._filas_en_alerta` entre
+        rojo fuerte y blanco cada INTERVALO_PARPADEO_MS -- ver
+        COLOR_ALERTA_SESION_SIN_AGENTE. Corre en un timer aparte del
+        refresco de 5s (`_reconstruir_tabla` ya deja los índices de fila
+        actualizados cada vez que corre); si no hay ninguna fila en
+        alerta no hace nada, así que dejarlo corriendo siempre no cuesta
+        nada.
+        """
+        if not self._filas_en_alerta:
+            return
+        self._parpadeo_encendido = not self._parpadeo_encendido
+        color = (
+            COLOR_ALERTA_SESION_SIN_AGENTE
+            if self._parpadeo_encendido
+            else COLOR_ALERTA_SESION_SIN_AGENTE_APAGADA
+        )
+        for fila in self._filas_en_alerta:
+            if fila >= self.tabla.rowCount():
+                continue
+            for columna in range(self.tabla.columnCount()):
+                celda = self.tabla.item(fila, columna)
+                if celda is not None:
+                    celda.setBackground(color)
+
+    @manejar_errores
     def _al_cambiar_seleccion(self):
         fila = self.tabla.currentRow()
         if 0 <= fila < len(self._estados):
@@ -233,15 +306,16 @@ class PanelControlPcs(QWidget):
         Control remoto de la estación (clic derecho sobre una fila):
         cerrar la sesión ya (aunque tenga tiempo/saldo sin usar) y dejar
         la PC lista para el próximo cliente, reiniciar, apagar, mandar un
-        mensaje o pedir una captura de pantalla. No pasa por el panel
-        lateral porque son acciones sobre la PC física (o que necesitan
-        efecto inmediato), no sobre la sesión de tiempo como elegir un
-        bono. Reiniciar/Apagar/Mensaje/Captura viajan al agente de esa
-        estación como un comando pendiente (ver comandos_pc_repo.py); no
-        son instantáneas, tardan hasta el próximo ciclo de 5s del agente
-        -- "Cerrar sesión" sí corta el tiempo ya mismo en la base (mismo
-        mecanismo que "Finalizar Sesión" del panel lateral) y de paso
-        encola el reinicio.
+        mensaje, pedir una captura de pantalla, cambiar a qué módem
+        apunta su red o ajustar su volumen. No pasa por el panel lateral
+        porque son acciones sobre la PC física (o que necesitan efecto
+        inmediato), no sobre la sesión de tiempo como elegir un bono.
+        Reiniciar/Apagar/Mensaje/Captura/Cambiar red/Volumen viajan al
+        agente de esa estación como un comando pendiente (ver
+        comandos_pc_repo.py); no son instantáneas, tardan hasta el
+        próximo ciclo de 5s del agente -- "Cerrar sesión" sí corta el
+        tiempo ya mismo en la base (mismo mecanismo que "Finalizar
+        Sesión" del panel lateral) y de paso encola el reinicio.
         """
         fila = self.tabla.rowAt(posicion.y())
         if fila < 0 or fila >= len(self._estados):
@@ -261,6 +335,9 @@ class PanelControlPcs(QWidget):
         menu.addSeparator()
         accion_mensaje = menu.addAction("💬 Enviar mensaje...")
         accion_captura = menu.addAction("📷 Sacar captura de pantalla")
+        menu.addSeparator()
+        accion_cambiar_red = menu.addAction("🌐 Cambiar red...")
+        accion_volumen = menu.addAction("🔊 Ajustar volumen...")
 
         # menu.exec() abre un bucle de eventos anidado: mientras el menú
         # sigue abierto, el timer de refresco (cada 5s) puede disparar
@@ -294,6 +371,10 @@ class PanelControlPcs(QWidget):
             self._enviar_mensaje(estacion)
         elif elegida == accion_captura:
             DialogoCaptura(estacion, self).exec()
+        elif elegida == accion_cambiar_red:
+            DialogoCambiarRed(estacion, self).exec()
+        elif elegida == accion_volumen:
+            DialogoVolumen(estacion, self).exec()
 
     @manejar_errores
     def _cerrar_sesion_y_reiniciar(self, estacion, sesion, segundos_restantes):
@@ -660,6 +741,224 @@ class DialogoCaptura(QDialog):
             )
 
 
+class DialogoCambiarRed(QDialog):
+    """
+    Cambia la puerta de enlace y el DNS de la estación elegida a uno de
+    los módems configurados (ver config_red_repo.py) -- nunca toca la IP
+    fija de la PC ni su máscara. Pensado para el caso real del Cyber:
+    varios módems en el mismo rango 192.168.1.x y las PCs con IP fija
+    propia; si un cliente avisa "no tengo internet" porque se cayó UN
+    módem, el mostrador la pasa al otro desde acá en vez de ir hasta la
+    PC. A diferencia de Reiniciar/Apagar/Mensaje, este comando SÍ puede
+    fallar del lado de la PC (adaptador no encontrado, PowerShell sin
+    permisos) -- por eso se queda esperando el resultado con un QTimer,
+    igual que DialogoCaptura, en vez de darlo por entregado y listo.
+    """
+
+    def __init__(self, estacion, parent=None):
+        super().__init__(parent)
+        self.estacion = estacion
+        self.setWindowTitle(f"Cambiar red — {estacion['nombre']}")
+        self.resize(360, 280)
+
+        self.etiqueta_estado = QLabel("Elegí a qué módem pasar esta PC:")
+        self.etiqueta_estado.setWordWrap(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.etiqueta_estado)
+
+        for gateway in config_red_repo.obtener_gateways():
+            boton = QPushButton(f"{gateway['nombre']} ({gateway['ip']})")
+            boton.clicked.connect(lambda _=False, ip=gateway["ip"]: self._enviar(ip))
+            layout.addWidget(boton)
+
+        boton_editar = QPushButton("Editar módems...")
+        boton_editar.clicked.connect(self._editar_modems)
+        layout.addWidget(boton_editar)
+
+        boton_cerrar = QPushButton("Cerrar")
+        boton_cerrar.clicked.connect(self.close)
+        layout.addWidget(boton_cerrar)
+        self.setLayout(layout)
+        for boton in self.findChildren(QPushButton):
+            boton.setAutoDefault(False)
+            boton.setDefault(False)
+
+        self.comando_id = None
+        self._segundos_esperados = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._revisar)
+
+    @manejar_errores
+    def _enviar(self, ip_gateway):
+        if not confirmar(
+            self, "Confirmar",
+            f"¿Cambiar la puerta de enlace y DNS de '{self.estacion['nombre']}' a {ip_gateway}?",
+        ):
+            return
+        self.comando_id = comandos_pc_repo.encolar_comando(
+            self.estacion["id"], comandos_pc_repo.TIPO_CAMBIAR_RED, ip_gateway
+        )
+        self._segundos_esperados = 0
+        self.etiqueta_estado.setText("Esperando que la PC aplique el cambio...")
+        self._timer.start()
+
+    def _revisar(self):
+        self._segundos_esperados += 1
+        fila = comandos_pc_repo.obtener_comando(self.comando_id)
+        if fila is not None and fila["resultado"]:
+            self._timer.stop()
+            if fila["resultado"] == "OK":
+                self.etiqueta_estado.setText(
+                    f"Listo, '{self.estacion['nombre']}' ya está usando esa puerta de enlace."
+                )
+            else:
+                self.etiqueta_estado.setText(f"No se pudo cambiar: {fila['resultado']}")
+            return
+        if self._segundos_esperados >= SEGUNDOS_ESPERA_CAPTURA:
+            self._timer.stop()
+            self.etiqueta_estado.setText(
+                "No llegó respuesta a tiempo — revisá que la PC esté prendida "
+                "y conectada, o probá de nuevo."
+            )
+
+    def _editar_modems(self):
+        DialogoEditarGateways(self).exec()
+        self.close()  # la lista de botones de arriba quedaría desactualizada -- que lo vuelvan a abrir
+
+
+class DialogoEditarGateways(QDialog):
+    """Catálogo de módems conocidos (nombre + IP de su puerta de enlace),
+    editable a mano por cualquier Operador -- no es un dato de plata ni
+    de negocio, mismo nivel de confianza que Reiniciar/Apagar. Se guarda
+    entero de una (ver config_red_repo.guardar_gateways), no fila por
+    fila, porque es una lista chica pensada para editarse de vez en
+    cuando, no un catálogo grande con altas/bajas frecuentes."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Editar módems")
+        self.resize(380, 320)
+
+        self.tabla = QTableWidget(0, 2)
+        self.tabla.setHorizontalHeaderLabels(["Nombre", "IP (puerta de enlace)"])
+        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        for gateway in config_red_repo.obtener_gateways():
+            self._agregar_fila(gateway["nombre"], gateway["ip"])
+
+        boton_agregar = QPushButton("Agregar módem")
+        boton_agregar.clicked.connect(lambda: self._agregar_fila("", ""))
+        boton_quitar = QPushButton("Quitar seleccionado")
+        aplicar_clase(boton_quitar, "peligro")
+        boton_quitar.clicked.connect(self._quitar_seleccionado)
+        fila_botones = QHBoxLayout()
+        fila_botones.addWidget(boton_agregar)
+        fila_botones.addWidget(boton_quitar)
+
+        boton_guardar = QPushButton("Guardar")
+        aplicar_clase(boton_guardar, "primario")
+        boton_guardar.clicked.connect(self._guardar)
+        boton_cancelar = QPushButton("Cancelar")
+        boton_cancelar.clicked.connect(self.close)
+
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Módems del local:"))
+        layout.addWidget(self.tabla)
+        layout.addLayout(fila_botones)
+        layout.addWidget(boton_guardar)
+        layout.addWidget(boton_cancelar)
+        self.setLayout(layout)
+        for boton in self.findChildren(QPushButton):
+            boton.setAutoDefault(False)
+            boton.setDefault(False)
+
+    def _agregar_fila(self, nombre, ip):
+        fila = self.tabla.rowCount()
+        self.tabla.insertRow(fila)
+        self.tabla.setItem(fila, 0, QTableWidgetItem(nombre))
+        self.tabla.setItem(fila, 1, QTableWidgetItem(ip))
+
+    def _quitar_seleccionado(self):
+        fila = self.tabla.currentRow()
+        if fila >= 0:
+            self.tabla.removeRow(fila)
+
+    @manejar_errores
+    def _guardar(self):
+        gateways = []
+        for fila in range(self.tabla.rowCount()):
+            item_nombre = self.tabla.item(fila, 0)
+            item_ip = self.tabla.item(fila, 1)
+            nombre = item_nombre.text().strip() if item_nombre else ""
+            ip = item_ip.text().strip() if item_ip else ""
+            if not nombre and not ip:
+                continue
+            if not nombre or not ip:
+                mostrar_error(self, "Fila incompleta", "Cada módem necesita nombre e IP.")
+                return
+            if not config_red_repo.es_ip_valida(ip):
+                mostrar_error(self, "IP inválida", f"'{ip}' no es una IP válida (ej. 192.168.1.201).")
+                return
+            gateways.append({"nombre": nombre, "ip": ip})
+        if not gateways:
+            mostrar_error(self, "Nada para guardar", "Agregá al menos un módem con nombre e IP.")
+            return
+        config_red_repo.guardar_gateways(gateways)
+        self.close()
+
+
+class DialogoVolumen(QDialog):
+    """Ajusta el volumen maestro de la estación elegida (0-100%). A
+    diferencia de Cambiar red, esto casi no puede fallar del lado de la
+    PC (no necesita Administrador, es una propiedad de la sesión del
+    usuario actual) -- por eso queda fire-and-forget, mismo criterio que
+    Mensaje: se encola y listo, sin esperar confirmación de vuelta."""
+
+    def __init__(self, estacion, parent=None):
+        super().__init__(parent)
+        self.estacion = estacion
+        self.setWindowTitle(f"Ajustar volumen — {estacion['nombre']}")
+        self.resize(320, 160)
+
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(0, 100)
+        self.slider.setValue(50)
+        self.etiqueta_valor = QLabel("50%")
+        self.etiqueta_valor.setAlignment(Qt.AlignCenter)
+        self.slider.valueChanged.connect(lambda valor: self.etiqueta_valor.setText(f"{valor}%"))
+
+        boton_aplicar = QPushButton("Aplicar")
+        aplicar_clase(boton_aplicar, "primario")
+        boton_aplicar.clicked.connect(self._aplicar)
+        boton_cerrar = QPushButton("Cerrar")
+        boton_cerrar.clicked.connect(self.close)
+
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel(f"Volumen de '{estacion['nombre']}':"))
+        layout.addWidget(self.slider)
+        layout.addWidget(self.etiqueta_valor)
+        layout.addWidget(boton_aplicar)
+        layout.addWidget(boton_cerrar)
+        self.setLayout(layout)
+        for boton in self.findChildren(QPushButton):
+            boton.setAutoDefault(False)
+            boton.setDefault(False)
+
+    @manejar_errores
+    def _aplicar(self):
+        nivel = self.slider.value()
+        comandos_pc_repo.encolar_comando(
+            self.estacion["id"], comandos_pc_repo.TIPO_VOLUMEN, str(nivel)
+        )
+        mostrar_info(
+            self, "Enviado",
+            f"El volumen de '{self.estacion['nombre']}' se va a ajustar a {nivel}% en los "
+            "próximos segundos.",
+        )
+
+
 class DialogoGestionEstaciones(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -699,6 +998,27 @@ class DialogoGestionEstaciones(QDialog):
         fila_acciones.addWidget(boton_renombrar)
         fila_acciones.addWidget(boton_desactivar)
 
+        # IP de la estación seleccionada: la guarda sola servidor_red.py
+        # (self.client_address de cada GET /estado, ver
+        # pcs_repo.registrar_conexion) en cuanto el agente de esa PC hace
+        # su primer pedido DESPUÉS de que la estación ya existe acá -- una
+        # estación recién creada, o cuyo agente todavía no conectó, no
+        # tiene nada que mostrar. "Traer IP" relee el dato fresco desde la
+        # base por si el agente conectó recién, sin tener que cerrar y
+        # volver a abrir todo el diálogo.
+        self.campo_ip = QLineEdit()
+        self.campo_ip.setReadOnly(True)
+        self.campo_ip.setPlaceholderText("Todavía no se conoce")
+        boton_traer_ip = QPushButton("Traer IP")
+        boton_traer_ip.clicked.connect(self._traer_ip)
+
+        fila_ip = QHBoxLayout()
+        fila_ip.addWidget(QLabel("IP de la seleccionada:"))
+        fila_ip.addWidget(self.campo_ip)
+        fila_ip.addWidget(boton_traer_ip)
+
+        self.lista.itemSelectionChanged.connect(self._al_cambiar_seleccion)
+
         boton_clave_agentes = QPushButton("Generar/renovar clave de agentes...")
         boton_clave_agentes.clicked.connect(self._generar_clave_agentes)
 
@@ -713,6 +1033,7 @@ class DialogoGestionEstaciones(QDialog):
         layout.addWidget(self.lista)
         layout.addLayout(fila_agregar)
         layout.addLayout(fila_acciones)
+        layout.addLayout(fila_ip)
         layout.addWidget(boton_clave_agentes)
         layout.addWidget(boton_clave_admin)
         layout.addWidget(boton_cerrar)
@@ -772,6 +1093,35 @@ class DialogoGestionEstaciones(QDialog):
                      "historial de sesiones se conserva."):
             pcs_repo.desactivar_estacion(estacion["id"])
             self._cargar()
+
+    def _al_cambiar_seleccion(self):
+        """Al cambiar de fila, muestra la IP ya cargada en memoria (la que
+        trajo el último `_cargar()`) sin ir a la base -- `_traer_ip` es la
+        que relee fresco si hace falta."""
+        fila = self.lista.currentRow()
+        if fila < 0 or fila >= len(self.estaciones):
+            self.campo_ip.clear()
+            return
+        self.campo_ip.setText(self.estaciones[fila]["ultima_ip"] or "")
+
+    @manejar_errores
+    def _traer_ip(self):
+        estacion = self._seleccionada()
+        if estacion is None:
+            return
+        fresca = pcs_repo.obtener_estacion(estacion["id"])
+        ip = fresca["ultima_ip"] if fresca is not None else None
+        if ip:
+            self.campo_ip.setText(ip)
+        else:
+            self.campo_ip.clear()
+            mostrar_error(
+                self, "Todavía no hay IP",
+                f"'{estacion['nombre']}' todavía no registró ninguna conexión con IP.\n\n"
+                "Configurá el agente en esa PC con este mismo nombre de "
+                "estación y esperá unos segundos: pregunta solo cada 5s, y "
+                "recién ahí queda la IP guardada acá."
+            )
 
     @manejar_errores
     def _generar_clave_agentes(self):

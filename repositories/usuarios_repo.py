@@ -28,7 +28,7 @@ PERMISOS_EMPLEADA = [
     ("permiso_consulta_ventas", "Consulta de Ventas (sin poder anular)"),
     ("permiso_reportes", "Reportes"),
     ("permiso_control_cierres", "Control de Cierres de Turno"),
-    ("permiso_control_pcs", "Administrar catálogo de PCs (Estaciones/Bonos/Miembros)"),
+    ("permiso_control_pcs", "Operar PCs y Miembros (asignar bonos, abrir con socio, cargar saldo)"),
 ]
 
 

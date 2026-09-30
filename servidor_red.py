@@ -17,9 +17,11 @@ Expone estos endpoints:
   Control de PCs), viaja en el mismo viaje de red como "comando" en vez
   de necesitar un endpoint aparte -- el agente ya está preguntando cada
   5s de todas formas. Cada pedido válido también deja constancia de
-  "última conexión" (`pcs_repo.registrar_conexion`) -- es el latido que
-  usa el dashboard de Control de PCs para saber si una estación sigue
-  prendida y con red, no solo si tiene sesión.
+  "última conexión" y de la IP LAN de origen (`pcs_repo.registrar_conexion`,
+  con `self.client_address` -- no un dato que mande el agente) -- es el
+  latido que usa el dashboard de Control de PCs para saber si una
+  estación sigue prendida y con red, no solo si tiene sesión, y la IP es
+  la que rellena el botón "Traer IP" de Gestionar Estaciones.
 - POST /login -- un Miembro se loguea directo desde su PC cliente con
   TODO su saldo (mismo mecanismo que miembros_repo.abrir_estacion_por_miembro,
   el que ya usa la pantalla de Miembros del lado de Kiosko). Body JSON
@@ -31,9 +33,12 @@ Expone estos endpoints:
   {"estacion"} -- no pide usuario/clave: alcanza con estar físicamente
   en esa PC, mismo criterio de confianza que ya usa el resto del sistema.
 - POST /comando_resultado -- el agente lo llama después de ejecutar un
-  comando SCREENSHOT, para subir la imagen capturada (los otros tipos de
-  comando no tienen nada que devolver). Body JSON
-  {"comando_id", "imagen_base64"}.
+  comando SCREENSHOT (para subir la imagen capturada) o CAMBIAR_RED (para
+  avisar si pudo cambiar de módem o no -- a diferencia de reiniciar/apagar,
+  esto sí puede fallar del lado de la PC y vale la pena que el mostrador
+  se entere). Body JSON {"comando_id", "imagen_base64"} o
+  {"comando_id", "texto"} según el tipo -- los demás comandos no tienen
+  nada que devolver.
 
 Todo pedido (GET y POST) exige la cabecera `Authorization: Bearer <clave>`
 con la clave generada en Control de PCs -> Gestionar Estaciones ->
@@ -135,8 +140,12 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 # Que haya llegado hasta acá (autorizado, estación
                 # conocida) ya prueba que el agente está prendido y con
                 # red -- es la señal que usa el dashboard de Control de
-                # PCs para distinguir "disponible" de "sin conexión".
-                pcs_repo.registrar_conexion(item["estacion"]["id"])
+                # PCs para distinguir "disponible" de "sin conexión". De
+                # paso, self.client_address (IP real del socket, no un
+                # dato que mande el agente) queda guardada como
+                # estaciones.ultima_ip -- lo que lee el botón "Traer IP"
+                # de Gestionar Estaciones.
+                pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0])
             except Exception:
                 pass  # no puede romper la consulta de bloqueo por esto
             try:
@@ -254,9 +263,11 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
     def _manejar_comando_resultado(self):
         """
-        El agente sube acá la captura de pantalla de un comando SCREENSHOT
-        ya ejecutado (ver comandos_pc_repo.guardar_screenshot). No hace
-        falta validar que la estación exista o que el comando siga
+        El agente sube acá el resultado de un comando ya ejecutado: la
+        captura de pantalla de un SCREENSHOT (`imagen_base64`, ver
+        comandos_pc_repo.guardar_screenshot) o un texto corto "OK"/"ERROR:
+        ..." de un CAMBIAR_RED (`texto`, directo a `comandos_pc.resultado`).
+        No hace falta validar que la estación exista o que el comando siga
         "pendiente": si alguien tarda en mandarlo, guardarlo igual no
         rompe nada -- lo único que mira pcs_window.py es si a ESE
         comando_id ya le llegó un resultado.
@@ -264,14 +275,19 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         try:
             cuerpo = self._leer_cuerpo_json()
             comando_id = int(cuerpo["comando_id"])
-            imagen_base64 = str(cuerpo["imagen_base64"])
         except Exception:
             self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
             return
 
         try:
-            ruta_relativa = comandos_pc_repo.guardar_screenshot(comando_id, imagen_base64)
-            comandos_pc_repo.marcar_resultado(comando_id, ruta_relativa)
+            if "imagen_base64" in cuerpo:
+                ruta_relativa = comandos_pc_repo.guardar_screenshot(comando_id, str(cuerpo["imagen_base64"]))
+                comandos_pc_repo.marcar_resultado(comando_id, ruta_relativa)
+            elif "texto" in cuerpo:
+                comandos_pc_repo.marcar_resultado(comando_id, str(cuerpo["texto"])[:500])
+            else:
+                self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+                return
         except Exception:
             self._responder_json(500, {"ok": False, "error": "Error interno."})
             return

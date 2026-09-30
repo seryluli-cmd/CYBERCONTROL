@@ -4,12 +4,18 @@ miembros_window.py
 Administración de Miembros (socios con saldo prepago de tiempo): alta,
 edición y baja de cuentas, y la carga de saldo — que siempre hace el
 Operador, porque implica cobrar plata (a diferencia de "Abrir PC con
-Miembro" en pcs_window.py, que es autoservicio del socio). También la
-configuración de la tarifa $/hora usada para convertir un pago en
-minutos (ver config_repo.obtener_tarifa_hora_miembro) y la gestión del
-catálogo de Bonos exclusivo de socios (bonos_miembro_repo, distinto del
-de walk-ins que administra pcs_window.DialogoGestionBonos) — esta última
-solo para ADMIN, ver MiembrosWindow.es_admin.
+Miembro" en pcs_window.py, que es autoservicio del socio). Botón propio
+de la barra superior ("Miembros"), accesible con permiso_control_pcs o
+Admin — son tareas de *usar* el catálogo (cargar saldo con la tarifa y
+los bonos ya definidos), no de editarlo.
+
+La configuración de la tarifa $/hora (config_repo.obtener_tarifa_hora_miembro)
+y la gestión del catálogo de Bonos exclusivo de socios (bonos_miembro_repo,
+distinto del de walk-ins que administra pcs_window.DialogoGestionBonos) son
+tareas de EDICIÓN de catálogo, exclusivas de ADMIN — sus pantallas
+(DialogoTarifaMiembro, DialogoGestionBonosMiembro) siguen viviendo acá
+porque son del dominio de Miembros, pero el botón que las abre está en
+ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 """
 
 from PySide6.QtWidgets import (
@@ -32,11 +38,6 @@ class MiembrosWindow(QDialog):
     def __init__(self, usuario_operador, parent=None):
         super().__init__(parent)
         self.usuario_operador = usuario_operador
-        # A diferencia del resto de esta pantalla (accesible con el
-        # permiso 'permiso_control_pcs', delegable a una empleada), el
-        # catálogo de Bonos de Socios es exclusivo de ADMIN, sin
-        # excepción -- ver el botón condicional más abajo.
-        self.es_admin = dominio.es_admin(usuario_operador)
         self.setWindowTitle("Administración de Miembros")
         self.resize(700, 480)
         self._armar_interfaz()
@@ -55,13 +56,7 @@ class MiembrosWindow(QDialog):
         boton_desactivar = QPushButton("Desactivar")
         aplicar_clase(boton_desactivar, "peligro")
         boton_desactivar.clicked.connect(self._desactivar_miembro)
-        boton_tarifa = QPushButton("Configurar Tarifa por Hora")
-        boton_tarifa.clicked.connect(self._configurar_tarifa)
-        botones = [boton_nuevo, boton_modificar, boton_cargar_saldo, boton_desactivar, boton_tarifa]
-        if self.es_admin:
-            boton_bonos = QPushButton("Gestionar Bonos de Socios")
-            boton_bonos.clicked.connect(self._abrir_bonos_miembro)
-            botones.append(boton_bonos)
+        botones = [boton_nuevo, boton_modificar, boton_cargar_saldo, boton_desactivar]
         boton_salir = QPushButton("Salir")
         boton_salir.clicked.connect(self.close)
         botones.append(boton_salir)
@@ -138,17 +133,6 @@ class MiembrosWindow(QDialog):
                      "PCs, pero su saldo e historial se conservan."):
             miembros_repo.desactivar_miembro(miembro["id"])
             self._cargar_grilla()
-
-    @manejar_errores
-    def _configurar_tarifa(self):
-        actual = config_repo.obtener_tarifa_hora_miembro()
-        dialogo = DialogoTarifaMiembro(self, actual)
-        if dialogo.exec():
-            config_repo.actualizar_tarifa_hora_miembro(dialogo.spin_tarifa.value())
-            mostrar_info(self, "Guardado", "Se actualizó la tarifa por hora para socios.")
-
-    def _abrir_bonos_miembro(self):
-        DialogoGestionBonosMiembro(self).exec()
 
 
 class DialogoMiembro(QDialog):
@@ -380,8 +364,8 @@ class DialogoGestionBonosMiembro(QDialog):
     Catálogo de Bonos EXCLUSIVO de socios (bonos_miembro_repo) — mismo
     espíritu que pcs_window.DialogoGestionBonos (el de walk-ins), pero
     tabla y pantalla separadas a propósito (ver el docstring del módulo).
-    Solo se llega acá si MiembrosWindow.es_admin es True: nadie más ve el
-    botón que abre este diálogo.
+    Solo se llega acá desde ui.main_window.ConfiguracionAdminWindow, que
+    es exclusiva de ADMIN: nadie más ve el botón que abre este diálogo.
     """
 
     def __init__(self, parent=None):

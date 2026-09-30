@@ -304,6 +304,14 @@ class DialogoPago(QDialog):
         self.etiqueta_vuelto.setText("")
 
     def _confirmar(self):
+        # self.pagos tiene que quedar neto del vuelto ANTES de devolverlo
+        # (ver dominio.pagos_netos_de_vuelto): lo que graba venta_pagos es
+        # la plata que efectivamente queda en la caja, no lo que la
+        # clienta puso arriba del mostrador. self.vuelto NO se toca: sigue
+        # siendo lo que se le avisa a la empleada que tiene que entregar
+        # (ver ventas_window._ir_a_cobrar).
+        if self.vuelto > 0:
+            self.pagos = dominio.pagos_netos_de_vuelto(self.pagos, self.vuelto)
         self.accept()
 
 

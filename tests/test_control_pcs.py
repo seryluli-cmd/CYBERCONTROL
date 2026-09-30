@@ -11,13 +11,17 @@ la app (ver CLAUDE.md). Corre igual que el resto de la suite:
 
 import base64
 import os
+import threading
 import unittest
 from datetime import datetime
 from unittest import mock
 
 import database
+import dominio
 from repositories import config_repo, usuarios_repo, ventas_repo
-from control_pcs.repositories import agentes_repo, comandos_pc_repo, miembros_repo, pcs_repo, bonos_miembro_repo
+from control_pcs.repositories import (
+    agentes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo, bonos_miembro_repo,
+)
 from base import BaseConBaseTemporal
 
 
@@ -168,6 +172,26 @@ class TestPcsRepo(BaseConBaseTemporal):
         fechas = [evento["fecha"] for evento in eventos]
         self.assertEqual(fechas, sorted(fechas, reverse=True))
 
+    def test_crear_estacion_con_nombre_de_una_desactivada_la_reactiva(self):
+        # Bug real reportado por el dueño (2026-09-29): desactivar una
+        # estación y volver a crearla con el mismo nombre tiraba "ya
+        # existe" para siempre, porque el nombre es UNIQUE en el esquema
+        # sin importar "activa" y no hay ningún botón para reactivarla.
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        pcs_repo.desactivar_estacion(estacion_id)
+
+        reactivada_id = pcs_repo.crear_estacion("PC 1")
+
+        self.assertEqual(reactivada_id, estacion_id)
+        activas = [e["nombre"] for e in pcs_repo.listar_estaciones()]
+        self.assertIn("PC 1", activas)
+
+    def test_crear_estacion_con_nombre_de_una_activa_sigue_rechazando(self):
+        pcs_repo.crear_estacion("PC 1")
+
+        with self.assertRaises(ValueError):
+            pcs_repo.crear_estacion("PC 1")
+
 
 class TestMiembrosRepo(BaseConBaseTemporal):
     def test_crear_miembro_y_autenticar(self):
@@ -313,6 +337,49 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         with self.assertRaises(ValueError):
             miembros_repo.abrir_estacion_por_miembro(estacion_id, "juan", "clave123")
 
+    def test_abrir_estacion_por_miembro_dos_pedidos_simultaneos_no_duplican_el_saldo(self):
+        # Reproduce el escenario real del bug: dos pedidos concurrentes
+        # (dos hilos del ThreadingHTTPServer, por doble clic o reintento
+        # de red) autenticándose para el MISMO socio al mismo tiempo.
+        # Antes, autenticar_miembro leía el saldo en su PROPIA transacción
+        # ya comiteada, así que los dos hilos podían leer el mismo saldo y
+        # terminar gastándolo los dos -- un socio con 60 minutos
+        # terminaba con 120 asignados. Con el BEGIN IMMEDIATE de
+        # abrir_estacion_por_miembro, el segundo pedido tiene que esperar
+        # a que el primero termine y recién ahí lee el saldo ya en 0.
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE miembros SET saldo_minutos = 60 WHERE id = ?", (miembro_id,))
+
+        barrera = threading.Barrier(2)
+        resultados = []
+
+        def intentar_abrir():
+            barrera.wait(timeout=5)
+            try:
+                miembros_repo.abrir_estacion_por_miembro(estacion_id, "juan", "clave123")
+                resultados.append("OK")
+            except ValueError:
+                resultados.append("RECHAZADO")
+
+        hilos = [threading.Thread(target=intentar_abrir) for _ in range(2)]
+        for hilo in hilos:
+            hilo.start()
+        for hilo in hilos:
+            hilo.join(timeout=10)
+
+        # Exactamente uno de los dos se queda con el saldo -- nunca los
+        # dos, y nunca ninguno.
+        self.assertEqual(sorted(resultados), ["OK", "RECHAZADO"])
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 0)
+
+        item = pcs_repo.estado_estaciones()[0]
+        segundos_restantes = item["segundos_restantes"]
+        # Solo se le tienen que haber acreditado los 60 minutos originales
+        # a la sesión -- nunca 120 (los de las dos "consumidas" juntas).
+        self.assertLessEqual(segundos_restantes, 60 * 60)
+
     def test_finalizar_sesion_de_miembro_reintegra_minutos_no_usados(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_id = pcs_repo.crear_estacion("PC 1")
@@ -353,6 +420,157 @@ class TestMiembrosRepo(BaseConBaseTemporal):
             pcs_repo.finalizar_sesion(sesion_id)
 
         self.assertIsNone(pcs_repo.estado_estaciones()[0]["sesion"])
+
+    def test_finalizar_sesion_reutilizada_reintegra_solo_el_tramo_del_socio_no_el_del_bono(self):
+        # Reproduce el bug real: un socio abre una estación con su saldo
+        # y, mientras sigue jugando, el mostrador le suma un bono encima
+        # (mismo flujo que "cliente sigue jugando", ver asignar_bono).
+        # Antes, al cortar la sesión, se le devolvía a ESE socio TODO lo
+        # que quedaba sin usar -- incluido el tramo pagado con el bono,
+        # que nunca debería reintegrarse.
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        bono_socio_id = bonos_miembro_repo.crear_bono("90 min", 90, 4500)
+        miembros_repo.cargar_saldo_por_bono(
+            miembro_id, bono_socio_id, [{"metodo": "EFECTIVO", "monto": 4500}], operador_id
+        )
+        bono_mostrador_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+
+        with mock.patch("control_pcs.repositories.miembros_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0)
+            miembros_repo.abrir_estacion_por_miembro(estacion_id, "juan", "clave123")
+
+        sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 5, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.asignar_bono(
+                estacion_id, bono_mostrador_id, operador_id, [{"metodo": "EFECTIVO", "monto": 3000}]
+            )
+
+        # fin_previsto quedó en 12:30 (11:30 del socio + 60 min del bono).
+        # Corta a las 11:00: quedan 90 min -- 60 son del bono (se
+        # pierden) y 30 son del socio (se le devuelven a ÉL, no más).
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 11, 0, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.finalizar_sesion(sesion_id)
+
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 30)
+
+    def test_finalizar_sesion_reintegra_al_socio_que_extendio_una_sesion_de_bono(self):
+        # Caso inverso: una sesión arranca con un bono del mostrador y,
+        # mientras sigue activa, un socio la extiende logueándose con su
+        # propio saldo (mismo _abrir_o_extender_sesion compartido).
+        # miembro_id solo se graba al CREAR la sesión, así que queda en
+        # None -- antes esto significaba que, aunque el socio haya puesto
+        # plata real (su saldo) en la sesión, cortarla antes de tiempo no
+        # le devolvía nada.
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        bono_socio_id = bonos_miembro_repo.crear_bono("90 min", 90, 4500)
+        miembros_repo.cargar_saldo_por_bono(
+            miembro_id, bono_socio_id, [{"metodo": "EFECTIVO", "monto": 4500}], operador_id
+        )
+        bono_mostrador_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.asignar_bono(
+                estacion_id, bono_mostrador_id, operador_id, [{"metodo": "EFECTIVO", "monto": 3000}]
+            )
+
+        sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+
+        with mock.patch("control_pcs.repositories.miembros_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 10, 0)
+            miembros_repo.abrir_estacion_por_miembro(estacion_id, "juan", "clave123")
+
+        # fin_previsto quedó en 12:30 (11:00 del bono + 90 min del
+        # socio). Corta a las 11:30: quedan 60 min, todos dentro del
+        # tramo que puso el socio -> se le devuelven los 60, aunque la
+        # sesión la haya creado originalmente un bono del mostrador.
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 11, 30, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.finalizar_sesion(sesion_id)
+
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 60)
+
+    def test_anular_carga_revierte_el_saldo_y_deja_movimiento_anulacion(self):
+        # Reproduce el bug real: antes, anular desde Consulta de Ventas la
+        # venta que había cargado saldo a un socio le sacaba la plata del
+        # cierre/caja pero le dejaba los minutos intactos, como si el
+        # negocio se los hubiera regalado.
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        venta_id = miembros_repo.cargar_saldo_por_monto(
+            miembro_id, 1000, [{"metodo": "EFECTIVO", "monto": 1000}], operador_id
+        )
+        saldo_cargado = miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"]
+        self.assertGreater(saldo_cargado, 0)
+
+        miembros_repo.anular_carga(venta_id, operador_id, "Cargado por error")
+
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 0)
+        venta, _detalle, _pagos = ventas_repo.buscar_venta(venta_id)
+        self.assertEqual(venta["estado"], dominio.VENTA_ANULADA)
+
+        with database.conexion_db() as conexion:
+            movimiento = conexion.execute(
+                "SELECT * FROM movimientos_saldo_miembro WHERE venta_id = ? AND tipo = 'ANULACION'",
+                (venta_id,),
+            ).fetchone()
+        self.assertEqual(movimiento["minutos"], saldo_cargado)
+        self.assertEqual(movimiento["miembro_id"], miembro_id)
+
+    def test_anular_carga_no_deja_el_saldo_en_negativo_si_ya_se_gasto(self):
+        # Si el socio ya gastó (parte o todo) el saldo que esa carga le
+        # había dado, revertir no puede sacarle más de lo que le queda --
+        # ya es tiempo que se usó de verdad, no se le puede pedir de
+        # vuelta. Se simula "ya gastó la mitad" tocando el saldo
+        # directo (abrir_estacion_por_miembro siempre consume TODO el
+        # saldo disponible, no deja armar un resto parcial fácil).
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        venta_id = miembros_repo.cargar_saldo_por_monto(
+            miembro_id, 1000, [{"metodo": "EFECTIVO", "monto": 1000}], operador_id
+        )
+        saldo_cargado = miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"]
+
+        with database.conexion_db() as conexion:
+            conexion.execute(
+                "UPDATE miembros SET saldo_minutos = saldo_minutos - ? WHERE id = ?",
+                (saldo_cargado, miembro_id),
+            )
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 0)
+
+        miembros_repo.anular_carga(venta_id, operador_id, "Cargado por error")
+
+        # No se le puede sacar nada más: ya estaba en 0, y anular no lo
+        # manda a negativo.
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 0)
+        venta, _detalle, _pagos = ventas_repo.buscar_venta(venta_id)
+        self.assertEqual(venta["estado"], dominio.VENTA_ANULADA)
+
+    def test_anular_carga_de_una_venta_sin_carga_asociada_funciona_igual_que_anular_venta(self):
+        # Una venta de "Alquiler de PCs" también puede ser un bono de PC
+        # walk-in (sin ninguna CARGA de socio asociada) -- Consulta de
+        # Ventas no distingue esto de antemano, así que anular_carga tiene
+        # que poder manejarla igual que un anular_venta común.
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        venta_id = pcs_repo.asignar_bono(estacion_id, bono_id, operador_id, [{"metodo": "EFECTIVO", "monto": 3000}])
+
+        miembros_repo.anular_carga(venta_id, operador_id, "Test")
+
+        venta, _detalle, _pagos = ventas_repo.buscar_venta(venta_id)
+        self.assertEqual(venta["estado"], dominio.VENTA_ANULADA)
 
 
 class TestComandosPcRepo(BaseConBaseTemporal):
@@ -437,6 +655,43 @@ class TestAgentesRepo(BaseConBaseTemporal):
         agentes_repo.establecer_clave_admin_pcs("5678")
 
         self.assertEqual(agentes_repo.obtener_clave_admin_pcs(), "5678")
+
+
+class TestConfigRedRepo(BaseConBaseTemporal):
+    """Catálogo de módems del local (ver "Cambiar red..." en Control de
+    PCs) -- ver docstring de config_red_repo.py."""
+
+    def test_sin_nada_guardado_todavia_devuelve_los_dos_modems_de_ejemplo(self):
+        gateways = config_red_repo.obtener_gateways()
+
+        self.assertEqual(
+            [g["ip"] for g in gateways], ["192.168.1.201", "192.168.1.202"]
+        )
+
+    def test_guardar_gateways_reemplaza_la_lista_entera(self):
+        config_red_repo.guardar_gateways([{"nombre": "Fibra", "ip": "192.168.1.50"}])
+
+        self.assertEqual(
+            config_red_repo.obtener_gateways(), [{"nombre": "Fibra", "ip": "192.168.1.50"}]
+        )
+
+    def test_guardar_gateways_dos_veces_pisa_la_version_anterior(self):
+        config_red_repo.guardar_gateways([{"nombre": "Módem A", "ip": "192.168.1.201"}])
+        config_red_repo.guardar_gateways([{"nombre": "Módem B", "ip": "192.168.1.202"}])
+
+        self.assertEqual(
+            config_red_repo.obtener_gateways(), [{"nombre": "Módem B", "ip": "192.168.1.202"}]
+        )
+
+    def test_es_ip_valida_acepta_ips_bien_formadas(self):
+        self.assertTrue(config_red_repo.es_ip_valida("192.168.1.201"))
+        self.assertTrue(config_red_repo.es_ip_valida("10.0.0.1"))
+
+    def test_es_ip_valida_rechaza_octetos_fuera_de_rango_y_texto_libre(self):
+        self.assertFalse(config_red_repo.es_ip_valida("192.168.1.999"))
+        self.assertFalse(config_red_repo.es_ip_valida("no es una ip"))
+        self.assertFalse(config_red_repo.es_ip_valida(""))
+        self.assertFalse(config_red_repo.es_ip_valida("192.168.1"))
 
 
 if __name__ == "__main__":

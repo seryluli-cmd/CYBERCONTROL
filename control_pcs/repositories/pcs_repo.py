@@ -37,6 +37,12 @@ from repositories import ventas_repo
 # necesitar que nadie la reinicie a mano.
 UMBRAL_ENLACE_SEGUNDOS = 15
 
+# Mismo valor que miembros_repo.MINUTOS_POR_FRACCION (no se importa de
+# ahí a propósito: miembros_repo ya importa este módulo, e importar en
+# el otro sentido crearía un ciclo -- son dos constantes que hoy
+# coinciden en valor pero describen granularidades de negocio distintas).
+MINUTOS_POR_FRACCION = 30
+
 
 # ---------------------------------------------------------------------
 # Estaciones (catálogo de PCs físicas)
@@ -52,15 +58,34 @@ def listar_estaciones(solo_activas: bool = True):
 
 
 def crear_estacion(nombre: str) -> int:
+    """
+    `nombre` es UNIQUE en el esquema sin importar `activa` -- una
+    estación desactivada (ver `desactivar_estacion`) no se borra, y sin
+    este chequeo su nombre quedaba bloqueado para siempre: no hay ningún
+    botón "Reactivar" en la UI (`DialogoGestionEstaciones` solo lista las
+    activas, `listar_estaciones(solo_activas=True)`), así que "Agregar"
+    con el mismo nombre otra vez es, en la práctica, la única forma de
+    recuperarla. Por eso, si existe una desactivada con ese nombre
+    exacto, se la reactiva en vez de intentar un INSERT que iba a chocar
+    con la constraint UNIQUE y tirar "ya existe" -- error real que
+    reportó el dueño (2026-09-29): borró una estación de prueba y
+    después no podía volver a cargarla con el mismo nombre.
+    """
     nombre = nombre.strip()
     if not nombre:
         raise ValueError("El nombre de la estación no puede quedar vacío.")
-    try:
-        with conexion_db() as conexion:
+    with conexion_db() as conexion:
+        inactiva = conexion.execute(
+            "SELECT id FROM estaciones WHERE nombre = ? AND activa = 0", (nombre,)
+        ).fetchone()
+        if inactiva is not None:
+            conexion.execute("UPDATE estaciones SET activa = 1 WHERE id = ?", (inactiva["id"],))
+            return inactiva["id"]
+        try:
             cursor = conexion.execute("INSERT INTO estaciones (nombre) VALUES (?)", (nombre,))
             return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        raise ValueError(f"Ya existe una estación llamada '{nombre}'.")
+        except sqlite3.IntegrityError:
+            raise ValueError(f"Ya existe una estación llamada '{nombre}'.")
 
 
 def renombrar_estacion(estacion_id: int, nuevo_nombre: str):
@@ -84,7 +109,7 @@ def desactivar_estacion(estacion_id: int):
         conexion.execute("UPDATE estaciones SET activa = 0 WHERE id = ?", (estacion_id,))
 
 
-def registrar_conexion(estacion_id: int):
+def registrar_conexion(estacion_id: int, ip: str = None):
     """
     Deja constancia de que el agente de esa estación acaba de preguntar
     su estado (GET /estado en servidor_red.py) -- es la única señal que
@@ -92,12 +117,35 @@ def registrar_conexion(estacion_id: int):
     con red hacia el mostrador. Se llama en TODO pedido válido, exista o
     no una sesión activa: una estación "enlazada" sin sesión es la que se
     muestra disponible en el dashboard.
+
+    `ip` es la IP LAN desde la que llegó ese pedido (self.client_address
+    en servidor_red.py, no un dato que mande el agente) -- se guarda en
+    estaciones.ultima_ip, que es lo que lee el botón "Traer IP" de
+    Gestionar Estaciones. Puede venir None (por ejemplo desde un test que
+    no simula una conexión real); en ese caso no se pisa la IP ya
+    guardada.
     """
     with conexion_db() as conexion:
-        conexion.execute(
-            "UPDATE estaciones SET ultima_conexion = ? WHERE id = ?",
-            (datetime.now().isoformat(timespec="seconds"), estacion_id),
-        )
+        if ip:
+            conexion.execute(
+                "UPDATE estaciones SET ultima_conexion = ?, ultima_ip = ? WHERE id = ?",
+                (datetime.now().isoformat(timespec="seconds"), ip, estacion_id),
+            )
+        else:
+            conexion.execute(
+                "UPDATE estaciones SET ultima_conexion = ? WHERE id = ?",
+                (datetime.now().isoformat(timespec="seconds"), estacion_id),
+            )
+
+
+def obtener_estacion(estacion_id: int):
+    """Fila cruda de una estación por id, incluida ultima_ip -- usada por
+    el botón "Traer IP" de Gestionar Estaciones para releer el dato más
+    fresco sin recargar toda la lista."""
+    with conexion_db() as conexion:
+        return conexion.execute(
+            "SELECT * FROM estaciones WHERE id = ?", (estacion_id,)
+        ).fetchone()
 
 
 # ---------------------------------------------------------------------
@@ -291,17 +339,91 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
         return venta_id
 
 
+def _contribuciones_de_sesion(conexion, sesion_id: int):
+    """
+    Reconstruye, en orden cronológico, de dónde salió cada tramo de
+    minutos que se le fue sumando a una sesión (bono del mostrador o
+    saldo de un socio) -- no hace falta una tabla nueva para esto:
+    sesion_bonos y movimientos_saldo_miembro (tipo CONSUMO) ya guardan
+    cada aporte por otras razones (facturación, ledger de saldo). El
+    orden de aparición coincide con el orden en que se fueron sumando a
+    la sesión porque asignar_bono() y abrir_estacion_por_miembro() usan
+    el mismo `ahora` tanto para extender la sesión (_abrir_o_extender_sesion)
+    como para grabar su propio registro -- ver _reintegros_por_miembro,
+    el único que usa esto.
+    """
+    return conexion.execute(
+        """
+        SELECT 'BONO' AS tipo, NULL AS miembro_id, sb.minutos AS minutos, v.fecha AS fecha
+        FROM sesion_bonos sb
+        JOIN ventas v ON v.id = sb.venta_id
+        WHERE sb.sesion_id = ?
+        UNION ALL
+        SELECT 'SOCIO' AS tipo, m.miembro_id AS miembro_id, m.minutos AS minutos, m.fecha AS fecha
+        FROM movimientos_saldo_miembro m
+        WHERE m.sesion_id = ? AND m.tipo = 'CONSUMO'
+        ORDER BY fecha
+        """,
+        (sesion_id, sesion_id),
+    ).fetchall()
+
+
+def _reintegros_por_miembro(conexion, sesion_id: int, minutos_restantes: int) -> dict:
+    """
+    De los minutos que le quedaban a una sesión al cortarla, calcula
+    cuántos hay que devolverle a CADA socio que la financió -- nunca a un
+    socio distinto del que puso ese tramo, y nunca a costa de un bono
+    (ver finalizar_sesion). Corrige el bug de "reintegro al socio
+    equivocado": una sesión creada por un socio y después extendida con
+    un bono del mostrador (o al revés) antes solo miraba el miembro_id
+    grabado al CREARLA, así que podía devolverle a ese socio tiempo que
+    en realidad había pagado un bono (que nunca reintegra), o no
+    devolverle nada a un socio que extendió una sesión de bono ya
+    existente (miembro_id se graba solo al crear, ver
+    _abrir_o_extender_sesion).
+
+    El tiempo restante es siempre el TRAMO MÁS NUEVO de la sesión (el
+    reloj cuenta para atrás desde fecha_fin_prevista, y cada aporte nuevo
+    -- bono o saldo -- estira ese final más lejos en el tiempo): por eso
+    se recorren las contribuciones de atrás para adelante, "gastando"
+    minutos_restantes contra cada una hasta agotarlo. El tramo de cada
+    aporte de un socio que cae, total o parcialmente, dentro de esa cola
+    se le suma a lo que hay que devolverle a ESE socio puntual --
+    redondeado hacia abajo a bloques de 30 al final, cada socio por
+    separado (mismo criterio que el resto del sistema). El tramo que cae
+    en un aporte de tipo BONO simplemente se descarta: un bono no
+    reintegra, se pierda o no dentro del tiempo restante.
+    """
+    contribuciones = _contribuciones_de_sesion(conexion, sesion_id)
+    restantes = minutos_restantes
+    por_miembro = {}
+    for fila in reversed(contribuciones):
+        if restantes <= 0:
+            break
+        tramo = min(fila["minutos"], restantes)
+        if fila["tipo"] == "SOCIO":
+            por_miembro[fila["miembro_id"]] = por_miembro.get(fila["miembro_id"], 0) + tramo
+        restantes -= tramo
+    return {
+        miembro_id: (minutos // MINUTOS_POR_FRACCION) * MINUTOS_POR_FRACCION
+        for miembro_id, minutos in por_miembro.items()
+        if minutos >= MINUTOS_POR_FRACCION
+    }
+
+
 def finalizar_sesion(sesion_id: int):
     """
     Cierra una sesión en curso: la usa tanto "Finalizar antes de tiempo"
     como el refresco automático de la pantalla cuando el tiempo restante
     llega a 0.
 
-    Si la sesión era de un Miembro (`miembro_id` seteado, ver
-    database.miembros) y todavía le quedaba tiempo, ese resto se le
-    devuelve a su saldo en bloques de 30 minutos — a diferencia de un
-    bono (consumible de una sola vez, sin reintegro), el saldo de un
-    socio es plata suya: cortar antes no se la hace perder.
+    Si a la sesión, en algún momento, la financió (total o parcialmente)
+    el saldo de un socio y todavía quedaba tiempo sin usar, ESE tramo --
+    y ningún otro, ver _reintegros_por_miembro -- se le devuelve a su
+    saldo en bloques de 30 minutos, aunque la sesión se haya reutilizado
+    mezclando un bono del mostrador de por medio. A diferencia de un bono
+    (consumible de una sola vez, sin reintegro), el saldo de un socio es
+    plata suya: cortar antes no se la hace perder.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
@@ -316,23 +438,25 @@ def finalizar_sesion(sesion_id: int):
             (ahora.isoformat(timespec="seconds"), sesion_id),
         )
 
-        if sesion["miembro_id"] is not None:
-            fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
-            segundos_restantes = max(0, int((fin_previsto - ahora).total_seconds()))
-            minutos_a_reintegrar = (segundos_restantes // 60 // 30) * 30
-            if minutos_a_reintegrar > 0:
-                conexion.execute(
-                    "UPDATE miembros SET saldo_minutos = saldo_minutos + ? WHERE id = ?",
-                    (minutos_a_reintegrar, sesion["miembro_id"]),
-                )
-                conexion.execute(
-                    """
-                    INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, sesion_id)
-                    VALUES (?, 'REINTEGRO', ?, ?, ?)
-                    """,
-                    (sesion["miembro_id"], minutos_a_reintegrar,
-                     ahora.isoformat(timespec="seconds"), sesion_id),
-                )
+        fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
+        segundos_restantes = max(0, int((fin_previsto - ahora).total_seconds()))
+        minutos_restantes = segundos_restantes // 60
+        if minutos_restantes <= 0:
+            return
+
+        reintegros = _reintegros_por_miembro(conexion, sesion_id, minutos_restantes)
+        for miembro_id, minutos_a_reintegrar in reintegros.items():
+            conexion.execute(
+                "UPDATE miembros SET saldo_minutos = saldo_minutos + ? WHERE id = ?",
+                (minutos_a_reintegrar, miembro_id),
+            )
+            conexion.execute(
+                """
+                INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, sesion_id)
+                VALUES (?, 'REINTEGRO', ?, ?, ?)
+                """,
+                (miembro_id, minutos_a_reintegrar, ahora.isoformat(timespec="seconds"), sesion_id),
+            )
 
 
 def actividad_reciente(limite: int = 30):

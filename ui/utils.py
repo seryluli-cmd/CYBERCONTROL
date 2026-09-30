@@ -54,6 +54,16 @@ def manejar_errores(func):
     - Cualquier otro error inesperado se guarda en el log de errores y
       se le muestra a la usuaria un cartel genérico, en vez de que la
       aplicación se rompa o quede en un estado raro.
+    - Un RuntimeError de "objeto C++ ya borrado" (libshiboken) es un caso
+      aparte: pasa cuando el refresco automático de 5s de Control de PCs
+      (`PanelControlPcs._refrescar`) dispara justo mientras esa pantalla
+      se está cerrando (logout o cierre del programa) y toca un widget
+      que ya no existe. Ahí no hay a quién mostrarle un cartel -- el
+      padre puede estar tan destruido como lo que falló, e intentarlo
+      igual repetía el mismo error y se escapaba sin control (ver
+      data/errores.log, 2026-09-28: "PanelActividad already deleted"
+      seguido de "PanelControlPcs already deleted" al querer avisarle a
+      esa misma ventana). Se registra en el log y se ignora en silencio.
     """
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -61,15 +71,30 @@ def manejar_errores(func):
             return func(self, *args, **kwargs)
         except ValueError as error:
             mostrar_error(self, "No se pudo completar", str(error))
+        except RuntimeError as error:
+            registrar_error(error)
+            if "already deleted" not in str(error):
+                _mostrar_error_seguro(self, error)
         except Exception as error:
             registrar_error(error)
-            mostrar_error(
-                self, "Ocurrió un error inesperado",
-                "Algo falló y la acción no se pudo completar.\n"
-                "El detalle quedó guardado en data/errores.log para revisarlo después.\n\n"
-                f"({error.__class__.__name__}: {error})"
-            )
+            _mostrar_error_seguro(self, error)
     return wrapper
+
+
+def _mostrar_error_seguro(padre, error):
+    """Mismo cartel genérico de `manejar_errores`, pero sin dejar que un
+    segundo "objeto ya borrado" (el propio `padre`) se escape sin
+    control -- ver el comentario de `manejar_errores` sobre el caso
+    RuntimeError."""
+    try:
+        mostrar_error(
+            padre, "Ocurrió un error inesperado",
+            "Algo falló y la acción no se pudo completar.\n"
+            "El detalle quedó guardado en data/errores.log para revisarlo después.\n\n"
+            f"({error.__class__.__name__}: {error})"
+        )
+    except RuntimeError:
+        pass
 
 
 def formato_pesos(monto) -> str:

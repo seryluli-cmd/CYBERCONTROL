@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 
 import dominio
 from repositories import ventas_repo
+from control_pcs.repositories import miembros_repo
 from ui.utils import formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase
 
 
@@ -138,6 +139,14 @@ class ConsultaVentasWindow(QDialog):
             mostrar_error(self, "Falta el motivo", "Tenés que indicar un motivo para anular la venta.")
             return
 
-        ventas_repo.anular_venta(venta["id"], self.usuario["id"], motivo.strip())
-        mostrar_info(self, "Venta anulada", f"Se anuló la venta Nº {venta['id']} y se repuso el stock.")
+        # Una venta de "Alquiler de PCs" puede ser una carga de saldo de
+        # socio -- esa sí necesita revertir los minutos ya acreditados,
+        # no solo cambiar el estado de la venta (ver
+        # miembros_repo.anular_carga). Las de Kiosko nunca cargan saldo,
+        # así que siguen con el camino simple de siempre.
+        if venta["origen"] == dominio.ORIGEN_ALQUILER_PCS:
+            miembros_repo.anular_carga(venta["id"], self.usuario["id"], motivo.strip())
+        else:
+            ventas_repo.anular_venta(venta["id"], self.usuario["id"], motivo.strip())
+        mostrar_info(self, "Venta anulada", f"Se anuló la venta Nº {venta['id']}.")
         self._cargar()
