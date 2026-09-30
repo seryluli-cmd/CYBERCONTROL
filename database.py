@@ -391,7 +391,7 @@ def inicializar_base_de_datos():
     # dar de baja una sin romper el historial de sesiones que ya la usaron
     # (mismo criterio que articulos.stock: nunca se borra, se desactiva).
     # "ultima_conexion" la actualiza servidor_red.py en cada GET /estado
-    # que recibe de esa estación (el agente pregunta cada 5s mientras está
+    # que recibe de esa estación (el Cliente PC pregunta cada 5s mientras está
     # prendido y con red) -- es lo que usa pcs_repo.estado_estaciones()
     # para decidir si una estación está "enlazada" sin sesión de por medio.
     cursor.execute("""
@@ -451,12 +451,12 @@ def inicializar_base_de_datos():
     # El mostrador no tiene ninguna conexión directa hacia la PC cliente
     # (evita el lío de firewall/puertos entrantes que ya se vio con el
     # servidor de Kiosko) -- en cambio, deja un comando "pendiente" acá, y
-    # el agente de esa estación lo recoge solo en su próxima consulta de
+    # el Cliente PC de esa estación lo recoge solo en su próxima consulta de
     # `GET /estado` (cada 5s, ver servidor_red.py y la carpeta hermana
-    # "AGENTE PC KIOSKO"). "resultado" solo se usa para SCREENSHOT: guarda
-    # la ruta relativa (dentro de data/) del archivo que subió el agente
+    # "CLIENTE PC"). "resultado" solo se usa para SCREENSHOT: guarda
+    # la ruta relativa (dentro de data/) del archivo que subió el Cliente PC
     # después de entregado -- para REINICIAR/APAGAR/MENSAJE queda en NULL,
-    # no hay nada que el agente tenga que devolver.
+    # no hay nada que el Cliente PC tenga que devolver.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS comandos_pc (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -572,6 +572,7 @@ def inicializar_base_de_datos():
             valor  TEXT NOT NULL
         )
     """)
+    _migrar_clave_clientes_pc(conexion)
 
     # -------------------------------------------------------------------
     # INDICES
@@ -618,7 +619,7 @@ def _migrar_columnas_permisos(conexion: sqlite3.Connection):
 
 def _migrar_columna_ultima_conexion_estaciones(conexion: sqlite3.Connection):
     """
-    Para una base creada antes de que el agente de bloqueo reportara su
+    Para una base creada antes de que el Cliente PC reportara su
     propio "estoy vivo" (ver servidor_red.py): agrega
     estaciones.ultima_conexion. Mismo motivo que _migrar_columnas_permisos:
     ALTER TABLE porque CREATE TABLE IF NOT EXISTS no toca una tabla que ya
@@ -634,9 +635,9 @@ def _migrar_columna_ultima_ip_estaciones(conexion: sqlite3.Connection):
     """
     Agrega estaciones.ultima_ip: la IP LAN desde la que llegó el último
     GET /estado de esa estación (servidor_red.py la saca de
-    self.client_address, no la manda el agente). Es lo que usa el botón
+    self.client_address, no la manda el Cliente PC). Es lo que usa el botón
     "Traer IP" de Gestionar Estaciones -- solo tiene valor una vez que la
-    estación ya existe en esta tabla Y el agente de esa PC hizo al menos
+    estación ya existe en esta tabla Y el Cliente PC de esa PC hizo al menos
     un pedido después de creada (una estación recién tipeada y todavía no
     guardada no tiene fila que actualizar).
     """
@@ -836,6 +837,25 @@ def _migrar_check_tipo_en_movimientos_saldo_miembro(conexion: sqlite3.Connection
         conexion.commit()
     finally:
         conexion.execute("PRAGMA foreign_keys = ON")
+
+
+def _migrar_clave_clientes_pc(conexion: sqlite3.Connection):
+    """
+    El proyecto hermano "AGENTE PC KIOSKO" pasó a llamarse "CLIENTE PC"
+    (2026-09-30) -- la clave compartida que usan las estaciones para
+    autenticarse contra `servidor_red.py` vivía en `configuracion` bajo
+    la clave vieja 'clave_agentes' (ver `clientes_repo.py`, antes
+    `agentes_repo.py`), y el código de acá en más busca 'clave_clientes'.
+    Para una base donde esa clave ya se había generado de verdad (Etapa 1
+    probada en una PC real, ver CLAUDE.md), renombrar la fila en vez de
+    perderla -- si no, quedaría invisible para el código nuevo y habría
+    que regenerarla y volver a distribuir config.json a esa PC sin
+    necesidad.
+    """
+    conexion.execute(
+        "UPDATE configuracion SET clave = 'clave_clientes' WHERE clave = 'clave_agentes'"
+    )
+    conexion.commit()
 
 
 def _migrar_columna_origen_en_ventas(conexion: sqlite3.Connection):

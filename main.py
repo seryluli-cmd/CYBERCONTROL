@@ -27,7 +27,7 @@ from ui.main_window import MainWindow
 
 # Puerto dedicado SOLO para detectar una segunda copia de Kiosko abierta
 # en la misma PC -- no tiene nada que ver con servidor_red.PUERTO_SERVIDOR
-# (8899, el que hablan los agentes de las PCs cliente). Bindear un socket
+# (8899, el que hablan los Clientes PC de las PCs cliente). Bindear un socket
 # TCP en localhost es un "mutex" de instancia única liviano y sin
 # dependencias nuevas: el sistema operativo libera el puerto solo en
 # cuanto el proceso termina, sea un cierre normal o un crash, así que
@@ -375,7 +375,7 @@ def main():
     hacer_backup_automatico()
     # Corre todo el tiempo que Kiosko esté abierto, sin importar quién
     # esté logueado -- es lo que consultan las PCs bloqueadas del local
-    # (ver servidor_red.py y la carpeta hermana "AGENTE PC KIOSKO").
+    # (ver servidor_red.py y la carpeta hermana "CLIENTE PC").
     iniciar_servidor()
     app.setStyle("Fusion")  # look más limpio y consistente entre sistemas operativos
     app.setStyleSheet(HOJA_DE_ESTILOS)

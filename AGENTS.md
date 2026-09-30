@@ -303,7 +303,7 @@ Nada de esto está construido todavía — se deja anotado para que una
 sesión nueva no lo reinvente ni asuma que "no está" significa "no
 importa":
 
-- **Agente de bloqueo de pantalla por PC cliente — en curso, no en este
+- **Cliente PC — bloqueo de pantalla en cada PC, en curso, no en este
   repo.** El servidor ya existe acá (`servidor_red.py`, hilo de fondo
   embebido desde `main.py`): `GET /estado?estacion=<nombre>` (solo
   lectura, contra `pcs_repo.estado_de_estacion`), `POST /login` (un
@@ -312,7 +312,7 @@ importa":
   propia sesión contra `pcs_repo.finalizar_sesion`, mismo reintegro
   redondeado a bloques de 30 min que "Finalizar antes de tiempo" desde
   Gestionar PCs). El cliente vive en la carpeta hermana
-  `AGENTE PC KIOSKO/` (proyecto Python aparte, sin relación de código con
+  `CLIENTE PC/` (proyecto Python aparte, sin relación de código con
   este repo): Etapa 1 (bloqueo con hook de teclado + pantalla completa,
   sin tocar Windows) confirmada funcionando en una PC real; login/logout
   en red ya integrados del lado del cliente también. Falta solo la

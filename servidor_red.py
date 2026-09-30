@@ -1,8 +1,8 @@
 """
 servidor_red.py
 =================
-Servidor HTTP liviano embebido en Kiosko para que el agente de bloqueo
-de cada PC cliente (carpeta hermana "AGENTE PC KIOSKO") pueda preguntar
+Servidor HTTP liviano embebido en Kiosko para que el Cliente PC (carpeta
+hermana "CLIENTE PC") instalado en cada PC del salón pueda preguntar
 el estado de su estación sin tocar la base de datos directamente. Corre
 en un hilo de fondo desde que arranca el programa (ver main.py), sin
 importar quién esté logueado ni qué pantalla esté abierta -- las PCs
@@ -15,10 +15,10 @@ Expone estos endpoints:
   estación (reiniciar, apagar, mensaje, screenshot -- ver
   control_pcs/repositories/comandos_pc_repo.py y el menú contextual de
   Control de PCs), viaja en el mismo viaje de red como "comando" en vez
-  de necesitar un endpoint aparte -- el agente ya está preguntando cada
+  de necesitar un endpoint aparte -- el Cliente PC ya está preguntando cada
   5s de todas formas. Cada pedido válido también deja constancia de
   "última conexión" y de la IP LAN de origen (`pcs_repo.registrar_conexion`,
-  con `self.client_address` -- no un dato que mande el agente) -- es el
+  con `self.client_address` -- no un dato que mande el Cliente PC) -- es el
   latido que usa el dashboard de Control de PCs para saber si una
   estación sigue prendida y con red, no solo si tiene sesión, y la IP es
   la que rellena el botón "Traer IP" de Gestionar Estaciones.
@@ -32,7 +32,7 @@ Expone estos endpoints:
   cerrar su propia sesión sin pasar por el mostrador. Body JSON
   {"estacion"} -- no pide usuario/clave: alcanza con estar físicamente
   en esa PC, mismo criterio de confianza que ya usa el resto del sistema.
-- POST /comando_resultado -- el agente lo llama después de ejecutar un
+- POST /comando_resultado -- el Cliente PC lo llama después de ejecutar un
   comando SCREENSHOT (para subir la imagen capturada) o CAMBIAR_RED (para
   avisar si pudo cambiar de módem o no -- a diferencia de reiniciar/apagar,
   esto sí puede fallar del lado de la PC y vale la pena que el mostrador
@@ -42,7 +42,7 @@ Expone estos endpoints:
 
 Todo pedido (GET y POST) exige la cabecera `Authorization: Bearer <clave>`
 con la clave generada en Control de PCs -> Gestionar Estaciones ->
-Generar/renovar clave de agentes (ver `control_pcs/repositories/agentes_repo.py`)
+Generar/renovar clave de Clientes PC (ver `control_pcs/repositories/clientes_repo.py`)
 -- UNA sola clave compartida por todas las estaciones. Sin clave generada
 todavía, o con una que no coincide, el servidor responde 403 sin tocar la
 base: ver `_ManejadorEstado._autorizado`.
@@ -55,7 +55,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from control_pcs.repositories import agentes_repo, comandos_pc_repo, miembros_repo, pcs_repo
+from control_pcs.repositories import clientes_repo, comandos_pc_repo, miembros_repo, pcs_repo
 
 PUERTO_SERVIDOR = 8899
 
@@ -77,7 +77,7 @@ def _estado_a_json(item):
         "bloqueada": bloqueada,
         "segundos_restantes": segundos,
         "quien": quien,
-        # El agente lo guarda (ver red_kiosko.consultar_estado) para
+        # El Cliente PC lo guarda (ver red_kiosko.consultar_estado) para
         # mandarlo de vuelta en su próximo POST /logout -- ver
         # _manejar_logout sobre por qué hace falta.
         "sesion_id": sesion["id"] if sesion is not None else None,
@@ -99,14 +99,14 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
     def _autorizado(self) -> bool:
         """
-        Todo pedido de un agente viaja con `Authorization: Bearer <clave>`
-        (ver `red_kiosko._cabeceras_agente` en AGENTE PC KIOSKO). Si en
+        Todo pedido de un Cliente PC viaja con `Authorization: Bearer <clave>`
+        (ver `red_kiosko._cabeceras_cliente` en CLIENTE PC). Si en
         Kiosko todavía no se generó ninguna clave (Control de PCs ->
-        Gestionar Estaciones -> Generar/renovar clave de agentes), no se
+        Gestionar Estaciones -> Generar/renovar clave de Clientes PC), no se
         regala el beneficio de la duda -- mismo criterio fail-safe que
         `_estado_a_json` con una estación desconocida.
         """
-        clave_configurada = agentes_repo.obtener_clave_agentes()
+        clave_configurada = clientes_repo.obtener_clave_clientes()
         if not clave_configurada:
             return False
         return self.headers.get("Authorization") == "Bearer " + clave_configurada
@@ -142,11 +142,11 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         if item is not None:
             try:
                 # Que haya llegado hasta acá (autorizado, estación
-                # conocida) ya prueba que el agente está prendido y con
+                # conocida) ya prueba que el Cliente PC está prendido y con
                 # red -- es la señal que usa el dashboard de Control de
                 # PCs para distinguir "disponible" de "sin conexión". De
                 # paso, self.client_address (IP real del socket, no un
-                # dato que mande el agente) queda guardada como
+                # dato que mande el Cliente PC) queda guardada como
                 # estaciones.ultima_ip -- lo que lee el botón "Traer IP"
                 # de Gestionar Estaciones.
                 pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0])
@@ -166,8 +166,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             # Viaja en TODO pedido de estado (exista o no la estación) para
             # que cada PC cliente la mantenga al día sola en un archivo
             # local propio, sin tener que ir PC por PC cuando se cambia --
-            # ver agentes_repo y el panel admin ("A") de agente_bloqueo.py.
-            cuerpo["clave_admin"] = agentes_repo.obtener_clave_admin_pcs()
+            # ver clientes_repo y el panel admin ("A") de cliente_pc.py.
+            cuerpo["clave_admin"] = clientes_repo.obtener_clave_admin_pcs()
         except Exception:
             pass
 
@@ -244,9 +244,9 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
     def _manejar_logout(self):
         """
         Cierra la sesión activa de una estación -- pero solo si sigue
-        siendo la MISMA sesión para la que el agente pidió el cierre.
+        siendo la MISMA sesión para la que el Cliente PC pidió el cierre.
 
-        `sesion_id` es opcional en el body (un agente viejo que todavía
+        `sesion_id` es opcional en el body (un Cliente PC viejo que todavía
         no lo manda sigue funcionando igual que antes, cerrando lo que
         esté activo) pero si viene, tiene que coincidir con la sesión
         activa actual de la estación. Sin este chequeo, un pedido de
@@ -256,11 +256,11 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         mano) y de que se hubiera abierto una sesión NUEVA en la misma
         estación para otro cliente -- el código de acá solo miraba "qué
         sesión está activa ahora en esta estación" y la cerraba, sin
-        importar si era la misma que el agente tenía en mente. Resultado:
+        importar si era la misma que el Cliente PC tenía en mente. Resultado:
         un pedido de cierre viejo de Juan terminaba cortándole la sesión
         recién pagada a María. Si `sesion_id` no coincide, la sesión que
-        el agente quería cerrar ya no existe -- responde OK sin tocar
-        nada, en vez de error (el objetivo del agente, "que esa sesión
+        el Cliente PC quería cerrar ya no existe -- responde OK sin tocar
+        nada, en vez de error (el objetivo del Cliente PC, "que esa sesión
         esté cerrada", ya se cumplió).
         """
         try:
@@ -293,7 +293,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
     def _manejar_comando_resultado(self):
         """
-        El agente sube acá el resultado de un comando ya ejecutado: la
+        El Cliente PC sube acá el resultado de un comando ya ejecutado: la
         captura de pantalla de un SCREENSHOT (`imagen_base64`, ver
         comandos_pc_repo.guardar_screenshot) o un texto corto "OK"/"ERROR:
         ..." de un CAMBIAR_RED (`texto`, directo a `comandos_pc.resultado`).

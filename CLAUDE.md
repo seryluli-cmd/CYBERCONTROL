@@ -303,7 +303,7 @@ Nada de esto está construido todavía — se deja anotado para que una
 sesión nueva no lo reinvente ni asuma que "no está" significa "no
 importa":
 
-- **Agente de bloqueo de pantalla por PC cliente — en curso, no en este
+- **Cliente PC — bloqueo de pantalla en cada PC, en curso, no en este
   repo.** El servidor ya existe acá (`servidor_red.py`, hilo de fondo
   embebido desde `main.py`): `GET /estado?estacion=<nombre>` (solo
   lectura, contra `pcs_repo.estado_de_estacion`), `POST /login` (un
@@ -312,7 +312,7 @@ importa":
   propia sesión contra `pcs_repo.finalizar_sesion`, mismo reintegro
   redondeado a bloques de 30 min que "Finalizar antes de tiempo" desde
   Gestionar PCs). El cliente vive en la carpeta hermana
-  `AGENTE PC KIOSKO/` (proyecto Python aparte, sin relación de código con
+  `CLIENTE PC/` (proyecto Python aparte, sin relación de código con
   este repo): Etapa 1 (bloqueo con hook de teclado + pantalla completa,
   sin tocar Windows) confirmada funcionando en una PC real; login/logout
   en red ya integrados del lado del cliente también. Falta solo la
@@ -463,19 +463,19 @@ Reiniciar/Apagar/Mensaje/Captura (`comandos_pc_repo.py`,
   tabla `configuracion` existente, sin migración), editable desde el
   mismo diálogo. A diferencia de Reiniciar/Apagar, sí puede fallar del
   lado de la PC (necesita permisos de Administrador ahí — confirmado que
-  las cuentas cliente los tienen), así que el agente sube el resultado
+  las cuentas cliente los tienen), así que el Cliente PC sube el resultado
   de vuelta por `POST /comando_resultado` con un `texto` corto
   ("OK"/"ERROR: ...") en vez del `imagen_base64` que ya usaba
   SCREENSHOT — `servidor_red.py:_manejar_comando_resultado` ahora acepta
   cualquiera de los dos.
 - **"Ajustar volumen..."**: slider 0-100% que le manda a una estación su
-  nivel exacto de volumen maestro (agente del lado cliente usa pycaw,
-  ver README de AGENTE PC KIOSKO) — fire-and-forget como Mensaje, no
+  nivel exacto de volumen maestro (el Cliente PC usa pycaw,
+  ver README de CLIENTE PC) — fire-and-forget como Mensaje, no
   necesita Administrador así que no hace falta reportar resultado.
 
 114 tests (109 -> 114, 5 nuevos en `TestConfigRedRepo`). Detalle técnico
 completo del lado cliente (PowerShell usado, por qué no `netsh`,
-dependencias nuevas) en el README de `AGENTE PC KIOSKO`, sección
+dependencias nuevas) en el README de `CLIENTE PC`, sección
 "Cambiar red... y Ajustar volumen...".
 
 **2026-09-29 (más tarde todavía):** nueva pestaña **"Kiosko vs. PCs"** en
@@ -519,19 +519,19 @@ programa que se reinicia a diario.
 tras una prueba real (abrir un bono, apagar la PC cliente, verificar que
 el tiempo restante siguió bajando solo del lado del Servidor -- el
 mecanismo ya era correcto):
-- **Alerta "SIN AGENTE"**: una estación con sesión activa (Bono o
+- **Alerta "SIN CLIENTE"**: una estación con sesión activa (Bono o
   Miembro) que deja de estar "enlazada" ahora parpadea en rojo en vez de
   quedar en el amarillo normal de "En uso" -- aviso al operador de que
-  hay tiempo pago corriendo sin que el agente de esa PC esté reportando
+  hay tiempo pago corriendo sin que el Cliente PC de esa PC esté reportando
   conexión (posible cliente que encontró la forma de cerrarlo). Ver
-  `COLOR_ALERTA_SESION_SIN_AGENTE` / `_alternar_parpadeo` en
+  `COLOR_ALERTA_SESION_SIN_CLIENTE` / `_alternar_parpadeo` en
   `control_pcs/ui/pcs_window.py` -- timer aparte de 500ms, no toca
   `pcs_repo` ni el esquema.
 - **Sincronización al reconectar, siempre el menor**: pedido de
-  seguridad extra del lado del cliente (`AGENTE PC KIOSKO`, no en este
-  repo) -- ante cualquier diferencia entre el conteo local del agente y
-  el `segundos_restantes` que manda este Servidor, el agente ahora usa
+  seguridad extra del lado del cliente (`CLIENTE PC`, no en este
+  repo) -- ante cualquier diferencia entre el conteo local del Cliente PC y
+  el `segundos_restantes` que manda este Servidor, el Cliente PC ahora usa
   siempre el menor de los dos, para no regalar tiempo de sesión por un
   desfasaje de reloj entre PCs. No requirió ningún cambio acá (el
   Servidor ya mandaba el dato correcto); ver el README de
-  `AGENTE PC KIOSKO` para el detalle.
+  `CLIENTE PC` para el detalle.

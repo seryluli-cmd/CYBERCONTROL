@@ -36,7 +36,7 @@ from PySide6.QtCore import Qt, QTimer
 import dominio
 import database
 from control_pcs.repositories import (
-    agentes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo,
+    clientes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo,
 )
 from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
@@ -45,8 +45,8 @@ from ui.utils import (
 )
 
 # Cuántos segundos se espera, como máximo, la captura de pantalla que
-# sube el agente después de un comando SCREENSHOT (ver DialogoCaptura) --
-# tiene que ser más que INTERVALO_CONSULTA_MS del agente (5s) para darle
+# sube el Cliente PC después de un comando SCREENSHOT (ver DialogoCaptura) --
+# tiene que ser más que INTERVALO_CONSULTA_MS del Cliente PC (5s) para darle
 # margen a que la reciba en su próximo ciclo y la suba.
 SEGUNDOS_ESPERA_CAPTURA = 20
 
@@ -61,7 +61,7 @@ UMBRAL_POR_VENCER_SEGUNDOS = 5 * 60
 # Colores de fondo de fila según estado (mismo criterio en toda la
 # pantalla: verde disponible (prendida y enlazada, sin nadie usándola),
 # amarillo en uso (con sesión activa, ámbar si está por vencer), rojo sin
-# conexión (apagada, agente caído, o sin red hacia el mostrador -- ver
+# conexión (apagada, Cliente PC caído, o sin red hacia el mostrador -- ver
 # pcs_repo.registrar_conexion/UMBRAL_ENLACE_SEGUNDOS).
 COLOR_DISPONIBLE = QColor("#DCF3E1")
 COLOR_EN_USO = QColor("#FDF1C7")
@@ -70,17 +70,17 @@ COLOR_DESCONECTADA = QColor("#F8D7D9")
 
 # Alerta especial (pedido explícito del dueño, 2026-09-30): sesión activa
 # (Bono o Miembro) en una estación que dejó de estar "enlazada" -- el
-# agente de esa PC no reportó conexión en el último UMBRAL_ENLACE_SEGUNDOS
+# Cliente PC de esa PC no reportó conexión en el último UMBRAL_ENLACE_SEGUNDOS
 # a pesar de tener tiempo pago corriendo. A diferencia del rojo fijo de
 # "Sin conexión" (esa es sin sesión, sin apuro: la PC está apagada o
 # libre), acá SÍ hay plata/tiempo en juego sin que nadie lo esté viendo
 # -- puede ser que un cliente haya encontrado la forma de cerrar el
-# agente para seguir usando la PC sin que se le descuente. Parpadea entre
+# Cliente PC para seguir usando la PC sin que se le descuente. Parpadea entre
 # estos dos colores para llamar la atención del operador (ver
 # PanelControlPcs._alternar_parpadeo) en vez de quedar en el amarillo
 # normal de "En uso", que pasaría desapercibido.
-COLOR_ALERTA_SESION_SIN_AGENTE = QColor("#F5A3A8")
-COLOR_ALERTA_SESION_SIN_AGENTE_APAGADA = QColor("#FFFFFF")
+COLOR_ALERTA_SESION_SIN_CLIENTE = QColor("#F5A3A8")
+COLOR_ALERTA_SESION_SIN_CLIENTE_APAGADA = QColor("#FFFFFF")
 
 # Cada cuánto alterna el parpadeo de una fila en alerta -- rápido a
 # propósito, tiene que notarse a simple vista sin mirar fijo la pantalla.
@@ -140,7 +140,7 @@ class PanelControlPcs(QWidget):
         self._timer.start()
 
         # Timer aparte, mucho más rápido, solo para el parpadeo de
-        # "sesión activa sin agente" (ver COLOR_ALERTA_SESION_SIN_AGENTE) --
+        # "sesión activa sin Cliente PC" (ver COLOR_ALERTA_SESION_SIN_CLIENTE) --
         # no puede compartir el timer de arriba, que reconstruye la tabla
         # entera cada 5s (perdería la selección y el parpadeo se vería a
         # los tumbos en vez de parejo).
@@ -222,13 +222,13 @@ class PanelControlPcs(QWidget):
             segundos = item["segundos_restantes"]
 
             if sesion is not None and not item["enlazada"]:
-                # Hay tiempo pago corriendo pero el agente de esa PC dejó
-                # de responder -- ver COLOR_ALERTA_SESION_SIN_AGENTE. Esto
+                # Hay tiempo pago corriendo pero el Cliente PC de esa PC dejó
+                # de responder -- ver COLOR_ALERTA_SESION_SIN_CLIENTE. Esto
                 # va ANTES que "por vencer"/"en uso": importa más avisar
                 # que nadie está viendo esa PC que cuánto tiempo le queda.
                 quien_texto = sesion["miembro_nombre"] or "Bono"
                 restante_texto = formato_tiempo(segundos)
-                icono, texto_estado, color = "🚨", "SIN AGENTE (revisar)", COLOR_ALERTA_SESION_SIN_AGENTE
+                icono, texto_estado, color = "🚨", "SIN CLIENTE (revisar)", COLOR_ALERTA_SESION_SIN_CLIENTE
             elif sesion is not None:
                 quien_texto = sesion["miembro_nombre"] or "Bono"
                 restante_texto = formato_tiempo(segundos)
@@ -268,7 +268,7 @@ class PanelControlPcs(QWidget):
         """
         Alterna el fondo de las filas en `self._filas_en_alerta` entre
         rojo fuerte y blanco cada INTERVALO_PARPADEO_MS -- ver
-        COLOR_ALERTA_SESION_SIN_AGENTE. Corre en un timer aparte del
+        COLOR_ALERTA_SESION_SIN_CLIENTE. Corre en un timer aparte del
         refresco de 5s (`_reconstruir_tabla` ya deja los índices de fila
         actualizados cada vez que corre); si no hay ninguna fila en
         alerta no hace nada, así que dejarlo corriendo siempre no cuesta
@@ -278,9 +278,9 @@ class PanelControlPcs(QWidget):
             return
         self._parpadeo_encendido = not self._parpadeo_encendido
         color = (
-            COLOR_ALERTA_SESION_SIN_AGENTE
+            COLOR_ALERTA_SESION_SIN_CLIENTE
             if self._parpadeo_encendido
-            else COLOR_ALERTA_SESION_SIN_AGENTE_APAGADA
+            else COLOR_ALERTA_SESION_SIN_CLIENTE_APAGADA
         )
         for fila in self._filas_en_alerta:
             if fila >= self.tabla.rowCount():
@@ -311,9 +311,9 @@ class PanelControlPcs(QWidget):
         porque son acciones sobre la PC física (o que necesitan efecto
         inmediato), no sobre la sesión de tiempo como elegir un bono.
         Reiniciar/Apagar/Mensaje/Captura/Cambiar red/Volumen viajan al
-        agente de esa estación como un comando pendiente (ver
+        Cliente PC de esa estación como un comando pendiente (ver
         comandos_pc_repo.py); no son instantáneas, tardan hasta el
-        próximo ciclo de 5s del agente -- "Cerrar sesión" sí corta el
+        próximo ciclo de 5s del Cliente PC -- "Cerrar sesión" sí corta el
         tiempo ya mismo en la base (mismo mecanismo que "Finalizar
         Sesión" del panel lateral) y de paso encola el reinicio.
         """
@@ -684,7 +684,7 @@ class DialogoLoginMiembro(QDialog):
 class DialogoCaptura(QDialog):
     """
     Pide una captura de pantalla a una estación y la muestra apenas
-    llega. No es instantáneo: el agente de esa PC recién la toma y la
+    llega. No es instantáneo: el Cliente PC de esa PC recién la toma y la
     sube cuando le llega el comando en su próxima consulta de estado
     (hasta 5s, ver comandos_pc_repo.py) -- por eso este diálogo se queda
     revisando con un QTimer en vez de traer la imagen de una sola vez.
@@ -1000,11 +1000,11 @@ class DialogoGestionEstaciones(QDialog):
 
         # IP de la estación seleccionada: la guarda sola servidor_red.py
         # (self.client_address de cada GET /estado, ver
-        # pcs_repo.registrar_conexion) en cuanto el agente de esa PC hace
+        # pcs_repo.registrar_conexion) en cuanto el Cliente PC de esa PC hace
         # su primer pedido DESPUÉS de que la estación ya existe acá -- una
-        # estación recién creada, o cuyo agente todavía no conectó, no
+        # estación recién creada, o cuyo Cliente PC todavía no conectó, no
         # tiene nada que mostrar. "Traer IP" relee el dato fresco desde la
-        # base por si el agente conectó recién, sin tener que cerrar y
+        # base por si el Cliente PC conectó recién, sin tener que cerrar y
         # volver a abrir todo el diálogo.
         self.campo_ip = QLineEdit()
         self.campo_ip.setReadOnly(True)
@@ -1019,8 +1019,8 @@ class DialogoGestionEstaciones(QDialog):
 
         self.lista.itemSelectionChanged.connect(self._al_cambiar_seleccion)
 
-        boton_clave_agentes = QPushButton("Generar/renovar clave de agentes...")
-        boton_clave_agentes.clicked.connect(self._generar_clave_agentes)
+        boton_clave_clientes = QPushButton("Generar/renovar clave de Clientes PC...")
+        boton_clave_clientes.clicked.connect(self._generar_clave_clientes)
 
         boton_clave_admin = QPushButton("Cambiar contraseña de PC clientes...")
         boton_clave_admin.clicked.connect(self._cambiar_clave_admin_pcs)
@@ -1034,7 +1034,7 @@ class DialogoGestionEstaciones(QDialog):
         layout.addLayout(fila_agregar)
         layout.addLayout(fila_acciones)
         layout.addLayout(fila_ip)
-        layout.addWidget(boton_clave_agentes)
+        layout.addWidget(boton_clave_clientes)
         layout.addWidget(boton_clave_admin)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
@@ -1118,35 +1118,35 @@ class DialogoGestionEstaciones(QDialog):
             mostrar_error(
                 self, "Todavía no hay IP",
                 f"'{estacion['nombre']}' todavía no registró ninguna conexión con IP.\n\n"
-                "Configurá el agente en esa PC con este mismo nombre de "
+                "Configurá el Cliente PC en esa PC con este mismo nombre de "
                 "estación y esperá unos segundos: pregunta solo cada 5s, y "
                 "recién ahí queda la IP guardada acá."
             )
 
     @manejar_errores
-    def _generar_clave_agentes(self):
+    def _generar_clave_clientes(self):
         """
         Genera (o rota) la clave única que exige `servidor_red.py` en el
-        header `Authorization` de cada agente (ver AGENTE PC KIOSKO,
-        `red_kiosko._cabeceras_agente`). Al rotarla, la clave anterior
+        header `Authorization` de cada Cliente PC (ver CLIENTE PC,
+        `red_kiosko._cabeceras_cliente`). Al rotarla, la clave anterior
         deja de servir para CUALQUIER PC hasta que se la actualice ahí --
         por eso pide confirmación explícita si ya había una generada.
         """
-        clave_actual = agentes_repo.obtener_clave_agentes()
+        clave_actual = clientes_repo.obtener_clave_clientes()
         if clave_actual:
             aviso = (
-                "Se va a generar una clave nueva para los agentes.\n\n"
+                "Se va a generar una clave nueva para los Clientes PC.\n\n"
                 "Esto ROTA la clave de las estaciones que ya están conectadas: "
                 "la anterior deja de servir para cualquier PC hasta que se "
                 "actualice ahí con la nueva. ¿Continuar?"
             )
         else:
-            aviso = "Se va a generar la clave que necesitan los agentes de bloqueo para conectarse a este servidor. ¿Continuar?"
-        if not confirmar(self, "Generar/renovar clave de agentes", aviso):
+            aviso = "Se va a generar la clave que necesitan los Clientes PC para conectarse a este servidor. ¿Continuar?"
+        if not confirmar(self, "Generar/renovar clave de Clientes PC", aviso):
             return
-        clave_nueva = agentes_repo.generar_clave_agentes()
+        clave_nueva = clientes_repo.generar_clave_clientes()
         QInputDialog.getText(
-            self, "Clave de agentes generada",
+            self, "Clave de Clientes PC generada",
             "Copiá esta clave (Ctrl+A, Ctrl+C) y pegala en el config.json\n"
             "o en el asistente de configuración de cada PC cliente:",
             text=clave_nueva,
@@ -1156,8 +1156,8 @@ class DialogoGestionEstaciones(QDialog):
     def _cambiar_clave_admin_pcs(self):
         """
         Contraseña que destraba el panel admin en la pantalla de bloqueo
-        de cada PC cliente (ícono "A", ver agente_bloqueo.py). A
-        diferencia de la clave de agentes, la elige el dueño (tiene que
+        de cada PC cliente (ícono "A", ver cliente_pc.py). A
+        diferencia de la clave de Clientes PC, la elige el dueño (tiene que
         poder recordarla) y cada PC cliente la actualiza sola en su
         próximo `GET /estado` -- no hace falta ir PC por PC.
         """
@@ -1181,7 +1181,7 @@ class DialogoGestionEstaciones(QDialog):
         if confirmacion != nueva:
             mostrar_error(self, "No coincide", "Las dos contraseñas no son iguales.")
             return
-        agentes_repo.establecer_clave_admin_pcs(nueva)
+        clientes_repo.establecer_clave_admin_pcs(nueva)
         mostrar_info(
             self, "Listo",
             "Contraseña actualizada. Cada PC cliente la va a tomar sola "

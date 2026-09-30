@@ -24,7 +24,7 @@ import dominio
 import servidor_red
 from repositories import config_repo, usuarios_repo, ventas_repo
 from control_pcs.repositories import (
-    agentes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo, bonos_miembro_repo,
+    clientes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo, bonos_miembro_repo,
 )
 from base import BaseConBaseTemporal
 
@@ -801,36 +801,36 @@ class TestComandosPcRepo(BaseConBaseTemporal):
         self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["resultado"], ruta_relativa)
 
 
-class TestAgentesRepo(BaseConBaseTemporal):
+class TestClientesRepo(BaseConBaseTemporal):
     def test_sin_clave_generada_todavia_devuelve_vacio(self):
-        self.assertEqual(agentes_repo.obtener_clave_agentes(), "")
+        self.assertEqual(clientes_repo.obtener_clave_clientes(), "")
 
-    def test_generar_clave_agentes_la_deja_disponible_para_leer(self):
-        clave = agentes_repo.generar_clave_agentes()
+    def test_generar_clave_clientes_la_deja_disponible_para_leer(self):
+        clave = clientes_repo.generar_clave_clientes()
 
         self.assertGreaterEqual(len(clave), 32)
-        self.assertEqual(agentes_repo.obtener_clave_agentes(), clave)
+        self.assertEqual(clientes_repo.obtener_clave_clientes(), clave)
 
-    def test_generar_clave_agentes_de_nuevo_rota_la_anterior(self):
-        clave_vieja = agentes_repo.generar_clave_agentes()
-        clave_nueva = agentes_repo.generar_clave_agentes()
+    def test_generar_clave_clientes_de_nuevo_rota_la_anterior(self):
+        clave_vieja = clientes_repo.generar_clave_clientes()
+        clave_nueva = clientes_repo.generar_clave_clientes()
 
         self.assertNotEqual(clave_vieja, clave_nueva)
-        self.assertEqual(agentes_repo.obtener_clave_agentes(), clave_nueva)
+        self.assertEqual(clientes_repo.obtener_clave_clientes(), clave_nueva)
 
     def test_sin_clave_admin_pcs_todavia_devuelve_vacio(self):
-        self.assertEqual(agentes_repo.obtener_clave_admin_pcs(), "")
+        self.assertEqual(clientes_repo.obtener_clave_admin_pcs(), "")
 
     def test_establecer_clave_admin_pcs_la_deja_disponible_para_leer(self):
-        agentes_repo.establecer_clave_admin_pcs("1234")
+        clientes_repo.establecer_clave_admin_pcs("1234")
 
-        self.assertEqual(agentes_repo.obtener_clave_admin_pcs(), "1234")
+        self.assertEqual(clientes_repo.obtener_clave_admin_pcs(), "1234")
 
     def test_establecer_clave_admin_pcs_de_nuevo_reemplaza_la_anterior(self):
-        agentes_repo.establecer_clave_admin_pcs("1234")
-        agentes_repo.establecer_clave_admin_pcs("5678")
+        clientes_repo.establecer_clave_admin_pcs("1234")
+        clientes_repo.establecer_clave_admin_pcs("5678")
 
-        self.assertEqual(agentes_repo.obtener_clave_admin_pcs(), "5678")
+        self.assertEqual(clientes_repo.obtener_clave_admin_pcs(), "5678")
 
 
 class TestConfigRedRepo(BaseConBaseTemporal):
@@ -881,7 +881,7 @@ class TestServidorRedLogout(BaseConBaseTemporal):
 
     def setUp(self):
         super().setUp()
-        self._clave = agentes_repo.generar_clave_agentes()
+        self._clave = clientes_repo.generar_clave_clientes()
         self._servidor = ThreadingHTTPServer(("127.0.0.1", 0), servidor_red._ManejadorEstado)
         self._puerto = self._servidor.server_address[1]
         self._hilo = threading.Thread(target=self._servidor.serve_forever, daemon=True)
@@ -911,7 +911,7 @@ class TestServidorRedLogout(BaseConBaseTemporal):
         # cerró (el mostrador la finalizó a mano) y de que se abrió una
         # sesión NUEVA en la misma estación para otro cliente. Antes,
         # /logout solo miraba "qué sesión está activa ahora en esta
-        # estación" y la cerraba, sin importar si era la que el agente
+        # estación" y la cerraba, sin importar si era la que el Cliente PC
         # tenía en mente -- un pedido viejo de Juan terminaba cortándole
         # a María la sesión recién pagada.
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
@@ -941,7 +941,7 @@ class TestServidorRedLogout(BaseConBaseTemporal):
         self.assertEqual(item["sesion"]["id"], sesion_2_id)
 
     def test_logout_sin_sesion_id_sigue_cerrando_lo_que_este_activo(self):
-        # Compatibilidad con un agente viejo que todavía no manda
+        # Compatibilidad con un Cliente PC viejo que todavía no manda
         # sesion_id: se sigue comportando como antes (cierra lo que esté
         # activo en la estación).
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")

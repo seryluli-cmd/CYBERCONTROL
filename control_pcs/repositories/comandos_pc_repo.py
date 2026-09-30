@@ -5,15 +5,15 @@ Control remoto de una estación desde el mostrador: reiniciar, apagar,
 mandar un mensaje, pedir una captura de pantalla, cambiar la puerta de
 enlace/DNS de red o ajustar el volumen. Como el mostrador no tiene
 conexión directa hacia la PC cliente, esto solo deja un comando
-"pendiente" en la base -- el agente de esa estación (carpeta hermana
-"AGENTE PC KIOSKO") lo recoge solo en su próxima consulta de
+"pendiente" en la base -- el Cliente PC de esa estación (carpeta hermana
+"CLIENTE PC") lo recoge solo en su próxima consulta de
 `GET /estado`, cada 5 segundos (ver servidor_red.py).
 
 Por eso una acción acá no es instantánea: el Operador puede ver el
 resultado tardar hasta esos 5 segundos (más lo que tarde la PC en
 ejecutar la acción). Para REINICIAR/APAGAR/MENSAJE/VOLUMEN no hace falta
 ningún resultado de vuelta -- entregado es entregado. Para SCREENSHOT y
-CAMBIAR_RED sí: el agente sube un resultado aparte con
+CAMBIAR_RED sí: el Cliente PC sube un resultado aparte con
 `POST /comando_resultado` -- la imagen para SCREENSHOT
 (`guardar_screenshot` la deja en disco, no en la fila de la base, para no
 inflar el .db con binarios, devolviendo la ruta relativa) o un texto
@@ -40,7 +40,7 @@ TIPO_VOLUMEN = "VOLUMEN"
 
 
 def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
-    """Deja un comando pendiente para que el agente de esa estación lo
+    """Deja un comando pendiente para que el Cliente PC de esa estación lo
     recoja en su próxima consulta de estado. Devuelve el id del comando
     (lo necesita, por ejemplo, DialogoCaptura para saber cuál resultado
     esperar)."""
@@ -70,7 +70,7 @@ def proximo_comando_pendiente(estacion_id: int):
 
 def marcar_entregado(comando_id: int):
     """Se llama apenas el comando se incluye en una respuesta de
-    `GET /estado` -- no se espera una confirmación aparte del agente
+    `GET /estado` -- no se espera una confirmación aparte del Cliente PC
     (mismo criterio de simpleza que el resto de este protocolo: si la
     respuesta no llega a destino por un problema de red, el Operador
     simplemente vuelve a mandar la acción, no hay nada crítico en juego
@@ -85,7 +85,7 @@ def obtener_comando(comando_id: int):
 
 
 def guardar_screenshot(comando_id: int, imagen_base64: str) -> str:
-    """Decodifica la imagen que subió el agente (ver
+    """Decodifica la imagen que subió el Cliente PC (ver
     servidor_red.py:_manejar_comando_resultado) y la guarda en
     data/screenshots/. Devuelve la ruta RELATIVA a DATA_DIR, que es lo
     que se guarda en `comandos_pc.resultado` -- así la UI (pcs_window.py)

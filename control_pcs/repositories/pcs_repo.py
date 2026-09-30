@@ -30,7 +30,7 @@ import dominio
 from database import conexion_db
 from repositories import ventas_repo
 
-# Más que el intervalo de consulta del agente (5s, ver
+# Más que el intervalo de consulta del Cliente PC (5s, ver
 # control_pcs/ui/pcs_window.py) para darle margen de red antes de
 # considerar "sin conexión" a una estación que en realidad sigue
 # prendida -- se resetea a "enlazada" en su próxima consulta, sin
@@ -111,15 +111,15 @@ def desactivar_estacion(estacion_id: int):
 
 def registrar_conexion(estacion_id: int, ip: str = None):
     """
-    Deja constancia de que el agente de esa estación acaba de preguntar
+    Deja constancia de que el Cliente PC de esa estación acaba de preguntar
     su estado (GET /estado en servidor_red.py) -- es la única señal que
-    tenemos de que la PC física está prendida, con el agente corriendo y
+    tenemos de que la PC física está prendida, con el Cliente PC corriendo y
     con red hacia el mostrador. Se llama en TODO pedido válido, exista o
     no una sesión activa: una estación "enlazada" sin sesión es la que se
     muestra disponible en el dashboard.
 
     `ip` es la IP LAN desde la que llegó ese pedido (self.client_address
-    en servidor_red.py, no un dato que mande el agente) -- se guarda en
+    en servidor_red.py, no un dato que mande el Cliente PC) -- se guarda en
     estaciones.ultima_ip, que es lo que lee el botón "Traer IP" de
     Gestionar Estaciones. Puede venir None (por ejemplo desde un test que
     no simula una conexión real); en ese caso no se pisa la IP ya
@@ -205,7 +205,7 @@ def estado_estaciones():
     actualizando aparte. Si la sesión es de un Miembro, también trae su
     nombre (para mostrarlo en la tabla en vez de un simple "Activa").
 
-    También trae "enlazada": si el agente de esa PC preguntó su estado
+    También trae "enlazada": si el Cliente PC de esa PC preguntó su estado
     (ver registrar_conexion, actualizado desde servidor_red.py) hace
     UMBRAL_ENLACE_SEGUNDOS o menos. Es la única forma de distinguir una
     estación prendida-pero-libre de una apagada o sin red -- sin sesión
@@ -250,8 +250,8 @@ def estado_estaciones():
 def estado_de_estacion(nombre: str):
     """
     Como estado_estaciones(), pero para una sola estación por nombre --
-    es lo que consulta el agente de bloqueo de cada PC cliente (ver
-    servidor_red.py y la carpeta hermana "AGENTE PC KIOSKO") para
+    es lo que consulta el Cliente PC de cada estación (ver
+    servidor_red.py y la carpeta hermana "CLIENTE PC") para
     decidir si debe mostrarse bloqueada o no. Devuelve None si no existe
     una estación activa con ese nombre.
     """

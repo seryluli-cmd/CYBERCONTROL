@@ -1,17 +1,17 @@
 """
-agentes_repo.py
+clientes_repo.py
 ================
 Acceso a las dos claves compartidas por todas las PC clientes (carpeta
-hermana "AGENTE PC KIOSKO"), ambas guardadas en la tabla `configuracion`
+hermana "CLIENTE PC"), ambas guardadas en la tabla `configuracion`
 -- mismo patrón que `config_repo.py`:
 
-- 'clave_agentes': la que usa el software cliente para autenticarse
-  contra `servidor_red.py` (ver `red_kiosko._cabeceras_agente`). La
-  genera `generar_clave_agentes()`, al azar, y rota TODAS las PC clientes
+- 'clave_clientes': la que usa el software cliente para autenticarse
+  contra `servidor_red.py` (ver `red_kiosko._cabeceras_cliente`). La
+  genera `generar_clave_clientes()`, al azar, y rota TODAS las PC clientes
   de una.
 - 'clave_admin_pcs': la contraseña de administrador que destraba el panel
   admin en la pantalla de bloqueo de cada PC cliente (ver el ícono "A" en
-  `agente_bloqueo.py`). A diferencia de la anterior, la ELIGE el dueño
+  `cliente_pc.py`). A diferencia de la anterior, la ELIGE el dueño
   (no se genera al azar, tiene que poder recordarla) con
   `establecer_clave_admin_pcs()`. Cada PC cliente la guarda en un
   archivo local propio y la mantiene al día sola preguntándosela al
@@ -25,29 +25,29 @@ import secrets
 from database import conexion_db
 
 
-def obtener_clave_agentes() -> str:
+def obtener_clave_clientes() -> str:
     """Cadena vacía si todavía no se generó ninguna clave (estado inicial,
-    antes de usar "Generar/renovar clave de agentes" por primera vez)."""
+    antes de usar "Generar/renovar clave de Clientes PC" por primera vez)."""
     with conexion_db() as conexion:
         fila = conexion.execute(
-            "SELECT valor FROM configuracion WHERE clave = 'clave_agentes'"
+            "SELECT valor FROM configuracion WHERE clave = 'clave_clientes'"
         ).fetchone()
         return fila["valor"] if fila else ""
 
 
-def generar_clave_agentes() -> str:
+def generar_clave_clientes() -> str:
     """
     Genera una clave nueva al azar (43 caracteres, por encima del mínimo
-    de 32 que exige el asistente de configuración del agente) y la
+    de 32 que exige el asistente de configuración del Cliente PC) y la
     guarda, reemplazando la anterior si había una. Rota TODOS los
-    agentes de una: la clave vieja deja de servir para cualquier PC
+    Clientes PC de una: la clave vieja deja de servir para cualquier PC
     apenas se llama esto -- coherente con que es una sola clave
     compartida, no una por estación.
     """
     clave_nueva = secrets.token_urlsafe(32)
     with conexion_db() as conexion:
         conexion.execute(
-            "INSERT INTO configuracion (clave, valor) VALUES ('clave_agentes', ?) "
+            "INSERT INTO configuracion (clave, valor) VALUES ('clave_clientes', ?) "
             "ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
             (clave_nueva,),
         )
