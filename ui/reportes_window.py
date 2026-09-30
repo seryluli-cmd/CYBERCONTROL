@@ -2,9 +2,10 @@
 reportes_window.py
 =====================
 Reportes: Resumen (cuánta plata se trabajó en un rango de fechas) y
-Ranking de Ventas por artículo (qué se vendió más), replicando el
-formato de columnas (Cantidad, Código, Descripción, Importe) que ya
-usaba el sistema anterior.
+Ranking de Ventas (qué se vendió más -- artículos de kiosko, bonos de
+PC, bonos de socios y cargas de saldo por tarifa, todo junto), con una
+columna Categoría nueva para distinguir de qué negocio vino cada fila
+(ver reportes_repo.ranking_ventas).
 """
 
 from PySide6.QtWidgets import (
@@ -27,7 +28,7 @@ class ReportesWindow(QDialog):
         pestañas = QTabWidget()
         pestañas.addTab(PestañaResumen(), "Resumen de Ventas")
         pestañas.addTab(PestañaPorTurno(), "Por Turno")
-        pestañas.addTab(PestañaKioskoVsPCs(), "Kiosko vs. PCs")
+        pestañas.addTab(PestañaKioskoVsPCs(), "Totales")
         pestañas.addTab(PestañaRanking(), "Ranking de Ventas")
 
         layout = QVBoxLayout()
@@ -276,7 +277,11 @@ class PestañaKioskoVsPCs(QWidget):
             self.tabla.setItem(fila, columna, item)
 
     @manejar_errores
-    def _buscar(self):
+    def _buscar(self, _=None):
+        # El "_=None" no se usa -- ver el comentario igual en
+        # ControlCierresWindow._ver_detalle (caja_window.py): sin él,
+        # cambiar el combo "Agrupar" (currentIndexChanged manda el índice
+        # nuevo) tiraba un error en vez de refrescar la tabla.
         desde = self.fecha_desde.date().toString("yyyy-MM-dd")
         hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
         agrupar_por = self.combo_agrupar.currentData()
@@ -327,11 +332,11 @@ class PestañaRanking(QWidget):
         self.etiqueta_titulo.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.etiqueta_titulo.setAlignment(Qt.AlignCenter)
 
-        self.tabla = QTableWidget(0, 4)
-        self.tabla.setHorizontalHeaderLabels(["Cantidad", "Código", "Descripción", "Importe"])
+        self.tabla = QTableWidget(0, 5)
+        self.tabla.setHorizontalHeaderLabels(["Cantidad", "Categoría", "Código", "Descripción", "Importe"])
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tabla.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)
@@ -364,6 +369,7 @@ class PestañaRanking(QWidget):
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
             self.tabla.setItem(fila, 0, QTableWidgetItem(str(fila_datos["cantidad"])))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(fila_datos["codigo"]))
-            self.tabla.setItem(fila, 2, QTableWidgetItem(fila_datos["descripcion"]))
-            self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(fila_datos["importe"])))
+            self.tabla.setItem(fila, 1, QTableWidgetItem(fila_datos["categoria"]))
+            self.tabla.setItem(fila, 2, QTableWidgetItem(fila_datos["codigo"]))
+            self.tabla.setItem(fila, 3, QTableWidgetItem(fila_datos["descripcion"]))
+            self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(fila_datos["importe"])))

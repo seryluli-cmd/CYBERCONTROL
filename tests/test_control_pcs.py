@@ -156,7 +156,7 @@ class TestPcsRepo(BaseConBaseTemporal):
         pcs_repo.asignar_bono(estacion_bono, bono_id, operador_id, [{"metodo": "EFECTIVO", "monto": 3000}])
 
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        config_repo.actualizar_tarifa_hora_miembro(1000)
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 0, "tarifa_hora": 1000}])
         miembros_repo.cargar_saldo_por_monto(
             miembro_id, 3000, [{"metodo": "EFECTIVO", "monto": 3000}], operador_id
         )
@@ -209,7 +209,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
     def test_cargar_saldo_por_monto_redondea_a_bloques_de_30(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        config_repo.actualizar_tarifa_hora_miembro(1000)
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 0, "tarifa_hora": 1000}])
 
         venta_id = miembros_repo.cargar_saldo_por_monto(
             miembro_id, 13000, [{"metodo": "EFECTIVO", "monto": 13000}], operador_id
@@ -225,7 +225,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
     def test_cargar_saldo_por_monto_redondea_hacia_abajo_si_no_calza_justo(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        config_repo.actualizar_tarifa_hora_miembro(1000)
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 0, "tarifa_hora": 1000}])
 
         # $1300 a $1000/hora = 78 min exactos -> el bloque de 30 más
         # cercano hacia abajo es 60, nunca se regala tiempo de más.
@@ -239,12 +239,53 @@ class TestMiembrosRepo(BaseConBaseTemporal):
     def test_cargar_saldo_por_monto_insuficiente_no_alcanza_ni_30_min(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        config_repo.actualizar_tarifa_hora_miembro(1000)
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 0, "tarifa_hora": 1000}])
 
         with self.assertRaises(ValueError):
             miembros_repo.cargar_saldo_por_monto(
                 miembro_id, 100, [{"metodo": "EFECTIVO", "monto": 100}], operador_id
             )
+
+    def test_cargar_saldo_por_monto_usa_la_tarifa_del_tramo_que_corresponde(self):
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        # Tramos a propósito NO ordenados ni crecientes -- el dueño puede
+        # cargarlos en cualquier orden y con cualquier relación de precios
+        # (ver dominio.validar_tramos_tarifa_hora_miembro).
+        config_repo.guardar_tramos_tarifa_hora_miembro([
+            {"monto_minimo": 5000, "tarifa_hora": 800},
+            {"monto_minimo": 0, "tarifa_hora": 1000},
+        ])
+
+        # $4000 cae por debajo del tramo de $5000 -> tarifa de $1000/hora
+        # (4000/1000*60 = 240 min).
+        venta_id = miembros_repo.cargar_saldo_por_monto(
+            miembro_id, 4000, [{"metodo": "EFECTIVO", "monto": 4000}], operador_id
+        )
+        miembro = miembros_repo.obtener_miembro(miembro_id)
+        self.assertEqual(miembro["saldo_minutos"], 240)
+
+        # $8000 sí llega al tramo de $5000 -> tarifa de $800/hora
+        # (8000/800*60 = 600 min), se suma al saldo anterior.
+        miembros_repo.cargar_saldo_por_monto(
+            miembro_id, 8000, [{"metodo": "EFECTIVO", "monto": 8000}], operador_id
+        )
+        miembro = miembros_repo.obtener_miembro(miembro_id)
+        self.assertEqual(miembro["saldo_minutos"], 240 + 600)
+
+    def test_cargar_saldo_por_monto_debajo_del_tramo_mas_bajo_usa_igual_esa_tarifa(self):
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 5000, "tarifa_hora": 800}])
+
+        # No hay ningún tramo que empiece en $0 -- un monto chico no se
+        # rechaza, usa igual la tarifa del único tramo que hay.
+        miembros_repo.cargar_saldo_por_monto(
+            miembro_id, 800, [{"metodo": "EFECTIVO", "monto": 800}], operador_id
+        )
+
+        miembro = miembros_repo.obtener_miembro(miembro_id)
+        self.assertEqual(miembro["saldo_minutos"], 60)  # 800/800*60 = 60 min
 
     def test_cargar_saldo_por_bono(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
@@ -571,6 +612,36 @@ class TestMiembrosRepo(BaseConBaseTemporal):
 
         venta, _detalle, _pagos = ventas_repo.buscar_venta(venta_id)
         self.assertEqual(venta["estado"], dominio.VENTA_ANULADA)
+
+
+class TestTramosTarifaHoraMiembroRepo(BaseConBaseTemporal):
+    """config_repo.obtener_tramos_tarifa_hora_miembro/guardar_...: la
+    tabla de tramos que reemplazó a la tarifa única de Socios, y su
+    migración desde una base vieja que solo tenía esa tarifa única."""
+
+    def test_base_nueva_sin_configurar_nada_da_un_tramo_de_1000_desde_0(self):
+        # database.inicializar_base_de_datos ya siembra 'tarifa_hora_miembro'
+        # = 1000 (ver database.py) -- una base recién creada tiene que
+        # devolver exactamente eso como tramo único, sin cambiarle a
+        # nadie el precio de un día para el otro.
+        tramos = config_repo.obtener_tramos_tarifa_hora_miembro()
+        self.assertEqual(tramos, [{"monto_minimo": 0.0, "tarifa_hora": 1000.0}])
+
+    def test_guardar_y_releer_tramos(self):
+        nuevos = [
+            {"monto_minimo": 0, "tarifa_hora": 1000},
+            {"monto_minimo": 5000, "tarifa_hora": 800},
+        ]
+        config_repo.guardar_tramos_tarifa_hora_miembro(nuevos)
+
+        self.assertEqual(config_repo.obtener_tramos_tarifa_hora_miembro(), nuevos)
+
+    def test_una_vez_guardados_los_tramos_nuevos_ya_no_mira_la_tarifa_unica_vieja(self):
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 0, "tarifa_hora": 1500}])
+
+        tramos = config_repo.obtener_tramos_tarifa_hora_miembro()
+
+        self.assertEqual(tramos, [{"monto_minimo": 0, "tarifa_hora": 1500}])
 
 
 class TestComandosPcRepo(BaseConBaseTemporal):

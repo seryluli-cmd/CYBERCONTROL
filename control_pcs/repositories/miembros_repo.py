@@ -3,8 +3,8 @@ miembros_repo.py
 ==================
 Socios del Cyber con cuenta propia y saldo prepago de tiempo (en
 minutos). Se cargan de dos formas — pagando un monto en pesos que se
-convierte a minutos según una tarifa configurable (ver
-config_repo.obtener_tarifa_hora_miembro), o comprando uno de los bonos
+convierte a minutos según la tarifa que corresponda a ese monto (ver
+config_repo.obtener_tramos_tarifa_hora_miembro), o comprando uno de los bonos
 del catálogo EXCLUSIVO de socios (bonos_miembro_repo.listar_bonos, no el
 de walk-ins de pcs_repo — ver ese módulo para la diferencia) — y se
 gastan abriendo una estación con el usuario/clave del socio, sin que el
@@ -174,15 +174,19 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pag
 
 def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int) -> int:
     """
-    Convierte un pago en pesos a minutos de saldo, según
-    config_repo.obtener_tarifa_hora_miembro() ($/hora). Se redondea
-    siempre hacia ABAJO al bloque de 30 minutos más cercano — nunca se
-    regala tiempo de más por un redondeo, y el saldo solo se gasta en
-    esos mismos bloques de 30 (ver abrir_estacion_por_miembro).
+    Convierte un pago en pesos a minutos de saldo, según la tarifa $/hora
+    que corresponda a ESE monto (ver
+    config_repo.obtener_tramos_tarifa_hora_miembro y
+    dominio.tarifa_hora_para_monto -- tabla de tramos por monto mínimo,
+    no una tarifa única). Se redondea siempre hacia ABAJO al bloque de 30
+    minutos más cercano — nunca se regala tiempo de más por un
+    redondeo, y el saldo solo se gasta en esos mismos bloques de 30 (ver
+    abrir_estacion_por_miembro).
     """
     if monto <= 0:
         raise ValueError("El monto tiene que ser mayor a 0.")
-    tarifa_hora = config_repo.obtener_tarifa_hora_miembro()
+    tramos = config_repo.obtener_tramos_tarifa_hora_miembro()
+    tarifa_hora = dominio.tarifa_hora_para_monto(tramos, monto)
     minutos = int((monto / tarifa_hora * 60) // MINUTOS_POR_FRACCION) * MINUTOS_POR_FRACCION
     if minutos <= 0:
         raise ValueError(

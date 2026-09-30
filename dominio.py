@@ -159,6 +159,47 @@ def validar_datos_bono(nombre: str, minutos: int, precio: float):
 
 
 # --------------------------------------------------------------------
+# Tarifa por hora de Socios (tramos por monto cargado)
+# --------------------------------------------------------------------
+# Hasta 2026-09-30 había una sola tarifa $/hora para convertir un monto
+# libre en minutos (config_repo.obtener_tarifa_hora_miembro). El dueño
+# pidió poder ofrecer tarifas distintas según cuánta plata carga el
+# socio de una vez -- sin asumir que cargar más siempre sale más barato:
+# cada tramo (a partir de qué monto mínimo rige, y a qué $/hora) lo
+# define el dueño a mano, en cualquier orden de precios.
+def validar_tramos_tarifa_hora_miembro(tramos: list):
+    if not tramos:
+        raise ValueError("Tiene que haber al menos un tramo de tarifa.")
+    montos_vistos = set()
+    for tramo in tramos:
+        if tramo["monto_minimo"] < 0:
+            raise ValueError("El monto mínimo de un tramo no puede ser negativo.")
+        if tramo["tarifa_hora"] <= 0:
+            raise ValueError("La tarifa por hora de un tramo tiene que ser mayor a 0.")
+        if tramo["monto_minimo"] in montos_vistos:
+            raise ValueError("No puede haber dos tramos con el mismo monto mínimo.")
+        montos_vistos.add(tramo["monto_minimo"])
+
+
+def tarifa_hora_para_monto(tramos: list, monto: float) -> float:
+    """
+    Único lugar donde se decide qué tarifa $/hora le corresponde a un
+    monto cargado, según la tabla de tramos (no hace falta que venga
+    ordenada). Se usa el tramo con el monto_minimo más alto que no
+    supere `monto`; si `monto` es menor que el tramo más bajo, se usa
+    igual la tarifa de ese tramo más bajo -- nunca se rechaza una carga
+    chica por no entrar en ningún tramo (pedido explícito del dueño).
+    """
+    tramos_ordenados = sorted(tramos, key=lambda tramo: tramo["monto_minimo"])
+    tarifa = tramos_ordenados[0]["tarifa_hora"]
+    for tramo in tramos_ordenados:
+        if tramo["monto_minimo"] > monto:
+            break
+        tarifa = tramo["tarifa_hora"]
+    return tarifa
+
+
+# --------------------------------------------------------------------
 # Turnos
 # --------------------------------------------------------------------
 # El local abre las 24 hs. De lunes a sábado son 3 turnos de 8 hs; los

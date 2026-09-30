@@ -9,13 +9,14 @@ de la barra superior ("Miembros"), accesible con permiso_control_pcs o
 Admin — son tareas de *usar* el catálogo (cargar saldo con la tarifa y
 los bonos ya definidos), no de editarlo.
 
-La configuración de la tarifa $/hora (config_repo.obtener_tarifa_hora_miembro)
-y la gestión del catálogo de Bonos exclusivo de socios (bonos_miembro_repo,
-distinto del de walk-ins que administra pcs_window.DialogoGestionBonos) son
-tareas de EDICIÓN de catálogo, exclusivas de ADMIN — sus pantallas
-(DialogoTarifaMiembro, DialogoGestionBonosMiembro) siguen viviendo acá
-porque son del dominio de Miembros, pero el botón que las abre está en
-ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
+La configuración de la tabla de tramos de tarifa $/hora (ver
+config_repo.obtener_tramos_tarifa_hora_miembro) y la gestión del
+catálogo de Bonos exclusivo de socios (bonos_miembro_repo, distinto del
+de walk-ins que administra pcs_window.DialogoGestionBonos) son tareas de
+EDICIÓN de catálogo, exclusivas de ADMIN — sus pantallas
+(DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro) siguen viviendo
+acá porque son del dominio de Miembros, pero el botón que las abre está
+en ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 """
 
 from PySide6.QtWidgets import (
@@ -213,10 +214,12 @@ class DialogoMiembro(QDialog):
 
 class DialogoCargarSaldo(QDialog):
     """Dos formas de cargar saldo: un monto libre en $ (convertido a
-    minutos según config_repo.obtener_tarifa_hora_miembro) o uno de los
-    bonos del catálogo EXCLUSIVO de socios (bonos_miembro_repo.listar_bonos
-    -- no el de walk-ins de pcs_repo) — siempre lo hace el Operador, porque
-    implica cobrar plata."""
+    minutos según la tarifa del tramo que corresponda a ese monto, ver
+    config_repo.obtener_tramos_tarifa_hora_miembro y
+    dominio.tarifa_hora_para_monto) o uno de los bonos del catálogo
+    EXCLUSIVO de socios (bonos_miembro_repo.listar_bonos -- no el de
+    walk-ins de pcs_repo) — siempre lo hace el Operador, porque implica
+    cobrar plata."""
 
     def __init__(self, usuario_operador, miembro, parent=None):
         super().__init__(parent)
@@ -237,10 +240,16 @@ class DialogoCargarSaldo(QDialog):
         self.combo_modo.currentIndexChanged.connect(self._actualizar_modo)
 
         # --- Modo Monto ---
-        self.tarifa_hora = config_repo.obtener_tarifa_hora_miembro()
+        # La tarifa ya no es un valor único: depende de en qué tramo cae
+        # el monto que se está por cargar (ver
+        # config_repo.obtener_tramos_tarifa_hora_miembro), así que la
+        # etiqueta de tarifa se recalcula junto con la preview de minutos
+        # cada vez que cambia el monto tipeado.
+        self.tramos_tarifa = config_repo.obtener_tramos_tarifa_hora_miembro()
         pagina_monto = QWidget()
         layout_monto = QVBoxLayout()
-        layout_monto.addWidget(QLabel(f"Tarifa actual: {formato_pesos(self.tarifa_hora)} / hora"))
+        self.etiqueta_tarifa_aplicada = QLabel()
+        layout_monto.addWidget(self.etiqueta_tarifa_aplicada)
         self.spin_monto = QDoubleSpinBox()
         self.spin_monto.setMaximum(99_999_999)
         self.spin_monto.setPrefix("$ ")
@@ -297,7 +306,10 @@ class DialogoCargarSaldo(QDialog):
         self.paginas.setCurrentIndex(self.combo_modo.currentIndex())
 
     def _actualizar_preview_monto(self):
-        minutos = int((self.spin_monto.value() / self.tarifa_hora * 60) // 30) * 30
+        monto = self.spin_monto.value()
+        tarifa_hora = dominio.tarifa_hora_para_monto(self.tramos_tarifa, monto)
+        self.etiqueta_tarifa_aplicada.setText(f"Tarifa a esta carga: {formato_pesos(tarifa_hora)} / hora")
+        minutos = int((monto / tarifa_hora * 60) // 30) * 30
         self.etiqueta_preview_monto.setText(f"Equivale a {formato_tiempo(minutos * 60)} de saldo.")
 
     @manejar_errores
@@ -328,21 +340,42 @@ class DialogoCargarSaldo(QDialog):
         self.accept()
 
 
-class DialogoTarifaMiembro(QDialog):
-    def __init__(self, parent, valor_actual: float):
+class DialogoTramosTarifaMiembro(QDialog):
+    """
+    Tabla de tramos de tarifa $/hora para la carga de saldo por monto
+    (ver config_repo.obtener_tramos_tarifa_hora_miembro y
+    dominio.tarifa_hora_para_monto) -- reemplaza la tarifa única que
+    había hasta 2026-09-30. Cada fila es "a partir de $X, $Y la hora";
+    no hace falta cargarlas en orden ni con precios crecientes o
+    decrecientes, dominio.tarifa_hora_para_monto las ordena solo. Mismo
+    patrón de edición que pcs_window.DialogoEditarGateways: se guarda la
+    tabla entera de una, no fila por fila.
+    """
+
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Tarifa por Hora para Socios")
-        self.resize(320, 140)
+        self.resize(420, 340)
 
-        self.spin_tarifa = QDoubleSpinBox()
-        self.spin_tarifa.setMaximum(99_999_999)
-        self.spin_tarifa.setPrefix("$ ")
-        self.spin_tarifa.setValue(valor_actual)
-        encadenar_enter(self.spin_tarifa, accion_final=self.accept)
+        self.tabla = QTableWidget(0, 2)
+        self.tabla.setHorizontalHeaderLabels(["Monto mínimo", "Tarifa por hora"])
+        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        for tramo in config_repo.obtener_tramos_tarifa_hora_miembro():
+            self._agregar_fila(tramo["monto_minimo"], tramo["tarifa_hora"])
+
+        boton_agregar = QPushButton("Agregar tramo")
+        boton_agregar.clicked.connect(lambda: self._agregar_fila(0, 0))
+        boton_quitar = QPushButton("Quitar seleccionado")
+        aplicar_clase(boton_quitar, "peligro")
+        boton_quitar.clicked.connect(self._quitar_seleccionado)
+        fila_botones = QHBoxLayout()
+        fila_botones.addWidget(boton_agregar)
+        fila_botones.addWidget(boton_quitar)
 
         boton_guardar = QPushButton("Guardar")
         aplicar_clase(boton_guardar, "primario")
-        boton_guardar.clicked.connect(self.accept)
+        boton_guardar.clicked.connect(self._guardar)
         boton_cancelar = QPushButton("Cancelar")
         boton_cancelar.clicked.connect(self.reject)
         botones = QHBoxLayout()
@@ -350,13 +383,58 @@ class DialogoTarifaMiembro(QDialog):
         botones.addWidget(boton_cancelar)
 
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("Cuánto vale una hora de saldo al cargar por monto:"))
-        layout.addWidget(self.spin_tarifa)
+        layout.addWidget(QLabel(
+            "Tramos según cuánta plata carga el socio (ej. $0 en adelante = $1.000/h,\n"
+            "$5.000 en adelante = $1.500/h). Se usa el tramo más alto que no supere el monto\n"
+            "cargado; un monto menor al tramo más bajo igual usa la tarifa de ese tramo."
+        ))
+        layout.addWidget(self.tabla)
+        layout.addLayout(fila_botones)
         layout.addLayout(botones)
         self.setLayout(layout)
         for boton in self.findChildren(QPushButton):
             boton.setAutoDefault(False)
             boton.setDefault(False)
+
+    @staticmethod
+    def _spin_monto(valor):
+        # Mismo widget que usa el resto de la app para cualquier monto
+        # en pesos (ver DialogoGestionBonos.spin_precio) -- evita tener
+        # que parsear a mano un texto con "$"/separadores de miles como
+        # los que arma formato_pesos.
+        spin = QDoubleSpinBox()
+        spin.setMaximum(99_999_999)
+        spin.setPrefix("$ ")
+        spin.setValue(valor)
+        return spin
+
+    def _agregar_fila(self, monto_minimo, tarifa_hora):
+        fila = self.tabla.rowCount()
+        self.tabla.insertRow(fila)
+        self.tabla.setCellWidget(fila, 0, self._spin_monto(monto_minimo))
+        self.tabla.setCellWidget(fila, 1, self._spin_monto(tarifa_hora))
+
+    def _quitar_seleccionado(self):
+        fila = self.tabla.currentRow()
+        if fila >= 0:
+            self.tabla.removeRow(fila)
+
+    @manejar_errores
+    def _guardar(self):
+        tramos = [
+            {
+                "monto_minimo": self.tabla.cellWidget(fila, 0).value(),
+                "tarifa_hora": self.tabla.cellWidget(fila, 1).value(),
+            }
+            for fila in range(self.tabla.rowCount())
+        ]
+        try:
+            dominio.validar_tramos_tarifa_hora_miembro(tramos)
+        except ValueError as error:
+            mostrar_error(self, "Tramo inválido", str(error))
+            return
+        config_repo.guardar_tramos_tarifa_hora_miembro(tramos)
+        self.accept()
 
 
 class DialogoGestionBonosMiembro(QDialog):

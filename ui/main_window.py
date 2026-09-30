@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 import dominio
-from repositories import usuarios_repo, config_repo
+from repositories import usuarios_repo
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
 from ui.ventas_window import VentasWindow
@@ -43,8 +43,8 @@ from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs, DialogoGestionEstaciones, DialogoGestionBonos
-from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTarifaMiembro, DialogoGestionBonosMiembro
-from ui.utils import aplicar_clase, manejar_errores, mostrar_info
+from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
+from ui.utils import aplicar_clase
 
 
 class MainWindow(QMainWindow):
@@ -142,7 +142,16 @@ class MainWindow(QMainWindow):
         CajaWindow(self).exec()
 
     def _abrir_cierre_turno(self):
-        CierreTurnoWindow(self.usuario, self).exec()
+        dialogo = CierreTurnoWindow(self.usuario, self)
+        dialogo.exec()
+        # Cerrar un turno implica que ya llegó el relevo -- en vez de
+        # dejar la sesión de quien cerró abierta, se vuelve sola al Login
+        # (mismo camino que el botón "Cerrar sesión") para que la próxima
+        # persona entre con su propio usuario. Si se canceló el diálogo
+        # sin confirmar el cierre (turno_cerrado sigue en False), no pasa
+        # nada -- sigue todo como estaba.
+        if dialogo.turno_cerrado:
+            self._cerrar_sesion()
 
     def _abrir_cambiar_clave(self):
         DialogoCambiarClave(self.usuario, self).exec()
@@ -307,13 +316,8 @@ class ConfiguracionAdminWindow(QDialog):
     def _abrir_bonos(self):
         DialogoGestionBonos(self).exec()
 
-    @manejar_errores
     def _configurar_tarifa(self):
-        actual = config_repo.obtener_tarifa_hora_miembro()
-        dialogo = DialogoTarifaMiembro(self, actual)
-        if dialogo.exec():
-            config_repo.actualizar_tarifa_hora_miembro(dialogo.spin_tarifa.value())
-            mostrar_info(self, "Guardado", "Se actualizó la tarifa por hora para socios.")
+        DialogoTramosTarifaMiembro(self).exec()
 
     def _abrir_bonos_miembro(self):
         DialogoGestionBonosMiembro(self).exec()

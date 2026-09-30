@@ -86,7 +86,11 @@ class ArticulosWindow(QDialog):
             boton.setDefault(False)
 
     @manejar_errores
-    def _cargar_grilla(self):
+    def _cargar_grilla(self, _=None):
+        # El "_=None" no se usa -- ver el comentario igual en
+        # ControlCierresWindow._ver_detalle (caja_window.py): sin él, cada
+        # letra tipeada en el buscador (textChanged manda el texto nuevo)
+        # tiraba un error en vez de filtrar la grilla.
         texto = self.campo_buscar.text().strip()
         articulos = articulos_repo.listar_articulos(texto)
         self.tabla.setSortingEnabled(False)

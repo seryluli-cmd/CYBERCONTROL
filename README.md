@@ -207,12 +207,14 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   (`reportes_repo.resumen_ventas`: total + desglose efectivo/digital),
   **Por Turno** (`reportes_repo.resumen_por_turno`: mismo desglose pero
   separado por Mañana/Tarde/Noche, siempre las 3 aunque alguna quede en
-  $0), **Kiosko vs. PCs** (`reportes_repo.resumen_por_origen`: cuánto se
+  $0), **Totales** (`reportes_repo.resumen_por_origen`: cuánto se
   facturó de Kiosko contra Alquiler de PCs — ver `dominio.ORIGENES_VENTA`
   —, con un combo para agrupar por Turno/Día/Semana o el total del rango
   completo; agrega una fila TOTAL al pie cuando hay más de un período
-  listado) y **Ranking de Ventas** (`reportes_repo.ranking_ventas`, por
-  cantidad o por monto).
+  listado) y **Ranking de Ventas** (`reportes_repo.ranking_ventas`: TODO
+  lo que se vendió junto —artículos de kiosko, bonos de PC, bonos de
+  socios y cargas de saldo por tarifa—, con columna Categoría para
+  distinguir de dónde vino cada fila, por cantidad o por monto).
 - **Control de Cierres de Turno** (`caja_window.py`,
   `ControlCierresWindow`) — lista `turnos_repo.listar_cierres()` (columna
   Turno con la etiqueta de `etiqueta_turno`, incluye "Domingo T1"/"T2"),

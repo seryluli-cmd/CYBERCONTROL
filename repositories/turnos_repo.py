@@ -52,6 +52,26 @@ def _sumar_ventas_por_origen_y_metodo(conexion, desde: str, hasta: str):
     return totales
 
 
+def _desde_y_turno_en_curso(ultimo_cierre, ahora_dt):
+    """
+    Desde cuándo se viene sumando el turno en curso (`fecha_cierre` del
+    último cierre, o el principio de los tiempos si todavía no hay
+    ninguno) y a qué turno pertenece esa ventana -- el turno que va a
+    quedar grabado si alguien confirma el cierre ahora mismo. Único lugar
+    donde se decide esto: antes `resumen_turno_actual` mostraba el turno
+    de la hora ACTUAL (calcular_turno(ahora)) mientras que `cerrar_turno`
+    grababa el turno de cuándo ARRANCÓ lo que sigue sin cerrar, y podían
+    no coincidir -- ej. a las 14:05, con la Mañana todavía sin cerrar, el
+    título de Caja/Cierre de Turno ya decía "Tarde" pero al confirmar
+    quedaba grabado como "Mañana". Con esta única función, lo que se
+    muestra en pantalla SIEMPRE coincide con lo que se va a grabar.
+    """
+    desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else "0000-01-01T00:00:00"
+    inicio_del_turno = datetime.fromisoformat(desde) if ultimo_cierre else ahora_dt
+    turno = calcular_turno(inicio_del_turno)
+    return desde, turno, inicio_del_turno
+
+
 def resumen_turno_actual():
     """
     Para la pantalla "Caja": muestra cómo viene el turno en curso sin
@@ -61,11 +81,12 @@ def resumen_turno_actual():
     """
     with conexion_db() as conexion:
         ultimo_cierre = _obtener_ultimo_cierre(conexion)
-        desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else "0000-01-01T00:00:00"
+        ahora_dt = datetime.now()
+        desde, turno_actual, inicio_del_turno = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
         # Microsegundos, no segundos: mismo motivo que ventas_repo (ver ahí)
         # -- acá "ahora" se compara contra "ventas.fecha" para armar la
         # vista en vivo de Caja.
-        ahora = datetime.now().isoformat(timespec="microseconds")
+        ahora = ahora_dt.isoformat(timespec="microseconds")
         totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
 
     kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
@@ -77,12 +98,9 @@ def resumen_turno_actual():
 
     fondo_cambio = obtener_fondo_cambio()
 
-    ahora_dt = datetime.now()
-    turno_actual = calcular_turno(ahora_dt)
-
     return {
         "turno_actual": turno_actual,
-        "turno_actual_label": etiqueta_turno(ahora_dt.date(), turno_actual),
+        "turno_actual_label": etiqueta_turno(inicio_del_turno.date(), turno_actual),
         "fondo_cambio": fondo_cambio,
         "ventas_efectivo": ventas_efectivo,
         "ventas_digital": ventas_digital,
@@ -107,8 +125,8 @@ def cerrar_turno(usuario_id: int):
 
     with conexion_db() as conexion:
         ultimo_cierre = _obtener_ultimo_cierre(conexion)
-        desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else "0000-01-01T00:00:00"
         ahora_dt = datetime.now()
+        desde, turno, inicio_del_turno = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
         # Microsegundos, no segundos: esto graba "cierres_turno.fecha_cierre",
         # el límite que separa un turno del siguiente (ver
         # _sumar_ventas_por_origen_y_metodo, fecha > desde AND fecha <=
@@ -128,16 +146,6 @@ def cerrar_turno(usuario_id: int):
         ventas_efectivo = kiosko_efectivo + pcs_efectivo
         ventas_digital = kiosko_digital + pcs_digital
         monto_a_retirar = ventas_efectivo
-
-        # El turno que queda etiquetado en el cierre es el que empezó
-        # justo después del cierre anterior — es decir, el turno que
-        # efectivamente se está cerrando — y no el que esté vigente en
-        # este preciso instante. Si no se hiciera así, una empleada que
-        # cierra unos minutos tarde (ya entrada la hora del turno
-        # siguiente) dejaría el cierre mal etiquetado con el turno
-        # equivocado, aunque los montos en sí siempre fueron correctos.
-        inicio_del_turno = datetime.fromisoformat(desde) if ultimo_cierre else ahora_dt
-        turno = calcular_turno(inicio_del_turno)
 
         # "fecha" guarda el día en que ARRANCÓ el turno (el mismo criterio
         # que "turno", justo arriba) y no el día en que se lo cerró: para

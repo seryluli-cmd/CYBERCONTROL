@@ -140,6 +140,10 @@ class CierreTurnoWindow(QDialog):
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
+        # En True apenas se confirma el cierre (ver _cerrar_turno) -- lo
+        # consulta MainWindow._abrir_cierre_turno después de exec() para
+        # saber si corresponde volver sola al Login (ver ese método).
+        self.turno_cerrado = False
         self.setWindowTitle("Cierre de Turno")
         self.resize(460, 400)
         self._armar_interfaz()
@@ -225,11 +229,14 @@ class CierreTurnoWindow(QDialog):
                           "¿Confirmás el cierre de este turno? No se puede deshacer."):
             return
         resultado = turnos_repo.cerrar_turno(self.usuario["id"])
+        self.turno_cerrado = True
         mostrar_info(
             self, "Turno cerrado",
             f"Turno {resultado['turno_label']} cerrado correctamente.\n\n"
             f"Retirá: {formato_pesos(resultado['monto_a_retirar'])}\n"
-            f"(dejando {formato_pesos(resultado['fondo_cambio'])} de fondo para el próximo turno)"
+            f"(dejando {formato_pesos(resultado['fondo_cambio'])} de fondo para el próximo turno)\n\n"
+            "Ahora volvés a la pantalla de ingreso: quien te releve tiene que "
+            "entrar con su propio usuario."
         )
         self.close()
 
@@ -386,7 +393,15 @@ class ControlCierresWindow(QDialog):
         self.panel_faltantes.show()
 
     @manejar_errores
-    def _ver_detalle(self):
+    def _ver_detalle(self, _=None):
+        # El "_=None" no se usa -- está solo para poder recibir sin
+        # romperse el dato que manda solo `doubleClicked` (la fila en la
+        # que se hizo doble clic). El decorador @manejar_errores envuelve
+        # esta función en "*args, **kwargs", y con eso Qt deja de recortar
+        # ese dato antes de llamarla (a diferencia de una función sin
+        # decorar, donde si lo recorta): sin este parámetro de más, doble
+        # clic en una fila tiraba "takes 1 positional argument but 2 were
+        # given" en vez de abrir el detalle.
         fila = self.tabla.currentRow()
         if fila < 0:
             mostrar_error(self, "Nada seleccionado", "Elegí primero un cierre de la lista.")

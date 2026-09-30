@@ -160,6 +160,73 @@ class TestPagosNetosDeVuelto(unittest.TestCase):
         self.assertEqual(pagos, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 2000.0}])
 
 
+class TestTarifaHoraParaMonto(unittest.TestCase):
+    """dominio.tarifa_hora_para_monto: qué tarifa $/hora corresponde a un
+    monto cargado, según la tabla de tramos que reemplazó a la tarifa
+    única de Socios (pedido del dueño, 2026-09-30, para poder cobrar
+    distinto según cuánta plata carga el socio de una vez)."""
+
+    def test_usa_el_tramo_mas_alto_que_no_supera_el_monto(self):
+        tramos = [
+            {"monto_minimo": 0, "tarifa_hora": 1000},
+            {"monto_minimo": 5000, "tarifa_hora": 800},
+            {"monto_minimo": 10000, "tarifa_hora": 600},
+        ]
+        self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 4999), 1000)
+        self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 5000), 800)
+        self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 9999), 800)
+        self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 15000), 600)
+
+    def test_no_asume_que_el_tramo_mas_caro_es_el_de_mas_plata(self):
+        # El dueño puede cargar los tramos en cualquier relación de
+        # precios, no necesariamente "cuanto más plata, más barato".
+        tramos = [
+            {"monto_minimo": 0, "tarifa_hora": 800},
+            {"monto_minimo": 5000, "tarifa_hora": 1500},
+        ]
+        self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 100), 800)
+        self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 6000), 1500)
+
+    def test_monto_menor_al_tramo_mas_bajo_usa_igual_esa_tarifa(self):
+        tramos = [{"monto_minimo": 5000, "tarifa_hora": 800}]
+        self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 100), 800)
+
+    def test_no_depende_del_orden_en_que_vienen_los_tramos(self):
+        tramos = [
+            {"monto_minimo": 10000, "tarifa_hora": 600},
+            {"monto_minimo": 0, "tarifa_hora": 1000},
+            {"monto_minimo": 5000, "tarifa_hora": 800},
+        ]
+        self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 7000), 800)
+
+
+class TestValidarTramosTarifaHoraMiembro(unittest.TestCase):
+    def test_lista_vacia_no_es_valida(self):
+        with self.assertRaises(ValueError):
+            dominio.validar_tramos_tarifa_hora_miembro([])
+
+    def test_monto_minimo_negativo_no_es_valido(self):
+        with self.assertRaises(ValueError):
+            dominio.validar_tramos_tarifa_hora_miembro([{"monto_minimo": -1, "tarifa_hora": 1000}])
+
+    def test_tarifa_cero_o_negativa_no_es_valida(self):
+        with self.assertRaises(ValueError):
+            dominio.validar_tramos_tarifa_hora_miembro([{"monto_minimo": 0, "tarifa_hora": 0}])
+
+    def test_dos_tramos_con_el_mismo_monto_minimo_no_es_valido(self):
+        with self.assertRaises(ValueError):
+            dominio.validar_tramos_tarifa_hora_miembro([
+                {"monto_minimo": 0, "tarifa_hora": 1000},
+                {"monto_minimo": 0, "tarifa_hora": 800},
+            ])
+
+    def test_tramos_validos_no_tira_error(self):
+        dominio.validar_tramos_tarifa_hora_miembro([
+            {"monto_minimo": 0, "tarifa_hora": 1000},
+            {"monto_minimo": 5000, "tarifa_hora": 800},
+        ])
+
+
 class TestEsAdmin(unittest.TestCase):
     def test_reconoce_el_rol_admin_y_rechaza_el_resto(self):
         self.assertTrue(dominio.es_admin({"rol": dominio.ROL_ADMIN}))
@@ -520,6 +587,38 @@ class TestEtiquetaDeTurnoEnElCierre(BaseConBaseTemporal):
         self.assertEqual(cierre_mas_reciente["turno"], "MAÑANA")
 
 
+class TestResumenTurnoActualCoincideConElCierre(BaseConBaseTemporal):
+    """
+    Antes, la vista previa de Caja/Cierre de Turno (resumen_turno_actual)
+    calculaba el turno mirando la hora ACTUAL, mientras que cerrar_turno
+    lo calculaba mirando cuándo arrancó lo que sigue sin cerrar -- podían
+    no coincidir. Ver _desde_y_turno_en_curso.
+    """
+
+    def test_el_titulo_en_pantalla_anticipa_el_turno_que_va_a_quedar_grabado(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+
+        # Primer cierre a las 10:00 (turno MAÑANA).
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            turnos_repo.cerrar_turno(usuario_id)
+
+        # Son las 14:05: ya empezó TARDE, pero la MAÑANA todavía no se
+        # cerró. La vista previa tiene que seguir mostrando MAÑANA (el
+        # turno que efectivamente se va a grabar si alguien cierra ahora),
+        # no TARDE.
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 14, 5, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            resumen = turnos_repo.resumen_turno_actual()
+            self.assertEqual(resumen["turno_actual"], "MAÑANA")
+            self.assertEqual(resumen["turno_actual_label"], "Mañana")
+
+            cierre = turnos_repo.cerrar_turno(usuario_id)
+            self.assertEqual(cierre["turno"], "MAÑANA")
+
+
 class TestFechaDelCierreEsElDiaQueArrancoElTurno(BaseConBaseTemporal):
     def test_turno_noche_cerrado_pasada_la_medianoche_guarda_la_fecha_de_inicio(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
@@ -754,7 +853,7 @@ class TestResumenPorTurno(BaseConBaseTemporal):
 
 class TestResumenPorOrigen(BaseConBaseTemporal):
     """reportes_repo.resumen_por_origen: desglose Kiosko vs. Alquiler de
-    PCs por turno/día/semana/rango, para la pestaña "Kiosko vs. PCs" de
+    PCs por turno/día/semana/rango, para la pestaña "Totales" de
     Reportes."""
 
     def _preparar_articulo(self, usuario_id):
@@ -837,6 +936,116 @@ class TestResumenPorOrigen(BaseConBaseTemporal):
         self.assertEqual(filas[0]["kiosko"], 150.0)
         self.assertEqual(filas[1]["etiqueta"], "Semana del 12/01 al 18/01/2026")
         self.assertEqual(filas[1]["kiosko"], 25.0)
+
+
+class TestRankingVentas(BaseConBaseTemporal):
+    """reportes_repo.ranking_ventas: el Ranking de Ventas tiene que traer
+    las CUATRO fuentes de venta del programa (artículo de kiosko, bono de
+    PC walk-in, bono de socio, carga de saldo por tarifa), no solo los
+    artículos -- pedido explícito del dueño (2026-09-30) para poder ver
+    en un solo lugar qué es lo que más funciona de cada negocio."""
+
+    def setUp(self):
+        super().setUp()
+        self.usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self.hoy = date.today().isoformat()
+
+    def _ranking(self, ordenar_por="cantidad"):
+        return {f["descripcion"]: f for f in reportes_repo.ranking_ventas(self.hoy, self.hoy, ordenar_por)}
+
+    def test_incluye_articulo_de_kiosko(self):
+        articulos_repo.crear_articulo("COD9", "Producto", None, None, 100.0, 50.0, 0)
+        compras_repo.registrar_compra(self.usuario_id, [{"codigo": "COD9", "cantidad": 10, "costo_unitario": 50.0}])
+        ventas_repo.confirmar_venta(
+            self.usuario_id,
+            [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 3, "precio_unitario": 100.0}],
+            [{"metodo": "EFECTIVO", "monto": 300.0}],
+        )
+
+        fila = self._ranking()["Producto"]
+
+        self.assertEqual(fila["categoria"], reportes_repo.CATEGORIA_KIOSKO)
+        self.assertEqual(fila["codigo"], "COD9")
+        self.assertEqual(fila["cantidad"], 3)
+        self.assertEqual(fila["importe"], 300.0)
+
+    def test_incluye_bono_de_pc_walkin(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        bono_id = pcs_repo.crear_bono("3 hs", 180, 5000.0)
+        pcs_repo.asignar_bono(estacion_id, bono_id, self.usuario_id, [{"metodo": "EFECTIVO", "monto": 5000.0}])
+
+        fila = self._ranking()["3 hs"]
+
+        self.assertEqual(fila["categoria"], reportes_repo.CATEGORIA_BONO_PC)
+        self.assertEqual(fila["cantidad"], 1)
+        self.assertEqual(fila["importe"], 5000.0)
+
+    def test_incluye_bono_de_socio(self):
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        bono_id = bonos_miembro_repo.crear_bono("Combo Socio", 120, 2000.0)
+        miembros_repo.cargar_saldo_por_bono(miembro_id, bono_id, [{"metodo": "EFECTIVO", "monto": 2000.0}], self.usuario_id)
+
+        fila = self._ranking()["Combo Socio"]
+
+        self.assertEqual(fila["categoria"], reportes_repo.CATEGORIA_BONO_SOCIO)
+        self.assertEqual(fila["cantidad"], 1)
+        self.assertEqual(fila["importe"], 2000.0)
+
+    def test_incluye_carga_por_tarifa_de_socio(self):
+        # Tarifa por defecto (sin configurar): $1000/hora -- ver
+        # config_repo.obtener_tarifa_hora_miembro.
+        miembro_id = miembros_repo.crear_miembro("ana", "clave123", "Ana", "30333444", "1155556666")
+        miembros_repo.cargar_saldo_por_monto(miembro_id, 1000.0, [{"metodo": "EFECTIVO", "monto": 1000.0}], self.usuario_id)
+
+        fila = self._ranking()[reportes_repo.CATEGORIA_CARGA_TARIFA_SOCIO]
+
+        self.assertEqual(fila["categoria"], reportes_repo.CATEGORIA_CARGA_TARIFA_SOCIO)
+        self.assertEqual(fila["cantidad"], 1)
+        self.assertEqual(fila["importe"], 1000.0)
+
+    def test_no_confunde_bono_de_pc_con_bono_de_socio_del_mismo_nombre(self):
+        # Los dos catálogos son independientes (ver dominio.py) -- un
+        # mismo nombre de bono en cada uno no puede pisarse en el ranking.
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        bono_pc_id = pcs_repo.crear_bono("Combo", 180, 5000.0)
+        pcs_repo.asignar_bono(estacion_id, bono_pc_id, self.usuario_id, [{"metodo": "EFECTIVO", "monto": 5000.0}])
+
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        bono_socio_id = bonos_miembro_repo.crear_bono("Combo", 120, 2000.0)
+        miembros_repo.cargar_saldo_por_bono(miembro_id, bono_socio_id, [{"metodo": "EFECTIVO", "monto": 2000.0}], self.usuario_id)
+
+        filas = [f for f in reportes_repo.ranking_ventas(self.hoy, self.hoy) if f["descripcion"] == "Combo"]
+
+        self.assertEqual(len(filas), 2)
+        categorias = {f["categoria"] for f in filas}
+        self.assertEqual(categorias, {reportes_repo.CATEGORIA_BONO_PC, reportes_repo.CATEGORIA_BONO_SOCIO})
+
+    def test_ordena_todas_las_categorias_juntas_por_cantidad(self):
+        articulos_repo.crear_articulo("COD9", "Producto", None, None, 100.0, 50.0, 0)
+        compras_repo.registrar_compra(self.usuario_id, [{"codigo": "COD9", "cantidad": 10, "costo_unitario": 50.0}])
+        for _ in range(5):
+            ventas_repo.confirmar_venta(
+                self.usuario_id,
+                [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 1, "precio_unitario": 100.0}],
+                [{"metodo": "EFECTIVO", "monto": 100.0}],
+            )
+
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        bono_id = pcs_repo.crear_bono("3 hs", 180, 5000.0)
+        pcs_repo.asignar_bono(estacion_id, bono_id, self.usuario_id, [{"metodo": "EFECTIVO", "monto": 5000.0}])
+
+        filas = reportes_repo.ranking_ventas(self.hoy, self.hoy, "cantidad")
+
+        self.assertEqual(filas[0]["descripcion"], "Producto")
+        self.assertEqual(filas[0]["cantidad"], 5)
+
+    def test_no_incluye_cargas_anuladas_ni_fuera_de_rango(self):
+        miembro_id = miembros_repo.crear_miembro("ana", "clave123", "Ana", "30333444", "1155556666")
+        miembros_repo.cargar_saldo_por_monto(miembro_id, 1000.0, [{"metodo": "EFECTIVO", "monto": 1000.0}], self.usuario_id)
+
+        filas = reportes_repo.ranking_ventas("2000-01-01", "2000-01-01")
+
+        self.assertEqual(filas, [])
 
 
 class TestMigracionOrigenEnVentas(BaseConBaseTemporal):
@@ -1146,7 +1355,7 @@ class TestDesglosePorOrigenEnCierreDeTurno(BaseConBaseTemporal):
         estacion_id = pcs_repo.crear_estacion("PC 1")
         bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        config_repo.actualizar_tarifa_hora_miembro(1000)
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 0, "tarifa_hora": 1000}])
         momento = datetime(2026, 1, 5, 10, 0, 0)
 
         # Una venta de kiosko en efectivo.

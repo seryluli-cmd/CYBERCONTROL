@@ -3,16 +3,28 @@ reportes_repo.py
 ==================
 Consultas para la sección de Reportes: el Resumen (cuánta plata se
 trabajó en un rango de fechas), el desglose Kiosko vs. Alquiler de PCs
-(por turno, día, semana o el rango completo) y el Ranking de Ventas por
-artículo (qué se vende más). Son solo consultas SQL con agregación (SUM,
-GROUP BY), apoyadas en los índices que se crean en database.py — por
-eso van a ser rápidas incluso con años de ventas acumuladas.
+(por turno, día, semana o el rango completo) y el Ranking de Ventas
+(qué se vende más, de cualquiera de los cuatro negocios del programa).
+Son solo consultas SQL con agregación (SUM, GROUP BY), apoyadas en los
+índices que se crean en database.py — por eso van a ser rápidas incluso
+con años de ventas acumuladas.
 """
 
 from datetime import date, timedelta
 
 import dominio
 from database import conexion_db
+
+# Categorías del Ranking de Ventas -- son un rótulo de la pantalla, no un
+# valor que se guarda en la base (por eso viven acá y no en dominio.py,
+# que es para strings que sí viajan hasta una columna). Un artículo de
+# kiosko sale de venta_detalle; los otros tres no tienen fila ahí (ver
+# ventas_repo.registrar_venta_sin_detalle) y hay que ir a buscarlos a
+# sesion_bonos / movimientos_saldo_miembro para saber qué se vendió.
+CATEGORIA_KIOSKO = "Kiosko"
+CATEGORIA_BONO_PC = "Bono de PC (walk-in)"
+CATEGORIA_BONO_SOCIO = "Bono de Socio"
+CATEGORIA_CARGA_TARIFA_SOCIO = "Carga de saldo de Socio (tarifa por hora)"
 
 
 def resumen_ventas(desde: str, hasta: str):
@@ -185,26 +197,92 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
 
 def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
     """
-    Ranking de artículos vendidos entre dos fechas, con la cantidad total
-    vendida y el importe total facturado de cada uno. `ordenar_por` puede
-    ser "cantidad" o "monto" (equivalente a las dos variantes que tenía
-    el sistema viejo: "por cantidad" y "por monto").
+    Ranking de TODO lo que se vendió entre dos fechas -- artículos de
+    kiosko, bonos de tiempo de walk-ins, bonos de socios y cargas de
+    saldo por tarifa -- con la cantidad total vendida y el importe total
+    facturado de cada uno. `ordenar_por` puede ser "cantidad" o "monto"
+    (equivalente a las dos variantes que tenía el sistema viejo: "por
+    cantidad" y "por monto").
+
+    Un artículo de kiosko deja su fila en venta_detalle, pero un bono o
+    una carga de saldo se registran sin detalle (ver
+    ventas_repo.registrar_venta_sin_detalle): para saber QUÉ se vendió
+    hay que ir a sesion_bonos (bono de PC) o movimientos_saldo_miembro
+    (bono de socio o carga por tarifa, distinguidos por si el movimiento
+    de tipo 'CARGA' trae bono_id o no -- ver
+    miembros_repo.cargar_saldo_por_monto/_por_bono). Las cuatro fuentes
+    se traen con UNION ALL y se ordenan juntas al final, para que el
+    dueño vea en un solo ranking qué es lo que más funciona de cualquiera
+    de los cuatro negocios.
     """
     columna_orden = "cantidad" if ordenar_por == "cantidad" else "importe"
+    rango = (dominio.VENTA_CONFIRMADA, desde, hasta)
 
     with conexion_db() as conexion:
         return conexion.execute(
             f"""
-            SELECT
-                venta_detalle.articulo_codigo AS codigo,
-                venta_detalle.descripcion,
-                SUM(venta_detalle.cantidad) AS cantidad,
-                SUM(venta_detalle.subtotal) AS importe
-            FROM venta_detalle
-            JOIN ventas ON ventas.id = venta_detalle.venta_id
-            WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
-            GROUP BY venta_detalle.articulo_codigo, venta_detalle.descripcion
+            SELECT categoria, codigo, descripcion, cantidad, importe FROM (
+                SELECT
+                    ? AS categoria,
+                    venta_detalle.articulo_codigo AS codigo,
+                    venta_detalle.descripcion AS descripcion,
+                    SUM(venta_detalle.cantidad) AS cantidad,
+                    SUM(venta_detalle.subtotal) AS importe
+                FROM venta_detalle
+                JOIN ventas ON ventas.id = venta_detalle.venta_id
+                WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                GROUP BY venta_detalle.articulo_codigo, venta_detalle.descripcion
+
+                UNION ALL
+
+                SELECT
+                    ? AS categoria,
+                    '' AS codigo,
+                    bonos_tiempo.nombre AS descripcion,
+                    COUNT(*) AS cantidad,
+                    SUM(sesion_bonos.precio) AS importe
+                FROM sesion_bonos
+                JOIN bonos_tiempo ON bonos_tiempo.id = sesion_bonos.bono_id
+                JOIN ventas ON ventas.id = sesion_bonos.venta_id
+                WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                GROUP BY bonos_tiempo.id, bonos_tiempo.nombre
+
+                UNION ALL
+
+                SELECT
+                    ? AS categoria,
+                    '' AS codigo,
+                    bonos_miembro.nombre AS descripcion,
+                    COUNT(*) AS cantidad,
+                    SUM(ventas.total) AS importe
+                FROM movimientos_saldo_miembro
+                JOIN bonos_miembro ON bonos_miembro.id = movimientos_saldo_miembro.bono_id
+                JOIN ventas ON ventas.id = movimientos_saldo_miembro.venta_id
+                WHERE movimientos_saldo_miembro.tipo = 'CARGA'
+                  AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                GROUP BY bonos_miembro.id, bonos_miembro.nombre
+
+                UNION ALL
+
+                SELECT
+                    ? AS categoria,
+                    '' AS codigo,
+                    ? AS descripcion,
+                    COUNT(*) AS cantidad,
+                    SUM(ventas.total) AS importe
+                FROM movimientos_saldo_miembro
+                JOIN ventas ON ventas.id = movimientos_saldo_miembro.venta_id
+                WHERE movimientos_saldo_miembro.tipo = 'CARGA'
+                  AND movimientos_saldo_miembro.bono_id IS NULL
+                  AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                HAVING COUNT(*) > 0
+            )
             ORDER BY {columna_orden} DESC
             """,
-            (dominio.VENTA_CONFIRMADA, desde, hasta),
+            (
+                CATEGORIA_KIOSKO, *rango,
+                CATEGORIA_BONO_PC, *rango,
+                CATEGORIA_BONO_SOCIO, *rango,
+                CATEGORIA_CARGA_TARIFA_SOCIO, CATEGORIA_CARGA_TARIFA_SOCIO, *rango,
+            ),
         ).fetchall()
