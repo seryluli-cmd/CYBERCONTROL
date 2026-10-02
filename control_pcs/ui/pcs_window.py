@@ -114,6 +114,8 @@ def _texto_evento(evento) -> str:
                 f"con su saldo ({formato_tiempo(evento['minutos'] * 60)}).")
     if tipo == "REINTEGRO":
         return f"{hora} — {formato_tiempo(evento['minutos'] * 60)} reintegrados a {evento['miembro_nombre']}."
+    if tipo == "TRASLADO":
+        return f"{hora} — Sesión pasada de {evento['origen_nombre']} a {evento['destino_nombre']}."
     return hora
 
 
@@ -339,6 +341,8 @@ class PanelControlPcs(QWidget):
         menu = QMenu(self)
         accion_cerrar_sesion = menu.addAction("🔒 Cerrar sesión y reiniciar")
         accion_cerrar_sesion.setEnabled(sesion is not None)
+        accion_trasladar = menu.addAction("🔀 Intercambiar de máquina...")
+        accion_trasladar.setEnabled(sesion is not None)
         menu.addSeparator()
         accion_reiniciar = menu.addAction("🔄 Reiniciar PC")
         accion_apagar = menu.addAction("⏻ Apagar PC")
@@ -365,6 +369,9 @@ class PanelControlPcs(QWidget):
 
         if elegida == accion_cerrar_sesion:
             self._cerrar_sesion_y_reiniciar(estacion, sesion, segundos_restantes)
+        elif elegida == accion_trasladar:
+            if DialogoTrasladarSesion(estacion, self._estados, self.usuario, self).exec():
+                self._refrescar()
         elif elegida == accion_reiniciar:
             self._confirmar_y_encolar(
                 estacion, comandos_pc_repo.TIPO_REINICIAR,
@@ -918,6 +925,96 @@ class DialogoEditarGateways(QDialog):
             return
         config_red_repo.guardar_gateways(gateways)
         self.close()
+
+
+class DialogoTrasladarSesion(QDialog):
+    """
+    Pasa la sesión activa de `estacion` a otra PC (clic derecho ->
+    "Intercambiar de máquina..."): el cliente se sentó en la que había
+    libre y quiere su favorita cuando se libera, o dos clientes quieren
+    cambiarse de lugar. Libre = se mueve; ocupada = las dos sesiones se
+    intercambian. La regla vive en `pcs_repo.trasladar_sesion`; acá solo se
+    elige el destino y se explica qué va a pasar con cada PC antes de
+    confirmar.
+    """
+
+    def __init__(self, estacion, estados, usuario, parent=None):
+        super().__init__(parent)
+        self.estacion = estacion
+        self.usuario = usuario
+        self._ocupadas = {}
+        self.setWindowTitle(f"Intercambiar de máquina — {estacion['nombre']}")
+        self.resize(460, 230)
+
+        self.combo_destino = QComboBox()
+        for item in estados:
+            otra = item["estacion"]
+            if otra["id"] == estacion["id"]:
+                continue
+            sesion = item["sesion"]
+            segundos = item["segundos_restantes"]
+            ocupada = sesion is not None and bool(segundos)
+            if ocupada:
+                quien = sesion["miembro_nombre"] or "Bono"
+                texto = f"{otra['nombre']} — ocupada ({quien}, {formato_tiempo(segundos)})"
+            else:
+                texto = f"{otra['nombre']} — libre"
+            self._ocupadas[otra["id"]] = ocupada
+            self.combo_destino.addItem(texto, otra["id"])
+
+        self.etiqueta_efecto = QLabel()
+        self.etiqueta_efecto.setWordWrap(True)
+        self.combo_destino.currentIndexChanged.connect(lambda _indice: self._actualizar_efecto())
+
+        self.boton_confirmar = QPushButton("Pasar sesión")
+        aplicar_clase(self.boton_confirmar, "primario")
+        self.boton_confirmar.clicked.connect(self._confirmar)
+        self.boton_confirmar.setEnabled(self.combo_destino.count() > 0)
+        boton_cancelar = QPushButton("Cancelar")
+        boton_cancelar.clicked.connect(self.reject)
+        botones = QHBoxLayout()
+        botones.addStretch()
+        botones.addWidget(boton_cancelar)
+        botones.addWidget(self.boton_confirmar)
+
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel(f"¿A qué PC pasa la sesión de '{estacion['nombre']}'?"))
+        layout.addWidget(self.combo_destino)
+        layout.addWidget(self.etiqueta_efecto)
+        layout.addStretch()
+        layout.addLayout(botones)
+        self.setLayout(layout)
+        for boton in self.findChildren(QPushButton):
+            boton.setAutoDefault(False)
+            boton.setDefault(False)
+        self._actualizar_efecto()
+
+    def _actualizar_efecto(self):
+        destino_id = self.combo_destino.currentData()
+        if destino_id is None:
+            self.etiqueta_efecto.setText("No hay otras PCs activas para elegir.")
+            return
+        origen = self.estacion["nombre"]
+        destino = self.combo_destino.currentText().split(" — ")[0]
+        if self._ocupadas[destino_id]:
+            self.etiqueta_efecto.setText(
+                f"'{origen}' y '{destino}' intercambian sus sesiones: cada cliente se pasa a la "
+                "PC del otro, cada uno con su propio tiempo restante. Ninguna de las dos se reinicia."
+            )
+        else:
+            self.etiqueta_efecto.setText(
+                f"'{origen}' pasa a '{destino}' con todo su tiempo restante, sin cobrar de nuevo. "
+                f"'{origen}' se va a bloquear y reiniciar a los pocos segundos: avisale al cliente "
+                "antes de confirmar."
+            )
+
+    @manejar_errores
+    def _confirmar(self):
+        destino_id = self.combo_destino.currentData()
+        if destino_id is None:
+            return
+        pcs_repo.trasladar_sesion(self.estacion["id"], destino_id, self.usuario["id"])
+        self.accept()
 
 
 class DialogoVolumen(QDialog):

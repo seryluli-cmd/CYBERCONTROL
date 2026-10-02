@@ -550,3 +550,20 @@ enlazada al arrancar la sesión ni se conectó desde entonces) y la grilla
 la muestra como "⏳ Esperando al cliente" en azul calmo, sin parpadeo. La
 alerta roja queda solo para una PC que SÍ estuvo enlazada durante la
 sesión (o justo antes) y dejó de responder. 152 tests.
+
+**2026-10-02 (más tarde):** nueva opción **"🔀 Intercambiar de máquina..."**
+en el menú contextual (clic derecho) de una PC con sesión activa. Pedido
+del dueño: el cliente se sienta en la PC que hay libre, pero quiere su
+favorita (ej. la 15) y se pasa horas después cuando se libera; o dos
+clientes quieren cambiarse de lugar. `pcs_repo.trasladar_sesion` es la
+única función que decide esto: la MISMA fila de `sesiones_pc` cambia de
+`estacion_id` (vencimiento, bonos, saldo de socio y reintegro intactos, no
+se cobra nada). Destino libre = se mueve (la PC de origen queda sin
+sesión y su Cliente PC la bloquea y reinicia sola, como al acabarse el
+tiempo); destino ocupado = las dos sesiones se intercambian (ninguna se
+reinicia); un destino con sesión ya vencida cuenta como libre. Corre con
+`BEGIN IMMEDIATE`. Tabla nueva `traslados_sesion` (historial, una fila por
+sesión movida) y evento "Sesión pasada de PC X a PC Y" en el panel de
+actividad. Ojo: el INICIO/BONO de esa sesión en el panel de actividad se
+muestra con la PC ACTUAL (sale de `sesiones_pc.estacion_id`); el recorrido
+real está en `traslados_sesion`. 158 tests.

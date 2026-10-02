@@ -461,6 +461,23 @@ def inicializar_base_de_datos():
             fecha_fin_real      TEXT
         )
     """)
+    # Historial de cada vez que una sesión cambió de PC (ver
+    # pcs_repo.trasladar_sesion): el cliente quería su PC favorita y el
+    # operador le pasó la sesión sin perder tiempo ni cobrar de nuevo. La
+    # sesión es la MISMA fila de sesiones_pc con otro estacion_id, así que
+    # sin esta tabla no quedaría rastro de en qué PC estuvo antes (nada se
+    # borra, se registra: regla 7 de CLAUDE.md). Un intercambio entre dos
+    # PCs ocupadas graba dos filas, una por cada sesión.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS traslados_sesion (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            sesion_id            INTEGER NOT NULL REFERENCES sesiones_pc(id),
+            estacion_origen_id   INTEGER NOT NULL REFERENCES estaciones(id),
+            estacion_destino_id  INTEGER NOT NULL REFERENCES estaciones(id),
+            fecha                TEXT NOT NULL,
+            usuario_id           INTEGER NOT NULL REFERENCES usuarios(id)
+        )
+    """)
     # Detalle de qué bono(s) se cargaron a cada sesión, con el venta_id de
     # la venta que generó ese cobro (se factura igual que cualquier venta
     # de kiosko, ver pcs_repo.asignar_bono) — trazabilidad completa entre

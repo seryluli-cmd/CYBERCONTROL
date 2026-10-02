@@ -357,6 +357,93 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
         return venta_id
 
 
+def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_id: int) -> dict:
+    """
+    Pasa la sesión activa de una PC a otra sin perder tiempo ni cobrar de
+    nuevo: el cliente se sentó en la PC que había libre y quiere pasarse a
+    su favorita cuando se libera (o dos clientes quieren cambiarse de
+    lugar entre ellos). Es la MISMA sesión con otro `estacion_id` -- el
+    vencimiento (`fecha_fin_prevista`), los bonos, el saldo del socio y el
+    reintegro no se tocan.
+
+    - Destino libre: la sesión se MUEVE. La PC de origen queda sin sesión
+      y su Cliente PC la bloquea y reinicia sola (mismo camino que cuando
+      se acaba el tiempo).
+    - Destino ocupado: las dos sesiones se INTERCAMBIAN. Las dos PCs
+      siguen con sesión (cada una con la del otro cliente), así que ninguna
+      se reinicia.
+    - Destino con una sesión que ya venció pero que el refresco automático
+      todavía no dio de baja: se la da de baja acá y cuenta como libre.
+
+    Todo corre con "BEGIN IMMEDIATE", mismo motivo que `finalizar_sesion`:
+    comprobar el estado de las dos PCs y moverlas es un solo paso, para que
+    un cierre simultáneo desde el mostrador o desde la PC del cliente no
+    deje una sesión ya cerrada apareciendo en otra estación.
+
+    Devuelve {"tipo": "MOVER" | "INTERCAMBIAR", "origen": nombre,
+    "destino": nombre}. Levanta ValueError (mensaje listo para mostrar) si
+    algo ya no es como lo veía la pantalla.
+    """
+    if estacion_origen_id == estacion_destino_id:
+        raise ValueError("Elegí una PC distinta a la actual.")
+
+    ahora = datetime.now()
+    ahora_iso = ahora.isoformat(timespec="microseconds")
+
+    with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+
+        origen = conexion.execute(
+            "SELECT * FROM estaciones WHERE id = ? AND activa = 1", (estacion_origen_id,)
+        ).fetchone()
+        destino = conexion.execute(
+            "SELECT * FROM estaciones WHERE id = ? AND activa = 1", (estacion_destino_id,)
+        ).fetchone()
+        if origen is None or destino is None:
+            raise ValueError("Esa PC ya no está disponible. Actualizá la pantalla e intentá de nuevo.")
+
+        sesion_origen = conexion.execute(
+            "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = 'ACTIVA'",
+            (estacion_origen_id,),
+        ).fetchone()
+        if sesion_origen is None or datetime.fromisoformat(sesion_origen["fecha_fin_prevista"]) <= ahora:
+            raise ValueError(f"'{origen['nombre']}' ya no tiene una sesión activa.")
+
+        sesion_destino = conexion.execute(
+            "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = 'ACTIVA'",
+            (estacion_destino_id,),
+        ).fetchone()
+        if sesion_destino is not None and datetime.fromisoformat(sesion_destino["fecha_fin_prevista"]) <= ahora:
+            conexion.execute(
+                "UPDATE sesiones_pc SET estado = 'FINALIZADA', fecha_fin_real = ? WHERE id = ?",
+                (ahora.isoformat(timespec="seconds"), sesion_destino["id"]),
+            )
+            sesion_destino = None
+
+        movimientos = [(sesion_origen["id"], estacion_origen_id, estacion_destino_id)]
+        if sesion_destino is not None:
+            movimientos.append((sesion_destino["id"], estacion_destino_id, estacion_origen_id))
+
+        for sesion_id, desde_id, hacia_id in movimientos:
+            conexion.execute(
+                "UPDATE sesiones_pc SET estacion_id = ? WHERE id = ?", (hacia_id, sesion_id)
+            )
+            conexion.execute(
+                """
+                INSERT INTO traslados_sesion
+                    (sesion_id, estacion_origen_id, estacion_destino_id, fecha, usuario_id)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (sesion_id, desde_id, hacia_id, ahora_iso, usuario_id),
+            )
+
+    return {
+        "tipo": "INTERCAMBIAR" if sesion_destino is not None else "MOVER",
+        "origen": origen["nombre"],
+        "destino": destino["nombre"],
+    }
+
+
 def _contribuciones_de_sesion(conexion, sesion_id: int):
     """
     Reconstruye, en orden cronológico, de dónde salió cada tramo de
@@ -550,6 +637,21 @@ def actividad_reciente(limite: int = 30):
                              "miembro_nombre": fila["miembro_nombre"],
                              "estacion_nombre": fila["estacion_nombre"],
                              "minutos": fila["minutos"], "monto": fila["monto"]})
+
+        # Los eventos de arriba toman el nombre de la estación de
+        # sesiones_pc.estacion_id, que es la ACTUAL: si una sesión se pasó
+        # de PC (ver trasladar_sesion), su INICIO/BONO se muestran en la PC
+        # nueva. Estos eventos TRASLADO dejan a la vista el recorrido.
+        for fila in conexion.execute("""
+            SELECT t.fecha AS fecha, eo.nombre AS origen_nombre, ed.nombre AS destino_nombre
+            FROM traslados_sesion t
+            JOIN estaciones eo ON eo.id = t.estacion_origen_id
+            JOIN estaciones ed ON ed.id = t.estacion_destino_id
+            ORDER BY t.fecha DESC LIMIT ?
+        """, (limite,)).fetchall():
+            eventos.append({"fecha": fila["fecha"], "tipo": "TRASLADO",
+                             "origen_nombre": fila["origen_nombre"],
+                             "destino_nombre": fila["destino_nombre"]})
 
     eventos.sort(key=lambda evento: evento["fecha"], reverse=True)
     return eventos[:limite]

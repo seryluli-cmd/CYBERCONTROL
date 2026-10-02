@@ -171,6 +171,122 @@ class TestPcsRepo(BaseConBaseTemporal):
         self.assertFalse(item["enlazada"])
         self.assertFalse(item["esperando_cliente"])
 
+    def _trasladar(self, origen_id, destino_id, usuario_id, momento):
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return pcs_repo.trasladar_sesion(origen_id, destino_id, usuario_id)
+
+    def _estacion(self, estacion_id):
+        return next(e for e in pcs_repo.estado_estaciones() if e["estacion"]["id"] == estacion_id)
+
+    def test_trasladar_sesion_a_una_pc_libre_la_mueve_con_todo_su_tiempo(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        pc8 = pcs_repo.crear_estacion("PC 8")
+        pc15 = pcs_repo.crear_estacion("PC 15")
+        bono_id = pcs_repo.crear_bono("3 horas", 180, 9000)
+        self._asignar(pc8, bono_id, usuario_id, datetime(2026, 1, 1, 10, 0, 0))
+        sesion_id = self._estacion(pc8)["sesion"]["id"]
+        with database.conexion_db() as conexion:
+            ventas_antes = conexion.execute("SELECT COUNT(*) FROM ventas").fetchone()[0]
+
+        resultado = self._trasladar(pc8, pc15, usuario_id, datetime(2026, 1, 1, 12, 0, 0))
+
+        self.assertEqual(resultado, {"tipo": "MOVER", "origen": "PC 8", "destino": "PC 15"})
+        self.assertIsNone(self._estacion(pc8)["sesion"])
+        sesion = self._estacion(pc15)["sesion"]
+        self.assertEqual(sesion["id"], sesion_id)
+        self.assertEqual(sesion["fecha_fin_prevista"], "2026-01-01T13:00:00")
+        with database.conexion_db() as conexion:
+            self.assertEqual(conexion.execute("SELECT COUNT(*) FROM ventas").fetchone()[0], ventas_antes)
+
+    def test_trasladar_sesion_a_una_pc_ocupada_intercambia_las_dos(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        pc8 = pcs_repo.crear_estacion("PC 8")
+        pc15 = pcs_repo.crear_estacion("PC 15")
+        bono_1h = pcs_repo.crear_bono("1 hora", 60, 3000)
+        bono_3h = pcs_repo.crear_bono("3 horas", 180, 9000)
+        self._asignar(pc8, bono_1h, usuario_id, datetime(2026, 1, 1, 10, 0, 0))
+        self._asignar(pc15, bono_3h, usuario_id, datetime(2026, 1, 1, 10, 0, 0))
+
+        resultado = self._trasladar(pc8, pc15, usuario_id, datetime(2026, 1, 1, 10, 20, 0))
+
+        self.assertEqual(resultado["tipo"], "INTERCAMBIAR")
+        self.assertEqual(self._estacion(pc8)["sesion"]["fecha_fin_prevista"], "2026-01-01T13:00:00")
+        self.assertEqual(self._estacion(pc15)["sesion"]["fecha_fin_prevista"], "2026-01-01T11:00:00")
+
+    def test_trasladar_sesion_destino_con_sesion_vencida_cuenta_como_libre(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        pc8 = pcs_repo.crear_estacion("PC 8")
+        pc15 = pcs_repo.crear_estacion("PC 15")
+        bono_1h = pcs_repo.crear_bono("1 hora", 60, 3000)
+        bono_3h = pcs_repo.crear_bono("3 horas", 180, 9000)
+        self._asignar(pc15, bono_1h, usuario_id, datetime(2026, 1, 1, 9, 0, 0))   # vence 10:00
+        self._asignar(pc8, bono_3h, usuario_id, datetime(2026, 1, 1, 10, 30, 0))  # vence 13:30
+
+        resultado = self._trasladar(pc8, pc15, usuario_id, datetime(2026, 1, 1, 10, 45, 0))
+
+        self.assertEqual(resultado["tipo"], "MOVER")
+        self.assertIsNone(self._estacion(pc8)["sesion"])
+        self.assertEqual(self._estacion(pc15)["sesion"]["fecha_fin_prevista"], "2026-01-01T13:30:00")
+
+    def test_trasladar_sesion_rechaza_casos_invalidos(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        pc8 = pcs_repo.crear_estacion("PC 8")
+        pc15 = pcs_repo.crear_estacion("PC 15")
+        pc20 = pcs_repo.crear_estacion("PC 20")
+        pcs_repo.desactivar_estacion(pc20)
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        momento = datetime(2026, 1, 1, 10, 30, 0)
+
+        with self.assertRaises(ValueError):  # origen sin sesión
+            self._trasladar(pc8, pc15, usuario_id, momento)
+
+        self._asignar(pc8, bono_id, usuario_id, datetime(2026, 1, 1, 10, 0, 0))
+        with self.assertRaises(ValueError):  # misma PC
+            self._trasladar(pc8, pc8, usuario_id, momento)
+        with self.assertRaises(ValueError):  # destino desactivado
+            self._trasladar(pc8, pc20, usuario_id, momento)
+        with self.assertRaises(ValueError):  # la sesión de origen ya venció
+            self._trasladar(pc8, pc15, usuario_id, datetime(2026, 1, 1, 11, 30, 0))
+
+        self.assertIsNotNone(self._estacion(pc8)["sesion"])
+
+    def test_trasladar_sesion_de_socio_mantiene_el_reintegro_correcto(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        pc8 = pcs_repo.crear_estacion("PC 8")
+        pc15 = pcs_repo.crear_estacion("PC 15")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE miembros SET saldo_minutos = 120 WHERE id = ?", (miembro_id,))
+        with mock.patch("control_pcs.repositories.miembros_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 10, 0, 0)
+            miembros_repo.abrir_estacion_por_miembro(pc8, "juan", "clave123")
+        sesion_id = self._estacion(pc8)["sesion"]["id"]
+
+        self._trasladar(pc8, pc15, usuario_id, datetime(2026, 1, 1, 10, 30, 0))
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 1, 11, 0, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.finalizar_sesion(sesion_id)
+
+        # Usó 60 de 120: se le reintegran los 60 que quedaban, sin
+        # importar que se haya pasado de PC en el medio.
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 60)
+
+    def test_actividad_reciente_incluye_los_traslados(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        pc8 = pcs_repo.crear_estacion("PC 8")
+        pc15 = pcs_repo.crear_estacion("PC 15")
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        self._asignar(pc8, bono_id, usuario_id, datetime(2026, 1, 1, 10, 0, 0))
+        self._trasladar(pc8, pc15, usuario_id, datetime(2026, 1, 1, 10, 20, 0))
+
+        traslados = [e for e in pcs_repo.actividad_reciente() if e["tipo"] == "TRASLADO"]
+
+        self.assertEqual(len(traslados), 1)
+        self.assertEqual((traslados[0]["origen_nombre"], traslados[0]["destino_nombre"]), ("PC 8", "PC 15"))
+
     def test_no_se_puede_asignar_un_bono_desactivado(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_id = pcs_repo.crear_estacion("PC 1")
