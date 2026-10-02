@@ -535,3 +535,18 @@ mecanismo ya era correcto):
   desfasaje de reloj entre PCs. No requirió ningún cambio acá (el
   Servidor ya mandaba el dato correcto); ver el README de
   `CLIENTE PC` para el detalle.
+
+**2026-10-02:** pedido del dueño: cuando llegan muchos clientes juntos, el
+operador va habilitando las PCs una por una y cada cliente la usa apenas
+la prende, sin ninguna confirmación extra. El tiempo ya corría desde el
+momento de activar el bono (vencimiento absoluto en `fecha_fin_prevista`,
+independiente de si la PC está prendida) y el Cliente PC, al arrancar,
+toma solo el estado del servidor -- eso no hizo falta tocarlo. Lo que
+faltaba: una PC habilitada pero todavía apagada parpadeaba en rojo como
+"SIN CLIENTE (revisar)" (alerta de posible fraude), llenando la pantalla
+de falsas alarmas. `pcs_repo.estado_estaciones` ahora trae
+`esperando_cliente` (sesión activa, PC no enlazada, y que no estaba
+enlazada al arrancar la sesión ni se conectó desde entonces) y la grilla
+la muestra como "⏳ Esperando al cliente" en azul calmo, sin parpadeo. La
+alerta roja queda solo para una PC que SÍ estuvo enlazada durante la
+sesión (o justo antes) y dejó de responder. 152 tests.

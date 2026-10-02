@@ -234,15 +234,33 @@ def estado_estaciones():
             segundos_restantes = max(0, int((fin_previsto - ahora).total_seconds()))
 
         enlazada = False
+        ultima_conexion = None
         if estacion["ultima_conexion"] is not None:
             ultima_conexion = datetime.fromisoformat(estacion["ultima_conexion"])
             enlazada = (ahora - ultima_conexion).total_seconds() <= UMBRAL_ENLACE_SEGUNDOS
+
+        # Sesión activa en una PC que NO estaba enlazada cuando arrancó la
+        # sesión y todavía no se conectó desde entonces: el operador la
+        # habilitó antes de que el cliente la prendiera (típico cuando
+        # llegan muchos juntos). El tiempo ya corre desde que se activó el
+        # bono -- el Cliente PC, al prenderse, lo toma solo del servidor --
+        # pero esto NO es una alerta: es una espera normal. La alerta de
+        # "SIN CLIENTE" queda para una PC que SÍ estuvo enlazada durante la
+        # sesión (o justo antes) y dejó de responder.
+        esperando_cliente = False
+        if sesion is not None and not enlazada:
+            inicio_sesion = datetime.fromisoformat(sesion["fecha_inicio"])
+            esperando_cliente = (
+                ultima_conexion is None
+                or (inicio_sesion - ultima_conexion).total_seconds() > UMBRAL_ENLACE_SEGUNDOS
+            )
 
         resultado.append({
             "estacion": estacion,
             "sesion": sesion,
             "segundos_restantes": segundos_restantes,
             "enlazada": enlazada,
+            "esperando_cliente": esperando_cliente,
         })
     return resultado
 

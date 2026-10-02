@@ -107,6 +107,70 @@ class TestPcsRepo(BaseConBaseTemporal):
 
         self.assertEqual(item["segundos_restantes"], 15 * 60)
 
+    def _estado_a(self, momento):
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return pcs_repo.estado_estaciones()[0]
+
+    def _conectar_a(self, estacion_id, momento):
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.registrar_conexion(estacion_id)
+
+    def _preparar_bono_en(self, momento):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        self._asignar(estacion_id, bono_id, usuario_id, momento)
+        return estacion_id
+
+    def test_bono_en_pc_apagada_corre_desde_que_se_activa_y_espera_al_cliente(self):
+        # El operador habilita la PC antes de que el cliente la prenda
+        # (llegan muchos juntos): el tiempo corre desde el momento de
+        # activar el bono, y no es una alerta sino una espera normal.
+        self._preparar_bono_en(datetime(2026, 1, 1, 10, 0, 0))
+
+        item = self._estado_a(datetime(2026, 1, 1, 10, 20, 0))
+
+        self.assertEqual(item["segundos_restantes"], 40 * 60)
+        self.assertFalse(item["enlazada"])
+        self.assertTrue(item["esperando_cliente"])
+
+    def test_al_prenderse_la_pc_toma_el_tiempo_que_ya_venia_corriendo(self):
+        estacion_id = self._preparar_bono_en(datetime(2026, 1, 1, 10, 0, 0))
+
+        self._conectar_a(estacion_id, datetime(2026, 1, 1, 10, 20, 0))
+        item = self._estado_a(datetime(2026, 1, 1, 10, 20, 5))
+
+        self.assertTrue(item["enlazada"])
+        self.assertFalse(item["esperando_cliente"])
+        self.assertEqual(item["segundos_restantes"], 40 * 60 - 5)
+
+    def test_pc_que_se_conecto_durante_la_sesion_y_deja_de_responder_es_alerta(self):
+        estacion_id = self._preparar_bono_en(datetime(2026, 1, 1, 10, 0, 0))
+
+        self._conectar_a(estacion_id, datetime(2026, 1, 1, 10, 5, 0))
+        item = self._estado_a(datetime(2026, 1, 1, 10, 10, 0))
+
+        self.assertFalse(item["enlazada"])
+        self.assertFalse(item["esperando_cliente"])
+
+    def test_pc_enlazada_justo_antes_de_activar_el_bono_y_que_se_corta_es_alerta(self):
+        # Estaba prendida y enlazada cuando el operador activó el bono:
+        # si después deja de responder, no es "esperando al cliente".
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        self._conectar_a(estacion_id, datetime(2026, 1, 1, 9, 59, 55))
+        self._asignar(estacion_id, bono_id, usuario_id, datetime(2026, 1, 1, 10, 0, 0))
+
+        item = self._estado_a(datetime(2026, 1, 1, 10, 10, 0))
+
+        self.assertFalse(item["enlazada"])
+        self.assertFalse(item["esperando_cliente"])
+
     def test_no_se_puede_asignar_un_bono_desactivado(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_id = pcs_repo.crear_estacion("PC 1")

@@ -67,6 +67,10 @@ COLOR_DISPONIBLE = QColor("#DCF3E1")
 COLOR_EN_USO = QColor("#FDF1C7")
 COLOR_POR_VENCER = QColor("#FCEBD2")
 COLOR_DESCONECTADA = QColor("#F8D7D9")
+# Sesión ya activada por el operador en una PC que el cliente todavía no
+# prendió (ver pcs_repo.estado_estaciones, "esperando_cliente"): azul
+# calmo, sin parpadeo -- es una espera normal, no una alerta.
+COLOR_ESPERANDO_CLIENTE = QColor("#DCE7FD")
 
 # Alerta especial (pedido explícito del dueño, 2026-09-30): sesión activa
 # (Bono o Miembro) en una estación que dejó de estar "enlazada" -- el
@@ -221,7 +225,13 @@ class PanelControlPcs(QWidget):
             sesion = item["sesion"]
             segundos = item["segundos_restantes"]
 
-            if sesion is not None and not item["enlazada"]:
+            if sesion is not None and not item["enlazada"] and item["esperando_cliente"]:
+                # El operador habilitó la PC antes de que el cliente la
+                # prendiera -- el tiempo ya corre, pero no es una alerta.
+                quien_texto = sesion["miembro_nombre"] or "Bono"
+                restante_texto = formato_tiempo(segundos)
+                icono, texto_estado, color = "⏳", "Esperando al cliente", COLOR_ESPERANDO_CLIENTE
+            elif sesion is not None and not item["enlazada"]:
                 # Hay tiempo pago corriendo pero el Cliente PC de esa PC dejó
                 # de responder -- ver COLOR_ALERTA_SESION_SIN_CLIENTE. Esto
                 # va ANTES que "por vencer"/"en uso": importa más avisar
@@ -251,7 +261,7 @@ class PanelControlPcs(QWidget):
                 celda.setBackground(color)
                 self.tabla.setItem(fila, columna, celda)
 
-            if sesion is not None and not item["enlazada"]:
+            if sesion is not None and not item["enlazada"] and not item["esperando_cliente"]:
                 self._filas_en_alerta.append(fila)
 
             if estacion["id"] == self._estacion_id_seleccionada:
@@ -530,9 +540,10 @@ class PanelDetalleEstacion(QFrame):
             self.boton_finalizar.setEnabled(False)
         else:
             quien = sesion["miembro_nombre"] or "Bono"
-            self.etiqueta_estado.setText(
-                f"▶ Activa — {formato_tiempo(item['segundos_restantes'])} restantes ({quien})."
-            )
+            texto = f"▶ Activa — {formato_tiempo(item['segundos_restantes'])} restantes ({quien})."
+            if item["esperando_cliente"]:
+                texto += "\n⏳ El tiempo ya corre; la PC lo toma sola cuando el cliente la prenda."
+            self.etiqueta_estado.setText(texto)
             self.boton_iniciar.setText("Agregar Bono")
 
         self.bonos = pcs_repo.listar_bonos()
