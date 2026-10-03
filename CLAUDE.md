@@ -567,3 +567,14 @@ sesión movida) y evento "Sesión pasada de PC X a PC Y" en el panel de
 actividad. Ojo: el INICIO/BONO de esa sesión en el panel de actividad se
 muestra con la PC ACTUAL (sale de `sesiones_pc.estacion_id`); el recorrido
 real está en `traslados_sesion`. 158 tests.
+
+**2026-10-03:** nueva pestaña **"Resumen del Día"** en Reportes (pedido del
+dueño: ver UN día abierto por turno, con su resumen). La única función que
+lo decide es `turnos_repo.resumen_del_dia(dia)`: para cada turno esperado
+ese día (`turnos_del_dia`, 3 o 2 el domingo) devuelve estado CERRADO /
+EN_CURSO / SIN_CERRAR / PENDIENTE, quién cerró, ventas (y anuladas aparte),
+Kiosko vs. PCs, Efectivo/Digital, total y la diferencia del sobre si el
+Admin ya lo contó. Un turno es del día en que ARRANCÓ (la Noche incluye
+hasta las 06:00 del siguiente) y su plata es la de su CIERRE
+(`cierres_turno`), no la del reloj -- si el mismo turno se cerró dos
+veces se suman los dos cierres. 165 tests (7 nuevos en `TestResumenDelDia`).

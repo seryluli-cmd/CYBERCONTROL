@@ -194,6 +194,158 @@ def cerrar_turno(usuario_id: int):
     }
 
 
+# Estados de un turno en el reporte del día (resumen_del_dia). Son un
+# rótulo de la pantalla, no algo que se guarde en la base: por eso viven
+# acá y no en dominio.py.
+ESTADO_CERRADO = "CERRADO"
+ESTADO_EN_CURSO = "EN_CURSO"
+ESTADO_SIN_CERRAR = "SIN_CERRAR"
+ESTADO_PENDIENTE = "PENDIENTE"
+
+_CAMPOS_PLATA = ("kiosko_efectivo", "kiosko_digital", "pcs_efectivo", "pcs_digital")
+
+
+def _contar_ventas_entre(conexion, desde: str, hasta: str):
+    """(confirmadas, anuladas) que cayeron en la ventana (desde, hasta] --
+    mismo rango que `_sumar_ventas_por_origen_y_metodo`."""
+    fila = conexion.execute(
+        """
+        SELECT COALESCE(SUM(estado = ?), 0) AS confirmadas,
+               COALESCE(SUM(estado = ?), 0) AS anuladas
+        FROM ventas
+        WHERE fecha > ? AND fecha <= ?
+        """,
+        (dominio.VENTA_CONFIRMADA, dominio.VENTA_ANULADA, desde, hasta),
+    ).fetchone()
+    return fila["confirmadas"], fila["anuladas"]
+
+
+def resumen_del_dia(dia):
+    """
+    El reporte de UN día calendario, abierto por turno (Mañana/Tarde/Noche,
+    o Domingo T1/T2): qué se vendió en cada uno, quién lo cerró y cuánto
+    faltó o sobró al contar el sobre.
+
+    Un turno pertenece al día en que ARRANCÓ (mismo criterio que
+    `cierres_turno.fecha`, ver cerrar_turno): la Noche del lunes incluye lo
+    vendido hasta las 06:00 del martes. Y la plata de cada turno es la de
+    su CIERRE, no la que daría mirar el reloj: si quien atiende la Mañana
+    se queda hasta las 17, esas ventas son de su turno aunque pasen de las
+    14 -- coherente con lo que se ve en Caja y Cierre de Turno.
+
+    Por cada turno esperado ese día (turnos.turnos_del_dia) devuelve uno de
+    cuatro estados:
+      - CERRADO: tiene al menos un cierre. Si se cerró más de una vez
+        (cierre de más, o turno partido) se suman todos.
+      - EN_CURSO: es la ventana abierta ahora mismo (lo vendido desde el
+        último cierre) -- se muestra en vivo, todavía sin cerrar.
+      - SIN_CERRAR: ya venció (con su gracia, ver turnos.turno_vencimiento)
+        y nadie lo cerró.
+      - PENDIENTE: todavía no es hora de que esté cerrado.
+
+    Devuelve {"fecha", "turnos": [...], "total": {...}} con el total del
+    día sumando los turnos.
+    """
+    dia = date.fromisoformat((dia if isinstance(dia, str) else dia.isoformat())[:10])
+    ahora_dt = datetime.now()
+
+    with conexion_db() as conexion:
+        cierres = conexion.execute(
+            """
+            SELECT cierres_turno.*, usuarios.nombre AS empleada
+            FROM cierres_turno
+            JOIN usuarios ON usuarios.id = cierres_turno.usuario_id
+            WHERE cierres_turno.fecha = ?
+            ORDER BY cierres_turno.id
+            """,
+            (dia.isoformat(),),
+        ).fetchall()
+
+        cierres_por_turno = {}
+        for cierre in cierres:
+            anterior = conexion.execute(
+                "SELECT fecha_cierre FROM cierres_turno WHERE id < ? ORDER BY id DESC LIMIT 1",
+                (cierre["id"],),
+            ).fetchone()
+            desde = anterior["fecha_cierre"] if anterior else "0000-01-01T00:00:00"
+            confirmadas, anuladas = _contar_ventas_entre(conexion, desde, cierre["fecha_cierre"])
+            cierres_por_turno.setdefault(cierre["turno"], []).append((cierre, confirmadas, anuladas))
+
+        # La ventana que está abierta ahora, si pertenece a este día.
+        ultimo_cierre = _obtener_ultimo_cierre(conexion)
+        desde_abierta, turno_abierto, inicio_abierto = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
+        abierta = None
+        if inicio_abierto.date() == dia:
+            ahora = ahora_dt.isoformat(timespec="microseconds")
+            totales = _sumar_ventas_por_origen_y_metodo(conexion, desde_abierta, ahora)
+            confirmadas, anuladas = _contar_ventas_entre(conexion, desde_abierta, ahora)
+            abierta = {
+                "turno": turno_abierto, "confirmadas": confirmadas, "anuladas": anuladas,
+                "kiosko_efectivo": totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO],
+                "kiosko_digital": totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_DIGITAL],
+                "pcs_efectivo": totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_EFECTIVO],
+                "pcs_digital": totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_DIGITAL],
+            }
+
+    # Los turnos esperados del día, más cualquier otro que tenga cierre o
+    # esté abierto (no debería pasar, pero un dato raro no puede esconder
+    # plata): así el total del día nunca queda corto.
+    turnos = list(turnos_del_dia(dia))
+    extras = set(cierres_por_turno) | ({abierta["turno"]} if abierta else set())
+    turnos += [t for t in dominio.TURNOS if t in extras and t not in turnos]
+
+    resultado = []
+    for turno in turnos:
+        grupo = cierres_por_turno.get(turno, [])
+        parcial = abierta if (abierta is not None and abierta["turno"] == turno) else None
+
+        plata = {campo: 0.0 for campo in _CAMPOS_PLATA}
+        for cierre, _, _ in grupo:
+            for campo in _CAMPOS_PLATA:
+                plata[campo] += cierre[campo] or 0.0
+        if parcial is not None:
+            for campo in _CAMPOS_PLATA:
+                plata[campo] += parcial[campo]
+
+        if parcial is not None:
+            estado = ESTADO_EN_CURSO
+        elif grupo:
+            estado = ESTADO_CERRADO
+        elif turno_vencimiento(dia, turno) <= ahora_dt:
+            estado = ESTADO_SIN_CERRAR
+        else:
+            estado = ESTADO_PENDIENTE
+
+        # El sobre solo se puede dar por contado si TODOS los cierres del
+        # turno ya fueron verificados por un Admin y no hay una ventana
+        # abierta sumando más plata encima.
+        verificado = bool(grupo) and parcial is None and all(c["monto_contado"] is not None for c, _, _ in grupo)
+
+        resultado.append({
+            "turno": turno,
+            "etiqueta": etiqueta_turno(dia, turno),
+            "estado": estado,
+            "responsables": list(dict.fromkeys(c["empleada"] for c, _, _ in grupo)),
+            "cerrado_a": grupo[-1][0]["fecha_cierre"] if grupo and parcial is None else None,
+            "cantidad_ventas": sum(g[1] for g in grupo) + (parcial["confirmadas"] if parcial else 0),
+            "cantidad_anuladas": sum(g[2] for g in grupo) + (parcial["anuladas"] if parcial else 0),
+            **plata,
+            "kiosko": plata["kiosko_efectivo"] + plata["kiosko_digital"],
+            "pcs": plata["pcs_efectivo"] + plata["pcs_digital"],
+            "efectivo": plata["kiosko_efectivo"] + plata["pcs_efectivo"],
+            "digital": plata["kiosko_digital"] + plata["pcs_digital"],
+            "total": sum(plata.values()),
+            "verificado": verificado,
+            "diferencia": round(sum(c["diferencia"] for c, _, _ in grupo), 2) if verificado else None,
+        })
+
+    total = {
+        clave: sum(fila[clave] for fila in resultado)
+        for clave in ("kiosko", "pcs", "efectivo", "digital", "total", "cantidad_ventas", "cantidad_anuladas")
+    }
+    return {"fecha": dia, "turnos": resultado, "total": total}
+
+
 def listar_cierres(limite: int = 100):
     """Historial de cierres, para que el Admin controle turno por turno
     (y cargue el monto que contó en cada sobre)."""

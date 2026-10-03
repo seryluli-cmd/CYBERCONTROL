@@ -723,6 +723,152 @@ class TestDetalleCierre(BaseConBaseTemporal):
         self.assertEqual(cierre_2["ventas_efectivo"], 10.0)
 
 
+class TestResumenDelDia(BaseConBaseTemporal):
+    """El reporte de un día abierto por turno (turnos_repo.resumen_del_dia)."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin_id = usuarios_repo.crear_usuario("Admin", "1234", "ADMIN")
+        self.lucia_id = usuarios_repo.crear_usuario("Lucia", "1234", "EMPLEADA")
+        self.pedro_id = usuarios_repo.crear_usuario("Pedro", "1234", "EMPLEADA")
+        articulos_repo.crear_articulo("COD9", "Producto", None, None, 10.0, 5.0, 0)
+        compras_repo.registrar_compra(self.admin_id, [{"codigo": "COD9", "cantidad": 50, "costo_unitario": 5.0}])
+
+    def _vender(self, momento, total, metodo="EFECTIVO", usuario_id=None):
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            return ventas_repo.confirmar_venta(
+                usuario_id or self.lucia_id,
+                [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 1, "precio_unitario": total}],
+                [{"metodo": metodo, "monto": total}],
+            )
+
+    def _cerrar(self, momento, usuario_id=None):
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return turnos_repo.cerrar_turno(usuario_id or self.lucia_id)
+
+    def _resumen(self, dia, ahora):
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = ahora
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return turnos_repo.resumen_del_dia(dia)
+
+    def test_un_dia_con_mañana_y_tarde_cerradas_y_la_noche_en_curso(self):
+        # Lunes 5 de enero de 2026. Mañana cerrada a las 14:05, Tarde
+        # cerrada a las 22:10 y la Noche todavía abierta a las 23:00.
+        self._cerrar(datetime(2026, 1, 5, 6, 0))  # punto de partida, sin ventas
+        self._vender(datetime(2026, 1, 5, 9, 0), 10.0)
+        self._cerrar(datetime(2026, 1, 5, 14, 5), self.lucia_id)
+        self._vender(datetime(2026, 1, 5, 15, 0), 20.0)
+        self._vender(datetime(2026, 1, 5, 16, 0), 30.0, metodo="DIGITAL")
+        self._cerrar(datetime(2026, 1, 5, 22, 10), self.pedro_id)
+        self._vender(datetime(2026, 1, 5, 22, 30), 5.0)
+
+        resumen = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 23, 0))
+        manana, tarde, noche = resumen["turnos"]
+
+        self.assertEqual([t["etiqueta"] for t in resumen["turnos"]], ["Mañana", "Tarde", "Noche"])
+        self.assertEqual([t["estado"] for t in resumen["turnos"]],
+                         [turnos_repo.ESTADO_CERRADO, turnos_repo.ESTADO_CERRADO, turnos_repo.ESTADO_EN_CURSO])
+
+        self.assertEqual(manana["total"], 10.0)
+        self.assertEqual(manana["responsables"], ["Lucia"])
+        self.assertEqual(manana["cantidad_ventas"], 1)
+
+        self.assertEqual(tarde["efectivo"], 20.0)
+        self.assertEqual(tarde["digital"], 30.0)
+        self.assertEqual(tarde["total"], 50.0)
+        self.assertEqual(tarde["kiosko"], 50.0)
+        self.assertEqual(tarde["pcs"], 0.0)
+        self.assertEqual(tarde["responsables"], ["Pedro"])
+        self.assertEqual(tarde["cantidad_ventas"], 2)
+
+        # La Noche sigue abierta: se ve lo que lleva, sin responsable ni hora de cierre.
+        self.assertEqual(noche["total"], 5.0)
+        self.assertEqual(noche["responsables"], [])
+        self.assertIsNone(noche["cerrado_a"])
+
+        self.assertEqual(resumen["total"]["total"], 65.0)
+        self.assertEqual(resumen["total"]["cantidad_ventas"], 4)
+
+    def test_el_domingo_tiene_dos_turnos_y_un_dia_pasado_sin_cierres_queda_sin_cerrar(self):
+        resumen = self._resumen(date(2026, 1, 4), datetime(2026, 1, 7, 10, 0))
+        self.assertEqual([t["etiqueta"] for t in resumen["turnos"]], ["Domingo T1", "Domingo T2"])
+        self.assertTrue(all(t["estado"] == turnos_repo.ESTADO_SIN_CERRAR for t in resumen["turnos"]))
+        self.assertEqual(resumen["total"]["total"], 0.0)
+
+    def test_turnos_que_todavia_no_empezaron_estan_pendientes(self):
+        # Sin ningún cierre previo la ventana abierta arranca ahora (10:00,
+        # Mañana): la Tarde y la Noche todavía no tienen por qué estar cerradas.
+        resumen = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 10, 0))
+        estados = [t["estado"] for t in resumen["turnos"]]
+        self.assertEqual(estados, [turnos_repo.ESTADO_EN_CURSO, turnos_repo.ESTADO_PENDIENTE,
+                                   turnos_repo.ESTADO_PENDIENTE])
+
+    def test_un_turno_cerrado_dos_veces_suma_los_dos_cierres(self):
+        self._cerrar(datetime(2026, 1, 5, 6, 0))
+        self._vender(datetime(2026, 1, 5, 9, 0), 10.0)
+        self._cerrar(datetime(2026, 1, 5, 12, 0), self.lucia_id)
+        self._vender(datetime(2026, 1, 5, 12, 30), 7.0)
+        self._cerrar(datetime(2026, 1, 5, 14, 5), self.pedro_id)
+
+        manana = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 15, 0))["turnos"][0]
+        self.assertEqual(manana["estado"], turnos_repo.ESTADO_CERRADO)
+        self.assertEqual(manana["total"], 17.0)
+        self.assertEqual(manana["cantidad_ventas"], 2)
+        self.assertEqual(manana["responsables"], ["Lucia", "Pedro"])
+
+    def test_la_noche_que_cruza_la_medianoche_se_cuenta_en_el_dia_que_arranco(self):
+        self._cerrar(datetime(2026, 1, 5, 22, 5))  # arranca la Noche del lunes 5
+        self._vender(datetime(2026, 1, 5, 23, 30), 10.0)
+        self._vender(datetime(2026, 1, 6, 2, 0), 20.0)
+        self._cerrar(datetime(2026, 1, 6, 6, 30), self.pedro_id)
+
+        ahora = datetime(2026, 1, 6, 7, 0)
+        noche_del_5 = self._resumen(date(2026, 1, 5), ahora)["turnos"][2]
+        self.assertEqual(noche_del_5["estado"], turnos_repo.ESTADO_CERRADO)
+        self.assertEqual(noche_del_5["total"], 30.0)
+
+        # Esas dos ventas NO aparecen en el día 6, aunque pasaron de la medianoche.
+        dia_6 = self._resumen(date(2026, 1, 6), ahora)
+        self.assertEqual(dia_6["total"]["total"], 0.0)
+
+    def test_muestra_la_diferencia_solo_si_el_admin_ya_conto_el_sobre(self):
+        cierre_inicial = self._cerrar(datetime(2026, 1, 5, 6, 0))
+        self._vender(datetime(2026, 1, 5, 9, 0), 10.0)
+        cierre_manana = self._cerrar(datetime(2026, 1, 5, 14, 5))
+        self._vender(datetime(2026, 1, 5, 15, 0), 20.0)
+        self._cerrar(datetime(2026, 1, 5, 22, 10))
+
+        # La Mañana tiene dos cierres (el inicial, vacío, y el de las 14:05):
+        # recién cuenta como verificada cuando el Admin contó los dos.
+        turnos_repo.verificar_cierre(cierre_manana["id"], 8.0, self.admin_id)
+        manana = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 23, 0))["turnos"][0]
+        self.assertFalse(manana["verificado"])
+
+        turnos_repo.verificar_cierre(cierre_inicial["id"], 0.0, self.admin_id)
+
+        manana, tarde, _ = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 23, 0))["turnos"]
+        self.assertTrue(manana["verificado"])
+        self.assertEqual(manana["diferencia"], -2.0)
+        self.assertFalse(tarde["verificado"])
+        self.assertIsNone(tarde["diferencia"])
+
+    def test_cuenta_las_ventas_anuladas_aparte_y_no_las_suma_al_total(self):
+        self._cerrar(datetime(2026, 1, 5, 6, 0))
+        self._vender(datetime(2026, 1, 5, 9, 0), 10.0)
+        anulada = self._vender(datetime(2026, 1, 5, 9, 30), 99.0)
+        ventas_repo.anular_venta(anulada, self.admin_id, "Test")
+        self._cerrar(datetime(2026, 1, 5, 14, 5))
+
+        manana = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 15, 0))["turnos"][0]
+        self.assertEqual(manana["total"], 10.0)
+        self.assertEqual(manana["cantidad_ventas"], 1)
+        self.assertEqual(manana["cantidad_anuladas"], 1)
+
+
 class TestTurnosFaltantes(BaseConBaseTemporal):
     def test_turno_cerrado_no_aparece_pero_los_vencidos_sin_cerrar_si(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
