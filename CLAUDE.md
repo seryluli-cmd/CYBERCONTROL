@@ -578,3 +578,12 @@ Admin ya lo contó. Un turno es del día en que ARRANCÓ (la Noche incluye
 hasta las 06:00 del siguiente) y su plata es la de su CIERRE
 (`cierres_turno`), no la del reloj -- si el mismo turno se cerró dos
 veces se suman los dos cierres. 165 tests (7 nuevos en `TestResumenDelDia`).
+
+**2026-10-03 (más tarde):** nuevo botón **"🔐 Accesos de Admin"** en
+Configuración ADMIN (`ui/accesos_admin_window.py`). Pedido del dueño: que
+quede registrado cuándo se loguea un Admin. La tabla `sesiones` ya
+guardaba cada login de TODOS los usuarios; lo que faltaba era verla.
+`usuarios_repo.listar_logins(desde, hasta, solo_admin=True)` filtra por
+rol ADMIN (el rol de HOY, no el de cuando se logueó) y la pantalla trae un
+combo para ver también a las empleadas. Solo registra logins exitosos: un
+intento con clave mala no deja rastro. 169 tests.

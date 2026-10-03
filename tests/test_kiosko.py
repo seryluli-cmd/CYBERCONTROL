@@ -330,6 +330,53 @@ class TestAutenticarPorNombre(BaseConBaseTemporal):
         self.assertIsNone(usuarios_repo.autenticar_por_nombre("Matías", "1234"))
 
 
+class TestListarLogins(BaseConBaseTemporal):
+    def _loguear(self, nombre, momento):
+        with mock.patch("repositories.usuarios_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            return usuarios_repo.autenticar_por_nombre(nombre, "1234")
+
+    def setUp(self):
+        super().setUp()
+        usuarios_repo.crear_usuario("Sergio", "1234", "ADMIN")
+        usuarios_repo.crear_usuario("Lucia", "1234", "EMPLEADA")
+
+    def test_por_defecto_trae_solo_los_logins_de_admin_del_mas_nuevo_al_mas_viejo(self):
+        self._loguear("Sergio", datetime(2026, 1, 5, 9, 0, 0))
+        self._loguear("Lucia", datetime(2026, 1, 5, 10, 0, 0))
+        self._loguear("Sergio", datetime(2026, 1, 5, 18, 30, 0))
+
+        logins = usuarios_repo.listar_logins("2026-01-05", "2026-01-05")
+
+        self.assertEqual([l["fecha_hora"] for l in logins], ["2026-01-05T18:30:00", "2026-01-05T09:00:00"])
+        self.assertTrue(all(l["nombre"] == "Sergio" and l["rol"] == "ADMIN" for l in logins))
+
+    def test_con_solo_admin_en_falso_trae_los_de_todos(self):
+        self._loguear("Sergio", datetime(2026, 1, 5, 9, 0, 0))
+        self._loguear("Lucia", datetime(2026, 1, 5, 10, 0, 0))
+
+        logins = usuarios_repo.listar_logins("2026-01-05", "2026-01-05", solo_admin=False)
+
+        self.assertEqual([l["nombre"] for l in logins], ["Lucia", "Sergio"])
+
+    def test_respeta_el_rango_de_fechas_incluyendo_las_dos_puntas(self):
+        self._loguear("Sergio", datetime(2026, 1, 4, 23, 59, 0))
+        self._loguear("Sergio", datetime(2026, 1, 5, 0, 0, 0))
+        self._loguear("Sergio", datetime(2026, 1, 6, 23, 59, 0))
+        self._loguear("Sergio", datetime(2026, 1, 7, 0, 0, 0))
+
+        logins = usuarios_repo.listar_logins("2026-01-05", "2026-01-06")
+
+        self.assertEqual([l["fecha_hora"] for l in logins], ["2026-01-06T23:59:00", "2026-01-05T00:00:00"])
+
+    def test_un_login_con_clave_incorrecta_no_queda_registrado(self):
+        with mock.patch("repositories.usuarios_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 5, 9, 0, 0)
+            self.assertIsNone(usuarios_repo.autenticar_por_nombre("Sergio", "mala"))
+
+        self.assertEqual(usuarios_repo.listar_logins("2026-01-05", "2026-01-05"), [])
+
+
 class TestPermisosDeEmpleada(BaseConBaseTemporal):
     def test_crear_usuario_guarda_los_permisos_pedidos(self):
         usuario_id = usuarios_repo.crear_usuario(

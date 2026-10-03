@@ -22,7 +22,8 @@ del rol y los permisos:
   Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos).
 - Solo ADMIN, sin excepción: "Configuración ADMIN" — Gestionar
   Estaciones (agregar/quitar/renombrar PC), Gestionar Bonos (catálogo de
-  walk-ins), Tarifa por Hora de Socios y Gestionar Bonos de Socios.
+  walk-ins), Tarifa por Hora de Socios, Gestionar Bonos de Socios y
+  Accesos de Admin (registro de logins de administradores).
   Pedido explícito del dueño (2026-09-28): editar estos catálogos es
   tarea de super admin; usarlos (asignar un bono, cobrar con la tarifa
   ya fijada) sigue delegable con `permiso_control_pcs`.
@@ -35,6 +36,7 @@ from PySide6.QtCore import Qt
 
 import dominio
 from repositories import usuarios_repo
+from ui.accesos_admin_window import AccesosAdminWindow
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
 from ui.ventas_window import VentasWindow
@@ -261,7 +263,9 @@ class ConfiguracionAdminWindow(QDialog):
     Agrupa las cuatro pantallas de EDICIÓN de catálogos que antes vivían
     repartidas en "Gestionar PCs" y "Administración de Miembros":
     Estaciones, Bonos de Tiempo (walk-in), Tarifa por Hora de Socios y
-    Bonos de Socios. Exclusiva de ADMIN, sin excepción — no hay permiso
+    Bonos de Socios -- más "Accesos de Admin" (quién entró con una cuenta
+    de administrador, ver ui/accesos_admin_window.py). Exclusiva de ADMIN,
+    sin excepción — no hay permiso
     delegable para esto (ver MainWindow._armar_interfaz). *Usar* esos
     catálogos (asignarle un bono ya creado a una PC, cargar saldo con la
     tarifa ya fijada) sigue abierto a cualquier operador con
@@ -276,7 +280,7 @@ class ConfiguracionAdminWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Configuración ADMIN")
-        self.resize(360, 400)
+        self.resize(360, 460)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
@@ -293,6 +297,7 @@ class ConfiguracionAdminWindow(QDialog):
         self._agregar_boton(layout, "🎟️  Gestionar Bonos", self._abrir_bonos)
         self._agregar_boton(layout, "💲  Tarifa por Hora de Socios", self._configurar_tarifa)
         self._agregar_boton(layout, "🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro)
+        self._agregar_boton(layout, "🔐  Accesos de Admin", self._abrir_accesos_admin)
 
         layout.addStretch()
         self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
@@ -321,3 +326,6 @@ class ConfiguracionAdminWindow(QDialog):
 
     def _abrir_bonos_miembro(self):
         DialogoGestionBonosMiembro(self).exec()
+
+    def _abrir_accesos_admin(self):
+        AccesosAdminWindow(self).exec()

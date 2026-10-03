@@ -117,6 +117,33 @@ def autenticar_por_nombre(nombre: str, clave: str):
         return _validar_credenciales_y_registrar_sesion(conexion, fila, clave)
 
 
+def listar_logins(desde: str, hasta: str, solo_admin: bool = True):
+    """
+    Los logins exitosos entre dos fechas (incluidas ambas puntas,
+    "YYYY-MM-DD"), del más nuevo al más viejo. Es la misma tabla
+    `sesiones` que ya se llena en cada login de cualquier usuario (ver
+    _validar_credenciales_y_registrar_sesion): con `solo_admin` se queda
+    solo con los de rol ADMIN, que es lo que le interesa al dueño para
+    saber cuándo se entró con una cuenta de administrador.
+
+    El rol es el que tiene el usuario HOY, no el que tenía al loguearse:
+    si a alguien le cambian el rol, su historial viejo se ve con el nuevo.
+    """
+    consulta = """
+        SELECT sesiones.fecha_hora, usuarios.nombre, usuarios.rol
+        FROM sesiones
+        JOIN usuarios ON usuarios.id = sesiones.usuario_id
+        WHERE date(sesiones.fecha_hora) BETWEEN date(?) AND date(?)
+    """
+    parametros = [desde, hasta]
+    if solo_admin:
+        consulta += " AND usuarios.rol = ?"
+        parametros.append(dominio.ROL_ADMIN)
+    consulta += " ORDER BY sesiones.id DESC"
+    with conexion_db() as conexion:
+        return conexion.execute(consulta, parametros).fetchall()
+
+
 def cambiar_clave(usuario_id: int, clave_actual: str, clave_nueva: str):
     """
     Cualquier usuario logueado (Admin o Empleada) puede cambiar su
