@@ -435,6 +435,7 @@ def inicializar_base_de_datos():
     """)
     _migrar_columna_ultima_conexion_estaciones(conexion)
     _migrar_columna_ultima_ip_estaciones(conexion)
+    _migrar_columna_cliente_cerrado_desde_estaciones(conexion)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bonos_tiempo (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -478,6 +479,23 @@ def inicializar_base_de_datos():
             usuario_id           INTEGER NOT NULL REFERENCES usuarios(id)
         )
     """)
+    # Registro de los accesos al panel admin de cada Cliente PC (ver
+    # control_pcs/repositories/accesos_admin_pc_repo.py): quién sabe la
+    # contraseña puede cerrar el Cliente PC y dejar la PC sin bloqueo, y el
+    # dueño quería enterarse cuándo pasa y cuánto dura. Nada se borra
+    # (regla 7 de CLAUDE.md). "segundos_sin_cliente" solo se llena en
+    # CLIENTE_REANUDADO: cuánto estuvo la PC sin Cliente PC.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS eventos_admin_pc (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id          INTEGER NOT NULL REFERENCES estaciones(id),
+            fecha_hora           TEXT NOT NULL,
+            tipo                 TEXT NOT NULL CHECK (tipo IN
+                                     ('ACCESO', 'CIERRE_CLIENTE', 'RECONFIGURAR', 'CLIENTE_REANUDADO')),
+            segundos_sin_cliente INTEGER
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_eventos_admin_pc_fecha ON eventos_admin_pc(fecha_hora)")
     # Detalle de qué bono(s) se cargaron a cada sesión, con el venta_id de
     # la venta que generó ese cobro (se factura igual que cualquier venta
     # de kiosko, ver pcs_repo.asignar_bono) — trazabilidad completa entre
@@ -692,6 +710,22 @@ def _migrar_columna_ultima_ip_estaciones(conexion: sqlite3.Connection):
     columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(estaciones)")}
     if "ultima_ip" not in columnas_actuales:
         conexion.execute("ALTER TABLE estaciones ADD COLUMN ultima_ip TEXT")
+    conexion.commit()
+
+
+def _migrar_columna_cliente_cerrado_desde_estaciones(conexion: sqlite3.Connection):
+    """
+    Agrega estaciones.cliente_cerrado_desde: desde cuándo la PC está sin
+    Cliente PC porque alguien lo cerró desde su panel admin (NULL = no).
+    Lo pone accesos_admin_pc_repo.registrar_evento y lo limpia
+    registrar_regreso_del_cliente cuando la PC vuelve a conectarse. Vive en
+    `estaciones` (y no se deduce del historial de eventos) para que
+    pcs_repo.estado_estaciones, que ya lee esa fila, lo tenga sin una
+    consulta más.
+    """
+    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(estaciones)")}
+    if "cliente_cerrado_desde" not in columnas_actuales:
+        conexion.execute("ALTER TABLE estaciones ADD COLUMN cliente_cerrado_desde TEXT")
     conexion.commit()
 
 

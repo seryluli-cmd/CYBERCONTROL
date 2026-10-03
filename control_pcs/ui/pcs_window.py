@@ -40,7 +40,7 @@ from control_pcs.repositories import (
 )
 from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
-    formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
+    formato_pesos, formato_tiempo, formato_transcurrido, mostrar_error, mostrar_info, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter,
 )
 
@@ -71,6 +71,11 @@ COLOR_DESCONECTADA = QColor("#F8D7D9")
 # prendió (ver pcs_repo.estado_estaciones, "esperando_cliente"): azul
 # calmo, sin parpadeo -- es una espera normal, no una alerta.
 COLOR_ESPERANDO_CLIENTE = QColor("#DCE7FD")
+# PC sin Cliente PC porque alguien lo cerró desde su panel admin (ver
+# accesos_admin_pc_repo): está usable por cualquiera, sin bloqueo ni cobro,
+# hasta que el Cliente PC vuelva a arrancar. Lila a propósito, distinto del
+# rojo de "Sin conexión" (apagada) para que se note cuál es cuál.
+COLOR_CLIENTE_CERRADO_ADMIN = QColor("#E6D5F5")
 
 # Alerta especial (pedido explícito del dueño, 2026-09-30): sesión activa
 # (Bono o Miembro) en una estación que dejó de estar "enlazada" -- el
@@ -116,6 +121,11 @@ def _texto_evento(evento) -> str:
         return f"{hora} — {formato_tiempo(evento['minutos'] * 60)} reintegrados a {evento['miembro_nombre']}."
     if tipo == "TRASLADO":
         return f"{hora} — Sesión pasada de {evento['origen_nombre']} a {evento['destino_nombre']}."
+    if tipo == "ADMIN_PC":
+        texto = f"{hora} — {evento['estacion_nombre']}: {dominio.NOMBRE_EVENTO_ADMIN_PC[evento['evento_admin']]}"
+        if evento["segundos_sin_cliente"] is not None:
+            texto += f" (estuvo {formato_tiempo(evento['segundos_sin_cliente'])} sin bloqueo)"
+        return texto + "."
     return hora
 
 
@@ -240,7 +250,10 @@ class PanelControlPcs(QWidget):
                 # que nadie está viendo esa PC que cuánto tiempo le queda.
                 quien_texto = sesion["miembro_nombre"] or "Bono"
                 restante_texto = formato_tiempo(segundos)
-                icono, texto_estado, color = "🚨", "SIN CLIENTE (revisar)", COLOR_ALERTA_SESION_SIN_CLIENTE
+                texto_alerta = "SIN CLIENTE (revisar)"
+                if item["cliente_cerrado_admin_desde"] is not None:
+                    texto_alerta = f"SIN CLIENTE (cerrado por admin hace {formato_transcurrido(item['cliente_cerrado_admin_desde'])})"
+                icono, texto_estado, color = "🚨", texto_alerta, COLOR_ALERTA_SESION_SIN_CLIENTE
             elif sesion is not None:
                 quien_texto = sesion["miembro_nombre"] or "Bono"
                 restante_texto = formato_tiempo(segundos)
@@ -250,6 +263,10 @@ class PanelControlPcs(QWidget):
                     icono, texto_estado, color = "▶", "En uso", COLOR_EN_USO
             elif item["enlazada"]:
                 icono, texto_estado, color = "✓", "Disponible", COLOR_DISPONIBLE
+                restante_texto, quien_texto = "—", "—"
+            elif item["cliente_cerrado_admin_desde"] is not None:
+                icono, color = "🔓", COLOR_CLIENTE_CERRADO_ADMIN
+                texto_estado = f"Sin bloqueo (cerrado por admin hace {formato_transcurrido(item['cliente_cerrado_admin_desde'])})"
                 restante_texto, quien_texto = "—", "—"
             else:
                 icono, texto_estado, color = "🔌", "Sin conexión", COLOR_DESCONECTADA

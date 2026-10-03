@@ -5,9 +5,11 @@ accesos_admin_window.py
 una cuenta de administrador y cuándo. Exclusiva de ADMIN, igual que el
 resto de Configuración ADMIN.
 
-Hoy tiene una pestaña: los logins en CYBERCONTROL (los lee de la tabla
+Tiene dos pestañas: los logins en CYBERCONTROL (los lee de la tabla
 `sesiones` vía usuarios_repo.listar_logins; esa tabla ya se llenaba con
-cada login, solo faltaba una pantalla para verla).
+cada login, solo faltaba una pantalla para verla) y lo que pasó en el
+panel admin de las PCs cliente (quién cerró el Cliente PC y dejó una PC sin
+bloqueo, ver control_pcs/ui/accesos_admin_pc_tab.py).
 """
 
 from datetime import datetime, timedelta
@@ -19,6 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate
 
 from repositories import usuarios_repo
+from control_pcs.ui.accesos_admin_pc_tab import PestañaAccesosAdminPc
 from ui.utils import manejar_errores, encadenar_enter
 
 
@@ -30,6 +33,7 @@ class AccesosAdminWindow(QDialog):
 
         pestañas = QTabWidget()
         pestañas.addTab(PestañaLoginsAdmin(), "Logins en CYBERCONTROL")
+        pestañas.addTab(PestañaAccesosAdminPc(), "Admin en PCs cliente")
 
         layout = QVBoxLayout()
         layout.addWidget(pestañas)

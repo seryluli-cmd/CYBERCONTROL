@@ -587,3 +587,35 @@ guardaba cada login de TODOS los usuarios; lo que faltaba era verla.
 rol ADMIN (el rol de HOY, no el de cuando se logueó) y la pantalla trae un
 combo para ver también a las empleadas. Solo registra logins exitosos: un
 intento con clave mala no deja rastro. 169 tests.
+
+**2026-10-03 (más tarde todavía):** **registro de accesos admin en las PCs
+cliente**. Pedido del dueño: los empleados de mantenimiento entran al panel
+admin de una PC (la "A" chica de la pantalla de bloqueo), cierran el Cliente
+PC y la dejan abierta horas para jugar -- quería enterarse cuándo pasa y
+cuánto dura. El Cliente PC avisa tres cosas (`POST /evento_admin`, ver
+`servidor_red._manejar_evento_admin`): `ACCESO` (entró al panel con la
+contraseña correcta), `CIERRE_CLIENTE` y `RECONFIGURAR`. El cuarto,
+`CLIENTE_REANUDADO`, lo anota el servidor solo la primera vez que esa PC
+vuelve a preguntar su estado (con cuánto estuvo sin bloqueo). Todo vive en
+`control_pcs/repositories/accesos_admin_pc_repo.py`, tabla nueva
+`eventos_admin_pc` y columna `estaciones.cliente_cerrado_desde` (la marca
+"esta PC está sin Cliente PC desde...", migración
+`_migrar_columna_cliente_cerrado_desde_estaciones`); los nombres de los
+eventos son `dominio.EVENTO_ADMIN_*`. Se ve en tres lugares: la grilla de
+Control de PCs (lila "Sin bloqueo (cerrado por admin hace 2h 05m)", y si hay
+una sesión corriendo parpadea como "SIN CLIENTE"; `estado_estaciones` trae
+`cliente_cerrado_admin_desde` y con eso `esperando_cliente` queda en False,
+porque un Cliente PC cerrado por un admin no va a volver solo), el panel de
+"Actividad reciente" (tipo `ADMIN_PC`) y la pestaña **"Admin en PCs cliente"**
+de Configuración ADMIN -> Accesos de Admin
+(`control_pcs/ui/accesos_admin_pc_tab.py`). Si el servidor está apagado
+cuando el admin entra (justo cuando suele hacer falta el panel), el Cliente
+PC guarda el aviso en `eventos_admin_pendientes.json` y lo manda solo al
+volver la conexión, diciendo "esto pasó hace X segundos" (no manda su hora:
+el reloj de cada PC puede estar corrido). Límites a no olvidar: la
+contraseña admin es una sola, así que el registro dice QUÉ PC y CUÁNDO, no
+QUIÉN; y "sin bloqueo" corre hasta que el Cliente PC volvió, así que si
+apagaron la PC en el medio incluye ese tiempo. Solo deja constancia, no
+impide nada. 188 tests (19 nuevos: `TestAccesosAdminPc` y
+`TestServidorRedEventoAdmin`; `TestServidorRedLogout` ahora hereda de la
+base común `_ConServidorRed`).

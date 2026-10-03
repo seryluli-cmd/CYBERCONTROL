@@ -129,6 +129,12 @@ def formato_tiempo(segundos: int) -> str:
     return f"{minutos}m {seg:02d}s"
 
 
+def formato_transcurrido(desde: datetime) -> str:
+    """Cuánto pasó desde `desde` hasta ahora, como formato_tiempo ("2h 05m").
+    Nunca negativo: un reloj apenas corrido no tiene que mostrar "-1m"."""
+    return formato_tiempo(max(0, int((datetime.now() - desde).total_seconds())))
+
+
 def aplicar_clase(widget, clase: str):
     """
     Marca un botón como "primario" (acción principal, ej. Cobrar,

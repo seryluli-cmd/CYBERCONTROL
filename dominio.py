@@ -109,6 +109,37 @@ NOMBRE_ORIGEN_VENTA = {
 }
 
 
+# --------------------------------------------------------------------
+# Accesos de admin en las PCs cliente
+# --------------------------------------------------------------------
+# Lo que el Cliente PC le avisa al servidor cuando alguien entra a su panel
+# admin (la "A" chica de la pantalla de bloqueo) -- ver
+# control_pcs/repositories/accesos_admin_pc_repo.py. Los tres primeros los
+# manda el Cliente PC (son el "protocolo" de POST /evento_admin, tienen que
+# coincidir con CLIENTE PC/red_kiosko.py); CLIENTE_REANUDADO no viaja por la
+# red: lo anota el servidor solo, cuando una PC que había quedado sin
+# Cliente PC vuelve a preguntar su estado.
+EVENTO_ADMIN_ACCESO = "ACCESO"
+EVENTO_ADMIN_CIERRE_CLIENTE = "CIERRE_CLIENTE"
+EVENTO_ADMIN_RECONFIGURAR = "RECONFIGURAR"
+EVENTO_ADMIN_CLIENTE_REANUDADO = "CLIENTE_REANUDADO"
+
+EVENTOS_ADMIN_REPORTADOS_POR_CLIENTE = (
+    EVENTO_ADMIN_ACCESO, EVENTO_ADMIN_CIERRE_CLIENTE, EVENTO_ADMIN_RECONFIGURAR,
+)
+EVENTOS_ADMIN_PC = EVENTOS_ADMIN_REPORTADOS_POR_CLIENTE + (EVENTO_ADMIN_CLIENTE_REANUDADO,)
+# Los que dejan a la PC SIN Cliente PC corriendo, o sea sin bloqueo: la PC
+# queda usable por cualquiera hasta que el Cliente PC vuelve a arrancar.
+EVENTOS_ADMIN_QUE_DEJAN_PC_SIN_CLIENTE = (EVENTO_ADMIN_CIERRE_CLIENTE, EVENTO_ADMIN_RECONFIGURAR)
+
+NOMBRE_EVENTO_ADMIN_PC = {
+    EVENTO_ADMIN_ACCESO: "Entró al panel admin",
+    EVENTO_ADMIN_CIERRE_CLIENTE: "Cerró el Cliente PC (la PC quedó SIN bloqueo)",
+    EVENTO_ADMIN_RECONFIGURAR: "Abrió la reconfiguración (el Cliente PC se cerró)",
+    EVENTO_ADMIN_CLIENTE_REANUDADO: "El Cliente PC volvió a arrancar",
+}
+
+
 def pagos_netos_de_vuelto(pagos: list, vuelto: float) -> list:
     """
     Descuenta el vuelto de los pagos en Efectivo antes de que se graben en

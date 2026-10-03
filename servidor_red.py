@@ -32,6 +32,13 @@ Expone estos endpoints:
   cerrar su propia sesión sin pasar por el mostrador. Body JSON
   {"estacion"} -- no pide usuario/clave: alcanza con estar físicamente
   en esa PC, mismo criterio de confianza que ya usa el resto del sistema.
+- POST /evento_admin -- el Cliente PC avisa que alguien entró a su panel
+  admin, cerró el Cliente PC o abrió la reconfiguración (ver
+  control_pcs/repositories/accesos_admin_pc_repo.py: es lo que le permite
+  al dueño enterarse de una PC que quedó sin bloqueo). Body JSON
+  {"estacion", "tipo", "segundos_atras"}; `segundos_atras` es para los
+  avisos que el Cliente PC no pudo mandar en el momento (servidor
+  apagado) y manda cuando vuelve la conexión.
 - POST /comando_resultado -- el Cliente PC lo llama después de ejecutar un
   comando SCREENSHOT (para subir la imagen capturada) o CAMBIAR_RED (para
   avisar si pudo cambiar de módem o no -- a diferencia de reiniciar/apagar,
@@ -55,7 +62,10 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from control_pcs.repositories import clientes_repo, comandos_pc_repo, miembros_repo, pcs_repo
+import dominio
+from control_pcs.repositories import (
+    accesos_admin_pc_repo, clientes_repo, comandos_pc_repo, miembros_repo, pcs_repo,
+)
 
 PUERTO_SERVIDOR = 8899
 
@@ -152,6 +162,15 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0])
             except Exception:
                 pass  # no puede romper la consulta de bloqueo por esto
+            if item["estacion"]["cliente_cerrado_desde"] is not None:
+                # Esta PC había quedado sin Cliente PC (alguien lo cerró
+                # desde el panel admin) y acaba de volver: se anota cuánto
+                # estuvo así. Solo se mira cuando hay marca, así que un
+                # pedido normal no cuesta nada de más.
+                try:
+                    accesos_admin_pc_repo.registrar_regreso_del_cliente(item["estacion"]["id"])
+                except Exception:
+                    pass  # un registro que falla no puede romper la consulta de bloqueo
             try:
                 comando = comandos_pc_repo.proximo_comando_pendiente(item["estacion"]["id"])
                 if comando is not None:
@@ -207,6 +226,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self._manejar_login()
         elif ruta.path == "/logout":
             self._manejar_logout()
+        elif ruta.path == "/evento_admin":
+            self._manejar_evento_admin()
         elif ruta.path == "/comando_resultado":
             self._manejar_comando_resultado()
         else:
@@ -285,6 +306,39 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         try:
             pcs_repo.finalizar_sesion(item["sesion"]["id"])
+        except Exception:
+            self._responder_json(500, {"ok": False, "error": "Error interno."})
+            return
+
+        self._responder_json(200, {"ok": True})
+
+    def _manejar_evento_admin(self):
+        """
+        Anota un aviso del panel admin de un Cliente PC (ver
+        accesos_admin_pc_repo). Como /logout, no pide usuario ni clave
+        propia: alcanza con la clave de Clientes PC que ya exige do_POST.
+        """
+        try:
+            cuerpo = self._leer_cuerpo_json()
+            nombre_estacion = str(cuerpo["estacion"])
+            tipo = str(cuerpo["tipo"])
+            segundos_atras = float(cuerpo.get("segundos_atras") or 0)
+        except Exception:
+            self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+            return
+        if tipo not in dominio.EVENTOS_ADMIN_REPORTADOS_POR_CLIENTE:
+            self._responder_json(400, {"ok": False, "error": "Tipo de evento inválido."})
+            return
+
+        item = self._resolver_estacion(nombre_estacion)
+        if item is None:
+            return  # _resolver_estacion ya respondió 404/500
+
+        try:
+            accesos_admin_pc_repo.registrar_evento(item["estacion"]["id"], tipo, segundos_atras)
+        except ValueError:
+            self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+            return
         except Exception:
             self._responder_json(500, {"ok": False, "error": "Error interno."})
             return

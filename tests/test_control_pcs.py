@@ -24,7 +24,8 @@ import dominio
 import servidor_red
 from repositories import config_repo, usuarios_repo, ventas_repo
 from control_pcs.repositories import (
-    clientes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo, bonos_miembro_repo,
+    accesos_admin_pc_repo, clientes_repo, comandos_pc_repo, config_red_repo, miembros_repo, pcs_repo,
+    bonos_miembro_repo,
 )
 from base import BaseConBaseTemporal
 
@@ -1050,13 +1051,12 @@ class TestConfigRedRepo(BaseConBaseTemporal):
         self.assertFalse(config_red_repo.es_ip_valida("192.168.1"))
 
 
-class TestServidorRedLogout(BaseConBaseTemporal):
+class _ConServidorRed(BaseConBaseTemporal):
     """
-    POST /logout contra un servidor real (puerto efímero, mismo
-    manejador que usa main.py) -- a diferencia del resto de la suite,
-    acá hace falta ir hasta la capa HTTP: el bug que se prueba está en
-    cómo servidor_red.py arma su respuesta, no en pcs_repo/miembros_repo
-    (que ya funcionan bien solos).
+    Levanta un servidor real (puerto efímero, mismo manejador que usa
+    main.py) para probar la capa HTTP de servidor_red.py -- a diferencia
+    del resto de la suite, hay bugs que están en cómo servidor_red.py arma
+    su respuesta y no en pcs_repo/miembros_repo (que funcionan bien solos).
     """
 
     def setUp(self):
@@ -1073,17 +1073,27 @@ class TestServidorRedLogout(BaseConBaseTemporal):
         self._servidor.server_close()
         super().tearDown()
 
-    def _post(self, ruta: str, cuerpo: dict):
+    def _pedir(self, metodo: str, ruta: str, cuerpo: dict = None):
         conexion = http.client.HTTPConnection("127.0.0.1", self._puerto, timeout=5)
         try:
             conexion.request(
-                "POST", ruta, body=json.dumps(cuerpo),
+                metodo, ruta, body=json.dumps(cuerpo) if cuerpo is not None else None,
                 headers={"Authorization": "Bearer " + self._clave, "Content-Type": "application/json"},
             )
             respuesta = conexion.getresponse()
             return respuesta.status, json.loads(respuesta.read().decode("utf-8"))
         finally:
             conexion.close()
+
+    def _post(self, ruta: str, cuerpo: dict):
+        return self._pedir("POST", ruta, cuerpo)
+
+    def _get(self, ruta: str):
+        return self._pedir("GET", ruta)
+
+
+class TestServidorRedLogout(_ConServidorRed):
+    """POST /logout (ver _ConServidorRed)."""
 
     def test_logout_con_sesion_id_vieja_no_toca_la_sesion_nueva(self):
         # Reproduce el bug real: un pedido de cierre que tarda en
@@ -1147,17 +1157,219 @@ class TestServidorRedLogout(BaseConBaseTemporal):
         sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
         self.assertEqual(datos["sesion_id"], sesion_id)
 
+        _, datos_estado = self._get("/estado?estacion=PC+8")
+        self.assertEqual(datos_estado["sesion_id"], sesion_id)
+
+
+class TestAccesosAdminPc(BaseConBaseTemporal):
+    """Registro de lo que pasa en el panel admin de un Cliente PC
+    (accesos_admin_pc_repo): quién cierra el Cliente PC y cuánto tiempo
+    queda la PC sin bloqueo."""
+
+    def setUp(self):
+        super().setUp()
+        self.estacion_id = pcs_repo.crear_estacion("PC 12")
+
+    def _registrar(self, tipo, ahora, segundos_atras=0):
+        with mock.patch("control_pcs.repositories.accesos_admin_pc_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = ahora
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            accesos_admin_pc_repo.registrar_evento(self.estacion_id, tipo, segundos_atras)
+
+    def _regreso(self, ahora):
+        with mock.patch("control_pcs.repositories.accesos_admin_pc_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = ahora
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return accesos_admin_pc_repo.registrar_regreso_del_cliente(self.estacion_id)
+
+    def _estado_a(self, momento):
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return pcs_repo.estado_estaciones()[0]
+
+    def _tipos(self):
+        return [e["tipo"] for e in reversed(accesos_admin_pc_repo.listar_eventos("2000-01-01", "2100-01-01"))]
+
+    def test_entrar_al_panel_se_anota_pero_no_marca_la_pc_como_sin_cliente(self):
+        self._registrar("ACCESO", datetime(2026, 1, 5, 10, 0, 0))
+
+        self.assertEqual(self._tipos(), ["ACCESO"])
+        self.assertIsNone(self._estado_a(datetime(2026, 1, 5, 10, 30, 0))["cliente_cerrado_admin_desde"])
+
+    def test_cerrar_el_cliente_marca_la_pc_y_la_grilla_sabe_desde_cuando(self):
+        self._registrar("ACCESO", datetime(2026, 1, 5, 10, 0, 0))
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 10, 1, 0))
+
+        item = self._estado_a(datetime(2026, 1, 5, 12, 30, 0))
+
+        self.assertFalse(item["enlazada"])
+        self.assertEqual(item["cliente_cerrado_admin_desde"], datetime(2026, 1, 5, 10, 1, 0))
+
+    def test_reconfigurar_tambien_deja_la_pc_sin_cliente(self):
+        self._registrar("RECONFIGURAR", datetime(2026, 1, 5, 10, 0, 0))
+
+        item = self._estado_a(datetime(2026, 1, 5, 10, 10, 0))
+        self.assertEqual(item["cliente_cerrado_admin_desde"], datetime(2026, 1, 5, 10, 0, 0))
+
+    def test_al_volver_el_cliente_se_anota_cuanto_estuvo_sin_bloqueo(self):
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 10, 0, 0))
+
+        self.assertTrue(self._regreso(datetime(2026, 1, 5, 12, 10, 0)))
+
+        eventos = accesos_admin_pc_repo.listar_eventos("2026-01-05", "2026-01-05")
+        reanudado = eventos[0]
+        self.assertEqual(reanudado["tipo"], "CLIENTE_REANUDADO")
+        self.assertEqual(reanudado["fecha_hora"], "2026-01-05T12:10:00")
+        self.assertEqual(reanudado["segundos_sin_cliente"], 2 * 3600 + 10 * 60)
+        # La marca se limpió: la grilla ya no la muestra como sin bloqueo.
+        self.assertIsNone(self._estado_a(datetime(2026, 1, 5, 12, 10, 5))["cliente_cerrado_admin_desde"])
+
+    def test_el_regreso_se_anota_una_sola_vez(self):
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 10, 0, 0))
+
+        self.assertTrue(self._regreso(datetime(2026, 1, 5, 12, 0, 0)))
+        self.assertFalse(self._regreso(datetime(2026, 1, 5, 12, 0, 5)))
+
+        self.assertEqual(self._tipos(), ["CIERRE_CLIENTE", "CLIENTE_REANUDADO"])
+
+    def test_un_regreso_sin_cierre_previo_no_anota_nada(self):
+        self.assertFalse(self._regreso(datetime(2026, 1, 5, 12, 0, 0)))
+        self.assertEqual(self._tipos(), [])
+
+    def test_un_aviso_demorado_queda_con_la_hora_en_que_paso_de_verdad(self):
+        # El Cliente PC no pudo avisar (servidor apagado) y lo manda una
+        # hora después diciendo "esto pasó hace 3600 segundos".
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 11, 0, 0), segundos_atras=3600)
+
+        evento = accesos_admin_pc_repo.listar_eventos("2026-01-05", "2026-01-05")[0]
+        self.assertEqual(evento["fecha_hora"], "2026-01-05T10:00:00")
+        self.assertEqual(
+            self._estado_a(datetime(2026, 1, 5, 11, 0, 5))["cliente_cerrado_admin_desde"],
+            datetime(2026, 1, 5, 10, 0, 0),
+        )
+
+    def test_segundos_atras_absurdos_se_acotan(self):
+        self._registrar("ACCESO", datetime(2026, 6, 1, 10, 0, 0), segundos_atras=-500)
+        self._registrar("ACCESO", datetime(2026, 6, 1, 10, 0, 0), segundos_atras=10 ** 12)
+
+        fechas = sorted(e["fecha_hora"] for e in accesos_admin_pc_repo.listar_eventos("2000-01-01", "2100-01-01"))
+        self.assertEqual(fechas[1], "2026-06-01T10:00:00")  # el negativo cuenta como "recién"
+        self.assertEqual(fechas[0], "2026-05-02T10:00:00")  # y el enorme se frena en 30 días
+
+    def test_un_aviso_viejo_que_llega_tarde_no_pisa_a_uno_mas_nuevo(self):
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 12, 0, 0))
+        self._registrar("RECONFIGURAR", datetime(2026, 1, 5, 12, 5, 0), segundos_atras=3600)
+
+        item = self._estado_a(datetime(2026, 1, 5, 12, 10, 0))
+        self.assertEqual(item["cliente_cerrado_admin_desde"], datetime(2026, 1, 5, 12, 0, 0))
+
+    def test_no_acepta_desde_afuera_el_evento_que_anota_el_servidor_ni_basura(self):
+        with self.assertRaises(ValueError):
+            accesos_admin_pc_repo.registrar_evento(self.estacion_id, "CLIENTE_REANUDADO")
+        with self.assertRaises(ValueError):
+            accesos_admin_pc_repo.registrar_evento(self.estacion_id, "LO_QUE_SEA")
+        self.assertEqual(self._tipos(), [])
+
+    def test_sesion_con_el_cliente_cerrado_por_admin_no_es_una_espera_normal(self):
+        # Un bono activado en una PC que nunca se conectó es "esperando al
+        # cliente" (ver pcs_repo.estado_estaciones)... salvo que alguien
+        # haya cerrado el Cliente PC: ahí no va a volver solo.
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 5, 10, 0, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            pcs_repo.asignar_bono(self.estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": 3000}])
+
+        self.assertTrue(self._estado_a(datetime(2026, 1, 5, 10, 20, 0))["esperando_cliente"])
+
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 10, 5, 0))
+        item = self._estado_a(datetime(2026, 1, 5, 10, 20, 0))
+        self.assertFalse(item["esperando_cliente"])
+        self.assertIsNotNone(item["cliente_cerrado_admin_desde"])
+
+    def test_listar_eventos_filtra_por_fecha_y_va_del_mas_nuevo_al_mas_viejo(self):
+        self._registrar("ACCESO", datetime(2026, 1, 4, 23, 0, 0))
+        self._registrar("ACCESO", datetime(2026, 1, 5, 9, 0, 0))
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 9, 1, 0))
+        self._registrar("ACCESO", datetime(2026, 1, 6, 0, 0, 0))
+
+        eventos = accesos_admin_pc_repo.listar_eventos("2026-01-05", "2026-01-05")
+
+        self.assertEqual([e["tipo"] for e in eventos], ["CIERRE_CLIENTE", "ACCESO"])
+        self.assertEqual(eventos[0]["estacion_nombre"], "PC 12")
+
+    def test_aparece_en_la_actividad_reciente(self):
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 10, 0, 0))
+
+        eventos = [e for e in pcs_repo.actividad_reciente() if e["tipo"] == "ADMIN_PC"]
+
+        self.assertEqual(len(eventos), 1)
+        self.assertEqual(eventos[0]["evento_admin"], "CIERRE_CLIENTE")
+        self.assertEqual(eventos[0]["estacion_nombre"], "PC 12")
+
+
+class TestServidorRedEventoAdmin(_ConServidorRed):
+    """POST /evento_admin y el aviso de regreso en GET /estado."""
+
+    def setUp(self):
+        super().setUp()
+        self.estacion_id = pcs_repo.crear_estacion("PC 12")
+
+    def _eventos(self):
+        return [e["tipo"] for e in reversed(accesos_admin_pc_repo.listar_eventos("2000-01-01", "2100-01-01"))]
+
+    def test_el_aviso_del_cliente_queda_registrado_y_marca_la_pc(self):
+        status, datos = self._post("/evento_admin", {"estacion": "PC 12", "tipo": "CIERRE_CLIENTE", "segundos_atras": 0})
+
+        self.assertEqual(status, 200)
+        self.assertTrue(datos["ok"])
+        self.assertEqual(self._eventos(), ["CIERRE_CLIENTE"])
+        self.assertIsNotNone(pcs_repo.obtener_estacion(self.estacion_id)["cliente_cerrado_desde"])
+
+    def test_segundos_atras_es_opcional(self):
+        status, _ = self._post("/evento_admin", {"estacion": "PC 12", "tipo": "ACCESO"})
+        self.assertEqual(status, 200)
+
+    def test_rechaza_el_evento_que_solo_anota_el_servidor_y_los_pedidos_mal_armados(self):
+        self.assertEqual(self._post("/evento_admin", {"estacion": "PC 12", "tipo": "CLIENTE_REANUDADO"})[0], 400)
+        self.assertEqual(self._post("/evento_admin", {"estacion": "PC 12", "tipo": "XXX"})[0], 400)
+        self.assertEqual(self._post("/evento_admin", {"estacion": "PC 12"})[0], 400)
+        self.assertEqual(
+            self._post("/evento_admin", {"estacion": "PC 12", "tipo": "ACCESO", "segundos_atras": "mucho"})[0], 400,
+        )
+        self.assertEqual(self._eventos(), [])
+
+    def test_estacion_desconocida_da_404_y_no_anota_nada(self):
+        status, _ = self._post("/evento_admin", {"estacion": "PC 99", "tipo": "ACCESO"})
+        self.assertEqual(status, 404)
+        self.assertEqual(self._eventos(), [])
+
+    def test_sin_la_clave_de_clientes_pc_no_se_acepta(self):
         conexion = http.client.HTTPConnection("127.0.0.1", self._puerto, timeout=5)
         try:
             conexion.request(
-                "GET", "/estado?estacion=PC+8",
-                headers={"Authorization": "Bearer " + self._clave},
+                "POST", "/evento_admin", body=json.dumps({"estacion": "PC 12", "tipo": "ACCESO"}),
+                headers={"Authorization": "Bearer clave-equivocada"},
             )
-            respuesta = conexion.getresponse()
-            datos_estado = json.loads(respuesta.read().decode("utf-8"))
+            self.assertEqual(conexion.getresponse().status, 403)
         finally:
             conexion.close()
-        self.assertEqual(datos_estado["sesion_id"], sesion_id)
+        self.assertEqual(self._eventos(), [])
+
+    def test_cuando_el_cliente_vuelve_a_preguntar_su_estado_se_anota_el_regreso(self):
+        self._post("/evento_admin", {"estacion": "PC 12", "tipo": "CIERRE_CLIENTE"})
+
+        status, _ = self._get("/estado?estacion=PC+12")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(self._eventos(), ["CIERRE_CLIENTE", "CLIENTE_REANUDADO"])
+        self.assertIsNone(pcs_repo.obtener_estacion(self.estacion_id)["cliente_cerrado_desde"])
+
+        # Y los siguientes pedidos normales no anotan nada más.
+        self._get("/estado?estacion=PC+12")
+        self.assertEqual(self._eventos(), ["CIERRE_CLIENTE", "CLIENTE_REANUDADO"])
 
 
 if __name__ == "__main__":

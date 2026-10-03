@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 import dominio
 from database import conexion_db
 from repositories import ventas_repo
+from control_pcs.repositories import accesos_admin_pc_repo
 
 # Más que el intervalo de consulta del Cliente PC (5s, ver
 # control_pcs/ui/pcs_window.py) para darle margen de red antes de
@@ -247,8 +248,16 @@ def estado_estaciones():
         # pero esto NO es una alerta: es una espera normal. La alerta de
         # "SIN CLIENTE" queda para una PC que SÍ estuvo enlazada durante la
         # sesión (o justo antes) y dejó de responder.
+        #
+        # Si en cambio alguien cerró el Cliente PC desde su panel admin
+        # (ver accesos_admin_pc_repo), la PC NO va a volver sola: tampoco es
+        # una espera normal, es una PC sin bloqueo con tiempo pago corriendo.
+        cliente_cerrado_admin_desde = None
+        if estacion["cliente_cerrado_desde"] is not None and not enlazada:
+            cliente_cerrado_admin_desde = datetime.fromisoformat(estacion["cliente_cerrado_desde"])
+
         esperando_cliente = False
-        if sesion is not None and not enlazada:
+        if sesion is not None and not enlazada and cliente_cerrado_admin_desde is None:
             inicio_sesion = datetime.fromisoformat(sesion["fecha_inicio"])
             esperando_cliente = (
                 ultima_conexion is None
@@ -261,6 +270,9 @@ def estado_estaciones():
             "segundos_restantes": segundos_restantes,
             "enlazada": enlazada,
             "esperando_cliente": esperando_cliente,
+            # datetime desde cuándo la PC está sin Cliente PC por un cierre
+            # desde el panel admin, o None (ver comentario de arriba).
+            "cliente_cerrado_admin_desde": cliente_cerrado_admin_desde,
         })
     return resultado
 
@@ -652,6 +664,12 @@ def actividad_reciente(limite: int = 30):
             eventos.append({"fecha": fila["fecha"], "tipo": "TRASLADO",
                              "origen_nombre": fila["origen_nombre"],
                              "destino_nombre": fila["destino_nombre"]})
+
+        for fila in accesos_admin_pc_repo.listar_recientes(limite):
+            eventos.append({"fecha": fila["fecha_hora"], "tipo": "ADMIN_PC",
+                             "evento_admin": fila["tipo"],
+                             "estacion_nombre": fila["estacion_nombre"],
+                             "segundos_sin_cliente": fila["segundos_sin_cliente"]})
 
     eventos.sort(key=lambda evento: evento["fecha"], reverse=True)
     return eventos[:limite]
