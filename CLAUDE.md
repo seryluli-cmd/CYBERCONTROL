@@ -619,3 +619,17 @@ apagaron la PC en el medio incluye ese tiempo. Solo deja constancia, no
 impide nada. 188 tests (19 nuevos: `TestAccesosAdminPc` y
 `TestServidorRedEventoAdmin`; `TestServidorRedLogout` ahora hereda de la
 base común `_ConServidorRed`).
+
+**2026-10-04:** **apagar una PC desde CYBERCONTROL cierra el episodio "sin
+bloqueo"**. Pedido del dueño: si el Operador apaga la PC, deja de
+interpretarse como "admin corriendo" y no tiene que dar ninguna
+advertencia. `comandos_pc_repo.encolar_comando` (único lugar donde se
+encola un comando) llama a `accesos_admin_pc_repo.limpiar_marca_sin_cliente`
+cuando el tipo es `TIPO_APAGAR`: borra `estaciones.cliente_cerrado_desde`
+sin anotar ningún evento, así la grilla vuelve a mostrar "Sin conexión" y,
+cuando la PC se prenda de nuevo, no se anota `CLIENTE_REANUDADO`. Reiniciar
+NO lo hace (la PC vuelve con el Cliente PC y ahí sí se anota cuánto estuvo
+sin bloqueo). Ojo: el comando lo ejecuta el Cliente PC de esa PC, así que si
+tiene el Cliente PC cerrado el comando queda pendiente y la PC no se apaga;
+y como además se limpia la marca, esa PC pasa a verse igual que una apagada.
+190 tests.

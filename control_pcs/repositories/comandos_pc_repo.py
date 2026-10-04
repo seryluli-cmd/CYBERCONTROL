@@ -30,6 +30,7 @@ from datetime import datetime
 
 import database
 from database import conexion_db
+from control_pcs.repositories import accesos_admin_pc_repo
 
 TIPO_REINICIAR = "REINICIAR"
 TIPO_APAGAR = "APAGAR"
@@ -43,7 +44,14 @@ def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
     """Deja un comando pendiente para que el Cliente PC de esa estación lo
     recoja en su próxima consulta de estado. Devuelve el id del comando
     (lo necesita, por ejemplo, DialogoCaptura para saber cuál resultado
-    esperar)."""
+    esperar).
+
+    Apagar una PC que estaba marcada como "sin bloqueo (cerrado por
+    admin)" cierra ese episodio: deja de mostrarse así y no se anota nada
+    ni se avisa (ver accesos_admin_pc_repo.limpiar_marca_sin_cliente).
+    Reiniciar NO lo cierra: la PC vuelve a prenderse y ahí sí se anota
+    cuánto estuvo sin bloqueo. Ojo: el comando lo ejecuta el Cliente PC
+    de esa PC, así que con el Cliente PC cerrado no llega a ejecutarse."""
     with conexion_db() as conexion:
         cursor = conexion.execute(
             """
@@ -52,7 +60,10 @@ def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
             """,
             (estacion_id, tipo, payload, datetime.now().isoformat(timespec="seconds")),
         )
-        return cursor.lastrowid
+        comando_id = cursor.lastrowid
+    if tipo == TIPO_APAGAR:
+        accesos_admin_pc_repo.limpiar_marca_sin_cliente(estacion_id)
+    return comando_id
 
 
 def proximo_comando_pendiente(estacion_id: int):

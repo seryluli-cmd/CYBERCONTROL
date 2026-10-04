@@ -106,6 +106,21 @@ def registrar_regreso_del_cliente(estacion_id: int) -> bool:
         return True
 
 
+def limpiar_marca_sin_cliente(estacion_id: int):
+    """
+    Saca la marca "sin Cliente PC desde..." de una estación SIN anotar
+    ningún evento ni dejar advertencias: la PC deja de mostrarse como "sin
+    bloqueo (cerrado por admin)" y, cuando vuelva a prenderse, tampoco se
+    anota un CLIENTE_REANUDADO (registrar_regreso_del_cliente no encuentra
+    marca). Se usa cuando el Operador apaga la PC desde CYBERCONTROL
+    (ver comandos_pc_repo.encolar_comando): apagarla es el final normal de
+    ese episodio, no algo para avisar. El historial de lo que pasó antes
+    (ACCESO, CIERRE_CLIENTE) queda como estaba.
+    """
+    with conexion_db() as conexion:
+        conexion.execute("UPDATE estaciones SET cliente_cerrado_desde = NULL WHERE id = ?", (estacion_id,))
+
+
 def listar_eventos(desde: str, hasta: str):
     """Los eventos entre dos fechas (incluidas ambas puntas, "YYYY-MM-DD"),
     del más nuevo al más viejo, con el nombre de la PC."""

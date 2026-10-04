@@ -1188,6 +1188,12 @@ class TestAccesosAdminPc(BaseConBaseTemporal):
             datetime_mock.fromisoformat = datetime.fromisoformat
             return pcs_repo.estado_estaciones()[0]
 
+    def _estados_a(self, momento):
+        with mock.patch("control_pcs.repositories.pcs_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return pcs_repo.estado_estaciones()
+
     def _tipos(self):
         return [e["tipo"] for e in reversed(accesos_admin_pc_repo.listar_eventos("2000-01-01", "2100-01-01"))]
 
@@ -1288,6 +1294,29 @@ class TestAccesosAdminPc(BaseConBaseTemporal):
         item = self._estado_a(datetime(2026, 1, 5, 10, 20, 0))
         self.assertFalse(item["esperando_cliente"])
         self.assertIsNotNone(item["cliente_cerrado_admin_desde"])
+
+    def test_apagar_la_pc_desde_cybercontrol_la_deja_de_marcar_como_sin_bloqueo_y_sin_avisos(self):
+        self._registrar("ACCESO", datetime(2026, 1, 5, 10, 0, 0))
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 10, 1, 0))
+        self.assertIsNotNone(self._estado_a(datetime(2026, 1, 5, 10, 30, 0))["cliente_cerrado_admin_desde"])
+
+        comandos_pc_repo.encolar_comando(self.estacion_id, comandos_pc_repo.TIPO_APAGAR)
+
+        self.assertIsNone(self._estado_a(datetime(2026, 1, 5, 10, 31, 0))["cliente_cerrado_admin_desde"])
+        # Cuando la PC vuelva a prenderse mañana no aparece ninguna
+        # advertencia ni evento nuevo: el historial queda como estaba.
+        self.assertFalse(self._regreso(datetime(2026, 1, 6, 9, 0, 0)))
+        self.assertEqual(self._tipos(), ["ACCESO", "CIERRE_CLIENTE"])
+
+    def test_reiniciar_no_cierra_el_episodio_pero_apagar_otra_pc_tampoco_toca_esta(self):
+        otra_id = pcs_repo.crear_estacion("PC 13")
+        self._registrar("CIERRE_CLIENTE", datetime(2026, 1, 5, 10, 0, 0))
+
+        comandos_pc_repo.encolar_comando(self.estacion_id, comandos_pc_repo.TIPO_REINICIAR)
+        comandos_pc_repo.encolar_comando(otra_id, comandos_pc_repo.TIPO_APAGAR)
+
+        item = next(i for i in self._estados_a(datetime(2026, 1, 5, 10, 30, 0)) if i["estacion"]["id"] == self.estacion_id)
+        self.assertEqual(item["cliente_cerrado_admin_desde"], datetime(2026, 1, 5, 10, 0, 0))
 
     def test_listar_eventos_filtra_por_fecha_y_va_del_mas_nuevo_al_mas_viejo(self):
         self._registrar("ACCESO", datetime(2026, 1, 4, 23, 0, 0))
