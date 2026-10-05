@@ -22,6 +22,7 @@ import dominio
 from control_pcs.repositories import accesos_admin_pc_repo, pcs_repo
 from ui.utils import (
     armar_filtro_por_fechas, formato_tiempo, formato_transcurrido, manejar_errores,
+    rango_de_fechas,
 )
 
 # Mismo lila que usa la grilla de Control de PCs para "sin bloqueo".
@@ -69,8 +70,7 @@ class PestañaAccesosAdminPc(QWidget):
 
     @manejar_errores
     def _buscar(self, _=None):
-        desde = self.fecha_desde.date().toString("yyyy-MM-dd")
-        hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
 
         sin_bloqueo = [i for i in pcs_repo.estado_estaciones() if i["cliente_cerrado_admin_desde"] is not None]
         if sin_bloqueo:

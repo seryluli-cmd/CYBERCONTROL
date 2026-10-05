@@ -121,19 +121,25 @@ def limpiar_marca_sin_cliente(estacion_id: int):
         conexion.execute("UPDATE estaciones SET cliente_cerrado_desde = NULL WHERE id = ?", (estacion_id,))
 
 
+# Lo que comparten las dos listas de eventos de abajo: las columnas, el JOIN
+# para traer el nombre de la PC y el orden (del más nuevo al más viejo).
+_SELECT_EVENTOS = """
+    SELECT eventos_admin_pc.fecha_hora, eventos_admin_pc.tipo,
+           eventos_admin_pc.segundos_sin_cliente, estaciones.nombre AS estacion_nombre
+    FROM eventos_admin_pc
+    JOIN estaciones ON estaciones.id = eventos_admin_pc.estacion_id
+"""
+_ORDEN_EVENTOS = " ORDER BY eventos_admin_pc.fecha_hora DESC, eventos_admin_pc.id DESC"
+
+
 def listar_eventos(desde: str, hasta: str):
     """Los eventos entre dos fechas (incluidas ambas puntas, "YYYY-MM-DD"),
     del más nuevo al más viejo, con el nombre de la PC."""
     with conexion_db() as conexion:
         return conexion.execute(
-            """
-            SELECT eventos_admin_pc.fecha_hora, eventos_admin_pc.tipo,
-                   eventos_admin_pc.segundos_sin_cliente, estaciones.nombre AS estacion_nombre
-            FROM eventos_admin_pc
-            JOIN estaciones ON estaciones.id = eventos_admin_pc.estacion_id
-            WHERE date(eventos_admin_pc.fecha_hora) BETWEEN date(?) AND date(?)
-            ORDER BY eventos_admin_pc.fecha_hora DESC, eventos_admin_pc.id DESC
-            """,
+            _SELECT_EVENTOS
+            + " WHERE date(eventos_admin_pc.fecha_hora) BETWEEN date(?) AND date(?)"
+            + _ORDEN_EVENTOS,
             (desde, hasta),
         ).fetchall()
 
@@ -143,13 +149,5 @@ def listar_recientes(limite: int):
     de PCs (ver pcs_repo.actividad_reciente)."""
     with conexion_db() as conexion:
         return conexion.execute(
-            """
-            SELECT eventos_admin_pc.fecha_hora, eventos_admin_pc.tipo,
-                   eventos_admin_pc.segundos_sin_cliente, estaciones.nombre AS estacion_nombre
-            FROM eventos_admin_pc
-            JOIN estaciones ON estaciones.id = eventos_admin_pc.estacion_id
-            ORDER BY eventos_admin_pc.fecha_hora DESC, eventos_admin_pc.id DESC
-            LIMIT ?
-            """,
-            (limite,),
+            _SELECT_EVENTOS + _ORDEN_EVENTOS + " LIMIT ?", (limite,)
         ).fetchall()

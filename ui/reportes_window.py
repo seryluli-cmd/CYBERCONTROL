@@ -28,7 +28,7 @@ from PySide6.QtGui import QColor, QFont
 from repositories import reportes_repo, turnos_repo
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, manejar_errores, sin_boton_por_defecto,
-    crear_tabla,
+    crear_tabla, rango_de_fechas, fecha_iso,
 )
 
 
@@ -101,8 +101,7 @@ class PestañaResumen(QWidget):
 
     @manejar_errores
     def _buscar(self):
-        desde = self.fecha_desde.date().toString("yyyy-MM-dd")
-        hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
         resumen = reportes_repo.resumen_ventas(desde, hasta)
         self.etiqueta_total.setText(formato_pesos(resumen["total"]))
         self.etiqueta_cantidad.setText(f"{resumen['cantidad_ventas']} venta(s)")
@@ -213,7 +212,7 @@ class PestañaResumenDelDia(QWidget):
         # El "_=None" no se usa: absorbe la fecha que manda `dateChanged` (ver
         # ControlCierresWindow._ver_detalle en caja_window.py).
         dia = self.fecha.date()
-        resumen = turnos_repo.resumen_del_dia(dia.toString("yyyy-MM-dd"))
+        resumen = turnos_repo.resumen_del_dia(fecha_iso(dia))
         self.etiqueta_titulo.setText(f"{self._DIAS[dia.dayOfWeek() - 1]} {dia.toString('dd/MM/yyyy')}")
 
         self.tabla.setRowCount(0)
@@ -288,8 +287,7 @@ class PestañaPorTurno(QWidget):
 
     @manejar_errores
     def _buscar(self):
-        desde = self.fecha_desde.date().toString("yyyy-MM-dd")
-        hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
         filas = reportes_repo.resumen_por_turno(desde, hasta)
 
         self.tabla.setRowCount(0)
@@ -352,8 +350,7 @@ class PestañaKioskoVsPCs(QWidget):
         # El "_=None" no se usa: absorbe el índice que manda
         # `currentIndexChanged` (ver ControlCierresWindow._ver_detalle en
         # caja_window.py).
-        desde = self.fecha_desde.date().toString("yyyy-MM-dd")
-        hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
         agrupar_por = self.combo_agrupar.currentData()
         filas = reportes_repo.resumen_por_origen(desde, hasta, agrupar_por)
 
@@ -403,8 +400,7 @@ class PestañaRanking(QWidget):
 
     @manejar_errores
     def _buscar(self):
-        desde = self.fecha_desde.date().toString("yyyy-MM-dd")
-        hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
         orden = self.combo_orden.currentData()
 
         self.etiqueta_titulo.setText(

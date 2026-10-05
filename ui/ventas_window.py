@@ -32,7 +32,7 @@ from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
     sin_boton_por_defecto, crear_tabla,
 )
-from ui.buscar_articulo import DialogoBuscarArticulo
+from ui.buscar_articulo import armar_botones_de_busqueda
 from ui.dialogo_pago import DialogoPago
 
 
@@ -68,27 +68,18 @@ class VentasWindow(QDialog):
         self.tabla = crear_tabla(["Cantidad", "Código", "Descripción", "$ Unit.", "$ Total"], estirar=2)
         self.tabla.cellDoubleClicked.connect(self._al_hacer_doble_clic)
 
-        boton_f5 = QPushButton("F5 Cód.")
-        boton_f5.clicked.connect(lambda: self._buscar_articulo("codigo"))
-        boton_f6 = QPushButton("F6 Descrip.")
-        boton_f6.clicked.connect(lambda: self._buscar_articulo("descripcion"))
-        boton_f7 = QPushButton("F7 Marca")
-        boton_f7.clicked.connect(lambda: self._buscar_articulo("marca"))
+        botones_de_busqueda = armar_botones_de_busqueda(self, self._agregar_al_carrito)
         boton_cantidad = QPushButton("* Cant.")
         boton_cantidad.setToolTip("Cargar la cantidad antes de escanear (ej: 3 personas piden lo mismo)")
         boton_cantidad.clicked.connect(self._cambiar_cantidad_pendiente)
         boton_borrar = QPushButton("Supr")
         boton_borrar.clicked.connect(self._borrar_linea)
 
-        QShortcut(QKeySequence("F5"), self, activated=lambda: self._buscar_articulo("codigo"))
-        QShortcut(QKeySequence("F6"), self, activated=lambda: self._buscar_articulo("descripcion"))
-        QShortcut(QKeySequence("F7"), self, activated=lambda: self._buscar_articulo("marca"))
         QShortcut(QKeySequence("Delete"), self, activated=self._borrar_linea)
 
         fila_atajos = QHBoxLayout()
-        fila_atajos.addWidget(boton_f5)
-        fila_atajos.addWidget(boton_f6)
-        fila_atajos.addWidget(boton_f7)
+        for boton in botones_de_busqueda:
+            fila_atajos.addWidget(boton)
         fila_atajos.addWidget(boton_cantidad)
         fila_atajos.addWidget(boton_borrar)
         fila_atajos.addStretch()
@@ -126,11 +117,6 @@ class VentasWindow(QDialog):
     # -----------------------------------------------------------------
     # Escaneo / búsqueda de artículos
     # -----------------------------------------------------------------
-
-    def _buscar_articulo(self, modo):
-        dialogo = DialogoBuscarArticulo(self, modo)
-        if dialogo.exec() and dialogo.codigo_elegido:
-            self._agregar_al_carrito(dialogo.codigo_elegido)
 
     def _escanear(self):
         codigo = self.campo_codigo.text().strip()

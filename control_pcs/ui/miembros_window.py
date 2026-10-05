@@ -33,7 +33,7 @@ from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar,
-    crear_tabla,
+    crear_tabla, fila_agregar_quitar,
 )
 
 
@@ -347,14 +347,7 @@ class DialogoTramosTarifaMiembro(QDialog):
         for tramo in config_repo.obtener_tramos_tarifa_hora_miembro():
             self._agregar_fila(tramo["monto_minimo"], tramo["tarifa_hora"])
 
-        boton_agregar = QPushButton("Agregar tramo")
-        boton_agregar.clicked.connect(lambda: self._agregar_fila(0, 0))
-        boton_quitar = QPushButton("Quitar seleccionado")
-        aplicar_clase(boton_quitar, "peligro")
-        boton_quitar.clicked.connect(self._quitar_seleccionado)
-        fila_botones = QHBoxLayout()
-        fila_botones.addWidget(boton_agregar)
-        fila_botones.addWidget(boton_quitar)
+        fila_botones = fila_agregar_quitar(self.tabla, "Agregar tramo", lambda: self._agregar_fila(0, 0))
 
         botones = fila_guardar_cancelar(self, self._guardar)
 
@@ -387,11 +380,6 @@ class DialogoTramosTarifaMiembro(QDialog):
         self.tabla.insertRow(fila)
         self.tabla.setCellWidget(fila, 0, self._spin_monto(monto_minimo))
         self.tabla.setCellWidget(fila, 1, self._spin_monto(tarifa_hora))
-
-    def _quitar_seleccionado(self):
-        fila = self.tabla.currentRow()
-        if fila >= 0:
-            self.tabla.removeRow(fila)
 
     @manejar_errores
     def _guardar(self):

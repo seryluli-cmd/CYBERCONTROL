@@ -59,7 +59,41 @@ def _etiqueta_dato(titulo, valor_texto):
     return contenedor, valor_lbl
 
 
-class CajaWindow(QDialog):
+class _PantallaDeCaja(QDialog):
+    """Lo que comparten Caja y Cierre de Turno: un título centrado, los
+    datos de a dos por fila, una nota en gris y los botones abajo."""
+
+    def _armar_cuerpo(self, filas_de_datos, texto_nota, botones):
+        """
+        Arma la pantalla. El título queda en `self.titulo` para que la
+        subclase lo complete al refrescar.
+
+        - `filas_de_datos`: lista de pares de layouts hechos con `_etiqueta_dato`.
+        - `botones`: el layout con los botones, ya armado.
+        """
+        self.titulo = QLabel()
+        self.titulo.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.titulo.setAlignment(Qt.AlignCenter)
+
+        nota = QLabel(texto_nota)
+        nota.setWordWrap(True)
+        nota.setStyleSheet("color: gray; font-style: italic;")
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.titulo)
+        for izquierda, derecha in filas_de_datos:
+            fila = QHBoxLayout()
+            fila.addLayout(izquierda)
+            fila.addLayout(derecha)
+            layout.addLayout(fila)
+        layout.addWidget(nota)
+        layout.addStretch()
+        layout.addLayout(botones)
+        self.setLayout(layout)
+        sin_boton_por_defecto(self)
+
+
+class CajaWindow(_PantallaDeCaja):
     """Consulta de caja en vivo: cómo viene el turno actual."""
 
     def __init__(self, parent=None):
@@ -70,35 +104,16 @@ class CajaWindow(QDialog):
         self._refrescar()
 
     def _armar_interfaz(self):
-        self.titulo = QLabel()
-        self.titulo.setStyleSheet("font-size: 16px; font-weight: bold;")
-        self.titulo.setAlignment(Qt.AlignCenter)
-
-        fila1 = QHBoxLayout()
         layout_fondo, self.valor_fondo = _etiqueta_dato("CAJA INICIAL (fondo de cambio)", "")
         layout_actual, self.valor_actual = _etiqueta_dato("CAJA ACTUAL (solo efectivo)", "")
-        fila1.addLayout(layout_fondo)
-        fila1.addLayout(layout_actual)
-
-        fila2 = QHBoxLayout()
         layout_ventas, self.valor_ventas = _etiqueta_dato("VENTAS (efectivo)", "")
         layout_digital, self.valor_digital = _etiqueta_dato("VENTAS POR MEDIO DIGITAL", "")
-        fila2.addLayout(layout_ventas)
-        fila2.addLayout(layout_digital)
-
-        fila3 = QHBoxLayout()
         layout_kiosko, self.valor_kiosko = _etiqueta_dato(
             f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO]}", ""
         )
         layout_pcs, self.valor_pcs = _etiqueta_dato(
             f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS]}", ""
         )
-        fila3.addLayout(layout_kiosko)
-        fila3.addLayout(layout_pcs)
-
-        nota = QLabel("La Caja Actual suma solo el EFECTIVO; no incluye lo cobrado por Digital.")
-        nota.setWordWrap(True)
-        nota.setStyleSheet("color: gray; font-style: italic;")
 
         boton_refrescar = QPushButton("Actualizar")
         boton_refrescar.clicked.connect(self._refrescar)
@@ -109,16 +124,11 @@ class CajaWindow(QDialog):
         botones.addStretch()
         botones.addWidget(boton_salir)
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.titulo)
-        layout.addLayout(fila1)
-        layout.addLayout(fila2)
-        layout.addLayout(fila3)
-        layout.addWidget(nota)
-        layout.addStretch()
-        layout.addLayout(botones)
-        self.setLayout(layout)
-        sin_boton_por_defecto(self)
+        self._armar_cuerpo(
+            [(layout_fondo, layout_actual), (layout_ventas, layout_digital), (layout_kiosko, layout_pcs)],
+            "La Caja Actual suma solo el EFECTIVO; no incluye lo cobrado por Digital.",
+            botones,
+        )
 
     @manejar_errores
     def _refrescar(self):
@@ -132,7 +142,7 @@ class CajaWindow(QDialog):
         self.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
 
 
-class CierreTurnoWindow(QDialog):
+class CierreTurnoWindow(_PantallaDeCaja):
     """Cierre real del turno: lo puede hacer cualquier usuario logueado
     (Admin o Empleada) para cerrar SU turno en curso."""
 
@@ -149,38 +159,16 @@ class CierreTurnoWindow(QDialog):
         self._refrescar_vista_previa()
 
     def _armar_interfaz(self):
-        self.titulo = QLabel()
-        self.titulo.setStyleSheet("font-size: 16px; font-weight: bold;")
-        self.titulo.setAlignment(Qt.AlignCenter)
-
-        fila1 = QHBoxLayout()
         layout_fondo, self.valor_fondo = _etiqueta_dato("Fondo de cambio", "")
         layout_efectivo, self.valor_efectivo = _etiqueta_dato("Ventas en Efectivo", "")
-        fila1.addLayout(layout_fondo)
-        fila1.addLayout(layout_efectivo)
-
-        fila2 = QHBoxLayout()
         layout_digital, self.valor_digital = _etiqueta_dato("Ventas Digital", "")
         layout_retirar, self.valor_retirar = _etiqueta_dato("A RETIRAR EN EFECTIVO", "")
-        fila2.addLayout(layout_digital)
-        fila2.addLayout(layout_retirar)
-
-        fila3 = QHBoxLayout()
         layout_kiosko, self.valor_kiosko = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO], ""
         )
         layout_pcs, self.valor_pcs = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS], ""
         )
-        fila3.addLayout(layout_kiosko)
-        fila3.addLayout(layout_pcs)
-
-        nota = QLabel(
-            "Retirá el efectivo indicado y guardalo en el sobre. Dejá el fondo de "
-            "cambio en el cajón para que arranque el próximo turno."
-        )
-        nota.setWordWrap(True)
-        nota.setStyleSheet("color: gray; font-style: italic;")
 
         boton_cerrar_turno = QPushButton("Confirmar Cierre de Turno")
         aplicar_clase(boton_cerrar_turno, "primario")
@@ -193,16 +181,12 @@ class CierreTurnoWindow(QDialog):
         botones.addStretch()
         botones.addWidget(boton_cerrar_turno)
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.titulo)
-        layout.addLayout(fila1)
-        layout.addLayout(fila2)
-        layout.addLayout(fila3)
-        layout.addWidget(nota)
-        layout.addStretch()
-        layout.addLayout(botones)
-        self.setLayout(layout)
-        sin_boton_por_defecto(self)
+        self._armar_cuerpo(
+            [(layout_fondo, layout_efectivo), (layout_digital, layout_retirar), (layout_kiosko, layout_pcs)],
+            "Retirá el efectivo indicado y guardalo en el sobre. Dejá el fondo de "
+            "cambio en el cajón para que arranque el próximo turno.",
+            botones,
+        )
 
     @manejar_errores
     def _refrescar_vista_previa(self):

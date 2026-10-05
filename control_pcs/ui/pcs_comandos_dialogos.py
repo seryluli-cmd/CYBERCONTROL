@@ -22,7 +22,7 @@ import database
 from control_pcs.repositories import comandos_pc_repo, config_red_repo, pcs_repo
 from ui.utils import (
     aplicar_clase, confirmar, formato_tiempo, manejar_errores, mostrar_error, mostrar_info,
-    sin_boton_por_defecto,
+    sin_boton_por_defecto, fila_agregar_quitar,
 )
 
 # Cuántos segundos se espera, como máximo, la captura de pantalla que
@@ -218,14 +218,7 @@ class DialogoEditarGateways(QDialog):
         for gateway in config_red_repo.obtener_gateways():
             self._agregar_fila(gateway["nombre"], gateway["ip"])
 
-        boton_agregar = QPushButton("Agregar módem")
-        boton_agregar.clicked.connect(lambda: self._agregar_fila("", ""))
-        boton_quitar = QPushButton("Quitar seleccionado")
-        aplicar_clase(boton_quitar, "peligro")
-        boton_quitar.clicked.connect(self._quitar_seleccionado)
-        fila_botones = QHBoxLayout()
-        fila_botones.addWidget(boton_agregar)
-        fila_botones.addWidget(boton_quitar)
+        fila_botones = fila_agregar_quitar(self.tabla, "Agregar módem", lambda: self._agregar_fila("", ""))
 
         boton_guardar = QPushButton("Guardar")
         aplicar_clase(boton_guardar, "primario")
@@ -247,11 +240,6 @@ class DialogoEditarGateways(QDialog):
         self.tabla.insertRow(fila)
         self.tabla.setItem(fila, 0, QTableWidgetItem(nombre))
         self.tabla.setItem(fila, 1, QTableWidgetItem(ip))
-
-    def _quitar_seleccionado(self):
-        fila = self.tabla.currentRow()
-        if fila >= 0:
-            self.tabla.removeRow(fila)
 
     @manejar_errores
     def _guardar(self):

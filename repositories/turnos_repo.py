@@ -154,6 +154,16 @@ def _desde_del_cierre(conexion, cierre_id: int) -> str:
     return anterior["fecha_cierre"] if anterior else _PRINCIPIO_DE_LOS_TIEMPOS
 
 
+def _cierre_o_error(conexion, cierre_id: int):
+    """La fila del cierre `cierre_id`; ValueError si ese cierre no existe."""
+    cierre = conexion.execute(
+        "SELECT * FROM cierres_turno WHERE id = ?", (cierre_id,)
+    ).fetchone()
+    if cierre is None:
+        raise ValueError("El cierre no existe.")
+    return cierre
+
+
 def resumen_turno_actual():
     """
     Para la pantalla "Caja": muestra cómo viene el turno en curso sin
@@ -416,12 +426,7 @@ def detalle_cierre(cierre_id: int):
     (mismo criterio que Consulta de Ventas), nunca se ocultan.
     """
     with conexion_db() as conexion:
-        cierre = conexion.execute(
-            "SELECT * FROM cierres_turno WHERE id = ?", (cierre_id,)
-        ).fetchone()
-        if cierre is None:
-            raise ValueError("El cierre no existe.")
-
+        cierre = _cierre_o_error(conexion, cierre_id)
         desde = _desde_del_cierre(conexion, cierre_id)
 
         ventas = conexion.execute(
@@ -448,11 +453,7 @@ def verificar_cierre(cierre_id: int, monto_contado: float, usuario_admin_id: int
     para detectar faltantes o sobrantes por empleada/turno.
     """
     with conexion_db() as conexion:
-        cierre = conexion.execute(
-            "SELECT * FROM cierres_turno WHERE id = ?", (cierre_id,)
-        ).fetchone()
-        if cierre is None:
-            raise ValueError("El cierre no existe.")
+        cierre = _cierre_o_error(conexion, cierre_id)
 
         monto_contado = round(monto_contado, 2)
         diferencia = round(monto_contado - cierre["monto_a_retirar"], 2)

@@ -22,6 +22,7 @@ from repositories import usuarios_repo
 from control_pcs.ui.accesos_admin_pc_tab import PestañaAccesosAdminPc
 from ui.utils import (
     armar_filtro_por_fechas, manejar_errores, sin_boton_por_defecto, crear_tabla,
+    rango_de_fechas,
 )
 
 
@@ -78,8 +79,7 @@ class PestañaLoginsAdmin(QWidget):
     def _buscar(self, _=None):
         # El "_=None" no se usa: currentIndexChanged manda el índice nuevo
         # y, sin él, cambiar el combo tiraba un error en vez de refrescar.
-        desde = self.fecha_desde.date().toString("yyyy-MM-dd")
-        hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
         logins = usuarios_repo.listar_logins(desde, hasta, solo_admin=self.combo_quien.currentData())
 
         self.tabla.setRowCount(0)

@@ -12,10 +12,21 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QTableWidgetItem,
 )
 
+from PySide6.QtGui import QKeySequence, QShortcut
+
 from repositories import articulos_repo
 from ui.utils import (
     manejar_errores, aplicar_clase, formato_pesos, sin_boton_por_defecto, crear_tabla,
 )
+
+
+# Las tres formas de buscar un artículo, con las mismas teclas en Ventas y en
+# Compras: modo -> (tecla, texto del botón, título del cuadro).
+_BUSQUEDAS = {
+    "codigo": ("F5", "F5 Cód.", "Buscar por Código (F5)"),
+    "descripcion": ("F6", "F6 Descrip.", "Buscar por Descripción (F6)"),
+    "marca": ("F7", "F7 Marca", "Buscar por Marca (F7)"),
+}
 
 
 class DialogoBuscarArticulo(QDialog):
@@ -27,10 +38,7 @@ class DialogoBuscarArticulo(QDialog):
         super().__init__(parent)
         self.modo = modo
         self.codigo_elegido = None
-        titulos = {"codigo": "Buscar por Código (F5)",
-                   "descripcion": "Buscar por Descripción (F6)",
-                   "marca": "Buscar por Marca (F7)"}
-        self.setWindowTitle(titulos.get(modo, "Buscar artículo"))
+        self.setWindowTitle(_BUSQUEDAS[modo][2] if modo in _BUSQUEDAS else "Buscar artículo")
         self.resize(600, 400)
         self._armar_interfaz()
 
@@ -93,3 +101,30 @@ class DialogoBuscarArticulo(QDialog):
             return
         self.codigo_elegido = self.tabla.item(fila, 0).text()
         self.accept()
+
+
+def armar_botones_de_busqueda(ventana, al_elegir):
+    """
+    Los botones F5 (por código), F6 (por descripción) y F7 (por marca) de
+    Ventas y Compras, con sus atajos de teclado en `ventana`. Cada uno abre
+    el cuadro de búsqueda y, si se elige un artículo, llama a
+    `al_elegir(codigo)`. Devuelve los tres botones, en ese orden, para que
+    la pantalla los acomode donde quiera.
+    """
+    botones = []
+    for modo, (tecla, texto, _titulo) in _BUSQUEDAS.items():
+        buscar = _buscador(ventana, modo, al_elegir)
+        boton = QPushButton(texto)
+        boton.clicked.connect(buscar)
+        QShortcut(QKeySequence(tecla), ventana, activated=buscar)
+        botones.append(boton)
+    return botones
+
+
+def _buscador(ventana, modo, al_elegir):
+    """La función (sin argumentos) que abre el cuadro de búsqueda en `modo`."""
+    def buscar():
+        dialogo = DialogoBuscarArticulo(ventana, modo)
+        if dialogo.exec() and dialogo.codigo_elegido:
+            al_elegir(dialogo.codigo_elegido)
+    return buscar

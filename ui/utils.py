@@ -189,6 +189,29 @@ def fila_guardar_cancelar(dialogo, al_guardar=None, texto_guardar: str = "Guarda
     return botones
 
 
+def fila_agregar_quitar(tabla: QTableWidget, texto_agregar: str, al_agregar):
+    """
+    Los botones de una tabla que se edita a mano: uno para agregar una fila
+    (`texto_agregar`, y `al_agregar` es lo que hace) y "Quitar seleccionado",
+    que borra la fila elegida de `tabla`. Devuelve el layout, para agregarlo
+    al del diálogo.
+    """
+    def quitar_la_elegida():
+        fila = tabla.currentRow()
+        if fila >= 0:
+            tabla.removeRow(fila)
+
+    boton_agregar = QPushButton(texto_agregar)
+    boton_agregar.clicked.connect(al_agregar)
+    boton_quitar = QPushButton("Quitar seleccionado")
+    aplicar_clase(boton_quitar, "peligro")
+    boton_quitar.clicked.connect(quitar_la_elegida)
+    botones = QHBoxLayout()
+    botones.addWidget(boton_agregar)
+    botones.addWidget(boton_quitar)
+    return botones
+
+
 class _FiltroEnter(QObject):
     """Intercepta la tecla Enter/Intro en el widget donde se instala y,
     en vez de dejarla pasar, ejecuta `accion` (ver `encadenar_enter`)."""
@@ -318,6 +341,18 @@ def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=Fals
 
     encadenar_enter(fecha_desde, fecha_hasta, *[widget for _, widget in extras], accion_final=buscar)
     return fecha_desde, fecha_hasta, filtros
+
+
+def fecha_iso(fecha: QDate) -> str:
+    """Una fecha de Qt como "YYYY-MM-DD", el formato con que los repos
+    guardan y comparan fechas."""
+    return fecha.toString("yyyy-MM-dd")
+
+
+def rango_de_fechas(fecha_desde: QDateEdit, fecha_hasta: QDateEdit):
+    """Las dos puntas de un filtro Desde/Hasta (ver `armar_filtro_por_fechas`)
+    como "YYYY-MM-DD", listas para pasarle a un repo: `(desde, hasta)`."""
+    return fecha_iso(fecha_desde.date()), fecha_iso(fecha_hasta.date())
 
 
 # Cuadros de mensaje. Siempre usarlos en vez de QMessageBox directo, así el

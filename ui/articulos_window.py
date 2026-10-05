@@ -17,7 +17,7 @@ from repositories import articulos_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase,
     encadenar_enter, armar_filtro_por_fechas, sin_boton_por_defecto, fila_guardar_cancelar,
-    crear_tabla,
+    crear_tabla, rango_de_fechas,
 )
 
 
@@ -346,8 +346,7 @@ class DialogoMovimientos(QDialog):
 
     @manejar_errores
     def _buscar(self):
-        desde = self.fecha_desde.date().toString("yyyy-MM-dd")
-        hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
         movimientos = articulos_repo.obtener_movimientos(self.codigo, desde, hasta)
         self.tabla.setRowCount(0)
         for movimiento in movimientos:
@@ -365,10 +364,11 @@ class DialogoMovimientos(QDialog):
 class DialogoGestionRubros(QDialog):
     """
     Administración del catálogo de Rubros (se abre desde Artículos, así
-    que la ve quien tenga acceso a esa pantalla). Acá es el ÚNICO lugar donde se pueden crear, renombrar o
-    borrar rubros — en el alta/edición de un artículo, Rubro es un
-    desplegable cerrado que solo permite elegir uno de los ya existentes,
-    para que no queden rubros mal escritos o duplicados por typos.
+    que la ve quien tenga acceso a esa pantalla). Acá es el ÚNICO lugar
+    donde se pueden crear, renombrar o borrar rubros — en el alta/edición
+    de un artículo, Rubro es un desplegable cerrado que solo permite elegir
+    uno de los ya existentes, para que no queden rubros mal escritos o
+    duplicados por typos.
     """
 
     def __init__(self, parent=None):

@@ -20,7 +20,7 @@ from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, manejar_errores, aplicar_clase,
     sin_boton_por_defecto, crear_tabla,
 )
-from ui.buscar_articulo import DialogoBuscarArticulo
+from ui.buscar_articulo import armar_botones_de_busqueda
 
 
 class ComprasWindow(QDialog):
@@ -53,19 +53,11 @@ class ComprasWindow(QDialog):
             estirar=2,
         )
 
-        boton_f5 = QPushButton("F5 Cód.")
-        boton_f5.clicked.connect(lambda: self._buscar_articulo("codigo"))
-        boton_f6 = QPushButton("F6 Descrip.")
-        boton_f6.clicked.connect(lambda: self._buscar_articulo("descripcion"))
-        boton_f7 = QPushButton("F7 Marca")
-        boton_f7.clicked.connect(lambda: self._buscar_articulo("marca"))
+        botones_de_busqueda = armar_botones_de_busqueda(self, self._procesar_codigo)
         boton_borrar_linea = QPushButton("Supr (borrar renglón)")
         boton_borrar_linea.clicked.connect(self._borrar_linea)
 
-        # Atajos de teclado (los mismos que en Ventas).
-        QShortcut(QKeySequence("F5"), self, activated=lambda: self._buscar_articulo("codigo"))
-        QShortcut(QKeySequence("F6"), self, activated=lambda: self._buscar_articulo("descripcion"))
-        QShortcut(QKeySequence("F7"), self, activated=lambda: self._buscar_articulo("marca"))
+        # Supr borra el renglón elegido, igual que en Ventas.
         QShortcut(QKeySequence("Delete"), self, activated=self._borrar_linea)
 
         boton_aceptar = QPushButton("Aceptar")
@@ -75,9 +67,8 @@ class ComprasWindow(QDialog):
         boton_salir.clicked.connect(self.close)
 
         botones = QHBoxLayout()
-        botones.addWidget(boton_f5)
-        botones.addWidget(boton_f6)
-        botones.addWidget(boton_f7)
+        for boton in botones_de_busqueda:
+            botones.addWidget(boton)
         botones.addWidget(boton_borrar_linea)
         botones.addStretch()
         botones.addWidget(boton_aceptar)
@@ -93,11 +84,6 @@ class ComprasWindow(QDialog):
         sin_boton_por_defecto(self)
 
         self.campo_codigo.setFocus()
-
-    def _buscar_articulo(self, modo):
-        dialogo = DialogoBuscarArticulo(self, modo)
-        if dialogo.exec() and dialogo.codigo_elegido:
-            self._procesar_codigo(dialogo.codigo_elegido)
 
     def _escanear(self):
         codigo = self.campo_codigo.text().strip()
