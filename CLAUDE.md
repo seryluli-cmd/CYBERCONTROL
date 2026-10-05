@@ -95,7 +95,11 @@ Esto vale también dentro del SQL: el estado va como parámetro
 pegado en la consulta. La excepción son los `CHECK (... IN (...))` del
 esquema en `database.py`: ahí el literal *es* la definición. Si algún día
 se agrega un valor nuevo, va en los dos lados — `dominio.py` y una
-migración que actualice el CHECK.
+migración que actualice el CHECK. (Para `comandos_pc.tipo` y
+`movimientos_saldo_miembro.tipo` ya está resuelto: el CHECK sale de la lista
+única — `dominio.TIPOS_COMANDO_PC`, `database._TIPOS_MOVIMIENTO_SALDO` — y la
+migración reconstruye la tabla sola si falta algún tipo; alcanza con sumar
+el valor a la lista.)
 
 ### Cómo se tratan los datos
 
@@ -196,6 +200,15 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
 | `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter |
 | `ui.utils.aplicar_clase(widget, clase)` | un botón se marca como primario/peligro |
+| `ui.utils.sin_boton_por_defecto(ventana)` | se evita que Enter en un campo active el primer botón de un diálogo (llamarla al final de `_armar_interfaz`) |
+| `ui.utils.crear_tabla(titulos, ...)` | se arma una tabla de solo lectura (filas alternadas, columna que se estira, selección por filas) |
+| `ui.utils.armar_filtro_por_fechas(...)` · `rango_de_fechas(...)` · `fecha_iso(...)` | se arma la fila Desde/Hasta con "Buscar" y se leen sus fechas como `"YYYY-MM-DD"` (el formato con que hablan los repos) |
+| `ui.utils.fila_guardar_cancelar(dialogo, ...)` | se arma la fila Guardar/Cancelar de un formulario |
+| `ui.utils.fila_agregar_quitar(tabla, ...)` | se arman los botones Agregar/Quitar de una tabla que se edita a mano |
+| `ui.buscar_articulo.armar_botones_de_busqueda(ventana, ...)` | se arman los botones F5/F6/F7 y sus atajos (Ventas y Compras) |
+| `ui.detalle_venta.VentanaConDetalleDeVenta` | lista de ventas + artículos de la elegida (Consulta de Ventas y Detalle de un cierre) |
+| `control_pcs.repositories.catalogo_bonos.CatalogoDeBonos(tabla)` | se hace el alta/edición/baja de un catálogo de bonos (`pcs_repo` para walk-ins, `bonos_miembro_repo` para socios: dos tablas distintas, un solo código) |
+| `database._reconstruir_tabla(...)` · `_admite_todos_los_tipos(lista)` | se reconstruye una tabla para cambiar un CHECK/REFERENCES, y se decide si un CHECK de tipos ya está al día |
 
 Si necesitás uno de esos datos, **llamá a la función existente**.
 
@@ -251,8 +264,8 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   `venta_pagos.metodo`: agregarlo ahí rompería el desglose Efectivo/Digital
   de Caja y Cierre de Turno, que no sabría de dónde sacar el
   Efectivo/Digital de un pago "mixto" sin desglosar. Ver
-  `PanelDetalleEstacion._resolver_pagos` (pcs_window.py) y
-  `DialogoCargarSaldo._resolver_pagos` (miembros_window.py).
+  `ui.dialogo_pago.resolver_pagos`, que usan `PanelDetalleEstacion`
+  (pcs_detalle.py) y `DialogoCargarSaldo` (miembros_window.py).
 - **`ventas_repo.registrar_venta_sin_detalle` recibe `pagos` (lista), no
   un único método.** El `monto`/total de la venta se pasa aparte y se
   graba tal cual en `ventas.total` — nunca se lo deduce sumando `pagos`,
@@ -297,30 +310,21 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 
 ---
 
+## Cliente PC (estado actual)
+
+El bloqueo de las PCs funciona con el proyecto separado `CLIENTE PC/`,
+ubicado en la carpeta hermana. Se comunica con el servidor de este repo
+(`servidor_red.py`) para consultar el estado de cada estación, permitir
+el login de Miembros y cerrar sesiones. `explorer.exe` sigue siendo el
+shell de Windows; el cliente usa pantalla de bloqueo, hook de teclado y
+una tarea programada para volver a arrancar si se cierra. El reemplazo
+del shell no forma parte del diseño actual. El README de `CLIENTE PC/`
+contiene las instrucciones vigentes de instalación y recuperación.
+
 ## Roadmap (a futuro, fuera de alcance hoy)
 
-Nada de esto está construido todavía — se deja anotado para que una
-sesión nueva no lo reinvente ni asuma que "no está" significa "no
-importa":
+Estos puntos todavía no están construidos:
 
-- **Cliente PC — bloqueo de pantalla en cada PC, en curso, no en este
-  repo.** El servidor ya existe acá (`servidor_red.py`, hilo de fondo
-  embebido desde `main.py`): `GET /estado?estacion=<nombre>` (solo
-  lectura, contra `pcs_repo.estado_de_estacion`), `POST /login` (un
-  Miembro se loguea directo desde su PC contra
-  `miembros_repo.abrir_estacion_por_miembro`) y `POST /logout` (corta su
-  propia sesión contra `pcs_repo.finalizar_sesion`, mismo reintegro
-  redondeado a bloques de 30 min que "Finalizar antes de tiempo" desde
-  Gestionar PCs). El cliente vive en la carpeta hermana
-  `CLIENTE PC/` (proyecto Python aparte, sin relación de código con
-  este repo): Etapa 1 (bloqueo con hook de teclado + pantalla completa,
-  sin tocar Windows) confirmada funcionando en una PC real; login/logout
-  en red ya integrados del lado del cliente también. Falta solo la
-  Etapa 2: reemplazo del shell de Windows vía registro, para que la
-  pantalla de bloqueo aparezca antes que el escritorio — el `.reg`/`.bat`
-  de rescate y el procedimiento ya están preparados (ver el README de
-  ese proyecto, sección "Plan de rescate"), falta probarlo en una PC de
-  repuesto.
 - **Reportes específicos de PCs** (ej. "horas vendidas por día"). Se
   puede sumar reutilizando `sesion_bonos`, no hace falta tocar el
   esquema.
@@ -374,10 +378,13 @@ para poder desglosar, en Caja y Cierre de Turno, cuánto se vendió de
 kiosko contra cuánto de alquiler de PCs — pedido explícito del dueño para
 poder auditar la caja.
 
-Próximos candidatos a mirar cuando toque crecer: `control_pcs/ui/pcs_window.py`
-(más de 600 líneas, ya con varias clases bien separadas adentro — partirlo
-en archivos dentro de `control_pcs/ui/` sería mecánico) y
-`ui/articulos_window.py` (524 líneas).
+`control_pcs/ui/pcs_window.py` (1.475 líneas) se partió en cuatro archivos
+dentro de `control_pcs/ui/` (2026-10-05): `pcs_window.py` (grilla, menú
+contextual, actividad), `pcs_detalle.py` (panel lateral + login de socio),
+`pcs_comandos_dialogos.py` (captura, red, intercambiar, volumen) y
+`pcs_gestion_dialogos.py` (Estaciones y Bonos, Configuración ADMIN).
+Próximo candidato a mirar cuando toque crecer: `ui/articulos_window.py`
+(~520 líneas).
 
 **2026-09-28:** se sumó método de pago **Mixto** (`dominio.PAGO_MIXTO`,
 nunca persistido, ver "Trampas conocidas") a los combos de Control de
@@ -633,3 +640,19 @@ sin bloqueo). Ojo: el comando lo ejecuta el Cliente PC de esa PC, así que si
 tiene el Cliente PC cerrado el comando queda pendiente y la PC no se apaga;
 y como además se limpia la marca, esa PC pasa a verse igual que una apagada.
 190 tests.
+
+**2026-10-05 (más tarde):** limpieza de código repetido en todo el proyecto,
+sin cambios de comportamiento (verificada contra la versión anterior: tests,
+un escenario de datos de 149 pasos, el árbol completo de widgets de las 54
+pantallas y 82 secciones de interacción). Lo que antes estaba copiado ahora
+vive en un solo lugar -- ver la tabla de "Puntos únicos de verdad": ayudantes
+de pantalla en `ui/utils.py`, `ui/detalle_venta.py`,
+`ui/buscar_articulo.armar_botones_de_busqueda`,
+`control_pcs/ui/bonos_dialogos.py` (alta/edición y lista de bonos de los dos
+catálogos) y `control_pcs/repositories/catalogo_bonos.py` (`CatalogoDeBonos`;
+los dos catálogos siguen siendo tablas separadas). Las migraciones de
+`database.py` salen de `_reconstruir_tabla` / `_sql_tabla_*`. Bug encontrado
+y arreglado en el camino: "Cambiar red..." y "Ajustar volumen..." no podían
+ni encolarse (el CHECK de `comandos_pc.tipo` no admitía esos tipos); migración
+`_migrar_check_tipo_en_comandos_pc`, con tests. El proyecto hermano
+`CLIENTE PC` recibió la misma limpieza. 213 tests.
