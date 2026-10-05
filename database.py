@@ -596,18 +596,12 @@ def inicializar_base_de_datos():
     # una CARGA -- ver ventas_repo.anular_venta / miembros_repo.anular_carga).
     # Como esto maneja plata de terceros, poder reconstruir "por qué le
     # queda tal saldo a este socio" no es opcional.
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS movimientos_saldo_miembro (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
-            tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO', 'ANULACION')),
-            minutos     INTEGER NOT NULL,
-            fecha       TEXT NOT NULL,
-            venta_id    INTEGER REFERENCES ventas(id),
-            bono_id     INTEGER REFERENCES bonos_miembro(id),
-            sesion_id   INTEGER REFERENCES sesiones_pc(id)
-        )
-    """)
+    # (El SQL de esta tabla está en _sql_tabla_movimientos_saldo_miembro, más
+    # abajo: las migraciones de esta misma tabla la reconstruyen en sus
+    # versiones anteriores, y así todas parten del mismo molde.)
+    cursor.execute(_sql_tabla_movimientos_saldo_miembro(
+        _TIPOS_MOVIMIENTO_SALDO, "bonos_miembro(id)", si_no_existe=True
+    ))
     _migrar_columna_miembro_en_sesiones(conexion)
 
     # Una base que ya tenía "movimientos_saldo_miembro" de antes de que
@@ -666,36 +660,50 @@ def inicializar_base_de_datos():
     conexion.close()
 
 
+# --------------------------------------------------------------------
+# Migraciones
+# --------------------------------------------------------------------
+# Cada _migrar_* es idempotente (segura de correr en cada arranque) y se llama
+# desde inicializar_base_de_datos() justo después del CREATE TABLE que le
+# corresponde. Hacen falta porque CREATE TABLE IF NOT EXISTS no toca una tabla
+# que ya existe: una base creada antes de un cambio de esquema se quedaría con
+# el esquema viejo (ver CLAUDE.md, regla 6).
+
+def _agregar_columna_si_falta(conexion: sqlite3.Connection, tabla: str, columna: str, definicion: str) -> bool:
+    """
+    ALTER TABLE ... ADD COLUMN, solo si la tabla todavía no tiene esa columna.
+    Devuelve True si la agregó, para las migraciones que además tienen que
+    rellenar algo esa primera vez (ver _migrar_columna_origen_en_ventas).
+    No hace commit: lo hace cada migración al terminar.
+    """
+    columnas_actuales = {fila["name"] for fila in conexion.execute(f"PRAGMA table_info({tabla})")}
+    if columna in columnas_actuales:
+        return False
+    conexion.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}")
+    return True
+
+
 def _migrar_columnas_permisos(conexion: sqlite3.Connection):
     """
     Agrega a "usuarios" las columnas "permiso_*" que falten (ver
     usuarios_repo.PERMISOS_EMPLEADA), para una base creada antes de que
-    existiera cada permiso. Hace falta este paso aparte porque CREATE TABLE
-    IF NOT EXISTS no toca una tabla que ya existe, aunque le falten
-    columnas nuevas del esquema de arriba. Al sumar un permiso nuevo hay
-    que agregarlo en este listado Y en el CREATE TABLE.
+    existiera cada permiso. Al sumar un permiso nuevo hay que agregarlo en
+    este listado Y en el CREATE TABLE.
     """
-    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(usuarios)")}
     for columna in (
         "permiso_articulos", "permiso_compras", "permiso_consulta_ventas",
         "permiso_reportes", "permiso_control_cierres", "permiso_control_pcs",
     ):
-        if columna not in columnas_actuales:
-            conexion.execute(f"ALTER TABLE usuarios ADD COLUMN {columna} INTEGER NOT NULL DEFAULT 0")
+        _agregar_columna_si_falta(conexion, "usuarios", columna, "INTEGER NOT NULL DEFAULT 0")
     conexion.commit()
 
 
 def _migrar_columna_ultima_conexion_estaciones(conexion: sqlite3.Connection):
     """
-    Para una base creada antes de que el Cliente PC reportara su
-    propio "estoy vivo" (ver servidor_red.py): agrega
-    estaciones.ultima_conexion. Mismo motivo que _migrar_columnas_permisos:
-    ALTER TABLE porque CREATE TABLE IF NOT EXISTS no toca una tabla que ya
-    existe.
+    Para una base creada antes de que el Cliente PC reportara su propio
+    "estoy vivo" (ver servidor_red.py): agrega estaciones.ultima_conexion.
     """
-    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(estaciones)")}
-    if "ultima_conexion" not in columnas_actuales:
-        conexion.execute("ALTER TABLE estaciones ADD COLUMN ultima_conexion TEXT")
+    _agregar_columna_si_falta(conexion, "estaciones", "ultima_conexion", "TEXT")
     conexion.commit()
 
 
@@ -709,9 +717,7 @@ def _migrar_columna_ultima_ip_estaciones(conexion: sqlite3.Connection):
     un pedido después de creada (una estación recién tipeada y todavía no
     guardada no tiene fila que actualizar).
     """
-    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(estaciones)")}
-    if "ultima_ip" not in columnas_actuales:
-        conexion.execute("ALTER TABLE estaciones ADD COLUMN ultima_ip TEXT")
+    _agregar_columna_si_falta(conexion, "estaciones", "ultima_ip", "TEXT")
     conexion.commit()
 
 
@@ -725,9 +731,7 @@ def _migrar_columna_cliente_cerrado_desde_estaciones(conexion: sqlite3.Connectio
     pcs_repo.estado_estaciones, que ya lee esa fila, lo tenga sin una
     consulta más.
     """
-    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(estaciones)")}
-    if "cliente_cerrado_desde" not in columnas_actuales:
-        conexion.execute("ALTER TABLE estaciones ADD COLUMN cliente_cerrado_desde TEXT")
+    _agregar_columna_si_falta(conexion, "estaciones", "cliente_cerrado_desde", "TEXT")
     conexion.commit()
 
 
@@ -735,32 +739,59 @@ def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     """
     Para una base creada antes de que existiera "Miembros": agrega
     sesiones_pc.miembro_id (NULL = sesión de bono/walk-in, como siempre
-    fue; con valor = sesión abierta con el saldo de ese socio). Mismo
-    motivo que _migrar_columnas_permisos: ALTER TABLE porque
-    CREATE TABLE IF NOT EXISTS no toca una tabla que ya existe.
+    fue; con valor = sesión abierta con el saldo de ese socio).
     """
-    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(sesiones_pc)")}
-    if "miembro_id" not in columnas_actuales:
-        conexion.execute("ALTER TABLE sesiones_pc ADD COLUMN miembro_id INTEGER REFERENCES miembros(id)")
+    _agregar_columna_si_falta(conexion, "sesiones_pc", "miembro_id", "INTEGER REFERENCES miembros(id)")
     conexion.commit()
 
 
-def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Connection):
-    """
-    Para una base creada antes de que existiera "bonos_miembro": hace que
-    movimientos_saldo_miembro.bono_id apunte a ese catálogo y no al viejo
-    (bonos_tiempo, el de walk-ins). La referencia queda grabada en el
-    propio esquema de la tabla; CREATE TABLE IF NOT EXISTS no la toca
-    porque la tabla ya existe, y SQLite no deja cambiar un REFERENCES con
-    ALTER TABLE. Sin esta migración, cargar un bono de socios cuyo id no
-    existiera también en bonos_tiempo rompía con "FOREIGN KEY constraint
-    failed" (pasa recién cuando las dos secuencias de ids se separan).
+# --- movimientos_saldo_miembro: el único CREATE TABLE y las dos migraciones que la reconstruyen ---
 
-    Se reconstruye la tabla entera (única forma que soporta SQLite):
-    renombrar la vieja, crear la nueva con el esquema correcto, copiar las
-    filas tal cual y borrar la vieja. Mira la definición guardada en
-    sqlite_master para saber si hace falta, así que es segura de correr en
-    cada arranque y no hace nada en una base nueva.
+# Tipos de movimiento del ledger de saldo de socios (el CHECK de "tipo"). Los
+# "originales" son los del primer esquema; ANULACION se sumó después.
+_TIPOS_MOVIMIENTO_SALDO_ORIGINALES = ("CARGA", "CONSUMO", "REINTEGRO")
+_TIPOS_MOVIMIENTO_SALDO = _TIPOS_MOVIMIENTO_SALDO_ORIGINALES + ("ANULACION",)
+
+
+def _sql_tabla_movimientos_saldo_miembro(tipos: tuple, referencia_bono: str, si_no_existe: bool = False) -> str:
+    """
+    El CREATE TABLE de movimientos_saldo_miembro, escrito una sola vez. Lo
+    usa inicializar_base_de_datos() con el esquema actual y las dos
+    migraciones de abajo, que reconstruyen la tabla de una base vieja
+    (SQLite no deja cambiar un CHECK ni un REFERENCES ya grabados). Lo único
+    que cambió con el tiempo es qué `tipos` admite el CHECK y a qué catálogo
+    apunta `referencia_bono`: "bonos_miembro(id)" hoy, "bonos_tiempo(id)" en
+    las bases anteriores a que existiera bonos_miembro.
+    """
+    tipos_sql = ", ".join(f"'{tipo}'" for tipo in tipos)
+    existe = "IF NOT EXISTS " if si_no_existe else ""
+    return f"""
+        CREATE TABLE {existe}movimientos_saldo_miembro (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
+            tipo        TEXT NOT NULL CHECK (tipo IN ({tipos_sql})),
+            minutos     INTEGER NOT NULL,
+            fecha       TEXT NOT NULL,
+            venta_id    INTEGER REFERENCES ventas(id),
+            bono_id     INTEGER REFERENCES {referencia_bono},
+            sesion_id   INTEGER REFERENCES sesiones_pc(id)
+        )
+    """
+
+
+def _reconstruir_movimientos_saldo_miembro(conexion: sqlite3.Connection, ya_esta_al_dia, sql_tabla_nueva):
+    """
+    Esqueleto común de las migraciones que reconstruyen
+    movimientos_saldo_miembro: renombrar la vieja, crear la nueva con el
+    esquema correcto, copiar las filas tal cual y borrar la vieja (la única
+    forma que soporta SQLite de cambiar un CHECK o un REFERENCES ya
+    grabados). Mira la definición guardada en sqlite_master para saber si
+    hace falta, así que es segura de correr en cada arranque y no hace nada
+    en una base nueva.
+
+    - `ya_esta_al_dia(sql_actual)`: True si esa definición ya tiene el cambio.
+    - `sql_tabla_nueva(sql_actual)`: el CREATE TABLE de la tabla reconstruida
+      (recibe la definición vieja por si tiene que conservar algo de ella).
 
     Dos casos borde, para que la migración nunca deje movimientos
     históricos fuera del historial visible:
@@ -769,11 +800,10 @@ def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Conne
        un corte de luz) entre el RENAME y el final de la copia, el
        próximo arranque ve la tabla "movimientos_saldo_miembro" recreada
        pero VACÍA -- la recrea el CREATE TABLE IF NOT EXISTS de
-       inicializar_base_de_datos(), que corre antes que esta función --
+       inicializar_base_de_datos(), que corre antes que las migraciones --
        con el historial real atrapado en "movimientos_saldo_miembro_viejo".
-       Por eso no alcanza con preguntar "¿ya tiene el esquema nuevo?":
-       también se chequea si quedó una "_viejo" pendiente, y se la
-       termina de absorber.
+       Por eso no alcanza con preguntar "¿ya está al día?": también se
+       chequea si quedó una "_viejo" pendiente, y se la termina de absorber.
     2. **bono_id heredado que ya no existe en el catálogo nuevo.** Con
        foreign_keys en ON, copiar un bono_id que no matchea ningún bono de
        bonos_miembro rompía la migración entera a mitad de la copia. Por
@@ -791,24 +821,14 @@ def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Conne
     if definicion is None:
         return  # base nueva: la tabla ni existe todavía, nada que migrar
 
-    ya_tiene_esquema_nuevo = "bonos_miembro(id)" in definicion["sql"]
-    if ya_tiene_esquema_nuevo and not tabla_vieja_pendiente:
+    sql_actual = definicion["sql"]
+    al_dia = ya_esta_al_dia(sql_actual)
+    if al_dia and not tabla_vieja_pendiente:
         return  # ya se migró en un arranque anterior, sin cortes de por medio
 
-    if not ya_tiene_esquema_nuevo:
+    if not al_dia:
         conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
-        conexion.execute("""
-            CREATE TABLE movimientos_saldo_miembro (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
-                tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO')),
-                minutos     INTEGER NOT NULL,
-                fecha       TEXT NOT NULL,
-                venta_id    INTEGER REFERENCES ventas(id),
-                bono_id     INTEGER REFERENCES bonos_miembro(id),
-                sesion_id   INTEGER REFERENCES sesiones_pc(id)
-            )
-        """)
+        conexion.execute(sql_tabla_nueva(sql_actual))
 
     # A este punto "movimientos_saldo_miembro_viejo" existe siempre -- recién
     # renombrada arriba, o ya estaba de un corte anterior (ver punto 1). Se
@@ -837,6 +857,28 @@ def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Conne
         conexion.execute("PRAGMA foreign_keys = ON")
 
 
+def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Connection):
+    """
+    Para una base creada antes de que existiera "bonos_miembro": hace que
+    movimientos_saldo_miembro.bono_id apunte a ese catálogo y no al viejo
+    (bonos_tiempo, el de walk-ins). La referencia queda grabada en el
+    propio esquema de la tabla, y SQLite no deja cambiar un REFERENCES con
+    ALTER TABLE. Sin esta migración, cargar un bono de socios cuyo id no
+    existiera también en bonos_tiempo rompía con "FOREIGN KEY constraint
+    failed" (pasa recién cuando las dos secuencias de ids se separan).
+
+    Reconstruye la tabla (ver _reconstruir_movimientos_saldo_miembro, que
+    explica los dos casos borde).
+    """
+    _reconstruir_movimientos_saldo_miembro(
+        conexion,
+        ya_esta_al_dia=lambda sql: "bonos_miembro(id)" in sql,
+        sql_tabla_nueva=lambda sql: _sql_tabla_movimientos_saldo_miembro(
+            _TIPOS_MOVIMIENTO_SALDO_ORIGINALES, "bonos_miembro(id)"
+        ),
+    )
+
+
 def _migrar_check_tipo_en_movimientos_saldo_miembro(conexion: sqlite3.Connection):
     """
     Agrega 'ANULACION' a los tipos válidos de movimientos_saldo_miembro.tipo
@@ -846,61 +888,23 @@ def _migrar_check_tipo_en_movimientos_saldo_miembro(conexion: sqlite3.Connection
     movimiento propio en el ledger en vez de disimularlo como un CONSUMO o
     un REINTEGRO que no fueron.
 
-    SQLite no deja tocar un CHECK ya grabado con ALTER TABLE, así que se
-    reconstruye la tabla entera: mismo patrón y mismas dos salvaguardas
-    (corte a mitad de camino, "_viejo" pendiente) que
-    _migrar_referencia_bono_en_movimientos_saldo_miembro -- ver esa
-    función para el detalle. Corre siempre DESPUÉS de aquella, así que el
-    REFERENCES de bono_id puede llegar ya corregido o no: esta migración
-    lo conserva tal cual y solo agrega el valor nuevo al CHECK.
+    SQLite no deja tocar un CHECK ya grabado con ALTER TABLE, así que
+    reconstruye la tabla (ver _reconstruir_movimientos_saldo_miembro). Corre
+    siempre DESPUÉS de _migrar_referencia_bono_en_movimientos_saldo_miembro,
+    así que el REFERENCES de bono_id puede llegar ya corregido o no: esta
+    migración lo conserva tal cual y solo agrega el valor nuevo al CHECK.
     """
-    tabla_vieja_pendiente = conexion.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro_viejo'"
-    ).fetchone() is not None
+    _reconstruir_movimientos_saldo_miembro(
+        conexion,
+        ya_esta_al_dia=lambda sql: "'ANULACION'" in sql,
+        sql_tabla_nueva=lambda sql: _sql_tabla_movimientos_saldo_miembro(
+            _TIPOS_MOVIMIENTO_SALDO,
+            "bonos_miembro(id)" if "bonos_miembro(id)" in sql else "bonos_tiempo(id)",
+        ),
+    )
 
-    definicion = conexion.execute(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro'"
-    ).fetchone()
-    if definicion is None:
-        return  # base nueva: la tabla ni existe todavía, nada que migrar
 
-    ya_tiene_check_nuevo = "'ANULACION'" in definicion["sql"]
-    if ya_tiene_check_nuevo and not tabla_vieja_pendiente:
-        return  # ya se migró en un arranque anterior, sin cortes de por medio
-
-    if not ya_tiene_check_nuevo:
-        referencia_bono = "bonos_miembro(id)" if "bonos_miembro(id)" in definicion["sql"] else "bonos_tiempo(id)"
-        conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
-        conexion.execute(f"""
-            CREATE TABLE movimientos_saldo_miembro (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
-                tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO', 'ANULACION')),
-                minutos     INTEGER NOT NULL,
-                fecha       TEXT NOT NULL,
-                venta_id    INTEGER REFERENCES ventas(id),
-                bono_id     INTEGER REFERENCES {referencia_bono},
-                sesion_id   INTEGER REFERENCES sesiones_pc(id)
-            )
-        """)
-
-    # Ver el mismo comentario en la migración hermana: el commit de acá
-    # evita que "PRAGMA foreign_keys" sea un no-op silencioso si queda
-    # una transacción pendiente de quien llamó a esta función.
-    conexion.commit()
-    conexion.execute("PRAGMA foreign_keys = OFF")
-    try:
-        conexion.execute("""
-            INSERT OR IGNORE INTO movimientos_saldo_miembro
-                (id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id)
-            SELECT id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id
-            FROM movimientos_saldo_miembro_viejo
-        """)
-        conexion.execute("DROP TABLE movimientos_saldo_miembro_viejo")
-        conexion.commit()
-    finally:
-        conexion.execute("PRAGMA foreign_keys = ON")
-
+# --- el resto de las migraciones ---
 
 def _migrar_clave_clientes_pc(conexion: sqlite3.Connection):
     """
@@ -931,17 +935,15 @@ def _migrar_columna_origen_en_ventas(conexion: sqlite3.Connection):
     este backfill el desglose de Caja/Cierre de Turno mentiría sobre el
     historial ya cargado.
 
-    El backfill va DENTRO del mismo "if" que el ALTER TABLE (no suelto
-    después) a propósito: así corre una sola vez, no en cada arranque del
-    programa -- con años de ventas cargadas, repetir este JOIN en cada
-    inicio saldría caro para nada.
+    El backfill corre SOLO si la columna se acaba de agregar: así se hace
+    una sola vez, no en cada arranque del programa -- con años de ventas
+    cargadas, repetir este JOIN en cada inicio saldría caro para nada.
     """
-    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(ventas)")}
-    if "origen" not in columnas_actuales:
-        conexion.execute(
-            "ALTER TABLE ventas ADD COLUMN origen TEXT NOT NULL DEFAULT 'KIOSKO' "
-            "CHECK (origen IN ('KIOSKO', 'ALQUILER_PCS'))"
-        )
+    se_agrego = _agregar_columna_si_falta(
+        conexion, "ventas", "origen",
+        "TEXT NOT NULL DEFAULT 'KIOSKO' CHECK (origen IN ('KIOSKO', 'ALQUILER_PCS'))",
+    )
+    if se_agrego:
         conexion.execute("""
             UPDATE ventas SET origen = 'ALQUILER_PCS'
             WHERE id IN (SELECT venta_id FROM sesion_bonos WHERE venta_id IS NOT NULL)
@@ -958,18 +960,34 @@ def _migrar_columnas_origen_en_cierres(conexion: sqlite3.Connection):
     desglose (no queda registro de qué parte de esas ventas ya era de
     PCs), así que quedan en 0 en vez de inventar un número.
     """
-    columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(cierres_turno)")}
     for columna in ("kiosko_efectivo", "kiosko_digital", "pcs_efectivo", "pcs_digital"):
-        if columna not in columnas_actuales:
-            conexion.execute(f"ALTER TABLE cierres_turno ADD COLUMN {columna} REAL NOT NULL DEFAULT 0")
+        _agregar_columna_si_falta(conexion, "cierres_turno", columna, "REAL NOT NULL DEFAULT 0")
     conexion.commit()
+
+
+# --------------------------------------------------------------------
+# Datos de la primera vez
+# --------------------------------------------------------------------
+
+def _insertar_configuracion_si_falta(cursor: sqlite3.Cursor, clave: str, valor: str) -> bool:
+    """
+    Guarda `clave` en `configuracion` solo si todavía no existe, para no
+    pisar lo que el Admin ya cambió. Devuelve True si la insertó. No hace
+    commit.
+    """
+    cursor.execute("SELECT COUNT(*) AS cantidad FROM configuracion WHERE clave = ?", (clave,))
+    if cursor.fetchone()["cantidad"] != 0:
+        return False
+    cursor.execute("INSERT INTO configuracion (clave, valor) VALUES (?, ?)", (clave, valor))
+    return True
 
 
 def _cargar_datos_iniciales(conexion: sqlite3.Connection):
     """
-    Carga un usuario Administrador y el valor por defecto del fondo de
-    cambio la primera vez que se usa el sistema (si ya hay usuarios
-    cargados, no hace nada, para no pisar datos reales).
+    Carga un usuario Administrador y los valores por defecto del fondo de
+    cambio, la tarifa de socios y los rubros de fábrica la primera vez que
+    se usa el sistema (lo que ya esté cargado no se toca, para no pisar
+    datos reales).
     """
     cursor = conexion.cursor()
 
@@ -985,29 +1003,15 @@ def _cargar_datos_iniciales(conexion: sqlite3.Connection):
         )
         conexion.commit()
 
-    cursor.execute("SELECT COUNT(*) AS cantidad FROM configuracion WHERE clave = 'fondo_cambio'")
-    if cursor.fetchone()["cantidad"] == 0:
-        cursor.execute(
-            "INSERT INTO configuracion (clave, valor) VALUES ('fondo_cambio', '50000')"
-        )
-        conexion.commit()
-
-    cursor.execute("SELECT COUNT(*) AS cantidad FROM configuracion WHERE clave = 'tarifa_hora_miembro'")
-    if cursor.fetchone()["cantidad"] == 0:
-        cursor.execute(
-            "INSERT INTO configuracion (clave, valor) VALUES ('tarifa_hora_miembro', '1000')"
-        )
+    for clave, valor in (("fondo_cambio", "50000"), ("tarifa_hora_miembro", "1000")):
+        _insertar_configuracion_si_falta(cursor, clave, valor)
         conexion.commit()
 
     # Rubros de fábrica: se cargan UNA sola vez (se deja constancia en
     # "configuracion" de que ya se hizo). Si se gatillara en cada
     # arranque en vez de una sola vez, un rubro que el Admin borra a
     # propósito desde "Gestionar Rubros" volvería a aparecer solo.
-    cursor.execute("SELECT COUNT(*) AS cantidad FROM configuracion WHERE clave = 'rubros_iniciales_cargados'")
-    if cursor.fetchone()["cantidad"] == 0:
+    if _insertar_configuracion_si_falta(cursor, "rubros_iniciales_cargados", "1"):
         for nombre in ("BEBIDAS", "KIOSKO", "ARTÍCULOS DE LIMPIEZA", "INSUMOS DE PAPELERÍA"):
             cursor.execute("INSERT OR IGNORE INTO rubros (nombre) VALUES (?)", (nombre,))
-        cursor.execute(
-            "INSERT INTO configuracion (clave, valor) VALUES ('rubros_iniciales_cargados', '1')"
-        )
         conexion.commit()
