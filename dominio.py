@@ -70,7 +70,7 @@ METODOS_PAGO = (PAGO_EFECTIVO, PAGO_DIGITAL)
 # Ventas para repartir el cobro entre Efectivo y Digital, y termina
 # grabando esas dos filas reales — igual que un pago combinado de
 # kiosko. Así Caja y Cierre de Turno nunca ven un tercer balde "mixto"
-# sin desglosar (ver control_pcs/ui/pcs_window.py y miembros_window.py).
+# sin desglosar (ver control_pcs/ui/pcs_detalle.py y miembros_window.py).
 PAGO_MIXTO = "MIXTO"
 
 # Cómo se le muestra cada método a la usuaria.

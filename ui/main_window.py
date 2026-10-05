@@ -47,7 +47,8 @@ from ui.consulta_ventas_window import ConsultaVentasWindow
 from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
-from control_pcs.ui.pcs_window import PanelControlPcs, DialogoGestionEstaciones, DialogoGestionBonos
+from control_pcs.ui.pcs_window import PanelControlPcs
+from control_pcs.ui.pcs_gestion_dialogos import DialogoGestionEstaciones, DialogoGestionBonos
 from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
 from ui.utils import aplicar_clase, sin_boton_por_defecto
 

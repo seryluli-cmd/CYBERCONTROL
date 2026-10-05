@@ -358,7 +358,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         ..." de un CAMBIAR_RED (`texto`, directo a `comandos_pc.resultado`).
         No hace falta validar que la estación exista o que el comando siga
         "pendiente": si alguien tarda en mandarlo, guardarlo igual no
-        rompe nada -- lo único que mira pcs_window.py es si a ESE
+        rompe nada -- lo único que mira pcs_comandos_dialogos.py es si a ESE
         comando_id ya le llegó un resultado.
         """
         try:

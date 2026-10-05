@@ -350,7 +350,7 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
 
     `pagos`: lista de {"metodo", "monto"} -- una sola fila para Efectivo
     o Digital, dos filas (Efectivo + Digital) para un cobro Mixto, ver
-    control_pcs/ui/pcs_window.PanelDetalleEstacion._resolver_pagos.
+    control_pcs/ui/pcs_detalle.PanelDetalleEstacion._confirmar_bono.
     """
     bono = obtener_bono(bono_id)
     if bono is None or not bono["activo"]:

@@ -101,7 +101,7 @@ def guardar_screenshot(comando_id: int, imagen_base64: str) -> str:
     """Decodifica la imagen que subió el Cliente PC (ver
     servidor_red.py:_manejar_comando_resultado) y la guarda en
     data/screenshots/. Devuelve la ruta RELATIVA a DATA_DIR, que es lo
-    que se guarda en `comandos_pc.resultado` -- así la UI (pcs_window.py)
+    que se guarda en `comandos_pc.resultado` -- así la UI (pcs_comandos_dialogos.py)
     la puede abrir armando `os.path.join(database.DATA_DIR, resultado)`
     sin que el nombre de la carpeta quede pisado si se migra la base a
     otra PC.

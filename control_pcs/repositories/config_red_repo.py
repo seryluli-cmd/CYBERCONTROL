@@ -10,7 +10,7 @@ tarifa de socios) en vez de una tabla nueva -- no hace falta migración
 para una lista tan chica que el dueño edita a mano de vez en cuando.
 
 Lo usa el menú "Cambiar red..." de Control de PCs
-(`control_pcs/ui/pcs_window.py`) para mandarle a un Cliente PC a qué IP
+(`control_pcs/ui/pcs_comandos_dialogos.py`) para mandarle a un Cliente PC a qué IP
 cambiar su puerta de enlace y DNS (`comandos_pc_repo.TIPO_CAMBIAR_RED`,
 ejecutado del lado de la PC cliente por `win32_utils.cambiar_gateway_y_dns`
 en el proyecto hermano "CLIENTE PC").

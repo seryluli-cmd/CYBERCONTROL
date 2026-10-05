@@ -4,7 +4,7 @@ miembros_window.py
 Administración de Miembros (socios con saldo prepago de tiempo): alta,
 edición y baja de cuentas, y la carga de saldo — que siempre hace el
 Operador, porque implica cobrar plata (a diferencia de "Abrir PC con
-Miembro" en pcs_window.py, que es autoservicio del socio). Botón propio
+Miembro" en pcs_detalle.py, que es autoservicio del socio). Botón propio
 de la barra superior ("Miembros"), accesible con permiso_control_pcs o
 Admin — son tareas de *usar* el catálogo (cargar saldo con la tarifa y
 los bonos ya definidos), no de editarlo.
@@ -12,7 +12,7 @@ los bonos ya definidos), no de editarlo.
 La configuración de la tabla de tramos de tarifa $/hora (ver
 config_repo.obtener_tramos_tarifa_hora_miembro) y la gestión del
 catálogo de Bonos exclusivo de socios (bonos_miembro_repo, distinto del
-de walk-ins que administra pcs_window.DialogoGestionBonos) son tareas de
+de walk-ins que administra pcs_gestion_dialogos.DialogoGestionBonos) son tareas de
 EDICIÓN de catálogo, exclusivas de ADMIN — sus pantallas
 (DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro) siguen viviendo
 acá porque son del dominio de Miembros, pero el botón que las abre está
@@ -347,7 +347,7 @@ class DialogoTramosTarifaMiembro(QDialog):
     dominio.tarifa_hora_para_monto). Cada fila es "a partir de $X, $Y la
     hora"; no hace falta cargarlas en orden ni con precios crecientes o
     decrecientes, dominio.tarifa_hora_para_monto las ordena solo. Mismo
-    patrón de edición que pcs_window.DialogoEditarGateways: se guarda la
+    patrón de edición que pcs_comandos_dialogos.DialogoEditarGateways: se guarda la
     tabla entera de una, no fila por fila.
     """
 
@@ -437,7 +437,7 @@ class DialogoTramosTarifaMiembro(QDialog):
 class DialogoGestionBonosMiembro(QDialog):
     """
     Catálogo de Bonos EXCLUSIVO de socios (bonos_miembro_repo) — mismo
-    espíritu que pcs_window.DialogoGestionBonos (el de walk-ins), pero
+    espíritu que pcs_gestion_dialogos.DialogoGestionBonos (el de walk-ins), pero
     tabla y pantalla separadas a propósito (ver el docstring del módulo).
     Solo se llega acá desde ui.main_window.ConfiguracionAdminWindow, que
     es exclusiva de ADMIN: nadie más ve el botón que abre este diálogo.
@@ -526,7 +526,7 @@ class DialogoGestionBonosMiembro(QDialog):
 
 class DialogoBonoMiembro(QDialog):
     """Alta/edición de un bono de socios. Mismo formulario que
-    pcs_window.DialogoBono (horas/minutos en pasos de 30, nunca minuto
+    pcs_gestion_dialogos.DialogoBono (horas/minutos en pasos de 30, nunca minuto
     suelto) — es el mismo concepto de combo prearmado, solo que este
     catálogo es exclusivo de Miembros."""
 

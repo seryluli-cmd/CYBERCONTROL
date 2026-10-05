@@ -320,7 +320,7 @@ def resolver_pagos(parent, metodo, monto):
     siempre termina siendo una o dos filas reales de Efectivo/Digital.
     Devuelve None si se canceló ese cuadro (el llamador no debe seguir).
 
-    Compartido entre control_pcs/ui/pcs_window.py (bono de PC) y
+    Compartido entre control_pcs/ui/pcs_detalle.py (bono de PC) y
     control_pcs/ui/miembros_window.py (cargar saldo de un socio), para no
     repetir esta lógica (CLAUDE.md, regla 2). `monto <= 0` no abre el
     cuadro (no tiene sentido cobrar un total en cero): el llamador que

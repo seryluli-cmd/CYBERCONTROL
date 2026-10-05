@@ -315,7 +315,7 @@ class TestPcsRepo(BaseConBaseTemporal):
     def test_asignar_bono_con_pago_mixto_graba_las_dos_filas_de_pago(self):
         # "Mixto" nunca es un método que se guarde: la pantalla reparte el
         # precio del bono en Efectivo + Digital (ver
-        # control_pcs/ui/pcs_window.PanelDetalleEstacion._resolver_pagos)
+        # control_pcs/ui/pcs_detalle.PanelDetalleEstacion._confirmar_bono)
         # y acá le llegan ya las dos filas armadas.
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_id = pcs_repo.crear_estacion("PC 1")
