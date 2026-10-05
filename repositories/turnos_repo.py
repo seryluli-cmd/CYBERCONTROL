@@ -26,6 +26,15 @@ from turnos import calcular_turno, etiqueta_turno, turno_vencimiento, turnos_del
 from repositories.config_repo import obtener_fondo_cambio
 
 
+# Desde cuándo cuenta la ventana del primer turno de la historia (todavía no
+# hay un cierre anterior).
+_PRINCIPIO_DE_LOS_TIEMPOS = "0000-01-01T00:00:00"
+
+# Los cuatro importes en que se desglosa lo cobrado en un turno (origen x
+# método): son las columnas de cierres_turno (ver _desglose_de_totales).
+_CAMPOS_PLATA = ("kiosko_efectivo", "kiosko_digital", "pcs_efectivo", "pcs_digital")
+
+
 def _obtener_ultimo_cierre(conexion):
     """El cierre más reciente (por id), o None si todavía no hubo ninguno."""
     return conexion.execute(
@@ -74,10 +83,75 @@ def _desde_y_turno_en_curso(ultimo_cierre, ahora_dt):
     cerrar, no el de la hora actual: a las 14:05, con la Mañana todavía
     sin cerrar, el cierre se graba como "Mañana", no como "Tarde".
     """
-    desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else "0000-01-01T00:00:00"
+    desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else _PRINCIPIO_DE_LOS_TIEMPOS
     inicio_del_turno = datetime.fromisoformat(desde) if ultimo_cierre else ahora_dt
     turno = calcular_turno(inicio_del_turno)
     return desde, turno, inicio_del_turno
+
+
+def _ventana_en_curso(conexion, ahora_dt=None) -> dict:
+    """
+    La ventana del turno que está abierto ahora: {"desde", "hasta", "turno",
+    "inicio"} (`inicio` es un datetime, ver _desde_y_turno_en_curso).
+
+    `ahora_dt` solo se pasa si quien llama ya tomó la hora antes (como
+    resumen_del_dia, que la necesita también para otras cosas); si no, se
+    toma acá, después de leer el último cierre.
+
+    "hasta" lleva microsegundos, no segundos: en cerrar_turno es lo que se
+    graba en "cierres_turno.fecha_cierre", el límite que separa un turno del
+    siguiente (fecha > desde AND fecha <= hasta, ver
+    _sumar_ventas_por_origen_y_metodo). Con precisión de un segundo, una
+    venta hecha justo al abrir el turno siguiente podía empatar con ese
+    cierre y quedar afuera de los DOS turnos. ventas_repo graba
+    "ventas.fecha" con la misma precisión por la misma razón.
+    """
+    ultimo_cierre = _obtener_ultimo_cierre(conexion)
+    if ahora_dt is None:
+        ahora_dt = datetime.now()
+    desde, turno, inicio_del_turno = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
+    return {
+        "desde": desde,
+        "hasta": ahora_dt.isoformat(timespec="microseconds"),
+        "turno": turno,
+        "inicio": inicio_del_turno,
+    }
+
+
+def _desglose_de_totales(totales: dict) -> dict:
+    """
+    Pasa {origen: {metodo: total}} (lo que devuelve
+    _sumar_ventas_por_origen_y_metodo) al desglose que muestran Caja y los
+    cierres: los cuatro importes de _CAMPOS_PLATA más el total en efectivo y
+    el total digital de los dos negocios juntos. Único lugar donde se hace
+    esta cuenta.
+    """
+    kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
+    kiosko_digital = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_DIGITAL]
+    pcs_efectivo = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_EFECTIVO]
+    pcs_digital = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_DIGITAL]
+    return {
+        "kiosko_efectivo": kiosko_efectivo,
+        "kiosko_digital": kiosko_digital,
+        "pcs_efectivo": pcs_efectivo,
+        "pcs_digital": pcs_digital,
+        "ventas_efectivo": kiosko_efectivo + pcs_efectivo,
+        "ventas_digital": kiosko_digital + pcs_digital,
+    }
+
+
+def _desde_del_cierre(conexion, cierre_id: int) -> str:
+    """
+    Desde cuándo cuenta lo vendido en el cierre `cierre_id`: la
+    `fecha_cierre` del cierre anterior (por id), o el principio de los
+    tiempos si es el primero que existe. Mismo criterio de ventana que
+    usa cerrar_turno() para el turno en curso.
+    """
+    anterior = conexion.execute(
+        "SELECT fecha_cierre FROM cierres_turno WHERE id < ? ORDER BY id DESC LIMIT 1",
+        (cierre_id,),
+    ).fetchone()
+    return anterior["fecha_cierre"] if anterior else _PRINCIPIO_DE_LOS_TIEMPOS
 
 
 def resumen_turno_actual():
@@ -88,35 +162,21 @@ def resumen_turno_actual():
     debería haber ahora mismo en el cajón.
     """
     with conexion_db() as conexion:
-        ultimo_cierre = _obtener_ultimo_cierre(conexion)
-        ahora_dt = datetime.now()
-        desde, turno_actual, inicio_del_turno = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
-        # Microsegundos: mismo motivo que en cerrar_turno.
-        ahora = ahora_dt.isoformat(timespec="microseconds")
-        totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
-
-    kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
-    kiosko_digital = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_DIGITAL]
-    pcs_efectivo = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_EFECTIVO]
-    pcs_digital = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_DIGITAL]
-    ventas_efectivo = kiosko_efectivo + pcs_efectivo
-    ventas_digital = kiosko_digital + pcs_digital
+        ventana = _ventana_en_curso(conexion)
+        desglose = _desglose_de_totales(
+            _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
+        )
 
     fondo_cambio = obtener_fondo_cambio()
 
     return {
-        "turno_actual": turno_actual,
-        "turno_actual_label": etiqueta_turno(inicio_del_turno.date(), turno_actual),
+        "turno_actual": ventana["turno"],
+        "turno_actual_label": etiqueta_turno(ventana["inicio"].date(), ventana["turno"]),
         "fondo_cambio": fondo_cambio,
-        "ventas_efectivo": ventas_efectivo,
-        "ventas_digital": ventas_digital,
-        "kiosko_efectivo": kiosko_efectivo,
-        "kiosko_digital": kiosko_digital,
-        "pcs_efectivo": pcs_efectivo,
-        "pcs_digital": pcs_digital,
-        "caja_actual": fondo_cambio + ventas_efectivo,
-        "desde": desde,
-        "hasta": ahora,
+        **desglose,
+        "caja_actual": fondo_cambio + desglose["ventas_efectivo"],
+        "desde": ventana["desde"],
+        "hasta": ventana["hasta"],
     }
 
 
@@ -130,33 +190,19 @@ def cerrar_turno(usuario_id: int):
     fondo_cambio = obtener_fondo_cambio()
 
     with conexion_db() as conexion:
-        ultimo_cierre = _obtener_ultimo_cierre(conexion)
-        ahora_dt = datetime.now()
-        desde, turno, inicio_del_turno = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
-        # Microsegundos, no segundos: esto graba "cierres_turno.fecha_cierre",
-        # el límite que separa un turno del siguiente (fecha > desde AND
-        # fecha <= hasta, ver _sumar_ventas_por_origen_y_metodo). Con
-        # precisión de un segundo, una venta hecha justo al abrir el turno
-        # siguiente podía empatar con este cierre y quedar afuera de los
-        # DOS turnos. ventas_repo graba "ventas.fecha" con la misma
-        # precisión por la misma razón.
-        ahora = ahora_dt.isoformat(timespec="microseconds")
-
-        totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
-        kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
-        kiosko_digital = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_DIGITAL]
-        pcs_efectivo = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_EFECTIVO]
-        pcs_digital = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_DIGITAL]
-        ventas_efectivo = kiosko_efectivo + pcs_efectivo
-        ventas_digital = kiosko_digital + pcs_digital
-        monto_a_retirar = ventas_efectivo
+        ventana = _ventana_en_curso(conexion)
+        desglose = _desglose_de_totales(
+            _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
+        )
+        turno = ventana["turno"]
+        monto_a_retirar = desglose["ventas_efectivo"]
 
         # "fecha" guarda el día en que ARRANCÓ el turno (el mismo criterio
         # que "turno", justo arriba) y no el día en que se lo cerró: para
         # un turno Noche cerrado ya pasada la medianoche, esos dos días son
         # distintos, y turnos_faltantes() necesita que coincida con el día
         # que arma turnos_del_mes_actual() para poder cruzarlos.
-        fecha_turno = inicio_del_turno.date()
+        fecha_turno = ventana["inicio"].date()
 
         cursor = conexion.execute(
             """
@@ -170,15 +216,15 @@ def cerrar_turno(usuario_id: int):
                 fecha_turno.isoformat(),
                 turno,
                 usuario_id,
-                ahora,
+                ventana["hasta"],
                 fondo_cambio,
-                ventas_efectivo,
-                ventas_digital,
+                desglose["ventas_efectivo"],
+                desglose["ventas_digital"],
                 monto_a_retirar,
-                kiosko_efectivo,
-                kiosko_digital,
-                pcs_efectivo,
-                pcs_digital,
+                desglose["kiosko_efectivo"],
+                desglose["kiosko_digital"],
+                desglose["pcs_efectivo"],
+                desglose["pcs_digital"],
             ),
         )
         cierre_id = cursor.lastrowid
@@ -188,12 +234,7 @@ def cerrar_turno(usuario_id: int):
         "turno": turno,
         "turno_label": etiqueta_turno(fecha_turno, turno),
         "fondo_cambio": fondo_cambio,
-        "ventas_efectivo": ventas_efectivo,
-        "ventas_digital": ventas_digital,
-        "kiosko_efectivo": kiosko_efectivo,
-        "kiosko_digital": kiosko_digital,
-        "pcs_efectivo": pcs_efectivo,
-        "pcs_digital": pcs_digital,
+        **desglose,
         "monto_a_retirar": monto_a_retirar,
     }
 
@@ -205,9 +246,6 @@ ESTADO_CERRADO = "CERRADO"
 ESTADO_EN_CURSO = "EN_CURSO"
 ESTADO_SIN_CERRAR = "SIN_CERRAR"
 ESTADO_PENDIENTE = "PENDIENTE"
-
-_CAMPOS_PLATA = ("kiosko_efectivo", "kiosko_digital", "pcs_efectivo", "pcs_digital")
-
 
 def _contar_ventas_entre(conexion, desde: str, hasta: str):
     """(confirmadas, anuladas) que cayeron en la ventana (desde, hasta] --
@@ -267,28 +305,20 @@ def resumen_del_dia(dia):
 
         cierres_por_turno = {}
         for cierre in cierres:
-            anterior = conexion.execute(
-                "SELECT fecha_cierre FROM cierres_turno WHERE id < ? ORDER BY id DESC LIMIT 1",
-                (cierre["id"],),
-            ).fetchone()
-            desde = anterior["fecha_cierre"] if anterior else "0000-01-01T00:00:00"
+            desde = _desde_del_cierre(conexion, cierre["id"])
             confirmadas, anuladas = _contar_ventas_entre(conexion, desde, cierre["fecha_cierre"])
             cierres_por_turno.setdefault(cierre["turno"], []).append((cierre, confirmadas, anuladas))
 
         # La ventana que está abierta ahora, si pertenece a este día.
-        ultimo_cierre = _obtener_ultimo_cierre(conexion)
-        desde_abierta, turno_abierto, inicio_abierto = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
+        ventana = _ventana_en_curso(conexion, ahora_dt)
         abierta = None
-        if inicio_abierto.date() == dia:
-            ahora = ahora_dt.isoformat(timespec="microseconds")
-            totales = _sumar_ventas_por_origen_y_metodo(conexion, desde_abierta, ahora)
-            confirmadas, anuladas = _contar_ventas_entre(conexion, desde_abierta, ahora)
+        if ventana["inicio"].date() == dia:
+            totales = _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
+            confirmadas, anuladas = _contar_ventas_entre(conexion, ventana["desde"], ventana["hasta"])
+            desglose = _desglose_de_totales(totales)
             abierta = {
-                "turno": turno_abierto, "confirmadas": confirmadas, "anuladas": anuladas,
-                "kiosko_efectivo": totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO],
-                "kiosko_digital": totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_DIGITAL],
-                "pcs_efectivo": totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_EFECTIVO],
-                "pcs_digital": totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_DIGITAL],
+                "turno": ventana["turno"], "confirmadas": confirmadas, "anuladas": anuladas,
+                **{campo: desglose[campo] for campo in _CAMPOS_PLATA},
             }
 
     # Los turnos esperados del día, más cualquier otro que tenga cierre o
@@ -392,11 +422,7 @@ def detalle_cierre(cierre_id: int):
         if cierre is None:
             raise ValueError("El cierre no existe.")
 
-        anterior = conexion.execute(
-            "SELECT fecha_cierre FROM cierres_turno WHERE id < ? ORDER BY id DESC LIMIT 1",
-            (cierre_id,),
-        ).fetchone()
-        desde = anterior["fecha_cierre"] if anterior else "0000-01-01T00:00:00"
+        desde = _desde_del_cierre(conexion, cierre_id)
 
         ventas = conexion.execute(
             """
