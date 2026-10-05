@@ -1,7 +1,12 @@
 """
 turnos_repo.py
 ===============
-Lógica de Caja (consulta en vivo) y Cierre de Turno.
+Todo lo que gira alrededor del turno y su cierre:
+- Caja (consulta en vivo del turno en curso) y Cierre de Turno.
+- Control de Cierres: historial, detalle venta por venta y verificación
+  del sobre por el Admin.
+- Resumen del Día (un día abierto por turno) y turnos que vencieron sin
+  cierre cargado.
 
 Idea central: en vez de calcular los turnos con horarios rígidos (lo cual
 se complica porque el turno "NOCHE" cruza la medianoche, y porque a veces
@@ -9,6 +14,9 @@ una empleada llega unos minutos tarde), un turno "en curso" es
 simplemente: *todo lo vendido desde el último cierre hasta ahora*.
 Así, sin importar la hora exacta a la que alguien cierra, nunca se cuenta
 una venta dos veces ni se pierde ninguna.
+
+Las fechas se comparan como texto ISO con microsegundos (ver el comentario
+en `cerrar_turno`): la ventana de un turno es (último cierre, ahora].
 """
 
 from datetime import date, datetime, timedelta
@@ -19,6 +27,7 @@ from repositories.config_repo import obtener_fondo_cambio
 
 
 def _obtener_ultimo_cierre(conexion):
+    """El cierre más reciente (por id), o None si todavía no hubo ninguno."""
     return conexion.execute(
         "SELECT * FROM cierres_turno ORDER BY id DESC LIMIT 1"
     ).fetchone()
@@ -26,11 +35,11 @@ def _obtener_ultimo_cierre(conexion):
 
 def _sumar_ventas_por_origen_y_metodo(conexion, desde: str, hasta: str):
     """
-    Como antes, pero separado también por origen (ver dominio.ORIGENES_VENTA)
-    y no solo por método de pago: es lo que le permite al dueño ver, en
-    Caja y en Cierre de Turno, cuánto entró por productos de kiosko contra
-    cuánto por alquiler de PCs, en vez de un solo total mezclado.
-    Devuelve {origen: {metodo: total}}, considerando solo ventas
+    Suma lo cobrado en la ventana (desde, hasta], separado por origen (ver
+    dominio.ORIGENES_VENTA) y por método de pago: es lo que le permite al
+    dueño ver, en Caja y en Cierre de Turno, cuánto entró por productos de
+    kiosko contra cuánto por alquiler de PCs, en vez de un solo total
+    mezclado. Devuelve {origen: {metodo: total}}, considerando solo ventas
     CONFIRMADAS (una venta anulada no debe contar en la caja).
     """
     filas = conexion.execute(
@@ -57,14 +66,13 @@ def _desde_y_turno_en_curso(ultimo_cierre, ahora_dt):
     Desde cuándo se viene sumando el turno en curso (`fecha_cierre` del
     último cierre, o el principio de los tiempos si todavía no hay
     ninguno) y a qué turno pertenece esa ventana -- el turno que va a
-    quedar grabado si alguien confirma el cierre ahora mismo. Único lugar
-    donde se decide esto: antes `resumen_turno_actual` mostraba el turno
-    de la hora ACTUAL (calcular_turno(ahora)) mientras que `cerrar_turno`
-    grababa el turno de cuándo ARRANCÓ lo que sigue sin cerrar, y podían
-    no coincidir -- ej. a las 14:05, con la Mañana todavía sin cerrar, el
-    título de Caja/Cierre de Turno ya decía "Tarde" pero al confirmar
-    quedaba grabado como "Mañana". Con esta única función, lo que se
-    muestra en pantalla SIEMPRE coincide con lo que se va a grabar.
+    quedar grabado si alguien confirma el cierre ahora mismo.
+
+    Único lugar donde se decide esto, para que lo que muestra Caja
+    (`resumen_turno_actual`) SIEMPRE coincida con lo que graba
+    `cerrar_turno`. El turno es el de cuándo ARRANCÓ lo que sigue sin
+    cerrar, no el de la hora actual: a las 14:05, con la Mañana todavía
+    sin cerrar, el cierre se graba como "Mañana", no como "Tarde".
     """
     desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else "0000-01-01T00:00:00"
     inicio_del_turno = datetime.fromisoformat(desde) if ultimo_cierre else ahora_dt
@@ -83,9 +91,7 @@ def resumen_turno_actual():
         ultimo_cierre = _obtener_ultimo_cierre(conexion)
         ahora_dt = datetime.now()
         desde, turno_actual, inicio_del_turno = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
-        # Microsegundos, no segundos: mismo motivo que ventas_repo (ver ahí)
-        # -- acá "ahora" se compara contra "ventas.fecha" para armar la
-        # vista en vivo de Caja.
+        # Microsegundos: mismo motivo que en cerrar_turno.
         ahora = ahora_dt.isoformat(timespec="microseconds")
         totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
 
@@ -128,14 +134,12 @@ def cerrar_turno(usuario_id: int):
         ahora_dt = datetime.now()
         desde, turno, inicio_del_turno = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
         # Microsegundos, no segundos: esto graba "cierres_turno.fecha_cierre",
-        # el límite que separa un turno del siguiente (ver
-        # _sumar_ventas_por_origen_y_metodo, fecha > desde AND fecha <=
-        # hasta). Con precisión de un segundo, una venta hecha justo al
-        # abrir el turno siguiente podía caer en el mismo segundo que este
-        # cierre y quedar afuera de los DOS turnos -- ni en el que se
-        # estaba cerrando (llegó después del corte) ni en el siguiente (el
-        # ">" estricto la excluía por el empate). Ver el mismo comentario
-        # en ventas_repo.confirmar_venta / registrar_venta_sin_detalle.
+        # el límite que separa un turno del siguiente (fecha > desde AND
+        # fecha <= hasta, ver _sumar_ventas_por_origen_y_metodo). Con
+        # precisión de un segundo, una venta hecha justo al abrir el turno
+        # siguiente podía empatar con este cierre y quedar afuera de los
+        # DOS turnos. ventas_repo graba "ventas.fecha" con la misma
+        # precisión por la misma razón.
         ahora = ahora_dt.isoformat(timespec="microseconds")
 
         totales = _sumar_ventas_por_origen_y_metodo(conexion, desde, ahora)
@@ -514,7 +518,7 @@ def _responsables_del_mes(conexion, inicio_mes):
 def turnos_faltantes():
     """
     De los turnos esperados del mes en curso (turnos_del_mes_actual), los
-    que YA vencieron (ventana nominal + 40 min de gracia, ver
+    que YA vencieron (ventana nominal + turnos.TURNO_GRACIA_MIN de gracia, ver
     turnos.turno_vencimiento) y todavía no tienen un cierre cargado en
     cierres_turno. Se usa en "Control de Cierres de Turno" para que el
     Admin se entere de un turno sin cerrar antes de que se pierda en el

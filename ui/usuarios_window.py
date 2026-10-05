@@ -2,8 +2,10 @@
 usuarios_window.py
 =====================
 Administración de Usuarios: alta, edición y baja de usuarios (Admin o
-Empleada), y la configuración del fondo de cambio fijo que se usa en
-los cierres de turno. Todo este módulo es exclusivo del rol ADMIN.
+Empleada), la configuración del fondo de cambio fijo que se usa en los
+cierres de turno y la copia de seguridad manual. Es exclusivo del rol ADMIN
+(no se delega con ningún permiso), con una excepción: DialogoCambiarClave,
+que vive acá pero la usa cualquier usuario para su propia clave.
 """
 
 from PySide6.QtWidgets import (
@@ -11,17 +13,21 @@ from PySide6.QtWidgets import (
     QPushButton, QLineEdit, QLabel, QComboBox, QFormLayout, QHeaderView,
     QDoubleSpinBox, QFileDialog, QCheckBox, QGroupBox
 )
-from PySide6.QtCore import Qt
 
 import dominio
 import database
 from repositories import usuarios_repo, config_repo
 from ui.utils import (
     mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase, encadenar_enter,
+    sin_boton_por_defecto,
 )
 
 
 class UsuariosWindow(QDialog):
+    """Grilla de usuarios con alta/modificación/baja, fondo de cambio y
+    backup. `usuario_actual` es quien está logueado (no puede borrarse a
+    sí mismo)."""
+
     def __init__(self, usuario_actual, parent=None):
         super().__init__(parent)
         self.usuario_actual = usuario_actual
@@ -56,10 +62,9 @@ class UsuariosWindow(QDialog):
             barra_botones.addWidget(boton)
         barra_botones.addStretch()
 
-        # Los usuarios desactivados con el sistema viejo (antes de que
-        # "Borrar" existiera) no aparecen en la grilla por defecto, así
-        # que sin este check no habría forma de encontrarlos para
-        # borrarlos del todo y liberar su número.
+        # Los usuarios desactivados no aparecen en la grilla por defecto, así
+        # que sin este check no habría forma de encontrarlos para borrarlos
+        # del todo y liberar su número.
         self.check_inactivos = QCheckBox("Mostrar inactivos")
         self.check_inactivos.stateChanged.connect(self._cargar_grilla)
 
@@ -76,14 +81,7 @@ class UsuariosWindow(QDialog):
         layout.addWidget(self.check_inactivos)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar_grilla(self):
@@ -162,6 +160,9 @@ class UsuariosWindow(QDialog):
 
 
 class DialogoUsuario(QDialog):
+    """Alta (sin `usuario_id`) o edición de un usuario: nombre, clave, rol
+    y, para una Empleada, sus permisos extra."""
+
     def __init__(self, parent, usuario_id: int = None):
         super().__init__(parent)
         self.usuario_id = usuario_id
@@ -217,14 +218,7 @@ class DialogoUsuario(QDialog):
         self.setLayout(layout)
         encadenar_enter(self.campo_nombre, self.campo_clave, self.combo_rol, accion_final=self._guardar)
         self._actualizar_visibilidad_permisos()
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _actualizar_visibilidad_permisos(self):
         """Un Admin ya tiene acceso a todo (ver usuarios_repo.tiene_permiso),
@@ -264,6 +258,9 @@ class DialogoUsuario(QDialog):
 
 
 class DialogoFondoCambio(QDialog):
+    """Pide el monto del fondo de cambio; quien lo abre lo lee de
+    `spin_monto` si se aceptó (ver UsuariosWindow._configurar_fondo)."""
+
     def __init__(self, parent, valor_actual: float):
         super().__init__(parent)
         self.setWindowTitle("Fondo de Cambio")
@@ -289,14 +286,7 @@ class DialogoFondoCambio(QDialog):
         layout.addWidget(self.spin_monto)
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
 
 class DialogoCambiarClave(QDialog):
@@ -339,14 +329,7 @@ class DialogoCambiarClave(QDialog):
         layout.addLayout(formulario)
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _guardar(self):

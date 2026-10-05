@@ -29,6 +29,9 @@ COLOR_VOLVIO = QColor("#DCF3E1")
 
 
 class PestañaAccesosAdminPc(QWidget):
+    """Qué PCs están sin bloqueo ahora mismo (arriba) y el historial de
+    eventos del panel admin entre dos fechas (tabla)."""
+
     def __init__(self):
         super().__init__()
         self._armar_interfaz()

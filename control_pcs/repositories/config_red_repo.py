@@ -31,6 +31,8 @@ _PATRON_IPV4 = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
 
 
 def es_ip_valida(ip: str) -> bool:
+    """True si `ip` es una IPv4 con cuatro números de 0 a 255 (sin chequear
+    que sea alcanzable)."""
     coincidencia = _PATRON_IPV4.match((ip or "").strip())
     if not coincidencia:
         return False

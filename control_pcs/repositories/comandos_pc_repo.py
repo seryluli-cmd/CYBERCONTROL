@@ -11,17 +11,18 @@ conexión directa hacia la PC cliente, esto solo deja un comando
 
 Por eso una acción acá no es instantánea: el Operador puede ver el
 resultado tardar hasta esos 5 segundos (más lo que tarde la PC en
-ejecutar la acción). Para REINICIAR/APAGAR/MENSAJE/VOLUMEN no hace falta
-ningún resultado de vuelta -- entregado es entregado. Para SCREENSHOT y
-CAMBIAR_RED sí: el Cliente PC sube un resultado aparte con
-`POST /comando_resultado` -- la imagen para SCREENSHOT
-(`guardar_screenshot` la deja en disco, no en la fila de la base, para no
-inflar el .db con binarios, devolviendo la ruta relativa) o un texto
-corto "OK"/"ERROR: ..." para CAMBIAR_RED (directo en `comandos_pc.resultado`,
-ver `marcar_resultado`) -- a diferencia de reiniciar/apagar, cambiar de
-módem sí puede fallar del lado de la PC (adaptador no encontrado, sin
-permisos) y vale la pena que el mostrador se entere sin tener que ir
-hasta ahí a revisar.
+ejecutar la acción).
+
+Qué devuelve cada comando:
+- REINICIAR / APAGAR / MENSAJE / VOLUMEN: nada. "Entregado" es entregado.
+- SCREENSHOT: el Cliente PC sube la imagen con `POST /comando_resultado`.
+  `guardar_screenshot` la deja en disco (no en la fila de la base, para no
+  inflar el .db con binarios) y devuelve la ruta relativa.
+- CAMBIAR_RED: el Cliente PC sube un texto corto "OK"/"ERROR: ..." que se
+  guarda directo en `comandos_pc.resultado` (ver `marcar_resultado`). A
+  diferencia de reiniciar/apagar, cambiar de módem sí puede fallar del lado
+  de la PC (adaptador no encontrado, sin permisos) y el mostrador tiene que
+  enterarse sin ir hasta ahí a revisar.
 """
 
 import base64
@@ -91,6 +92,7 @@ def marcar_entregado(comando_id: int):
 
 
 def obtener_comando(comando_id: int):
+    """La fila de un comando (para saber si ya le llegó un resultado), o None."""
     with conexion_db() as conexion:
         return conexion.execute("SELECT * FROM comandos_pc WHERE id = ?", (comando_id,)).fetchone()
 
@@ -119,6 +121,8 @@ def guardar_screenshot(comando_id: int, imagen_base64: str) -> str:
 
 
 def marcar_resultado(comando_id: int, ruta_relativa):
+    """Guarda lo que devolvió el Cliente PC: la ruta de la captura (SCREENSHOT)
+    o el texto "OK"/"ERROR: ..." (CAMBIAR_RED) -- ver el docstring del módulo."""
     with conexion_db() as conexion:
         conexion.execute(
             "UPDATE comandos_pc SET resultado = ? WHERE id = ?", (ruta_relativa, comando_id)

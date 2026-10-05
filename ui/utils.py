@@ -2,9 +2,11 @@
 utils.py
 =========
 Funciones chiquitas que se repiten en varias pantallas: dar formato a
-números como pesos argentinos, mostrar cuadros de mensaje (avisos,
-errores, confirmaciones), y un decorador para que ningún error
-inesperado rompa una pantalla en silencio.
+números (pesos argentinos, tiempos), mostrar cuadros de mensaje (avisos,
+errores, confirmaciones), un decorador para que ningún error inesperado
+rompa una pantalla en silencio, y los ajustes de widgets que hay que
+repetir en cada formulario (clase de botón, salto con Enter, sin botón
+por defecto).
 """
 
 import functools
@@ -13,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QMessageBox, QWidget
+from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QMessageBox, QPushButton, QWidget
 
 import database
 
@@ -149,6 +151,22 @@ def aplicar_clase(widget, clase: str):
     widget.style().polish(widget)
 
 
+def sin_boton_por_defecto(ventana):
+    """
+    Le saca a todos los botones de `ventana` la condición de "botón por
+    defecto". Se llama una vez, al terminar de armar la interfaz.
+
+    Sin esto, Qt marca como "default" el primer botón que se arma en cada
+    diálogo, y apretar Enter en cualquier campo de texto lo activa como si
+    se hubiera hecho clic en él. Se vio en Ventas: escanear un código de
+    barras y apretar Enter abría la búsqueda F5, porque ese era el primer
+    botón de la pantalla.
+    """
+    for boton in ventana.findChildren(QPushButton):
+        boton.setAutoDefault(False)
+        boton.setDefault(False)
+
+
 class _FiltroEnter(QObject):
     """Intercepta la tecla Enter/Intro en el widget donde se instala y,
     en vez de dejarla pasar, ejecuta `accion` (ver `encadenar_enter`)."""
@@ -204,19 +222,27 @@ def encadenar_enter(*widgets, accion_final=None):
         _widget_de_teclado(widget).installEventFilter(filtro)
 
 
+# Cuadros de mensaje. Siempre usarlos en vez de QMessageBox directo, así el
+# tono (error / aviso / información) queda igual en todas las pantallas.
+
 def mostrar_error(padre, titulo: str, mensaje: str):
+    """Algo no se pudo hacer (dato inválido, falta un campo, etc.)."""
     QMessageBox.critical(padre, titulo, mensaje)
 
 
 def mostrar_aviso(padre, titulo: str, mensaje: str):
+    """Advertencia que no impide seguir."""
     QMessageBox.warning(padre, titulo, mensaje)
 
 
 def mostrar_info(padre, titulo: str, mensaje: str):
+    """Confirmación de que algo salió bien."""
     QMessageBox.information(padre, titulo, mensaje)
 
 
 def confirmar(padre, titulo: str, mensaje: str) -> bool:
+    """Pregunta Sí/No (No por defecto, para que un Enter apurado no
+    confirme algo destructivo). True si eligió Sí."""
     respuesta = QMessageBox.question(
         padre, titulo, mensaje, QMessageBox.Yes | QMessageBox.No, QMessageBox.No
     )

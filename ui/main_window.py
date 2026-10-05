@@ -24,9 +24,12 @@ del rol y los permisos:
   Estaciones (agregar/quitar/renombrar PC), Gestionar Bonos (catálogo de
   walk-ins), Tarifa por Hora de Socios, Gestionar Bonos de Socios y
   Accesos de Admin (registro de logins de administradores).
-  Pedido explícito del dueño (2026-09-28): editar estos catálogos es
-  tarea de super admin; usarlos (asignar un bono, cobrar con la tarifa
-  ya fijada) sigue delegable con `permiso_control_pcs`.
+  Pedido explícito del dueño: editar estos catálogos es tarea de super
+  admin; usarlos (asignar un bono, cobrar con la tarifa ya fijada) sigue
+  delegable con `permiso_control_pcs`.
+
+Cada módulo se abre como un diálogo modal (QDialog.exec) encima de esta
+ventana.
 """
 
 from PySide6.QtWidgets import (
@@ -46,10 +49,12 @@ from ui.reportes_window import ReportesWindow
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs, DialogoGestionEstaciones, DialogoGestionBonos
 from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
-from ui.utils import aplicar_clase
+from ui.utils import aplicar_clase, sin_boton_por_defecto
 
 
 class MainWindow(QMainWindow):
+    """Barra de botones (según rol y permisos) y, debajo, la grilla de PCs."""
+
     def __init__(self, usuario, al_cerrar_sesion):
         """
         `usuario` es la fila del usuario logueado (con su rol).
@@ -61,9 +66,8 @@ class MainWindow(QMainWindow):
         self.es_admin = dominio.es_admin(usuario)
         # "Encargado" no es un rol propio en la base — es un Admin, o una
         # Empleada con al menos uno de los permisos de administración de
-        # usuarios_repo.PERMISOS_EMPLEADA. Es el mismo criterio que ya
-        # armaba la sección "extras" del menú viejo, ahora usado para
-        # decidir si se ve el botón "Administrar Kiosko".
+        # usuarios_repo.PERMISOS_EMPLEADA. Decide si se ve el botón
+        # "Administrar Kiosko".
         self._es_encargado = self.es_admin or any(
             usuarios_repo.tiene_permiso(usuario, clave_permiso)
             for clave_permiso, _ in usuarios_repo.PERMISOS_EMPLEADA
@@ -75,9 +79,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"CYBERBIOS - {self.usuario['nombre']} ({self.usuario['rol']})")
         self.resize(980, 680)
 
-        # Misma tarjeta blanca "#encabezadoInicio" que usaba el menú
-        # viejo (hoja de estilos global en main.py), ahora como barra
-        # horizontal en vez de encabezado vertical.
+        # Tarjeta blanca "#encabezadoInicio" (estilo en la hoja de estilos
+        # global de main.py), armada como barra horizontal.
         barra = QFrame()
         barra.setObjectName("encabezadoInicio")
         layout_barra = QHBoxLayout()
@@ -115,8 +118,7 @@ class MainWindow(QMainWindow):
 
     def _agregar_boton_barra(self, layout, texto, funcion, clase=None):
         """Botón de la barra superior: alto fijo, ancho según el texto
-        (a diferencia de los botones grandes y centrados del viejo menú
-        principal, acá van en fila y no hace falta que midan todos igual)."""
+        (van en fila, así que no hace falta que midan todos igual)."""
         boton = QPushButton(texto)
         boton.setFixedHeight(38)
         if clase:
@@ -126,15 +128,13 @@ class MainWindow(QMainWindow):
         return boton
 
     def closeEvent(self, evento):
-        # Reemplaza al self.finished.connect(...) que usaban los diálogos
-        # con timer propio: QMainWindow no tiene esa señal, closeEvent es
-        # el equivalente para parar el refresco automático al cerrar.
+        # QMainWindow no tiene la señal `finished` de los QDialog, así que
+        # el refresco automático de la grilla de PCs se frena acá, al cerrar.
         self.panel_pcs.detener_actualizacion()
         super().closeEvent(evento)
 
     # -----------------------------------------------------------------
-    # Cada módulo se abre como una ventana aparte (QDialog), igual que
-    # en el sistema original.
+    # Abrir cada módulo (diálogos modales)
     # -----------------------------------------------------------------
 
     def _abrir_ventas(self):
@@ -174,16 +174,13 @@ class MainWindow(QMainWindow):
 
 class AdministrarKioskoWindow(QDialog):
     """
-    Agrupa las pantallas de gestión que antes eran botones sueltos del
-    menú principal — ahora detrás de un único acceso ("Administrar
-    Kiosko") visible solo para encargados (ver MainWindow._es_encargado).
-    Mismo criterio de permisos que usaba el menú viejo: un Admin las ve
-    todas, una Empleada solo las que tenga habilitadas en
-    usuarios_repo.PERMISOS_EMPLEADA.
+    Agrupa las pantallas de gestión del kiosko detrás de un único acceso
+    ("Administrar Kiosko"), visible solo para encargados (ver
+    MainWindow._es_encargado). Un Admin las ve todas; una Empleada solo las
+    que tenga habilitadas en usuarios_repo.PERMISOS_EMPLEADA.
     """
 
-    # Mismo criterio que el viejo menú principal: todos los botones del
-    # mismo tamaño para que la pantalla quede prolija.
+    # Todos los botones del mismo tamaño para que la pantalla quede prolija.
     ANCHO_BOTON = 320
     ALTO_BOTON = 48
 
@@ -226,9 +223,7 @@ class AdministrarKioskoWindow(QDialog):
         layout.addStretch()
         self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _agregar_boton(self, layout, texto, funcion, clase=None):
         boton = QPushButton(texto.upper())
@@ -260,18 +255,17 @@ class AdministrarKioskoWindow(QDialog):
 
 class ConfiguracionAdminWindow(QDialog):
     """
-    Agrupa las cuatro pantallas de EDICIÓN de catálogos que antes vivían
-    repartidas en "Gestionar PCs" y "Administración de Miembros":
-    Estaciones, Bonos de Tiempo (walk-in), Tarifa por Hora de Socios y
-    Bonos de Socios -- más "Accesos de Admin" (quién entró con una cuenta
-    de administrador, ver ui/accesos_admin_window.py). Exclusiva de ADMIN,
-    sin excepción — no hay permiso
-    delegable para esto (ver MainWindow._armar_interfaz). *Usar* esos
-    catálogos (asignarle un bono ya creado a una PC, cargar saldo con la
-    tarifa ya fijada) sigue abierto a cualquier operador con
-    permiso_control_pcs desde la grilla de PCs y "Miembros" — separación
-    pedida explícitamente por el dueño (2026-09-28): editar el catálogo
-    es tarea de super admin, usarlo no.
+    Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
+    Tiempo (walk-in), Tarifa por Hora de Socios y Bonos de Socios -- más
+    "Accesos de Admin" (quién entró con una cuenta de administrador, ver
+    ui/accesos_admin_window.py). Exclusiva de ADMIN, sin excepción: no hay
+    permiso delegable para esto (ver MainWindow._armar_interfaz).
+
+    *Usar* esos catálogos (asignarle un bono ya creado a una PC, cargar
+    saldo con la tarifa ya fijada) sigue abierto a cualquier operador con
+    permiso_control_pcs desde la grilla de PCs y "Miembros". Separación
+    pedida explícitamente por el dueño: editar el catálogo es tarea de
+    super admin, usarlo no.
     """
 
     ANCHO_BOTON = 320
@@ -302,9 +296,7 @@ class ConfiguracionAdminWindow(QDialog):
         layout.addStretch()
         self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _agregar_boton(self, layout, texto, funcion, clase=None):
         boton = QPushButton(texto.upper())

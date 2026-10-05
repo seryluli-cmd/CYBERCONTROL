@@ -2,9 +2,10 @@
 usuarios_repo.py
 =================
 "Repositorio" de usuarios: todas las funciones que leen o escriben en la
-tabla `usuarios`. El resto del programa (pantallas, lógica de login) usa
-estas funciones en vez de escribir SQL directamente, así si algún día
-cambia cómo se guardan los usuarios, solo hay que tocar este archivo.
+tabla `usuarios`, además del login y el historial de logins. El resto del
+programa (pantallas, lógica de login) usa estas funciones en vez de
+escribir SQL directamente, así si algún día cambia cómo se guardan los
+usuarios, solo hay que tocar este archivo.
 """
 
 import sqlite3
@@ -12,16 +13,18 @@ from datetime import datetime
 import dominio
 from database import conexion_db, hash_clave, verificar_clave
 
-# (columna en `usuarios`, etiqueta para mostrar en la UI) de cada
-# permiso que un Admin puede sumarle a una empleada además de lo que ya
-# puede hacer por defecto (Ventas / operar la grilla de PCs / Caja /
-# Cierre de Turno / Cambiar mi Clave — asignarle un bono a una PC es una
-# venta más, no un privilegio). Un ADMIN los tiene todos siempre — ver
-# tiene_permiso() — y no se le pueden sacar desde acá. "Usuarios"
-# (crear/borrar gente, resetear claves) y "Anular Venta" quedan
-# exclusivos de ADMIN a propósito, no están en esta lista. Todos estos
-# permisos son lo que separa a un "encargado" de un empleado común en
-# ui/main_window.py: quien tenga al menos uno ve "Administrar Kiosko".
+# Permisos que un Admin puede sumarle a una empleada: (columna en
+# `usuarios`, etiqueta para mostrar en la UI).
+#
+# - Sin ningún permiso, una empleada ya puede: Ventas, operar la grilla de
+#   PCs (asignarle un bono a una PC es una venta más, no un privilegio),
+#   Caja, Cierre de Turno y Cambiar mi Clave.
+# - Un ADMIN los tiene todos siempre (ver tiene_permiso) y no se le pueden
+#   sacar desde acá.
+# - "Usuarios" (crear/borrar gente, resetear claves) y "Anular Venta" son
+#   exclusivos de ADMIN a propósito: no están en esta lista.
+# - Tener al menos uno de estos permisos es lo que separa a un "encargado"
+#   de una empleada común en ui/main_window.py: ve "Administrar Kiosko".
 PERMISOS_EMPLEADA = [
     ("permiso_articulos", "Artículos (crear/editar productos y precios)"),
     ("permiso_compras", "Compras (cargar mercadería / stock)"),
@@ -177,6 +180,7 @@ def listar_usuarios(incluir_inactivos: bool = False):
 
 
 def obtener_usuario(usuario_id: int):
+    """La fila de un usuario (activo o no), o None si no existe."""
     with conexion_db() as conexion:
         return conexion.execute(
             "SELECT * FROM usuarios WHERE id = ?", (usuario_id,)

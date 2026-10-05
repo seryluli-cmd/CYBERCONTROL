@@ -11,14 +11,24 @@ Miembro se loguee solo) es una venta más del día a día, igual que
 
 Si la lista aparece vacía no es un error: significa que todavía no se
 cargó ninguna fila en `estaciones` (ver "Gestionar Estaciones" en
-AdministrarKioskoWindow, ui/main_window.py) — sin estaciones no hay nada
+"Configuración ADMIN", ui/main_window.py) — sin estaciones no hay nada
 que listar acá.
 
 Los diálogos para ADMINISTRAR los catálogos de Estaciones y de Bonos de
 Tiempo (`DialogoGestionEstaciones`/`DialogoGestionBonos`, mismo espíritu
 que "Gestionar Rubros" en Artículos) también viven acá, pero se abren
-desde `AdministrarKioskoWindow` (ui/main_window.py), no desde este panel
-— esa es la parte reservada a encargados.
+desde `ConfiguracionAdminWindow` (ui/main_window.py), exclusiva de ADMIN,
+no desde este panel.
+
+Qué hay en el archivo, de arriba hacia abajo:
+- `PanelControlPcs`: la grilla, el menú contextual (clic derecho) y el
+  refresco automático; arma las filas con los colores de estado de abajo.
+- `PanelDetalleEstacion` y `PanelActividad`: el panel lateral y el log.
+- Diálogos del menú contextual: `DialogoLoginMiembro`, `DialogoCaptura`,
+  `DialogoCambiarRed` (+ `DialogoEditarGateways`), `DialogoTrasladarSesion`
+  y `DialogoVolumen`.
+- Diálogos de administración (Configuración ADMIN):
+  `DialogoGestionEstaciones` y `DialogoGestionBonos` (+ `DialogoBono`).
 """
 
 import os
@@ -40,8 +50,9 @@ from control_pcs.repositories import (
 )
 from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
-    formato_pesos, formato_tiempo, formato_transcurrido, mostrar_error, mostrar_info, confirmar, manejar_errores,
-    aplicar_clase, encadenar_enter,
+    formato_pesos, formato_tiempo, formato_transcurrido, mostrar_error,
+    mostrar_info, confirmar, manejar_errores, aplicar_clase, encadenar_enter,
+    sin_boton_por_defecto,
 )
 
 # Cuántos segundos se espera, como máximo, la captura de pantalla que
@@ -77,15 +88,15 @@ COLOR_ESPERANDO_CLIENTE = QColor("#DCE7FD")
 # rojo de "Sin conexión" (apagada) para que se note cuál es cuál.
 COLOR_CLIENTE_CERRADO_ADMIN = QColor("#E6D5F5")
 
-# Alerta especial (pedido explícito del dueño, 2026-09-30): sesión activa
-# (Bono o Miembro) en una estación que dejó de estar "enlazada" -- el
-# Cliente PC de esa PC no reportó conexión en el último UMBRAL_ENLACE_SEGUNDOS
-# a pesar de tener tiempo pago corriendo. A diferencia del rojo fijo de
-# "Sin conexión" (esa es sin sesión, sin apuro: la PC está apagada o
-# libre), acá SÍ hay plata/tiempo en juego sin que nadie lo esté viendo
-# -- puede ser que un cliente haya encontrado la forma de cerrar el
-# Cliente PC para seguir usando la PC sin que se le descuente. Parpadea entre
-# estos dos colores para llamar la atención del operador (ver
+# Alerta especial (pedido explícito del dueño): sesión activa (Bono o
+# Miembro) en una estación que dejó de estar "enlazada" -- el Cliente PC de
+# esa PC no reportó conexión en el último UMBRAL_ENLACE_SEGUNDOS a pesar de
+# tener tiempo pago corriendo. A diferencia del rojo fijo de "Sin conexión"
+# (sin sesión, sin apuro: la PC está apagada o libre), acá SÍ hay
+# plata/tiempo en juego sin que nadie lo esté viendo -- puede ser que un
+# cliente haya encontrado la forma de cerrar el Cliente PC para seguir
+# usando la PC sin que se le descuente. Parpadea entre estos dos colores
+# para llamar la atención del operador (ver
 # PanelControlPcs._alternar_parpadeo) en vez de quedar en el amarillo
 # normal de "En uso", que pasaría desapercibido.
 COLOR_ALERTA_SESION_SIN_CLIENTE = QColor("#F5A3A8")
@@ -135,9 +146,8 @@ class PanelControlPcs(QWidget):
     instancia una sola vez por sesión, como `centralWidget` de
     `ui/main_window.py:MainWindow` — no es un diálogo que se abre y se
     cierra, por eso el timer de refresco lo para quien lo contiene
-    (`detener_actualizacion`, llamado desde `MainWindow.closeEvent`) en
-    vez de colgarse de una señal `finished` como antes (QWidget no la
-    tiene, esa es cosa de QDialog).
+    (`detener_actualizacion`, llamado desde `MainWindow.closeEvent`):
+    QWidget no tiene la señal `finished` de QDialog.
     """
 
     def __init__(self, usuario, parent=None):
@@ -166,6 +176,8 @@ class PanelControlPcs(QWidget):
         self._timer_parpadeo.start()
 
     def detener_actualizacion(self):
+        """Frena los dos timers (refresco y parpadeo); lo llama MainWindow
+        al cerrarse para que no sigan corriendo contra widgets destruidos."""
         self._timer.stop()
         self._timer_parpadeo.stop()
 
@@ -530,9 +542,7 @@ class PanelDetalleEstacion(QFrame):
         layout.addWidget(self.boton_finalizar)
         layout.addStretch()
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def mostrar(self, item):
         """`item` es un elemento de pcs_repo.estado_estaciones(), o None
@@ -575,6 +585,8 @@ class PanelDetalleEstacion(QFrame):
             boton = QPushButton(f"{bono['nombre']} — {formato_pesos(bono['precio'])}")
             boton.setCheckable(True)
             boton.setChecked(indice == 0)
+            # Se crean después de _armar_interfaz, así que no los alcanzó
+            # sin_boton_por_defecto: hay que hacerlo uno por uno.
             boton.setAutoDefault(False)
             boton.setDefault(False)
             self.grupo_bonos.addButton(boton, bono["id"])
@@ -695,9 +707,7 @@ class DialogoLoginMiembro(QDialog):
         layout.addLayout(botones)
         self.setLayout(layout)
         encadenar_enter(self.campo_usuario, self.campo_clave, accion_final=self._confirmar)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
         self.campo_usuario.setFocus()
 
     @manejar_errores
@@ -737,14 +747,13 @@ class DialogoCaptura(QDialog):
         self.etiqueta_imagen.setAlignment(Qt.AlignCenter)
         boton_cerrar = QPushButton("Cerrar")
         boton_cerrar.clicked.connect(self.close)
-        boton_cerrar.setAutoDefault(False)
-        boton_cerrar.setDefault(False)
 
         layout = QVBoxLayout()
         layout.addWidget(self.etiqueta_estado)
         layout.addWidget(self.etiqueta_imagen, 1)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
+        sin_boton_por_defecto(self)
 
         self.comando_id = comandos_pc_repo.encolar_comando(estacion["id"], comandos_pc_repo.TIPO_SCREENSHOT)
         self._segundos_esperados = 0
@@ -815,9 +824,7 @@ class DialogoCambiarRed(QDialog):
         boton_cerrar.clicked.connect(self.close)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
         self.comando_id = None
         self._segundos_esperados = 0
@@ -905,9 +912,7 @@ class DialogoEditarGateways(QDialog):
         layout.addWidget(boton_guardar)
         layout.addWidget(boton_cancelar)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _agregar_fila(self, nombre, ip):
         fila = self.tabla.rowCount()
@@ -1001,9 +1006,7 @@ class DialogoTrasladarSesion(QDialog):
         layout.addStretch()
         layout.addLayout(botones)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
         self._actualizar_efecto()
 
     def _actualizar_efecto(self):
@@ -1067,9 +1070,7 @@ class DialogoVolumen(QDialog):
         layout.addWidget(boton_aplicar)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _aplicar(self):
@@ -1085,6 +1086,9 @@ class DialogoVolumen(QDialog):
 
 
 class DialogoGestionEstaciones(QDialog):
+    """Alta, renombre y baja de estaciones, IP de cada una y las dos claves
+    que usan los Clientes PC. Solo se llega desde Configuración ADMIN."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Gestionar Estaciones")
@@ -1163,9 +1167,7 @@ class DialogoGestionEstaciones(QDialog):
         layout.addWidget(boton_clave_admin)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
         self.campo_nuevo.setFocus()
 
     @manejar_errores
@@ -1316,6 +1318,10 @@ class DialogoGestionEstaciones(QDialog):
 
 
 class DialogoGestionBonos(QDialog):
+    """Catálogo de bonos de walk-ins (pcs_repo). Los de socios se gestionan
+    aparte, en miembros_window.DialogoGestionBonosMiembro. Solo se llega
+    desde Configuración ADMIN."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Gestionar Bonos de Tiempo")
@@ -1352,9 +1358,7 @@ class DialogoGestionBonos(QDialog):
         layout.addLayout(barra_botones)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar(self):
@@ -1453,9 +1457,7 @@ class DialogoBono(QDialog):
         self.setLayout(layout)
         encadenar_enter(self.campo_nombre, self.spin_horas, self.spin_minutos, self.spin_precio,
                          accion_final=self._guardar)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _cargar_datos(self, bono):
         self.campo_nombre.setText(bono["nombre"])

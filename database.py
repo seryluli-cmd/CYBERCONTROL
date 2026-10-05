@@ -6,11 +6,16 @@ Todo lo relacionado a la base de datos SQLite del sistema vive acá:
 - Cómo se conecta el resto del programa a ella.
 - El esquema completo (todas las tablas), con comentarios explicando
   para qué sirve cada una y cómo se relacionan entre sí.
-- Datos de ejemplo para poder probar el sistema apenas se instala.
+- Las migraciones (`_migrar_*`) que actualizan una base ya existente.
+- Los datos mínimos de la primera vez: un Administrador, el fondo de
+  cambio, la tarifa de socios y los rubros de fábrica.
 
 Usamos SQLite porque es un archivo único en el disco (no hace falta instalar
 ningún "servidor" de base de datos aparte), y funciona perfecto sin
 internet, que es un requisito clave de este sistema.
+
+Todo cambio de esquema va como migración idempotente (segura de correr en
+cada arranque), nunca borrando la base: ver CLAUDE.md, regla 6.
 """
 
 import sqlite3
@@ -99,9 +104,8 @@ def conexion_db():
     excepción en el medio (por ejemplo, una violación de clave foránea
     al intentar borrar un artículo con historial), hace rollback en vez
     de dejar cambios a medio guardar, y siempre cierra la conexión pase
-    lo que pase — antes cada función abría y cerraba la conexión a mano,
-    y un error en el medio podía dejarla abierta sin guardar ni
-    deshacer nada.
+    lo que pase: un error en el medio nunca deja una conexión abierta sin
+    guardar ni deshacer nada.
     """
     conexion = get_connection()
     try:
@@ -304,10 +308,11 @@ def inicializar_base_de_datos():
     # -------------------------------------------------------------------
     # VENTAS (facturación)
     # -------------------------------------------------------------------
-    # "turno" se calcula automáticamente según la hora de la venta
-    # (MAÑANA 06-14, TARDE 14-22, NOCHE 22-06), sin importar qué usuario
-    # esté logueado — así el reporte "ventas por turno" es siempre exacto,
-    # incluso si una empleada llega tarde a su horario.
+    # "turno" se calcula automáticamente según la hora de la venta (ver
+    # turnos.calcular_turno: 3 turnos de 8 hs, 2 de 12 hs los domingos),
+    # sin importar qué usuario esté logueado — así el reporte "ventas por
+    # turno" es siempre exacto, incluso si una empleada llega tarde a su
+    # horario.
     #
     # "estado" es CONFIRMADA o ANULADA. Nunca se borra una venta: si el
     # Admin necesita corregir un error después de cobrada, se anula (queda
@@ -605,18 +610,15 @@ def inicializar_base_de_datos():
     """)
     _migrar_columna_miembro_en_sesiones(conexion)
 
-    # En una base que ya tenía "movimientos_saldo_miembro" de antes de
-    # que existiera "bonos_miembro" (2026-09-28), el CREATE TABLE de
-    # arriba no le tocó nada -- la tabla sigue con bono_id apuntando a
-    # bonos_tiempo, la referencia vieja. Necesita su propia migración
-    # (reconstruir la tabla, no un ALTER TABLE) porque SQLite no deja
-    # cambiar el REFERENCES de una columna que ya existe.
+    # Una base que ya tenía "movimientos_saldo_miembro" de antes de que
+    # existiera "bonos_miembro" sigue con bono_id apuntando a bonos_tiempo
+    # (el CREATE TABLE de arriba no toca una tabla existente). Necesita su
+    # propia migración -- reconstruir la tabla, no un ALTER TABLE -- porque
+    # SQLite no deja cambiar el REFERENCES de una columna ya creada.
     _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion)
 
-    # Mismo motivo que la migración de arriba, pero para el CHECK de
-    # "tipo" en vez del REFERENCES de "bono_id": una base que ya tenía la
-    # tabla de antes de que existiera ANULACION (2026-09-29) sigue con el
-    # CHECK viejo, y el CREATE TABLE de arriba tampoco la toca.
+    # Mismo motivo, pero para el CHECK de "tipo": una base creada antes de
+    # que existiera el tipo ANULACION sigue con el CHECK viejo.
     _migrar_check_tipo_en_movimientos_saldo_miembro(conexion)
 
     # Esta migración necesita leer "sesion_bonos" y "movimientos_saldo_miembro"
@@ -666,12 +668,12 @@ def inicializar_base_de_datos():
 
 def _migrar_columnas_permisos(conexion: sqlite3.Connection):
     """
-    Para una base creada antes de que existieran los permisos por
-    empleada (Artículos/Compras/Consulta de Ventas/Reportes/Control de
-    Cierres): agrega las columnas "permiso_*" que falten con
-    ALTER TABLE, en vez de perder la base ya existente. Hace falta este
-    paso aparte porque CREATE TABLE IF NOT EXISTS no toca una tabla que
-    ya existe, aunque le falten columnas nuevas del esquema de arriba.
+    Agrega a "usuarios" las columnas "permiso_*" que falten (ver
+    usuarios_repo.PERMISOS_EMPLEADA), para una base creada antes de que
+    existiera cada permiso. Hace falta este paso aparte porque CREATE TABLE
+    IF NOT EXISTS no toca una tabla que ya existe, aunque le falten
+    columnas nuevas del esquema de arriba. Al sumar un permiso nuevo hay
+    que agregarlo en este listado Y en el CREATE TABLE.
     """
     columnas_actuales = {fila["name"] for fila in conexion.execute("PRAGMA table_info(usuarios)")}
     for columna in (
@@ -745,57 +747,39 @@ def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
 
 def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Connection):
     """
-    Para una base creada antes de que existiera "bonos_miembro"
-    (2026-09-28): movimientos_saldo_miembro.bono_id quedó con la
-    referencia vieja (bonos_tiempo, el catálogo de walk-ins) grabada en
-    el propio esquema de la tabla -- CREATE TABLE IF NOT EXISTS no la
-    toca porque la tabla ya existe (mismo motivo que las demás
-    migraciones de este archivo), y a diferencia de agregar una columna,
-    SQLite no deja cambiar el REFERENCES de una que ya existe con
-    ALTER TABLE. Con PRAGMA foreign_keys en ON (ver conexion_db()), sin
-    esta migración miembros_repo.cargar_saldo_por_bono rompía con
-    "FOREIGN KEY constraint failed" apenas se cargara un bono de socios
-    cuyo id no existiera también en bonos_tiempo -- silencioso al
-    principio (los dos catálogos arrancan en 1) y recién notorio cuando
-    las dos secuencias de ids se separan.
+    Para una base creada antes de que existiera "bonos_miembro": hace que
+    movimientos_saldo_miembro.bono_id apunte a ese catálogo y no al viejo
+    (bonos_tiempo, el de walk-ins). La referencia queda grabada en el
+    propio esquema de la tabla; CREATE TABLE IF NOT EXISTS no la toca
+    porque la tabla ya existe, y SQLite no deja cambiar un REFERENCES con
+    ALTER TABLE. Sin esta migración, cargar un bono de socios cuyo id no
+    existiera también en bonos_tiempo rompía con "FOREIGN KEY constraint
+    failed" (pasa recién cuando las dos secuencias de ids se separan).
 
-    Se reconstruye la tabla entera (única forma soportada por SQLite de
-    cambiar una referencia ya grabada): crear la nueva con el esquema
-    correcto, copiar las filas tal cual, borrar la vieja, y listo. Mira
-    la definición ya guardada en sqlite_master para saber si hace falta
-    -- segura de correr en cada arranque, no repite el trabajo si ya se
-    migró o si la tabla es nueva (creada directo con el esquema de
-    arriba).
+    Se reconstruye la tabla entera (única forma que soporta SQLite):
+    renombrar la vieja, crear la nueva con el esquema correcto, copiar las
+    filas tal cual y borrar la vieja. Mira la definición guardada en
+    sqlite_master para saber si hace falta, así que es segura de correr en
+    cada arranque y no hace nada en una base nueva.
 
-    Dos casos más, además del cambio de REFERENCES en sí, para que esta
-    migración no pueda dejar movimientos históricos fuera del historial
-    visible (bug reportado 2026-09-29):
+    Dos casos borde, para que la migración nunca deje movimientos
+    históricos fuera del historial visible:
 
-    1. **Corte a mitad de camino.** Si el programa se cierra entre que
-       esta función renombra la tabla vieja y termina de copiarla (por
-       ejemplo, un corte de luz), el PRÓXIMO arranque encuentra la tabla
-       "movimientos_saldo_miembro" ya recreada -- por el propio
-       CREATE TABLE IF NOT EXISTS de inicializar_base_de_datos(), que
-       corre ANTES que esta función en cada arranque -- pero VACÍA,
-       mientras el historial real quedó atrapado en
-       "movimientos_saldo_miembro_viejo" sin que nadie vuelva a mirarla.
-       Guiarse solo por "¿la tabla ya tiene el esquema nuevo?" daba por
-       terminada una migración que en realidad se cortó. Por eso primero
-       se chequea si queda una "_viejo" pendiente de un corte anterior, y
-       si es así se la termina de absorber en vez de darla por perdida.
-    2. **bono_id heredado que ya no existe en el catálogo nuevo.** Bajo
-       el esquema viejo, un bono_id era válido contra bonos_tiempo; al
-       copiarlo tal cual a la tabla nueva (bono_id -> bonos_miembro), con
-       PRAGMA foreign_keys en ON, la fila podía no tener ningún bono con
-       ese mismo id en el catálogo nuevo -- silencioso al principio (los
-       dos catálogos arrancan en 1) y recién notorio cuando las dos
-       secuencias de ids se separan (ver el resto de este docstring). Eso
-       rompía la migración ENTERA con "FOREIGN KEY constraint failed" a
-       mitad de copiar, dejando la base sin migrar. Por eso el chequeo de
-       FK se apaga solo durante esta copia puntual de datos históricos
-       (nunca durante el uso normal del programa): preservar el bono_id
-       tal cual, aunque ya no matchee ningún bono vigente, es mejor que
-       perder el movimiento entero.
+    1. **Corte a mitad de camino.** Si el programa se cierra (por ejemplo,
+       un corte de luz) entre el RENAME y el final de la copia, el
+       próximo arranque ve la tabla "movimientos_saldo_miembro" recreada
+       pero VACÍA -- la recrea el CREATE TABLE IF NOT EXISTS de
+       inicializar_base_de_datos(), que corre antes que esta función --
+       con el historial real atrapado en "movimientos_saldo_miembro_viejo".
+       Por eso no alcanza con preguntar "¿ya tiene el esquema nuevo?":
+       también se chequea si quedó una "_viejo" pendiente, y se la
+       termina de absorber.
+    2. **bono_id heredado que ya no existe en el catálogo nuevo.** Con
+       foreign_keys en ON, copiar un bono_id que no matchea ningún bono de
+       bonos_miembro rompía la migración entera a mitad de la copia. Por
+       eso el chequeo de FK se apaga SOLO durante esta copia de datos
+       históricos (nunca en el uso normal): conservar el bono_id aunque ya
+       no apunte a nada vigente es mejor que perder el movimiento.
     """
     tabla_vieja_pendiente = conexion.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro_viejo'"
@@ -856,22 +840,19 @@ def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Conne
 def _migrar_check_tipo_en_movimientos_saldo_miembro(conexion: sqlite3.Connection):
     """
     Agrega 'ANULACION' a los tipos válidos de movimientos_saldo_miembro.tipo
-    (el CHECK (tipo IN (...)) del esquema) -- lo necesita
-    miembros_repo.anular_carga para poder revertir del saldo de un socio
-    una CARGA cuya venta se anuló desde Consulta de Ventas, dejando un
+    (el CHECK (tipo IN (...)) del esquema). Lo necesita
+    miembros_repo.anular_carga para revertir del saldo de un socio una
+    CARGA cuya venta se anuló desde Consulta de Ventas, dejando un
     movimiento propio en el ledger en vez de disimularlo como un CONSUMO o
-    un REINTEGRO que no fueron (bug reportado 2026-09-29: antes, anular
-    esa venta le sacaba la plata del cierre/caja pero le dejaba los
-    minutos intactos al socio).
+    un REINTEGRO que no fueron.
 
     SQLite no deja tocar un CHECK ya grabado con ALTER TABLE, así que se
-    reconstruye la tabla entera -- mismo patrón, y mismas dos
-    salvaguardas (corte a mitad de camino / tabla "_viejo" pendiente de
-    un arranque anterior), que _migrar_referencia_bono_en_movimientos_saldo_miembro
-    (ver esa función para el detalle de cada una). Esta corre siempre
-    DESPUÉS en inicializar_base_de_datos(), así que el REFERENCES de
-    bono_id puede llegar ya corregido o no -- esta migración no lo toca,
-    solo agrega el valor nuevo al CHECK, preservando el que ya esté.
+    reconstruye la tabla entera: mismo patrón y mismas dos salvaguardas
+    (corte a mitad de camino, "_viejo" pendiente) que
+    _migrar_referencia_bono_en_movimientos_saldo_miembro -- ver esa
+    función para el detalle. Corre siempre DESPUÉS de aquella, así que el
+    REFERENCES de bono_id puede llegar ya corregido o no: esta migración
+    lo conserva tal cual y solo agrega el valor nuevo al CHECK.
     """
     tabla_vieja_pendiente = conexion.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro_viejo'"

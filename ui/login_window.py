@@ -100,14 +100,10 @@ class LoginWindow(QWidget):
         boton_entrar.clicked.connect(self._intentar_ingresar)
 
         # Tarjeta blanca centrada, con borde suave, que agrupa todo el
-        # formulario — le da al Login una identidad propia en vez de ser
-        # un formulario suelto sobre el fondo de la ventana. El estilo de
-        # esta tarjeta (fondo blanco, borde redondeado) está definido en
-        # la hoja de estilos GLOBAL de main.py (selector "#tarjetaLogin"),
-        # no acá con un setStyleSheet local: si se le pusiera acá, se
-        # rompería la cascada de la regla [clase="primario"] para el
-        # botón "Entrar" que va adentro (limitación del motor de QSS de
-        # Qt con hojas de estilo locales en un widget con hijos con clase).
+        # formulario. Su estilo vive en la hoja de estilos GLOBAL de main.py
+        # (selector "#tarjetaLogin"), no en un setStyleSheet local, por el
+        # mismo motivo que el fondo de arriba: una hoja local rompería la
+        # regla [clase="primario"] del botón "Entrar" que va adentro.
         tarjeta = QFrame()
         tarjeta.setObjectName("tarjetaLogin")
         layout_tarjeta = QVBoxLayout()

@@ -28,10 +28,13 @@ from database import conexion_db, hash_clave, verificar_clave
 from repositories import config_repo, ventas_repo
 from control_pcs.repositories import pcs_repo, bonos_miembro_repo
 
+# El saldo se carga y se gasta siempre en bloques de 30 minutos. Mismo valor
+# que pcs_repo.MINUTOS_POR_FRACCION (ver ahí por qué no se importa).
 MINUTOS_POR_FRACCION = 30
 
 
 def _validar_datos_miembro(usuario: str, nombre: str, dni: str, telefono: str):
+    """Todos son obligatorios salvo el email (único dato realmente opcional)."""
     if not usuario.strip():
         raise ValueError("El usuario no puede quedar vacío.")
     if not nombre.strip():
@@ -43,6 +46,8 @@ def _validar_datos_miembro(usuario: str, nombre: str, dni: str, telefono: str):
 
 
 def crear_miembro(usuario: str, clave: str, nombre: str, dni: str, telefono: str, email: str = None) -> int:
+    """Da de alta un socio (arranca con saldo 0) y devuelve su id. Levanta
+    ValueError si falta un dato o si ya existe otro socio con ese usuario."""
     _validar_datos_miembro(usuario, nombre, dni, telefono)
     if not clave:
         raise ValueError("El socio necesita una contraseña para poder loguearse solo.")
@@ -64,6 +69,9 @@ def crear_miembro(usuario: str, clave: str, nombre: str, dni: str, telefono: str
 
 def modificar_miembro(miembro_id: int, usuario: str, nombre: str, dni: str, telefono: str,
                        email: str = None, clave: str = None):
+    """Actualiza los datos de un socio. Si `clave` viene vacía se conserva
+    la anterior. No toca el saldo: eso solo se mueve con cargas, consumos y
+    reintegros (ver el ledger movimientos_saldo_miembro)."""
     _validar_datos_miembro(usuario, nombre, dni, telefono)
     try:
         with conexion_db() as conexion:
@@ -98,6 +106,7 @@ def desactivar_miembro(miembro_id: int):
 
 
 def listar_miembros(incluir_inactivos: bool = False):
+    """Los socios ordenados por nombre; por defecto solo los activos."""
     with conexion_db() as conexion:
         if incluir_inactivos:
             return conexion.execute("SELECT * FROM miembros ORDER BY nombre").fetchall()
@@ -105,6 +114,7 @@ def listar_miembros(incluir_inactivos: bool = False):
 
 
 def obtener_miembro(miembro_id: int):
+    """La fila de un socio (activo o no), o None si no existe."""
     with conexion_db() as conexion:
         return conexion.execute("SELECT * FROM miembros WHERE id = ?", (miembro_id,)).fetchone()
 
@@ -115,8 +125,7 @@ def _buscar_miembro_autenticado(conexion, usuario: str, clave: str):
     busca al socio por usuario/clave usando una conexión YA ABIERTA. Existe
     aparte de autenticar_miembro (que abre la suya propia) para que
     abrir_estacion_por_miembro pueda autenticar DENTRO de su propia
-    transacción con lock -- ver el porqué en su docstring -- en vez de en
-    una lectura aparte, ya cerrada y comiteada, como hacía antes.
+    transacción con lock -- ver el porqué en su docstring.
     """
     fila = conexion.execute(
         "SELECT * FROM miembros WHERE usuario = ? AND activo = 1", (usuario.strip(),)
@@ -215,12 +224,11 @@ def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):
     Anula, desde Consulta de Ventas, una venta que había cargado saldo a
     un socio (ver _registrar_carga) -- y revierte esa carga del saldo
     actual, todo en la MISMA transacción que la anulación en sí (ver
-    ventas_repo._anular_venta). Antes, "Anular" en Consulta de Ventas
-    (que no distingue de dónde vino cada venta) usaba
-    ventas_repo.anular_venta para TODAS: eso le sacaba la plata del
-    cierre/caja a una carga anulada, pero le dejaba los minutos intactos
-    al socio, como si el negocio le hubiera regalado ese tiempo (bug
-    reportado 2026-09-29).
+    ventas_repo._anular_venta). Anular solo la venta (ventas_repo.anular_venta)
+    le sacaría la plata del cierre/caja a una carga, pero le dejaría los
+    minutos intactos al socio, como si el negocio le hubiera regalado ese
+    tiempo; por eso Consulta de Ventas usa esta función para las ventas de
+    origen ALQUILER_PCS.
 
     La reversión queda topeada a lo que el socio TENGA en este momento:
     si ya gastó parte o todo el saldo cargado (abriendo una PC, ver
@@ -273,32 +281,24 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> di
 
     Autentica y consume el saldo DENTRO de una sola transacción con
     "BEGIN IMMEDIATE" (toma el lock de escritura de entrada, antes de
-    leer nada) -- antes, autenticar_miembro corría en su propia
-    transacción, ya cerrada y comiteada, antes de llegar acá. Con el
-    servidor de red atendiendo cada pedido en su propio hilo (ver
-    servidor_red.ThreadingHTTPServer), dos POST /login simultáneos del
-    MISMO socio (doble clic, reintento de red) podían autenticarse los
-    dos leyendo el mismo saldo_minutos, y terminar gastándolo los dos:
-    un socio con 60 minutos disponibles podía terminar con 120 asignados
-    entre dos sesiones. Con el lock tomado de entrada, el segundo pedido
-    espera a que el primero termine de commitear y recién ahí lee el
-    saldo ya en 0 -- coherente con MINUTOS_POR_FRACCION, no le alcanza y
-    se le rechaza en vez de duplicarle el tiempo.
+    leer nada). El servidor de red atiende cada pedido en su propio hilo
+    (ver servidor_red.ThreadingHTTPServer): sin el lock, dos POST /login
+    simultáneos del MISMO socio (doble clic, reintento de red) se
+    autenticaban leyendo el mismo saldo_minutos y lo gastaban los dos --
+    un socio con 60 minutos terminaba con 120 asignados entre dos
+    sesiones. Con el lock, el segundo pedido espera al primero, lee el
+    saldo ya en 0 y se rechaza en vez de duplicarle el tiempo.
     """
     ahora = datetime.now()
-    # Microsegundos, no segundos: este "fecha" es el que
+    # Microsegundos, no segundos: esta "fecha" es la que
     # pcs_repo._contribuciones_de_sesion usa para ordenar cronológicamente
     # los aportes de una sesión (bonos y consumos de saldo mezclados) y
-    # así saber, al cortarla antes de tiempo, a quién devolverle el tramo
-    # sin usar (ver pcs_repo._reintegros_por_miembro). El aporte de un
-    # bono se graba con microsegundos (ventas.fecha, ver ventas_repo). Si
-    # este quedara truncado a segundos, dos aportes -- un bono y este
-    # consumo -- caídos en el mismo segundo podían ordenarse al revés (el
-    # string truncado de este consumo "10:00:00" ordena ANTES que
-    # "10:00:00.900000" del bono, aunque el consumo real haya pasado
-    # después), y el tramo sin usar del socio terminaba atribuido al bono
-    # -- que nunca reintegra nada -- en vez de a él. Mismo motivo que
-    # ventas_repo.confirmar_venta / turnos_repo.cerrar_turno.
+    # saber, al cortarla antes de tiempo, a quién devolverle el tramo sin
+    # usar (ver pcs_repo._reintegros_por_miembro). El aporte de un bono se
+    # graba con microsegundos (ventas.fecha); si este consumo quedara
+    # truncado a segundos, "10:00:00" ordenaría ANTES que "10:00:00.900000"
+    # aunque haya pasado después, y el tramo del socio se atribuiría al
+    # bono, que nunca reintegra. Mismo motivo que ventas_repo.confirmar_venta.
     ahora_iso = ahora.isoformat(timespec="microseconds")
 
     with conexion_db() as conexion:

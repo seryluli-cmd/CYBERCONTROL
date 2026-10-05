@@ -1,30 +1,36 @@
 """
 compras_window.py
 ===================
-Ingreso de Mercadería (Compras). Solo la usa el Admin. Es la única
-pantalla del sistema que puede sumar stock: se escanea (o se tipea) el
-código de cada producto que llegó, se indica la cantidad, y al Aceptar
-se guarda todo junto y se actualiza el stock de cada artículo.
+Ingreso de Mercadería (Compras). La usa el Admin o una Empleada con
+`permiso_compras`. Es la única pantalla del sistema que puede sumar stock:
+se escanea (o se tipea) el código de cada producto que llegó, se indica la
+cantidad, y al Aceptar se guarda todo junto y se actualiza el stock de
+cada artículo.
 """
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QLabel, QHeaderView, QInputDialog
 )
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
 from datetime import datetime
 
 from repositories import articulos_repo, compras_repo
-from ui.utils import formato_pesos, mostrar_error, mostrar_info, manejar_errores, aplicar_clase
+from ui.utils import (
+    formato_pesos, mostrar_error, mostrar_info, manejar_errores, aplicar_clase,
+    sin_boton_por_defecto,
+)
 from ui.buscar_articulo import DialogoBuscarArticulo
 
 
 class ComprasWindow(QDialog):
+    """Arma una compra renglón por renglón en memoria; recién `registrar_compra`
+    (al Aceptar) graba algo y mueve el stock."""
+
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
-        self.lineas = []  # cada línea: {codigo, descripcion, marca, cantidad, costo_unitario, stock_antes, stock_despues}
+        self.lineas = []  # cada línea: {codigo, descripcion, cantidad, costo_unitario, stock_antes, stock_despues}
         self.setWindowTitle("Ingreso de Mercadería")
         self.resize(750, 450)
         self._armar_interfaz()
@@ -59,7 +65,7 @@ class ComprasWindow(QDialog):
         boton_borrar_linea = QPushButton("Supr (borrar renglón)")
         boton_borrar_linea.clicked.connect(self._borrar_linea)
 
-        # Atajos de teclado, igual que en el sistema actual.
+        # Atajos de teclado (los mismos que en Ventas).
         QShortcut(QKeySequence("F5"), self, activated=lambda: self._buscar_articulo("codigo"))
         QShortcut(QKeySequence("F6"), self, activated=lambda: self._buscar_articulo("descripcion"))
         QShortcut(QKeySequence("F7"), self, activated=lambda: self._buscar_articulo("marca"))
@@ -87,14 +93,7 @@ class ComprasWindow(QDialog):
         layout.addWidget(self.tabla)
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
         self.campo_codigo.setFocus()
 

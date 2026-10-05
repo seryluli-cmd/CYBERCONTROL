@@ -4,10 +4,10 @@ articulos_repo.py
 Funciones para leer y escribir artículos, marcas y rubros.
 
 Importante: ninguna función de este archivo modifica el "stock" de un
-artículo directamente (salvo la función interna que usa compras_repo y
-ventas_repo). Esto es a propósito: el stock solo se mueve a través de una
-Compra o de una Venta, nunca editando el artículo a mano, para que el
-historial de "Movimientos" siempre sea confiable.
+artículo. Esto es a propósito: el stock solo se mueve a través de una
+Compra (compras_repo.registrar_compra) o de una Venta
+(ventas_repo.confirmar_venta / anular_venta), nunca editando el artículo a
+mano, para que el historial de "Movimientos" siempre sea confiable.
 """
 
 import sqlite3
@@ -26,6 +26,9 @@ def listar_marcas():
 
 
 def crear_marca(nombre: str) -> int:
+    """Crea la marca y devuelve su id; si ya existía una con ese nombre,
+    devuelve el id de la existente en vez de fallar (así se puede "agregar
+    al vuelo" desde Artículos sin chequear antes)."""
     with conexion_db() as conexion:
         conexion.execute(
             "INSERT OR IGNORE INTO marcas (nombre) VALUES (?)", (nombre.strip(),)
@@ -42,6 +45,7 @@ def listar_rubros():
 
 
 def crear_rubro(nombre: str) -> int:
+    """Igual que crear_marca: devuelve el id, sea nuevo o ya existente."""
     with conexion_db() as conexion:
         conexion.execute(
             "INSERT OR IGNORE INTO rubros (nombre) VALUES (?)", (nombre.strip(),)
@@ -103,9 +107,9 @@ _SELECT_ARTICULOS = """
 
 def listar_articulos(texto_busqueda: str = ""):
     """
-    Devuelve todos los artículos, ordenados por descripción (igual que en
-    el sistema actual). Si se pasa `texto_busqueda`, filtra por código o
-    descripción que lo contengan (para el buscador de la grilla).
+    Devuelve todos los artículos, ordenados por descripción. Si se pasa
+    `texto_busqueda`, filtra por código o descripción que lo contengan
+    (para el buscador de la grilla).
     """
     with conexion_db() as conexion:
         if texto_busqueda:
@@ -118,11 +122,13 @@ def listar_articulos(texto_busqueda: str = ""):
 
 
 def buscar_por_codigo(codigo: str):
+    """El artículo con ESE código exacto (lo que lee la pistola), o None."""
     with conexion_db() as conexion:
         return conexion.execute(_SELECT_ARTICULOS + " WHERE a.codigo = ?", (codigo,)).fetchone()
 
 
 def buscar_por_descripcion(texto: str):
+    """Artículos cuya descripción CONTIENE `texto` (búsqueda parcial)."""
     with conexion_db() as conexion:
         patron = f"%{texto}%"
         return conexion.execute(
@@ -131,6 +137,7 @@ def buscar_por_descripcion(texto: str):
 
 
 def buscar_por_marca(texto: str):
+    """Artículos cuya marca CONTIENE `texto` (búsqueda parcial)."""
     with conexion_db() as conexion:
         patron = f"%{texto}%"
         return conexion.execute(
@@ -200,7 +207,7 @@ def obtener_movimientos(codigo: str, desde: str, hasta: str):
     Arma el historial de "Movimientos" de un artículo: junta las líneas
     de Compras (suman stock) y las líneas de Ventas confirmadas (restan
     stock) dentro de un rango de fechas, y las devuelve ordenadas por
-    fecha — igual que la pantalla "Movimientos" del sistema actual.
+    fecha. Las ventas anuladas no aparecen: ya repusieron su stock.
     """
     with conexion_db() as conexion:
         return conexion.execute(

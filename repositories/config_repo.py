@@ -2,9 +2,10 @@
 config_repo.py
 ================
 Acceso a la tabla `configuracion` (valores generales del sistema, tipo
-"clave -> valor"). Por ahora solo se usa para el fondo de cambio fijo,
-pero está pensada para poder sumar más configuraciones sin tener que
-cambiar el esquema de la base de datos.
+"clave -> valor"): el fondo de cambio y la tabla de tramos de tarifa de
+Socios. Está pensada para poder sumar más configuraciones sin tener que
+cambiar el esquema de la base de datos (otros repos de control_pcs/ la
+usan para sus propias claves, ver clientes_repo y config_red_repo).
 """
 
 import json
@@ -14,6 +15,7 @@ from database import conexion_db
 
 
 def obtener_fondo_cambio() -> float:
+    """El fondo de cambio que queda en el cajón al cerrar cada turno."""
     with conexion_db() as conexion:
         fila = conexion.execute(
             "SELECT valor FROM configuracion WHERE clave = 'fondo_cambio'"

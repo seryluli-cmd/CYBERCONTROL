@@ -123,6 +123,8 @@ _COLUMNA_AGRUPACION = {
 
 
 def _etiqueta_agrupacion(clave, agrupar_por: str) -> str:
+    """El texto que se muestra para una fila de resumen_por_origen, según
+    cómo se agrupó (`clave` es el valor de _COLUMNA_AGRUPACION)."""
     if agrupar_por == "turno":
         return clave.capitalize()
     if agrupar_por == "rango":
@@ -200,9 +202,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
     Ranking de TODO lo que se vendió entre dos fechas -- artículos de
     kiosko, bonos de tiempo de walk-ins, bonos de socios y cargas de
     saldo por tarifa -- con la cantidad total vendida y el importe total
-    facturado de cada uno. `ordenar_por` puede ser "cantidad" o "monto"
-    (equivalente a las dos variantes que tenía el sistema viejo: "por
-    cantidad" y "por monto").
+    facturado de cada uno. `ordenar_por` puede ser "cantidad" o "monto".
 
     Un artículo de kiosko deja su fila en venta_detalle, pero un bono o
     una carga de saldo se registran sin detalle (ver

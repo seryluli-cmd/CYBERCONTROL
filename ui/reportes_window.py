@@ -1,12 +1,19 @@
 """
 reportes_window.py
 =====================
-Reportes: Resumen (cuánta plata se trabajó en un rango de fechas),
-Resumen del Día (un día abierto por turno, con quién cerró y si el sobre
-cuadró) y Ranking de Ventas (qué se vendió más -- artículos de kiosko,
-bonos de PC, bonos de socios y cargas de saldo por tarifa, todo junto),
-con una columna Categoría nueva para distinguir de qué negocio vino cada
-fila (ver reportes_repo.ranking_ventas).
+Reportes, una pestaña por cada pregunta que se le hace a las ventas:
+
+- Resumen de Ventas: cuánta plata se trabajó en un rango de fechas.
+- Resumen del Día: un día abierto por turno, con quién cerró y si el sobre
+  cuadró.
+- Por Turno: el total de un rango repartido entre Mañana/Tarde/Noche.
+- Totales: Kiosko vs. Alquiler de PCs, por turno, día, semana o rango.
+- Ranking de Ventas: qué se vendió más -- artículos de kiosko, bonos de PC,
+  bonos de socios y cargas de saldo por tarifa, todo junto, con una columna
+  Categoría para distinguir de qué negocio vino cada fila (ver
+  reportes_repo.ranking_ventas).
+
+Las usa el Admin o una Empleada con `permiso_reportes`.
 """
 
 from datetime import datetime
@@ -19,10 +26,13 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QFont
 
 from repositories import reportes_repo, turnos_repo
-from ui.utils import formato_pesos, manejar_errores, aplicar_clase, encadenar_enter
+from ui.utils import formato_pesos, manejar_errores, encadenar_enter, sin_boton_por_defecto
 
 
 class ReportesWindow(QDialog):
+    """Contenedor de las pestañas de reportes (cada una es un QWidget
+    independiente que busca y se muestra sola, ver las clases de abajo)."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Reportes")
@@ -38,17 +48,13 @@ class ReportesWindow(QDialog):
         layout = QVBoxLayout()
         layout.addWidget(pestañas)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
 
 class PestañaResumen(QWidget):
+    """Total vendido, cantidad de ventas y desglose Efectivo/Digital de un
+    rango de fechas."""
+
     def __init__(self):
         super().__init__()
         self._armar_interfaz()
@@ -105,14 +111,7 @@ class PestañaResumen(QWidget):
         layout.addLayout(detalle_pagos)
         layout.addStretch()
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _poner_solo_hoy(self):
         self.fecha_desde.setDate(QDate.currentDate())
@@ -200,11 +199,7 @@ class PestañaResumenDelDia(QWidget):
         layout.addWidget(self.tabla)
         layout.addWidget(nota)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default"
-        # (mismo motivo que en las otras pestañas de esta pantalla).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _mover_dia(self, dias: int):
         self.fecha.setDate(self.fecha.date().addDays(dias))
@@ -234,9 +229,8 @@ class PestañaResumenDelDia(QWidget):
 
     @manejar_errores
     def _buscar(self, _=None):
-        # El "_=None" no se usa: dateChanged manda la fecha nueva y, sin él,
-        # cambiar el día tiraba un error en vez de refrescar la tabla (mismo
-        # motivo que en PestañaKioskoVsPCs._buscar).
+        # El "_=None" no se usa: absorbe la fecha que manda `dateChanged` (ver
+        # ControlCierresWindow._ver_detalle en caja_window.py).
         dia = self.fecha.date()
         resumen = turnos_repo.resumen_del_dia(dia.toString("yyyy-MM-dd"))
         self.etiqueta_titulo.setText(f"{self._DIAS[dia.dayOfWeek() - 1]} {dia.toString('dd/MM/yyyy')}")
@@ -330,14 +324,7 @@ class PestañaPorTurno(QWidget):
         layout.addSpacing(10)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _poner_solo_hoy(self):
         self.fecha_desde.setDate(QDate.currentDate())
@@ -412,14 +399,7 @@ class PestañaKioskoVsPCs(QWidget):
         layout.addSpacing(10)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _poner_solo_hoy(self):
         self.fecha_desde.setDate(QDate.currentDate())
@@ -441,10 +421,9 @@ class PestañaKioskoVsPCs(QWidget):
 
     @manejar_errores
     def _buscar(self, _=None):
-        # El "_=None" no se usa -- ver el comentario igual en
-        # ControlCierresWindow._ver_detalle (caja_window.py): sin él,
-        # cambiar el combo "Agrupar" (currentIndexChanged manda el índice
-        # nuevo) tiraba un error en vez de refrescar la tabla.
+        # El "_=None" no se usa: absorbe el índice que manda
+        # `currentIndexChanged` (ver ControlCierresWindow._ver_detalle en
+        # caja_window.py).
         desde = self.fecha_desde.date().toString("yyyy-MM-dd")
         hasta = self.fecha_hasta.date().toString("yyyy-MM-dd")
         agrupar_por = self.combo_agrupar.currentData()
@@ -463,6 +442,9 @@ class PestañaKioskoVsPCs(QWidget):
 
 
 class PestañaRanking(QWidget):
+    """Ranking de TODO lo vendido (kiosko, bonos y cargas de saldo) en un
+    rango de fechas, ordenable por cantidad o por monto."""
+
     def __init__(self):
         super().__init__()
         self._armar_interfaz()
@@ -506,14 +488,7 @@ class PestañaRanking(QWidget):
         layout.addWidget(self.etiqueta_titulo)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _buscar(self):

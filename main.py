@@ -2,11 +2,15 @@
 main.py
 ========
 Punto de entrada del programa. Al ejecutar este archivo:
-1. Se prepara la base de datos (si es la primera vez, se crea).
-2. Se muestra la pantalla de Login.
-3. Al loguearse correctamente, se abre la ventana principal con los
+1. Se verifica que no haya otra copia abierta en la misma PC.
+2. Se prepara la base de datos (si es la primera vez, se crea) y se hace
+   el backup automático del día.
+3. Se levanta el servidor de red que consultan las PCs cliente
+   (servidor_red.py).
+4. Se muestra la pantalla de Login.
+5. Al loguearse correctamente, se abre la ventana principal con los
    permisos que correspondan según el rol del usuario.
-4. Al cerrar sesión desde la ventana principal, se vuelve al Login
+6. Al cerrar sesión desde la ventana principal, se vuelve al Login
    (sin tener que reabrir todo el programa).
 
 Para arrancar el sistema, se ejecuta:  python main.py
@@ -25,34 +29,10 @@ from servidor_red import iniciar_servidor
 from ui.login_window import LoginWindow
 from ui.main_window import MainWindow
 
-# Puerto dedicado SOLO para detectar una segunda copia de Kiosko abierta
-# en la misma PC -- no tiene nada que ver con servidor_red.PUERTO_SERVIDOR
-# (8899, el que hablan los Clientes PC de las PCs cliente). Bindear un socket
-# TCP en localhost es un "mutex" de instancia única liviano y sin
-# dependencias nuevas: el sistema operativo libera el puerto solo en
-# cuanto el proceso termina, sea un cierre normal o un crash, así que
-# nunca queda un candado colgado que obligue a reiniciar Windows para
-# poder volver a abrir el programa.
-PUERTO_INSTANCIA_UNICA = 8898
 
-# Referencia viva al socket-candado: si se dejara que el recolector de
-# basura la destruya, el socket se cerraría solo y el "candado" dejaría de
-# valer apenas terminara main(). Mantenerla acá arriba lo mantiene abierto
-# mientras el proceso siga vivo.
-_candado_instancia_unica = None
-
-
-def _ya_hay_una_copia_abierta() -> bool:
-    global _candado_instancia_unica
-    candado = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        candado.bind(("127.0.0.1", PUERTO_INSTANCIA_UNICA))
-    except OSError:
-        candado.close()
-        return True
-    _candado_instancia_unica = candado
-    return False
-
+# --------------------------------------------------------------------
+# Rutas de recursos
+# --------------------------------------------------------------------
 # Carpeta del programa (donde está este archivo), para ubicar el ícono
 # sin importar desde qué directorio se lo ejecute.
 CARPETA_BASE = Path(__file__).resolve().parent
@@ -63,6 +43,42 @@ RUTA_ICONO = CARPETA_BASE / "assets" / "icono.ico"
 RUTA_FLECHA_ABAJO = (CARPETA_BASE / "assets" / "flecha_abajo.svg").as_posix()
 
 
+# --------------------------------------------------------------------
+# Instancia única (una sola copia de Kiosko por PC)
+# --------------------------------------------------------------------
+# Puerto dedicado SOLO para detectar una segunda copia abierta -- no tiene
+# nada que ver con servidor_red.PUERTO_SERVIDOR (8899, el que hablan los
+# Clientes PC). Bindear un socket TCP en localhost es un "mutex" de
+# instancia única liviano y sin dependencias nuevas: el sistema operativo
+# libera el puerto solo en cuanto el proceso termina, sea un cierre normal
+# o un crash, así que nunca queda un candado colgado que obligue a
+# reiniciar Windows para poder volver a abrir el programa.
+PUERTO_INSTANCIA_UNICA = 8898
+
+# Referencia viva al socket-candado: si se dejara que el recolector de
+# basura la destruya, el socket se cerraría solo y el "candado" dejaría de
+# valer apenas terminara main(). Mantenerla acá arriba lo mantiene abierto
+# mientras el proceso siga vivo.
+_candado_instancia_unica = None
+
+
+def _ya_hay_una_copia_abierta() -> bool:
+    """True si otra copia del programa ya tiene tomado el puerto-candado.
+    Si no, toma el candado para esta copia y devuelve False."""
+    global _candado_instancia_unica
+    candado = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        candado.bind(("127.0.0.1", PUERTO_INSTANCIA_UNICA))
+    except OSError:
+        candado.close()
+        return True
+    _candado_instancia_unica = candado
+    return False
+
+
+# --------------------------------------------------------------------
+# Estilo visual
+# --------------------------------------------------------------------
 # Estilo visual general de todo el programa: paleta de color consistente
 # (azul para la acción principal de cada pantalla, bordó para lo
 # destructivo/cerrar sesión, verde para confirmaciones), tipografía más
@@ -339,24 +355,19 @@ def _manejar_excepcion_no_capturada(tipo, valor, tb):
 
 
 def main():
-    # Desactivado a propósito: un QTimer conectado a un método propio (ej.
-    # PanelControlPcs._timer -> self._refrescar) arma un ciclo de
-    # referencias Python que solo el recolector CÍCLICO puede romper -- y
-    # ese recolector puede dispararse desde CUALQUIER hilo que esté
-    # asignando memoria en ese momento, no solo el hilo dueño del QObject.
-    # servidor_red.py corre un hilo de fondo real (threading.Thread, no
-    # QThread) todo el tiempo que Kiosko está abierto: si ese hilo dispara
-    # la recolección justo cuando le toca destruir un QTimer de la
-    # interfaz, Qt tira "QObject::killTimer: Timers cannot be stopped from
-    # another thread" y deja el objeto C++ roto -- exactamente el origen
-    # de los crashes "Internal C++ object already deleted" que veníamos
-    # viendo en data/errores.log (PanelControlPcs, PanelActividad, QTimer)
-    # antes de encontrar la causa real. Qt ya libera sus QObject solos por
-    # relación padre/hijo (QTimer(self)) y el resto del programa se apoya
-    # en refcounting normal, no en ciclos -- lo único que se pierde acá es
-    # no limpiar los pocos ciclos puramente Python que arma la propia UI
-    # (uno por pantalla con timer, no uno por refresco), que en un programa
-    # que se reinicia a diario no llega a pesar en memoria.
+    # Recolector cíclico de basura desactivado a propósito. Un QTimer
+    # conectado a un método propio (ej. PanelControlPcs._timer ->
+    # self._refrescar) arma un ciclo de referencias que solo ese recolector
+    # puede romper, y puede dispararse desde CUALQUIER hilo que esté
+    # asignando memoria, no solo el hilo dueño del QObject. Como
+    # servidor_red.py corre un hilo de fondo real todo el tiempo, ese hilo
+    # podía destruir un QTimer de la interfaz: Qt tira "QObject::killTimer:
+    # Timers cannot be stopped from another thread" y deja el objeto C++
+    # roto -- el origen de los "Internal C++ object already deleted" de
+    # data/errores.log. Qt libera sus QObject solo por relación
+    # padre/hijo y el resto del programa no depende de ciclos; lo único que
+    # se pierde son unos pocos ciclos de la UI (uno por pantalla con
+    # timer), que en un programa que se reinicia a diario no pesan.
     gc.disable()
     sys.excepthook = _manejar_excepcion_no_capturada
     # QApplication se crea PRIMERO (antes de tocar la base o el servidor)

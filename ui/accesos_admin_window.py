@@ -6,26 +6,27 @@ una cuenta de administrador y cuándo. Exclusiva de ADMIN, igual que el
 resto de Configuración ADMIN.
 
 Tiene dos pestañas: los logins en CYBERCONTROL (los lee de la tabla
-`sesiones` vía usuarios_repo.listar_logins; esa tabla ya se llenaba con
-cada login, solo faltaba una pantalla para verla) y lo que pasó en el
-panel admin de las PCs cliente (quién cerró el Cliente PC y dejó una PC sin
-bloqueo, ver control_pcs/ui/accesos_admin_pc_tab.py).
+`sesiones`, que se llena con cada login, vía usuarios_repo.listar_logins)
+y lo que pasó en el panel admin de las PCs cliente (quién cerró el Cliente
+PC y dejó una PC sin bloqueo, ver control_pcs/ui/accesos_admin_pc_tab.py).
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QDateEdit,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QTabWidget, QWidget,
 )
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import QDate
 
 from repositories import usuarios_repo
 from control_pcs.ui.accesos_admin_pc_tab import PestañaAccesosAdminPc
-from ui.utils import manejar_errores, encadenar_enter
+from ui.utils import manejar_errores, encadenar_enter, sin_boton_por_defecto
 
 
 class AccesosAdminWindow(QDialog):
+    """Contenedor de las dos pestañas de accesos de admin."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Accesos de Admin")
@@ -38,11 +39,7 @@ class AccesosAdminWindow(QDialog):
         layout = QVBoxLayout()
         layout.addWidget(pestañas)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default"
-        # (mismo motivo que en ui/reportes_window.py).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
 
 class PestañaLoginsAdmin(QWidget):

@@ -30,12 +30,14 @@ from repositories import config_repo
 from control_pcs.repositories import miembros_repo, bonos_miembro_repo
 from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
-    formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
-    aplicar_clase, encadenar_enter,
+    formato_pesos, formato_tiempo, mostrar_error, confirmar, manejar_errores,
+    aplicar_clase, encadenar_enter, sin_boton_por_defecto,
 )
 
 
 class MiembrosWindow(QDialog):
+    """Grilla de socios con alta, modificación, carga de saldo y baja."""
+
     def __init__(self, usuario_operador, parent=None):
         super().__init__(parent)
         self.usuario_operador = usuario_operador
@@ -81,9 +83,7 @@ class MiembrosWindow(QDialog):
         layout.addWidget(self.check_inactivos)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar_grilla(self):
@@ -137,6 +137,8 @@ class MiembrosWindow(QDialog):
 
 
 class DialogoMiembro(QDialog):
+    """Alta (sin `miembro`) o edición de los datos de un socio."""
+
     def __init__(self, parent, miembro=None):
         super().__init__(parent)
         self.miembro = miembro
@@ -181,9 +183,7 @@ class DialogoMiembro(QDialog):
         self.setLayout(layout)
         encadenar_enter(self.campo_usuario, self.campo_clave, self.campo_nombre, self.campo_dni,
                          self.campo_telefono, self.campo_email, accion_final=self._guardar)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _cargar_datos(self, miembro):
         self.campo_usuario.setText(miembro["usuario"])
@@ -297,9 +297,7 @@ class DialogoCargarSaldo(QDialog):
         layout.addWidget(self.combo_metodo)
         layout.addLayout(botones)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
         self._actualizar_preview_monto()
 
     def _actualizar_modo(self):
@@ -309,6 +307,8 @@ class DialogoCargarSaldo(QDialog):
         monto = self.spin_monto.value()
         tarifa_hora = dominio.tarifa_hora_para_monto(self.tramos_tarifa, monto)
         self.etiqueta_tarifa_aplicada.setText(f"Tarifa a esta carga: {formato_pesos(tarifa_hora)} / hora")
+        # Solo una vista previa: el redondeo real (hacia abajo, a bloques de
+        # 30 min) lo hace miembros_repo.cargar_saldo_por_monto al cobrar.
         minutos = int((monto / tarifa_hora * 60) // 30) * 30
         self.etiqueta_preview_monto.setText(f"Equivale a {formato_tiempo(minutos * 60)} de saldo.")
 
@@ -344,9 +344,8 @@ class DialogoTramosTarifaMiembro(QDialog):
     """
     Tabla de tramos de tarifa $/hora para la carga de saldo por monto
     (ver config_repo.obtener_tramos_tarifa_hora_miembro y
-    dominio.tarifa_hora_para_monto) -- reemplaza la tarifa única que
-    había hasta 2026-09-30. Cada fila es "a partir de $X, $Y la hora";
-    no hace falta cargarlas en orden ni con precios crecientes o
+    dominio.tarifa_hora_para_monto). Cada fila es "a partir de $X, $Y la
+    hora"; no hace falta cargarlas en orden ni con precios crecientes o
     decrecientes, dominio.tarifa_hora_para_monto las ordena solo. Mismo
     patrón de edición que pcs_window.DialogoEditarGateways: se guarda la
     tabla entera de una, no fila por fila.
@@ -392,9 +391,7 @@ class DialogoTramosTarifaMiembro(QDialog):
         layout.addLayout(fila_botones)
         layout.addLayout(botones)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @staticmethod
     def _spin_monto(valor):
@@ -482,9 +479,7 @@ class DialogoGestionBonosMiembro(QDialog):
         layout.addLayout(barra_botones)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar(self):
@@ -583,9 +578,7 @@ class DialogoBonoMiembro(QDialog):
         self.setLayout(layout)
         encadenar_enter(self.campo_nombre, self.spin_horas, self.spin_minutos, self.spin_precio,
                          accion_final=self._guardar)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     def _cargar_datos(self, bono):
         self.campo_nombre.setText(bono["nombre"])

@@ -4,9 +4,9 @@ bonos_miembro_repo.py
 Catálogo de bonos de tiempo EXCLUSIVO para Miembros (socios con saldo
 prepago) -- separado a propósito de pcs_repo.bonos_tiempo, que es el
 catálogo de bonos COMUNES para cualquier persona que entra al local sin
-ser socia. Antes "Cargar Saldo" -> "Bono fijo" reusaba el catálogo de
-walk-ins; el dueño pidió separarlos porque a los socios les puede convenir
-ofrecerles combos propios (ver control_pcs/ui/miembros_window.py).
+ser socia. Lo usa "Cargar Saldo" -> "Bono fijo" (ver
+control_pcs/ui/miembros_window.py). El dueño pidió separar los catálogos
+porque a los socios les conviene ofrecerles combos propios.
 
 Mismo esquema y mismas reglas que bonos_tiempo (nombre/minutos/precio,
 "activo" para dar de baja sin romper el historial de cargas que ya lo

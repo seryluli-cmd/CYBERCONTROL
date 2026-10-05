@@ -181,6 +181,7 @@ def pagos_netos_de_vuelto(pagos: list, vuelto: float) -> list:
 # es un bono: mismas tres reglas en los dos. Vive acá para no repetirla
 # en cada repo (ver CLAUDE.md, regla 2).
 def validar_datos_bono(nombre: str, minutos: int, precio: float):
+    """Levanta ValueError (mensaje listo para mostrar) si el bono no es válido."""
     if not nombre.strip():
         raise ValueError("El nombre del bono no puede quedar vacío.")
     if minutos <= 0:
@@ -199,6 +200,9 @@ def validar_datos_bono(nombre: str, minutos: int, precio: float):
 # cada tramo (a partir de qué monto mínimo rige, y a qué $/hora) lo
 # define el dueño a mano, en cualquier orden de precios.
 def validar_tramos_tarifa_hora_miembro(tramos: list):
+    """Levanta ValueError (mensaje listo para mostrar) si la tabla de
+    tramos está vacía o tiene un monto/tarifa inválido o un monto mínimo
+    repetido."""
     if not tramos:
         raise ValueError("Tiene que haber al menos un tramo de tarifa.")
     montos_vistos = set()

@@ -63,14 +63,10 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     ahora = datetime.now()
     # Microsegundos, no segundos: turnos_repo compara "ventas.fecha" contra
     # "cierres_turno.fecha_cierre" con un corte estricto (> / <=) para
-    # decidir a qué turno pertenece cada venta. Con precisión de un solo
-    # segundo, una venta y un cierre que cayeran en el mismo segundo (una
-    # venta hecha justo al abrir el turno siguiente, por ejemplo) podían
-    # empatar en el string de fecha y la venta quedaba afuera de los DOS
-    # turnos -- ni en el que se estaba cerrando (llegó después del corte)
-    # ni en el siguiente (el ">" estricto la excluía por el empate). Ver
-    # turnos_repo.cerrar_turno, que graba fecha_cierre con la misma
-    # precisión por la misma razón.
+    # decidir a qué turno pertenece cada venta. Una venta y un cierre en el
+    # mismo segundo empataban en el string de fecha y la venta quedaba
+    # afuera de los DOS turnos. turnos_repo.cerrar_turno graba la fecha de
+    # cierre con la misma precisión, por la misma razón.
     ahora_iso = ahora.isoformat(timespec="microseconds")
     turno = calcular_turno(ahora)
     total = round(total_carrito(lineas), 2)

@@ -2,15 +2,15 @@
 articulos_window.py
 =====================
 Pantalla de Artículos: la grilla con todos los productos, y el cuadro de
-alta/edición. Solo la usa el Admin (las empleadas no tienen acceso a
-este módulo). Importante: acá NUNCA se edita el stock a mano — el stock
-solo se mueve desde Compras (ver compras_window.py).
+alta/edición. La usa el Admin o una Empleada con `permiso_articulos`.
+Importante: acá NUNCA se edita el stock a mano — el stock solo se mueve
+desde Compras (ver compras_window.py).
 """
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QLabel, QComboBox, QDoubleSpinBox, QSpinBox,
-    QFormLayout, QMessageBox, QDateEdit, QHeaderView, QInputDialog
+    QFormLayout, QDateEdit, QHeaderView, QInputDialog
 )
 from PySide6.QtCore import Qt, QDate
 
@@ -18,10 +18,14 @@ from repositories import articulos_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter,
+    sin_boton_por_defecto,
 )
 
 
 class ArticulosWindow(QDialog):
+    """Grilla de artículos con buscador; desde acá se abre el alta/edición,
+    los movimientos de stock y la gestión de rubros."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Artículos")
@@ -64,9 +68,7 @@ class ArticulosWindow(QDialog):
         self.tabla.setSelectionMode(QTableWidget.SingleSelection)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setAlternatingRowColors(True)
-        # Con esto, clickeando el título de una columna se ordena la
-        # grilla por esa columna: cumple la misma función que el botón
-        # "Ordenar" del sistema anterior, sin necesitar un botón aparte.
+        # Clickeando el título de una columna se ordena la grilla por ella.
         self.tabla.setSortingEnabled(True)
         self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.tabla.doubleClicked.connect(self._modificar_articulo)
@@ -76,21 +78,13 @@ class ArticulosWindow(QDialog):
         layout.addWidget(self.campo_buscar)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar_grilla(self, _=None):
-        # El "_=None" no se usa -- ver el comentario igual en
-        # ControlCierresWindow._ver_detalle (caja_window.py): sin él, cada
-        # letra tipeada en el buscador (textChanged manda el texto nuevo)
-        # tiraba un error en vez de filtrar la grilla.
+        # El "_=None" no se usa: absorbe el texto que manda `textChanged`
+        # (ver ControlCierresWindow._ver_detalle en caja_window.py, que
+        # explica por qué hace falta con @manejar_errores).
         texto = self.campo_buscar.text().strip()
         articulos = articulos_repo.listar_articulos(texto)
         self.tabla.setSortingEnabled(False)
@@ -226,13 +220,10 @@ class DialogoArticulo(QDialog):
         self.etiqueta_stock = QLabel("(el stock se carga desde Compras)")
         self.etiqueta_stock.setStyleSheet("color: gray; font-style: italic;")
 
-        # La pistola lectora escribe el código y después manda un Enter
-        # sola, automáticamente. Antes ese Enter no hacía nada útil (en
-        # versiones viejas, incluso llegaba a disparar "Guardar" antes
-        # de tiempo). Ahora ese Enter pasa prolijamente el foco al
-        # siguiente campo, como si se apretara Tab, para poder seguir
-        # cargando el artículo sin tocar el mouse — encadenado por todo
-        # el formulario, terminando en Guardar (ver encadenar_enter).
+        # La pistola lectora escribe el código y manda un Enter sola. Ese
+        # Enter pasa el foco al siguiente campo, como si se apretara Tab,
+        # para seguir cargando el artículo sin tocar el mouse — encadenado
+        # por todo el formulario, terminando en Guardar (ver encadenar_enter).
         encadenar_enter(
             self.campo_codigo, self.campo_descripcion, self.combo_marca, self.combo_rubro,
             self.spin_precio_venta, self.spin_precio_compra, self.spin_stock_minimo,
@@ -275,14 +266,7 @@ class DialogoArticulo(QDialog):
         layout.addLayout(formulario)
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar_datos(self, codigo):
@@ -387,14 +371,7 @@ class DialogoMovimientos(QDialog):
         layout.addLayout(filtros)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _buscar(self):
@@ -416,8 +393,8 @@ class DialogoMovimientos(QDialog):
 
 class DialogoGestionRubros(QDialog):
     """
-    Administración del catálogo de Rubros (solo Admin, se abre desde
-    Artículos). Acá es el ÚNICO lugar donde se pueden crear, renombrar o
+    Administración del catálogo de Rubros (se abre desde Artículos, así
+    que la ve quien tenga acceso a esa pantalla). Acá es el ÚNICO lugar donde se pueden crear, renombrar o
     borrar rubros — en el alta/edición de un artículo, Rubro es un
     desplegable cerrado que solo permite elegir uno de los ya existentes,
     para que no queden rubros mal escritos o duplicados por typos.
@@ -471,9 +448,7 @@ class DialogoGestionRubros(QDialog):
         layout.addLayout(fila_acciones)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
         self.campo_nuevo.setFocus()
 

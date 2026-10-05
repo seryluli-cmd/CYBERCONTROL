@@ -4,13 +4,13 @@ caja_window.py
 Pantallas relacionadas con la plata del día a día:
 
 - CajaWindow: consulta rápida de "cómo viene la caja" en cualquier
-  momento, sin cerrar nada (equivalente a la pantalla "Caja" del
-  sistema actual).
+  momento, sin cerrar nada.
 - CierreTurnoWindow: el cierre real de turno. Calcula cuánto tiene que
   retirar la empleada (dejando el fondo de cambio fijo para el próximo
   turno) y lo deja guardado.
 
-Y dos más, solo para Admin, para controlar los cierres después:
+Y dos más, para controlar los cierres después (Admin, o una Empleada con
+`permiso_control_cierres`):
 - ControlCierresWindow: historial de cierres (uno por turno cerrado) con
   los totales de cada sobre, y para cargar lo que realmente se contó.
 - DialogoDetalleCierre: el detalle de un cierre puntual -- venta por
@@ -29,7 +29,10 @@ from PySide6.QtGui import QFont
 import dominio
 from turnos import etiqueta_turno
 from repositories import turnos_repo, ventas_repo
-from ui.utils import formato_pesos, mostrar_info, confirmar, mostrar_error, manejar_errores, aplicar_clase
+from ui.utils import (
+    formato_pesos, mostrar_info, confirmar, mostrar_error, manejar_errores,
+    aplicar_clase, sin_boton_por_defecto,
+)
 
 
 def _texto_desglose(efectivo: float, digital: float) -> str:
@@ -40,6 +43,8 @@ def _texto_desglose(efectivo: float, digital: float) -> str:
 
 
 def _etiqueta_dato(titulo, valor_texto):
+    """Un dato de las pantallas de caja: título gris arriba y valor grande
+    abajo. Devuelve (layout, etiqueta_del_valor) para poder actualizarla."""
     contenedor = QVBoxLayout()
     titulo_lbl = QLabel(titulo)
     titulo_lbl.setStyleSheet("color: gray;")
@@ -112,14 +117,7 @@ class CajaWindow(QDialog):
         layout.addStretch()
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _refrescar(self):
@@ -203,14 +201,7 @@ class CierreTurnoWindow(QDialog):
         layout.addStretch()
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _refrescar_vista_previa(self):
@@ -242,9 +233,10 @@ class CierreTurnoWindow(QDialog):
 
 
 class ControlCierresWindow(QDialog):
-    """Pantalla de Admin para revisar el historial de cierres de turno,
-    cargar cuánto se contó realmente en cada sobre, y ver qué turnos del
-    mes en curso quedaron sin cerrar."""
+    """Pantalla para revisar el historial de cierres de turno (Admin, o
+    Empleada con `permiso_control_cierres`): cargar cuánto se contó
+    realmente en cada sobre y ver qué turnos del mes en curso quedaron sin
+    cerrar."""
 
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
@@ -255,20 +247,16 @@ class ControlCierresWindow(QDialog):
         self._cargar()
 
     def _armar_interfaz(self):
-        # Aviso de turnos ya vencidos (ventana + 40 min de gracia) del mes
-        # en curso que todavía no tienen cierre cargado — ver
-        # turnos_repo.turnos_faltantes(). Es una QListWidget (no un QLabel
-        # de texto plano) para que cada línea se pueda seleccionar con el
-        # mouse como cualquier otra lista de la app, con su propio alto
-        # máximo y scroll interno — puede haber muchas líneas (un kiosko
-        # recién instalado, o varios meses sin revisar esta pantalla,
-        # fácilmente pasa el centenar) y no debe empujar la tabla ni los
-        # botones fuera de la ventana. Seleccionar una fila no dispara
-        # ninguna acción (ver nota debajo): en este sistema un turno
-        # vencido no se puede cargar por separado, así que es un aviso
-        # para que el Admin lo note, no una lista para "completar".
-        # Arranca oculto: solo se muestra si hay algo que avisar (ver
-        # _cargar_faltantes).
+        # Aviso de turnos ya vencidos (ventana + turnos.TURNO_GRACIA_MIN) del
+        # mes en curso que todavía no tienen cierre cargado — ver
+        # turnos_repo.turnos_faltantes(). Es una QListWidget (no un QLabel)
+        # con alto máximo y scroll propio: puede haber más de un centenar de
+        # líneas (kiosko recién instalado, o meses sin revisar esta pantalla)
+        # y no debe empujar la tabla ni los botones fuera de la ventana.
+        # Seleccionar una fila no dispara ninguna acción (ver nota debajo):
+        # un turno vencido no se puede cargar por separado, así que es un
+        # aviso, no una lista para "completar". Arranca oculto y solo se
+        # muestra si hay algo que avisar (ver _cargar_faltantes).
         self.panel_faltantes = QWidget()
         panel_layout = QVBoxLayout(self.panel_faltantes)
         panel_layout.setContentsMargins(0, 0, 0, 0)
@@ -332,14 +320,7 @@ class ControlCierresWindow(QDialog):
         layout.addWidget(self.tabla)
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar(self):
@@ -373,8 +354,8 @@ class ControlCierresWindow(QDialog):
         self._cargar_faltantes()
 
     def _cargar_faltantes(self):
-        """Turnos del mes en curso ya vencidos (+ 40 min de gracia) que
-        todavía no tienen cierre — ver turnos_repo.turnos_faltantes()."""
+        """Turnos del mes en curso ya vencidos (con su gracia) que todavía
+        no tienen cierre — ver turnos_repo.turnos_faltantes()."""
         faltantes = turnos_repo.turnos_faltantes()
         if not faltantes:
             self.panel_faltantes.hide()
@@ -394,14 +375,13 @@ class ControlCierresWindow(QDialog):
 
     @manejar_errores
     def _ver_detalle(self, _=None):
-        # El "_=None" no se usa -- está solo para poder recibir sin
-        # romperse el dato que manda solo `doubleClicked` (la fila en la
-        # que se hizo doble clic). El decorador @manejar_errores envuelve
-        # esta función en "*args, **kwargs", y con eso Qt deja de recortar
-        # ese dato antes de llamarla (a diferencia de una función sin
-        # decorar, donde si lo recorta): sin este parámetro de más, doble
-        # clic en una fila tiraba "takes 1 positional argument but 2 were
-        # given" en vez de abrir el detalle.
+        # El "_=None" no se usa: recibe el dato que manda `doubleClicked`
+        # (la fila clickeada). Qt solo recorta los argumentos que una
+        # función no acepta si ve su firma real; @manejar_errores la envuelve
+        # en "*args, **kwargs", así que Qt le pasa todo. Sin este parámetro,
+        # doble clic en una fila tiraba "takes 1 positional argument but 2
+        # were given" en vez de abrir el detalle. (Mismo caso en
+        # ArticulosWindow._cargar_grilla.)
         fila = self.tabla.currentRow()
         if fila < 0:
             mostrar_error(self, "Nada seleccionado", "Elegí primero un cierre de la lista.")
@@ -486,9 +466,7 @@ class DialogoDetalleCierre(QDialog):
         layout.addWidget(self.tabla_detalle)
         layout.addLayout(botones)
         self.setLayout(layout)
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar(self):

@@ -8,53 +8,57 @@ en un hilo de fondo desde que arranca el programa (ver main.py), sin
 importar quién esté logueado ni qué pantalla esté abierta -- las PCs
 clientes tienen que poder preguntar en cualquier momento.
 
-Expone estos endpoints:
-- GET /estado?estacion=<nombre> -- solo lectura, consultado cada pocos
-  segundos por cada PC cliente para saber si debe mostrarse bloqueada.
-  De paso, si el mostrador dejó un comando remoto pendiente para esa
-  estación (reiniciar, apagar, mensaje, screenshot -- ver
-  control_pcs/repositories/comandos_pc_repo.py y el menú contextual de
-  Control de PCs), viaja en el mismo viaje de red como "comando" en vez
-  de necesitar un endpoint aparte -- el Cliente PC ya está preguntando cada
-  5s de todas formas. Cada pedido válido también deja constancia de
-  "última conexión" y de la IP LAN de origen (`pcs_repo.registrar_conexion`,
-  con `self.client_address` -- no un dato que mande el Cliente PC) -- es el
-  latido que usa el dashboard de Control de PCs para saber si una
-  estación sigue prendida y con red, no solo si tiene sesión, y la IP es
-  la que rellena el botón "Traer IP" de Gestionar Estaciones.
-- POST /login -- un Miembro se loguea directo desde su PC cliente con
-  TODO su saldo (mismo mecanismo que miembros_repo.abrir_estacion_por_miembro,
-  el que ya usa la pantalla de Miembros del lado de Kiosko). Body JSON
-  {"estacion", "usuario", "clave"}.
-- POST /logout -- corta YA la sesión activa de esa estación (mismo
-  mecanismo que "Finalizar antes de tiempo" en Gestionar PCs, ver
-  pcs_repo.finalizar_sesion) para que el que está usando la PC pueda
-  cerrar su propia sesión sin pasar por el mostrador. Body JSON
-  {"estacion"} -- no pide usuario/clave: alcanza con estar físicamente
-  en esa PC, mismo criterio de confianza que ya usa el resto del sistema.
-- POST /evento_admin -- el Cliente PC avisa que alguien entró a su panel
-  admin, cerró el Cliente PC o abrió la reconfiguración (ver
-  control_pcs/repositories/accesos_admin_pc_repo.py: es lo que le permite
-  al dueño enterarse de una PC que quedó sin bloqueo). Body JSON
-  {"estacion", "tipo", "segundos_atras"}; `segundos_atras` es para los
-  avisos que el Cliente PC no pudo mandar en el momento (servidor
-  apagado) y manda cuando vuelve la conexión.
-- POST /comando_resultado -- el Cliente PC lo llama después de ejecutar un
-  comando SCREENSHOT (para subir la imagen capturada) o CAMBIAR_RED (para
-  avisar si pudo cambiar de módem o no -- a diferencia de reiniciar/apagar,
-  esto sí puede fallar del lado de la PC y vale la pena que el mostrador
-  se entere). Body JSON {"comando_id", "imagen_base64"} o
-  {"comando_id", "texto"} según el tipo -- los demás comandos no tienen
-  nada que devolver.
+Autenticación: todo pedido (GET y POST) exige la cabecera
+`Authorization: Bearer <clave>` con la clave generada en Control de PCs ->
+Gestionar Estaciones -> Generar/renovar clave de Clientes PC (ver
+`control_pcs/repositories/clientes_repo.py`). Es UNA sola clave compartida
+por todas las estaciones. Sin clave generada todavía, o con una que no
+coincide, responde 403 sin tocar la base (ver `_ManejadorEstado._autorizado`).
 
-Todo pedido (GET y POST) exige la cabecera `Authorization: Bearer <clave>`
-con la clave generada en Control de PCs -> Gestionar Estaciones ->
-Generar/renovar clave de Clientes PC (ver `control_pcs/repositories/clientes_repo.py`)
--- UNA sola clave compartida por todas las estaciones. Sin clave generada
-todavía, o con una que no coincide, el servidor responde 403 sin tocar la
-base: ver `_ManejadorEstado._autorizado`.
+Endpoints
+---------
+GET /estado?estacion=<nombre>
+    Solo lectura; cada PC cliente lo consulta cada pocos segundos para saber
+    si debe mostrarse bloqueada. En el mismo viaje de red:
+    - Si el mostrador dejó un comando remoto pendiente para esa estación
+      (ver control_pcs/repositories/comandos_pc_repo.py y el menú
+      contextual de Control de PCs), viaja como "comando" -- no hace falta
+      un endpoint aparte, el Cliente PC ya está preguntando de todas formas.
+    - Cada pedido válido deja constancia de "última conexión" y de la IP LAN
+      de origen (`pcs_repo.registrar_conexion`; la IP sale de
+      `self.client_address`, no de un dato que mande el Cliente PC). Es el
+      latido con que el dashboard de Control de PCs sabe si una estación
+      sigue prendida y con red, no solo si tiene sesión; la IP rellena el
+      botón "Traer IP" de Gestionar Estaciones.
 
-Puerto en PUERTO_SERVIDOR más abajo: un solo lugar para cambiarlo.
+POST /login           {"estacion", "usuario", "clave"}
+    Un Miembro se loguea directo desde su PC cliente con TODO su saldo
+    (mismo mecanismo que miembros_repo.abrir_estacion_por_miembro, el de la
+    pantalla Miembros).
+
+POST /logout          {"estacion", "sesion_id" (opcional)}
+    Corta YA la sesión activa de esa estación (mismo mecanismo que
+    "Finalizar antes de tiempo", ver pcs_repo.finalizar_sesion) para que
+    quien usa la PC cierre su propia sesión sin pasar por el mostrador. No
+    pide usuario/clave: alcanza con estar físicamente en esa PC, mismo
+    criterio de confianza que el resto del sistema.
+
+POST /evento_admin    {"estacion", "tipo", "segundos_atras"}
+    El Cliente PC avisa que alguien entró a su panel admin, cerró el
+    Cliente PC o abrió la reconfiguración (ver
+    control_pcs/repositories/accesos_admin_pc_repo.py: es lo que le permite
+    al dueño enterarse de una PC que quedó sin bloqueo). `segundos_atras`
+    es para los avisos que no se pudieron mandar en el momento (servidor
+    apagado) y se mandan al volver la conexión.
+
+POST /comando_resultado   {"comando_id", "imagen_base64"} o {"comando_id", "texto"}
+    El Cliente PC lo llama después de ejecutar un comando que tiene algo
+    para devolver: SCREENSHOT (sube la imagen) o CAMBIAR_RED (avisa si pudo
+    cambiar de módem; a diferencia de reiniciar/apagar, esto sí puede
+    fallar del lado de la PC y el mostrador tiene que enterarse). Los demás
+    comandos no devuelven nada.
+
+El puerto está en PUERTO_SERVIDOR más abajo: un solo lugar para cambiarlo.
 """
 
 import json
@@ -69,10 +73,14 @@ from control_pcs.repositories import (
 
 PUERTO_SERVIDOR = 8899
 
-_servidor = None
+_servidor = None  # el servidor en marcha, o None si no arrancó (ver iniciar_servidor)
 
 
 def _estado_a_json(item):
+    """
+    Arma la respuesta de GET /estado a partir de lo que devuelve
+    pcs_repo.estado_de_estacion (None = estación desconocida).
+    """
     if item is None:
         # Estación desconocida (nombre mal escrito en el config.json del
         # cliente, o borrada de Kiosko): bloqueada, nunca se regala el
@@ -96,6 +104,9 @@ def _estado_a_json(item):
 
 
 class _ManejadorEstado(BaseHTTPRequestHandler):
+    """Atiende un pedido de un Cliente PC: do_GET resuelve /estado y do_POST
+    reparte el resto de los endpoints (ver el docstring del módulo)."""
+
     def log_message(self, formato, *args):
         pass  # sin esto, cada consulta imprime una línea de acceso en la consola -- no aporta nada acá
 
@@ -267,22 +278,16 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         Cierra la sesión activa de una estación -- pero solo si sigue
         siendo la MISMA sesión para la que el Cliente PC pidió el cierre.
 
-        `sesion_id` es opcional en el body (un Cliente PC viejo que todavía
-        no lo manda sigue funcionando igual que antes, cerrando lo que
-        esté activo) pero si viene, tiene que coincidir con la sesión
-        activa actual de la estación. Sin este chequeo, un pedido de
-        cierre que tarda en procesarse (demora de red, o el servidor
-        ocupado con otra cosa) podía llegar DESPUÉS de que esa sesión ya
-        se hubiera cerrado por otro lado (el mostrador la finalizó a
-        mano) y de que se hubiera abierto una sesión NUEVA en la misma
-        estación para otro cliente -- el código de acá solo miraba "qué
-        sesión está activa ahora en esta estación" y la cerraba, sin
-        importar si era la misma que el Cliente PC tenía en mente. Resultado:
-        un pedido de cierre viejo de Juan terminaba cortándole la sesión
-        recién pagada a María. Si `sesion_id` no coincide, la sesión que
-        el Cliente PC quería cerrar ya no existe -- responde OK sin tocar
-        nada, en vez de error (el objetivo del Cliente PC, "que esa sesión
-        esté cerrada", ya se cumplió).
+        `sesion_id` es opcional en el body (un Cliente PC viejo que no lo
+        manda sigue cerrando lo que esté activo), pero si viene tiene que
+        coincidir con la sesión activa actual. Sin este chequeo, un pedido
+        de cierre demorado (red lenta, servidor ocupado) podía llegar
+        DESPUÉS de que esa sesión ya se cerró por otro lado (el mostrador
+        la finalizó a mano) y de que se abrió una sesión NUEVA en la misma
+        estación: el pedido viejo de Juan terminaba cortándole la sesión
+        recién pagada a María. Si no coincide, la sesión que el Cliente PC
+        quería cerrar ya no existe: se responde OK sin tocar nada (su
+        objetivo, "que esa sesión esté cerrada", ya se cumplió).
         """
         try:
             cuerpo = self._leer_cuerpo_json()

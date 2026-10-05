@@ -31,12 +31,15 @@ from repositories import articulos_repo, ventas_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores,
     aplicar_clase,
+    sin_boton_por_defecto,
 )
 from ui.buscar_articulo import DialogoBuscarArticulo
 from ui.dialogo_pago import DialogoPago
 
 
 class VentasWindow(QDialog):
+    """El carrito vive solo en `self.carrito` (memoria) hasta que se cobra."""
+
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
@@ -121,14 +124,7 @@ class VentasWindow(QDialog):
         layout.addWidget(self.etiqueta_total)
         layout.addLayout(pie)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
         self.campo_codigo.setFocus()
 
@@ -287,11 +283,8 @@ class VentasWindow(QDialog):
 
     def _cancelar_venta(self):
         """
-        Cancela la venta en curso y vuelve al menú principal — hace lo
-        mismo que apretar la X de la ventana. Antes este botón solo
-        vaciaba el carrito y se quedaba en la misma pantalla, lo que
-        obligaba a usar la X para salir; ahora "Cancelar Venta" también
-        cierra la pantalla, como espera la empleada.
+        Cancela la venta en curso (pidiendo confirmación si ya hay algo
+        cargado) y cierra la pantalla, volviendo a la ventana principal.
         """
         if self.carrito and not confirmar(self, "Cancelar venta",
                                             "¿Cancelar esta venta y volver al menú? "

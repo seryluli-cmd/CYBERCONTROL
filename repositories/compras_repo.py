@@ -5,7 +5,7 @@ Ingreso de mercadería (compras). Esta es la ÚNICA parte del sistema que
 puede sumar stock a un artículo (además de que las ventas lo restan).
 Cada compra queda registrada con número correlativo, fecha, quién la
 cargó, y el detalle línea por línea con el stock antes/después de cada
-ingreso — igual que en el sistema actual.
+ingreso.
 """
 
 from datetime import datetime
@@ -13,8 +13,9 @@ from database import conexion_db
 
 
 def proximo_numero_compra() -> int:
-    """Calcula cuál sería el próximo número de compra (para mostrarlo
-    en la pantalla antes incluso de guardar nada, igual que 'Compra Nº')."""
+    """Cuál sería el próximo número de compra, para mostrarlo en pantalla
+    ("Compra Nº") antes de guardar nada. Es solo una vista previa: el
+    número real lo asigna registrar_compra al grabar."""
     with conexion_db() as conexion:
         fila = conexion.execute("SELECT COALESCE(MAX(id), 0) + 1 AS proximo FROM compras").fetchone()
         return fila["proximo"]

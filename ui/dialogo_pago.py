@@ -6,10 +6,10 @@ agregando pagos parciales (una parte en Efectivo, el resto en Digital)
 hasta cubrir el total, calcula el vuelto y recién ahí habilita
 Confirmar.
 
-Vivía dentro de ventas_window.py, pero ese archivo ya estaba en el
-límite de tamaño y son dos cosas distintas: una arma el carrito y la
-otra cobra. Separados, se puede tocar la forma de cobrar sin riesgo de
-romper el escaneo, y al revés (ver CLAUDE.md, regla 12).
+Está separado de ventas_window.py a propósito: una arma el carrito y esta
+cobra, así se puede tocar la forma de cobrar sin riesgo de romper el
+escaneo, y al revés (ver CLAUDE.md, regla 12). También lo reutiliza el
+cobro Mixto de Control de PCs, vía `resolver_pagos` (más abajo).
 """
 
 from PySide6.QtWidgets import (
@@ -22,16 +22,19 @@ from PySide6.QtGui import QShortcut, QKeySequence, QFont
 import dominio
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_aviso, aplicar_clase, encadenar_enter,
+    sin_boton_por_defecto,
 )
 
 
 class DialogoPago(QDialog):
     """
-    Cuadro de cobro. A diferencia del sistema anterior (que solo dejaba
-    elegir UN medio de pago para el total completo), acá se pueden ir
-    agregando pagos parciales — por ejemplo, una parte en Efectivo y el
-    resto en Digital (Mercado Pago / transferencia) — hasta cubrir el
-    total. El botón Confirmar recién se habilita cuando ya está cubierto.
+    Cuadro de cobro. Se pueden ir agregando pagos parciales — por
+    ejemplo, una parte en Efectivo y el resto en Digital (Mercado Pago /
+    transferencia) — hasta cubrir el total. El botón Confirmar recién se
+    habilita cuando ya está cubierto.
+
+    Al aceptar quedan `self.pagos` (ya netos de vuelto, listos para
+    grabar) y `self.vuelto` (lo que hay que entregarle a la clienta).
     """
 
     def __init__(self, parent, total: float):
@@ -158,14 +161,7 @@ class DialogoPago(QDialog):
         layout.addWidget(self.etiqueta_vuelto)
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
         self.spin_monto.setFocus()
 
@@ -325,11 +321,11 @@ def resolver_pagos(parent, metodo, monto):
     Devuelve None si se canceló ese cuadro (el llamador no debe seguir).
 
     Compartido entre control_pcs/ui/pcs_window.py (bono de PC) y
-    control_pcs/ui/miembros_window.py (cargar saldo de un socio) -- antes
-    cada pantalla tenía su propia copia de esta lógica, ver CLAUDE.md
-    regla 2. `monto <= 0` no abre el cuadro (no tiene sentido cobrar un
-    total en cero): el llamador que permite un monto libre en $ (Cargar
-    Saldo) ya valida eso aparte antes de llegar a grabar nada.
+    control_pcs/ui/miembros_window.py (cargar saldo de un socio), para no
+    repetir esta lógica (CLAUDE.md, regla 2). `monto <= 0` no abre el
+    cuadro (no tiene sentido cobrar un total en cero): el llamador que
+    permite un monto libre en $ (Cargar Saldo) ya valida eso aparte antes
+    de llegar a grabar nada.
     """
     if metodo == dominio.PAGO_MIXTO and monto > 0:
         dialogo = DialogoPago(parent, monto)

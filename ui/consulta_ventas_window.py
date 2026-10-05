@@ -2,24 +2,28 @@
 consulta_ventas_window.py
 ============================
 Pantalla de Consulta de Ventas: muestra las últimas ventas cargadas, con
-su detalle. Solo el Admin puede "Anular" una venta ya confirmada desde
-acá — esto repone el stock automáticamente y deja registrado quién la
-anuló, cuándo y por qué (nunca se borra el registro original).
+su detalle. La ve el Admin o una Empleada con `permiso_consulta_ventas`,
+pero solo el Admin puede "Anular" una venta ya confirmada desde acá (a
+propósito no es delegable: es por donde se podría "arreglar" una caja).
+Anular repone el stock automáticamente y deja registrado quién la anuló,
+cuándo y por qué (nunca se borra el registro original).
 """
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLabel, QHeaderView, QInputDialog, QLineEdit
+    QPushButton, QLabel, QHeaderView, QInputDialog
 )
 from PySide6.QtCore import Qt
 
 import dominio
 from repositories import ventas_repo
 from control_pcs.repositories import miembros_repo
-from ui.utils import formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase
+from ui.utils import formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase, sin_boton_por_defecto
 
 
 class ConsultaVentasWindow(QDialog):
+    """Lista de las últimas 100 ventas y, abajo, el detalle de la elegida."""
+
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
@@ -69,14 +73,7 @@ class ConsultaVentasWindow(QDialog):
         layout.addWidget(QLabel("Detalle de la venta seleccionada:"))
         layout.addWidget(self.tabla_detalle)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
     @manejar_errores
     def _cargar(self):

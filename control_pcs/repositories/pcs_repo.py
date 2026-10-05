@@ -22,6 +22,10 @@ usan una estación distinto a un bono: en vez de comprarlo en el momento,
 gastan de un saldo que ya tenían cargado. `_abrir_o_extender_sesion` es
 el mecanismo compartido entre ambos flujos — lo único que cambia es de
 dónde sale el tiempo.
+
+El archivo se lee de arriba hacia abajo así: estaciones, catálogo de
+bonos, estado en vivo del dashboard, abrir/extender/trasladar/finalizar una
+sesión (con el reintegro de saldo a socios) y el feed de actividad reciente.
 """
 
 import sqlite3
@@ -50,6 +54,7 @@ MINUTOS_POR_FRACCION = 30
 # ---------------------------------------------------------------------
 
 def listar_estaciones(solo_activas: bool = True):
+    """Las estaciones ordenadas por nombre; por defecto solo las activas."""
     with conexion_db() as conexion:
         if solo_activas:
             return conexion.execute(
@@ -60,17 +65,15 @@ def listar_estaciones(solo_activas: bool = True):
 
 def crear_estacion(nombre: str) -> int:
     """
-    `nombre` es UNIQUE en el esquema sin importar `activa` -- una
-    estación desactivada (ver `desactivar_estacion`) no se borra, y sin
-    este chequeo su nombre quedaba bloqueado para siempre: no hay ningún
-    botón "Reactivar" en la UI (`DialogoGestionEstaciones` solo lista las
-    activas, `listar_estaciones(solo_activas=True)`), así que "Agregar"
-    con el mismo nombre otra vez es, en la práctica, la única forma de
-    recuperarla. Por eso, si existe una desactivada con ese nombre
-    exacto, se la reactiva en vez de intentar un INSERT que iba a chocar
-    con la constraint UNIQUE y tirar "ya existe" -- error real que
-    reportó el dueño (2026-09-29): borró una estación de prueba y
-    después no podía volver a cargarla con el mismo nombre.
+    Crea una estación y devuelve su id. Si ya existe una DESACTIVADA con
+    ese nombre exacto, la reactiva en vez de crear otra.
+
+    Hace falta porque `nombre` es UNIQUE en el esquema sin importar
+    `activa`: una estación desactivada (ver `desactivar_estacion`) no se
+    borra, y un INSERT con el mismo nombre chocaría con la constraint y
+    tiraría "ya existe". No hay botón "Reactivar" en la UI
+    (`DialogoGestionEstaciones` solo lista las activas), así que "Agregar"
+    con el mismo nombre es, en la práctica, la única forma de recuperarla.
     """
     nombre = nombre.strip()
     if not nombre:
@@ -154,6 +157,8 @@ def obtener_estacion(estacion_id: int):
 # ---------------------------------------------------------------------
 
 def listar_bonos(solo_activos: bool = True):
+    """Los bonos de walk-ins ordenados por duración; por defecto solo los
+    activos. Para los bonos exclusivos de socios ver bonos_miembro_repo."""
     with conexion_db() as conexion:
         if solo_activos:
             return conexion.execute(
@@ -490,14 +495,12 @@ def _reintegros_por_miembro(conexion, sesion_id: int, minutos_restantes: int) ->
     De los minutos que le quedaban a una sesión al cortarla, calcula
     cuántos hay que devolverle a CADA socio que la financió -- nunca a un
     socio distinto del que puso ese tramo, y nunca a costa de un bono
-    (ver finalizar_sesion). Corrige el bug de "reintegro al socio
-    equivocado": una sesión creada por un socio y después extendida con
-    un bono del mostrador (o al revés) antes solo miraba el miembro_id
-    grabado al CREARLA, así que podía devolverle a ese socio tiempo que
-    en realidad había pagado un bono (que nunca reintegra), o no
-    devolverle nada a un socio que extendió una sesión de bono ya
-    existente (miembro_id se graba solo al crear, ver
-    _abrir_o_extender_sesion).
+    (ver finalizar_sesion).
+
+    No alcanza con mirar `sesiones_pc.miembro_id`: se graba solo al CREAR
+    la sesión (ver _abrir_o_extender_sesion), y una sesión puede haberse
+    extendido después con un bono del mostrador o con el saldo de OTRO
+    socio. Por eso se reconstruye el aporte de cada uno.
 
     El tiempo restante es siempre el TRAMO MÁS NUEVO de la sesión (el
     reloj cuenta para atrás desde fecha_fin_prevista, y cada aporte nuevo
@@ -542,19 +545,16 @@ def finalizar_sesion(sesion_id: int):
     (consumible de una sola vez, sin reintegro), el saldo de un socio es
     plata suya: cortar antes no se la hace perder.
 
-    Todo esto corre con "BEGIN IMMEDIATE" (toma el lock de escritura de
-    entrada, antes de leer nada) -- mismo motivo que
-    miembros_repo.abrir_estacion_por_miembro: comprobar que la sesión
-    sigue ACTIVA y cerrarla eran dos pasos separados, así que el socio
-    cerrando desde su PC (POST /logout) y la empleada tocando "Finalizar
-    antes de tiempo" desde el mostrador -- dos pedidos legítimos, cada uno
-    en su propio hilo -- podían los dos leer la sesión todavía ACTIVA
-    antes de que cualquiera terminara de cerrarla, y los dos reintegraban
-    el tiempo restante por separado: un socio con 30 minutos por devolver
-    terminaba con 60 acreditados. Con el lock tomado de entrada, el
-    segundo pedido espera a que el primero termine de commitear y recién
-    ahí la lee ya FINALIZADA -- entra en el "return" de acá abajo y no
-    reintegra nada de nuevo.
+    Corre con "BEGIN IMMEDIATE" (toma el lock de escritura de entrada,
+    antes de leer nada) -- mismo motivo que
+    miembros_repo.abrir_estacion_por_miembro. Comprobar que la sesión
+    sigue ACTIVA y cerrarla son dos pasos, y el socio cerrando desde su PC
+    (POST /logout) y la empleada tocando "Finalizar antes de tiempo" son
+    dos pedidos legítimos en hilos distintos: sin el lock, los dos leían
+    la sesión ACTIVA y reintegraban el tiempo restante por separado (un
+    socio con 30 minutos por devolver terminaba con 60). Con el lock, el
+    segundo pedido espera, la lee ya FINALIZADA, y sale por el primer
+    "return" sin reintegrar nada de nuevo.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:

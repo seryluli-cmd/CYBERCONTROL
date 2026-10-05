@@ -2,19 +2,19 @@
 buscar_articulo.py
 ====================
 Cuadro de búsqueda de artículos reutilizable, usado tanto en Ventas como
-en Compras. Replica los atajos F5 (buscar por código), F6 (buscar por
-descripción) y F7 (buscar por marca) del sistema actual: alguien lo abre
-cuando no tiene a mano o no puede leer el código de barras.
+en Compras. Se abre con los atajos F5 (buscar por código), F6 (por
+descripción) y F7 (por marca) cuando alguien no tiene a mano o no puede
+leer el código de barras. Al elegir un artículo deja su código en
+`codigo_elegido`.
 """
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel,
     QTableWidget, QTableWidgetItem, QHeaderView
 )
-from PySide6.QtCore import Qt
 
 from repositories import articulos_repo
-from ui.utils import manejar_errores, aplicar_clase, formato_pesos
+from ui.utils import manejar_errores, aplicar_clase, formato_pesos, sin_boton_por_defecto
 
 
 class DialogoBuscarArticulo(QDialog):
@@ -63,14 +63,7 @@ class DialogoBuscarArticulo(QDialog):
         layout.addWidget(self.tabla)
         layout.addLayout(botones)
         self.setLayout(layout)
-        # Evita que Qt elija automaticamente el primer boton como "default":
-        # sin esto, apretar Enter en cualquier campo de texto (por ejemplo el
-        # codigo de barras) tambien activaba el primer boton de la pantalla,
-        # como si se hubiera hecho clic en el (por eso se abria la busqueda F5
-        # solo con escanear y apretar Enter).
-        for boton in self.findChildren(QPushButton):
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
+        sin_boton_por_defecto(self)
 
         self.campo_busqueda.setFocus()
         self._buscar("")
