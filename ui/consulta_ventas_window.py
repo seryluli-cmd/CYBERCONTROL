@@ -10,18 +10,21 @@ cuándo y por qué (nunca se borra el registro original).
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLabel, QHeaderView, QInputDialog
+    QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLabel, QInputDialog,
 )
 from PySide6.QtCore import Qt
 
 import dominio
 from repositories import ventas_repo
 from control_pcs.repositories import miembros_repo
-from ui.utils import formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase, sin_boton_por_defecto
+from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta
+from ui.utils import (
+    formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
+    sin_boton_por_defecto, crear_tabla,
+)
 
 
-class ConsultaVentasWindow(QDialog):
+class ConsultaVentasWindow(VentanaConDetalleDeVenta):
     """Lista de las últimas 100 ventas y, abajo, el detalle de la elegida."""
 
     def __init__(self, usuario, parent=None):
@@ -34,21 +37,13 @@ class ConsultaVentasWindow(QDialog):
         self._cargar()
 
     def _armar_interfaz(self):
-        self.tabla = QTableWidget(0, 6)
-        self.tabla.setHorizontalHeaderLabels(
-            ["Nº Factura", "Fecha", "Turno", "Vendedor", "Total", "Estado"]
+        self.tabla = crear_tabla(
+            ["Nº Factura", "Fecha", "Turno", "Vendedor", "Total", "Estado"],
+            estirar=1, por_filas=True,
         )
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.tabla.itemSelectionChanged.connect(self._mostrar_detalle)
 
-        self.tabla_detalle = QTableWidget(0, 4)
-        self.tabla_detalle.setHorizontalHeaderLabels(["Código", "Descripción", "Cantidad", "Subtotal"])
-        self.tabla_detalle.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla_detalle.setAlternatingRowColors(True)
-        self.tabla_detalle.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.tabla_detalle = crear_tabla_detalle_venta()
 
         botones = QHBoxLayout()
         boton_refrescar = QPushButton("Refrescar")
@@ -92,27 +87,6 @@ class ConsultaVentasWindow(QDialog):
                 item_estado.setForeground(Qt.red)
             self.tabla.setItem(fila, 5, item_estado)
         self.tabla_detalle.setRowCount(0)
-
-    def _venta_seleccionada(self):
-        fila = self.tabla.currentRow()
-        if fila < 0:
-            return None
-        return self.ventas[fila]
-
-    @manejar_errores
-    def _mostrar_detalle(self):
-        venta = self._venta_seleccionada()
-        self.tabla_detalle.setRowCount(0)
-        if venta is None:
-            return
-        _venta, detalle, _pagos = ventas_repo.buscar_venta(venta["id"])
-        for linea in detalle:
-            fila = self.tabla_detalle.rowCount()
-            self.tabla_detalle.insertRow(fila)
-            self.tabla_detalle.setItem(fila, 0, QTableWidgetItem(linea["articulo_codigo"]))
-            self.tabla_detalle.setItem(fila, 1, QTableWidgetItem(linea["descripcion"]))
-            self.tabla_detalle.setItem(fila, 2, QTableWidgetItem(str(linea["cantidad"])))
-            self.tabla_detalle.setItem(fila, 3, QTableWidgetItem(formato_pesos(linea["subtotal"])))
 
     @manejar_errores
     def _anular(self):

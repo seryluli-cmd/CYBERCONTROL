@@ -173,50 +173,33 @@ class MainWindow(QMainWindow):
         self._al_cerrar_sesion()
 
 
-class AdministrarKioskoWindow(QDialog):
+class _VentanaDeBotones(QDialog):
     """
-    Agrupa las pantallas de gestión del kiosko detrás de un único acceso
-    ("Administrar Kiosko"), visible solo para encargados (ver
-    MainWindow._es_encargado). Un Admin las ve todas; una Empleada solo las
-    que tenga habilitadas en usuarios_repo.PERMISOS_EMPLEADA.
+    Diálogo angosto con un título y una columna de botones grandes, todos
+    del mismo tamaño para que la pantalla quede prolija, y un "Cerrar" al
+    final. Es la base de "Administrar Kiosko" y de "Configuración ADMIN":
+    cada una dice qué botones tiene (`_armar_botones`) y qué hace cada uno.
     """
 
-    # Todos los botones del mismo tamaño para que la pantalla quede prolija.
     ANCHO_BOTON = 320
     ALTO_BOTON = 48
 
-    def __init__(self, usuario, es_admin, parent=None):
+    def __init__(self, titulo: str, alto: int, parent=None):
         super().__init__(parent)
-        self.usuario = usuario
-        self.es_admin = es_admin
-        self.setWindowTitle("Administrar Kiosko")
-        self.resize(360, 540)
-        self._armar_interfaz()
+        self._titulo = titulo
+        self.setWindowTitle(titulo)
+        self.resize(360, alto)
 
-    def _armar_interfaz(self):
+    def _armar_botones(self, botones: list):
+        """`botones`: lista de (texto, función), en el orden en que se ven."""
         layout = QVBoxLayout()
         layout.setContentsMargins(24, 24, 24, 24)
 
-        titulo = QLabel("Administrar Kiosko")
+        titulo = QLabel(self._titulo)
         titulo.setAlignment(Qt.AlignCenter)
         titulo.setStyleSheet("font-size: 17px; font-weight: 700; color: #1B2233;")
         layout.addWidget(titulo)
         layout.addSpacing(16)
-
-        botones = []
-        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_articulos"):
-            botones.append(("📦  Artículos", self._abrir_articulos))
-        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_compras"):
-            botones.append(("🚚  Compras", self._abrir_compras))
-        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_consulta_ventas"):
-            texto_consulta = "🔍  Consulta de Ventas / Anular" if self.es_admin else "🔍  Consulta de Ventas"
-            botones.append((texto_consulta, self._abrir_consulta_ventas))
-        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_reportes"):
-            botones.append(("📊  Reportes", self._abrir_reportes))
-        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_cierres"):
-            botones.append(("🗂️  Control de Cierres de Turno", self._abrir_control_cierres))
-        if self.es_admin:
-            botones.append(("👤  Usuarios", self._abrir_usuarios))
 
         for texto, funcion in botones:
             self._agregar_boton(layout, texto, funcion)
@@ -234,6 +217,41 @@ class AdministrarKioskoWindow(QDialog):
         boton.clicked.connect(funcion)
         layout.addWidget(boton, alignment=Qt.AlignHCenter)
         return boton
+
+
+class AdministrarKioskoWindow(_VentanaDeBotones):
+    """
+    Agrupa las pantallas de gestión del kiosko detrás de un único acceso
+    ("Administrar Kiosko"), visible solo para encargados (ver
+    MainWindow._es_encargado). Un Admin las ve todas; una Empleada solo las
+    que tenga habilitadas en usuarios_repo.PERMISOS_EMPLEADA.
+    """
+
+    def __init__(self, usuario, es_admin, parent=None):
+        super().__init__("Administrar Kiosko", 540, parent)
+        self.usuario = usuario
+        self.es_admin = es_admin
+        self._armar_interfaz()
+
+    def _armar_interfaz(self):
+        # (permiso que la habilita, texto, qué abre). "Usuarios" no está
+        # acá: es solo del Admin, no se delega con ningún permiso.
+        pantallas = [
+            ("permiso_articulos", "📦  Artículos", self._abrir_articulos),
+            ("permiso_compras", "🚚  Compras", self._abrir_compras),
+            ("permiso_consulta_ventas",
+             "🔍  Consulta de Ventas / Anular" if self.es_admin else "🔍  Consulta de Ventas",
+             self._abrir_consulta_ventas),
+            ("permiso_reportes", "📊  Reportes", self._abrir_reportes),
+            ("permiso_control_cierres", "🗂️  Control de Cierres de Turno", self._abrir_control_cierres),
+        ]
+        botones = [
+            (texto, funcion) for permiso, texto, funcion in pantallas
+            if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, permiso)
+        ]
+        if self.es_admin:
+            botones.append(("👤  Usuarios", self._abrir_usuarios))
+        self._armar_botones(botones)
 
     def _abrir_articulos(self):
         ArticulosWindow(self).exec()
@@ -254,7 +272,7 @@ class AdministrarKioskoWindow(QDialog):
         UsuariosWindow(self.usuario, self).exec()
 
 
-class ConfiguracionAdminWindow(QDialog):
+class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
     Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
     Tiempo (walk-in), Tarifa por Hora de Socios y Bonos de Socios -- más
@@ -269,44 +287,15 @@ class ConfiguracionAdminWindow(QDialog):
     super admin, usarlo no.
     """
 
-    ANCHO_BOTON = 320
-    ALTO_BOTON = 48
-
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Configuración ADMIN")
-        self.resize(360, 460)
-        self._armar_interfaz()
-
-    def _armar_interfaz(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(24, 24, 24, 24)
-
-        titulo = QLabel("Configuración ADMIN")
-        titulo.setAlignment(Qt.AlignCenter)
-        titulo.setStyleSheet("font-size: 17px; font-weight: 700; color: #1B2233;")
-        layout.addWidget(titulo)
-        layout.addSpacing(16)
-
-        self._agregar_boton(layout, "🖥️  Gestionar Estaciones", self._abrir_estaciones)
-        self._agregar_boton(layout, "🎟️  Gestionar Bonos", self._abrir_bonos)
-        self._agregar_boton(layout, "💲  Tarifa por Hora de Socios", self._configurar_tarifa)
-        self._agregar_boton(layout, "🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro)
-        self._agregar_boton(layout, "🔐  Accesos de Admin", self._abrir_accesos_admin)
-
-        layout.addStretch()
-        self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
-        self.setLayout(layout)
-        sin_boton_por_defecto(self)
-
-    def _agregar_boton(self, layout, texto, funcion, clase=None):
-        boton = QPushButton(texto.upper())
-        boton.setFixedSize(self.ANCHO_BOTON, self.ALTO_BOTON)
-        if clase:
-            aplicar_clase(boton, clase)
-        boton.clicked.connect(funcion)
-        layout.addWidget(boton, alignment=Qt.AlignHCenter)
-        return boton
+        super().__init__("Configuración ADMIN", 460, parent)
+        self._armar_botones([
+            ("🖥️  Gestionar Estaciones", self._abrir_estaciones),
+            ("🎟️  Gestionar Bonos", self._abrir_bonos),
+            ("💲  Tarifa por Hora de Socios", self._configurar_tarifa),
+            ("🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro),
+            ("🔐  Accesos de Admin", self._abrir_accesos_admin),
+        ])
 
     def _abrir_estaciones(self):
         DialogoGestionEstaciones(self).exec()

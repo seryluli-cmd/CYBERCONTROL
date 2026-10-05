@@ -9,8 +9,8 @@ cada artículo.
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLineEdit, QLabel, QHeaderView, QInputDialog
+    QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
+    QInputDialog,
 )
 from PySide6.QtGui import QShortcut, QKeySequence
 from datetime import datetime
@@ -18,7 +18,7 @@ from datetime import datetime
 from repositories import articulos_repo, compras_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, manejar_errores, aplicar_clase,
-    sin_boton_por_defecto,
+    sin_boton_por_defecto, crear_tabla,
 )
 from ui.buscar_articulo import DialogoBuscarArticulo
 
@@ -48,13 +48,10 @@ class ComprasWindow(QDialog):
         self.campo_codigo.setPlaceholderText("Escaneá o tipeá el código de barras y apretá Enter...")
         self.campo_codigo.returnPressed.connect(self._escanear)
 
-        self.tabla = QTableWidget(0, 6)
-        self.tabla.setHorizontalHeaderLabels(
-            ["Cant.", "Código", "Descripción", "Costo", "Stock Antes", "Stock Actual"]
+        self.tabla = crear_tabla(
+            ["Cant.", "Código", "Descripción", "Costo", "Stock Antes", "Stock Actual"],
+            estirar=2,
         )
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
 
         boton_f5 = QPushButton("F5 Cód.")
         boton_f5.clicked.connect(lambda: self._buscar_articulo("codigo"))

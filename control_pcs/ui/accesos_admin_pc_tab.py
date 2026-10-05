@@ -13,15 +13,16 @@ las PCs, aunque la ventana que la contiene es la de Configuración ADMIN.
 from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QDateEdit, QTableWidget, QTableWidgetItem,
-    QHeaderView, QWidget,
+    QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView, QWidget,
 )
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QColor
 
 import dominio
 from control_pcs.repositories import accesos_admin_pc_repo, pcs_repo
-from ui.utils import formato_tiempo, formato_transcurrido, manejar_errores, encadenar_enter
+from ui.utils import (
+    armar_filtro_por_fechas, formato_tiempo, formato_transcurrido, manejar_errores,
+)
 
 # Mismo lila que usa la grilla de Control de PCs para "sin bloqueo".
 COLOR_SIN_BLOQUEO = QColor("#E6D5F5")
@@ -38,21 +39,9 @@ class PestañaAccesosAdminPc(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde = QDateEdit(QDate.currentDate().addDays(-7))
-        self.fecha_desde.setCalendarPopup(True)
-        self.fecha_hasta = QDateEdit(QDate.currentDate())
-        self.fecha_hasta.setCalendarPopup(True)
-        boton_buscar = QPushButton("Buscar")
-        boton_buscar.clicked.connect(self._buscar)
-        encadenar_enter(self.fecha_desde, self.fecha_hasta, accion_final=self._buscar)
-
-        filtros = QHBoxLayout()
-        filtros.addWidget(QLabel("Desde:"))
-        filtros.addWidget(self.fecha_desde)
-        filtros.addWidget(QLabel("Hasta:"))
-        filtros.addWidget(self.fecha_hasta)
-        filtros.addWidget(boton_buscar)
-        filtros.addStretch()
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(
+            self._buscar, QDate.currentDate().addDays(-7)
+        )
 
         self.etiqueta_ahora = QLabel()
         self.etiqueta_ahora.setWordWrap(True)

@@ -21,8 +21,8 @@ from PySide6.QtCore import Qt, QTimer
 import database
 from control_pcs.repositories import comandos_pc_repo, config_red_repo, pcs_repo
 from ui.utils import (
-    aplicar_clase, confirmar, formato_tiempo, manejar_errores, mostrar_error,
-    mostrar_info, sin_boton_por_defecto,
+    aplicar_clase, confirmar, formato_tiempo, manejar_errores, mostrar_error, mostrar_info,
+    sin_boton_por_defecto,
 )
 
 # Cuántos segundos se espera, como máximo, la captura de pantalla que
@@ -32,18 +32,71 @@ from ui.utils import (
 SEGUNDOS_ESPERA_CAPTURA = 20
 
 
-class DialogoCaptura(QDialog):
+class _DialogoQueEsperaResultado(QDialog):
     """
-    Pide una captura de pantalla a una estación y la muestra apenas
-    llega. No es instantáneo: el Cliente PC de esa PC recién la toma y la
-    sube cuando le llega el comando en su próxima consulta de estado
-    (hasta 5s, ver comandos_pc_repo.py) -- por eso este diálogo se queda
-    revisando con un QTimer en vez de traer la imagen de una sola vez.
+    Base de los diálogos que le mandan un comando a una PC y se quedan
+    esperando lo que devuelve (ver comandos_pc_repo.py): una captura de
+    pantalla, o si pudo cambiar de módem. No es instantáneo -- el Cliente PC
+    recién recibe el comando en su próxima consulta de estado (hasta 5s) --
+    así que, con un QTimer, revisa cada segundo si ya llegó el resultado y,
+    pasados SEGUNDOS_ESPERA_CAPTURA sin respuesta, avisa.
+
+    La subclase manda el comando y llama a `_esperar_resultado(comando_id)`;
+    define qué hacer cuando llega (`_mostrar_resultado`) y el texto de
+    MENSAJE_SIN_RESPUESTA. Necesita una `self.etiqueta_estado`.
     """
+
+    MENSAJE_SIN_RESPUESTA = (
+        "No llegó respuesta a tiempo — revisá que la PC esté prendida "
+        "y conectada, o probá de nuevo."
+    )
 
     def __init__(self, estacion, parent=None):
         super().__init__(parent)
         self.estacion = estacion
+        self.comando_id = None
+        self._segundos_esperados = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._revisar)
+
+    def _esperar_resultado(self, comando_id: int):
+        """Empieza a esperar el resultado del comando ya encolado."""
+        self.comando_id = comando_id
+        self._segundos_esperados = 0
+        self._timer.start()
+
+    def _mostrar_resultado(self, resultado: str):
+        """Qué mostrar cuando llega el resultado (lo define cada subclase)."""
+        raise NotImplementedError
+
+    def _revisar(self):
+        self._segundos_esperados += 1
+        fila = comandos_pc_repo.obtener_comando(self.comando_id)
+        if fila is not None and fila["resultado"]:
+            self._timer.stop()
+            self._mostrar_resultado(fila["resultado"])
+            return
+        if self._segundos_esperados >= SEGUNDOS_ESPERA_CAPTURA:
+            self._timer.stop()
+            self.etiqueta_estado.setText(self.MENSAJE_SIN_RESPUESTA)
+
+
+class DialogoCaptura(_DialogoQueEsperaResultado):
+    """
+    Pide una captura de pantalla a una estación y la muestra apenas
+    llega. El Cliente PC de esa PC recién la toma y la sube cuando le llega
+    el comando, por eso se espera el resultado (ver la clase base) en vez de
+    traer la imagen de una sola vez.
+    """
+
+    MENSAJE_SIN_RESPUESTA = (
+        "No llegó respuesta a tiempo — revisá que la PC esté prendida "
+        "y conectada a la red, o probá de nuevo."
+    )
+
+    def __init__(self, estacion, parent=None):
+        super().__init__(estacion, parent)
         self.setWindowTitle(f"Captura de pantalla — {estacion['nombre']}")
         self.resize(520, 420)
 
@@ -61,37 +114,24 @@ class DialogoCaptura(QDialog):
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
-        self.comando_id = comandos_pc_repo.encolar_comando(estacion["id"], comandos_pc_repo.TIPO_SCREENSHOT)
-        self._segundos_esperados = 0
-        self._timer = QTimer(self)
-        self._timer.setInterval(1000)
-        self._timer.timeout.connect(self._revisar)
-        self._timer.start()
+        self._esperar_resultado(
+            comandos_pc_repo.encolar_comando(estacion["id"], comandos_pc_repo.TIPO_SCREENSHOT)
+        )
 
-    def _revisar(self):
-        self._segundos_esperados += 1
-        fila = comandos_pc_repo.obtener_comando(self.comando_id)
-        if fila is not None and fila["resultado"]:
-            self._timer.stop()
-            ruta_completa = os.path.join(database.DATA_DIR, fila["resultado"])
-            pixmap = QPixmap(ruta_completa)
-            if pixmap.isNull():
-                self.etiqueta_estado.setText("Llegó una respuesta pero no se pudo leer la imagen.")
-                return
-            self.etiqueta_estado.setText(f"Captura de '{self.estacion['nombre']}':")
-            self.etiqueta_imagen.setPixmap(
-                pixmap.scaled(480, 340, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            )
+    def _mostrar_resultado(self, resultado: str):
+        """`resultado` es la ruta (dentro de data/) de la imagen que subió el
+        Cliente PC."""
+        pixmap = QPixmap(os.path.join(database.DATA_DIR, resultado))
+        if pixmap.isNull():
+            self.etiqueta_estado.setText("Llegó una respuesta pero no se pudo leer la imagen.")
             return
-        if self._segundos_esperados >= SEGUNDOS_ESPERA_CAPTURA:
-            self._timer.stop()
-            self.etiqueta_estado.setText(
-                "No llegó respuesta a tiempo — revisá que la PC esté prendida "
-                "y conectada a la red, o probá de nuevo."
-            )
+        self.etiqueta_estado.setText(f"Captura de '{self.estacion['nombre']}':")
+        self.etiqueta_imagen.setPixmap(
+            pixmap.scaled(480, 340, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        )
 
 
-class DialogoCambiarRed(QDialog):
+class DialogoCambiarRed(_DialogoQueEsperaResultado):
     """
     Cambia la puerta de enlace y el DNS de la estación elegida a uno de
     los módems configurados (ver config_red_repo.py) -- nunca toca la IP
@@ -101,13 +141,12 @@ class DialogoCambiarRed(QDialog):
     módem, el mostrador la pasa al otro desde acá en vez de ir hasta la
     PC. A diferencia de Reiniciar/Apagar/Mensaje, este comando SÍ puede
     fallar del lado de la PC (adaptador no encontrado, PowerShell sin
-    permisos) -- por eso se queda esperando el resultado con un QTimer,
-    igual que DialogoCaptura, en vez de darlo por entregado y listo.
+    permisos) -- por eso se queda esperando el resultado (ver la clase
+    base) en vez de darlo por entregado y listo.
     """
 
     def __init__(self, estacion, parent=None):
-        super().__init__(parent)
-        self.estacion = estacion
+        super().__init__(estacion, parent)
         self.setWindowTitle(f"Cambiar red — {estacion['nombre']}")
         self.resize(360, 280)
 
@@ -132,12 +171,6 @@ class DialogoCambiarRed(QDialog):
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
-        self.comando_id = None
-        self._segundos_esperados = 0
-        self._timer = QTimer(self)
-        self._timer.setInterval(1000)
-        self._timer.timeout.connect(self._revisar)
-
     @manejar_errores
     def _enviar(self, ip_gateway):
         if not confirmar(
@@ -145,31 +178,20 @@ class DialogoCambiarRed(QDialog):
             f"¿Cambiar la puerta de enlace y DNS de '{self.estacion['nombre']}' a {ip_gateway}?",
         ):
             return
-        self.comando_id = comandos_pc_repo.encolar_comando(
+        self._esperar_resultado(comandos_pc_repo.encolar_comando(
             self.estacion["id"], comandos_pc_repo.TIPO_CAMBIAR_RED, ip_gateway
-        )
-        self._segundos_esperados = 0
+        ))
         self.etiqueta_estado.setText("Esperando que la PC aplique el cambio...")
-        self._timer.start()
 
-    def _revisar(self):
-        self._segundos_esperados += 1
-        fila = comandos_pc_repo.obtener_comando(self.comando_id)
-        if fila is not None and fila["resultado"]:
-            self._timer.stop()
-            if fila["resultado"] == "OK":
-                self.etiqueta_estado.setText(
-                    f"Listo, '{self.estacion['nombre']}' ya está usando esa puerta de enlace."
-                )
-            else:
-                self.etiqueta_estado.setText(f"No se pudo cambiar: {fila['resultado']}")
-            return
-        if self._segundos_esperados >= SEGUNDOS_ESPERA_CAPTURA:
-            self._timer.stop()
+    def _mostrar_resultado(self, resultado: str):
+        """`resultado` es "OK" o "ERROR: ..." (ver win32_utils.cambiar_gateway_y_dns
+        del lado del Cliente PC)."""
+        if resultado == "OK":
             self.etiqueta_estado.setText(
-                "No llegó respuesta a tiempo — revisá que la PC esté prendida "
-                "y conectada, o probá de nuevo."
+                f"Listo, '{self.estacion['nombre']}' ya está usando esa puerta de enlace."
             )
+        else:
+            self.etiqueta_estado.setText(f"No se pudo cambiar: {resultado}")
 
     def _editar_modems(self):
         DialogoEditarGateways(self).exec()

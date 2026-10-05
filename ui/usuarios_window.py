@@ -9,17 +9,16 @@ que vive acá pero la usa cualquier usuario para su propia clave.
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLineEdit, QLabel, QComboBox, QFormLayout, QHeaderView,
-    QDoubleSpinBox, QFileDialog, QCheckBox, QGroupBox
+    QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
+    QComboBox, QFormLayout, QDoubleSpinBox, QFileDialog, QCheckBox, QGroupBox,
 )
 
 import dominio
 import database
 from repositories import usuarios_repo, config_repo
 from ui.utils import (
-    mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase, encadenar_enter,
-    sin_boton_por_defecto,
+    mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase,
+    encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar, crear_tabla,
 )
 
 
@@ -68,12 +67,7 @@ class UsuariosWindow(QDialog):
         self.check_inactivos = QCheckBox("Mostrar inactivos")
         self.check_inactivos.stateChanged.connect(self._cargar_grilla)
 
-        self.tabla = QTableWidget(0, 4)
-        self.tabla.setHorizontalHeaderLabels(["Usuario Nº", "Nombre", "Rol", "Estado"])
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.tabla = crear_tabla(["Usuario Nº", "Nombre", "Rol", "Estado"], estirar=1, por_filas=True)
         self.tabla.doubleClicked.connect(self._modificar_usuario)
 
         layout = QVBoxLayout()
@@ -202,14 +196,7 @@ class DialogoUsuario(QDialog):
             self.checks_permisos[columna] = check
         self.grupo_permisos.setLayout(layout_permisos)
 
-        boton_guardar = QPushButton("Guardar")
-        aplicar_clase(boton_guardar, "primario")
-        boton_guardar.clicked.connect(self._guardar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_guardar)
-        botones.addWidget(boton_cancelar)
+        botones = fila_guardar_cancelar(self, self._guardar)
 
         layout = QVBoxLayout()
         layout.addLayout(formulario)
@@ -272,14 +259,7 @@ class DialogoFondoCambio(QDialog):
         self.spin_monto.setValue(valor_actual)
         encadenar_enter(self.spin_monto, accion_final=self.accept)
 
-        boton_guardar = QPushButton("Guardar")
-        aplicar_clase(boton_guardar, "primario")
-        boton_guardar.clicked.connect(self.accept)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_guardar)
-        botones.addWidget(boton_cancelar)
+        botones = fila_guardar_cancelar(self)
 
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Fondo de cambio fijo que arranca cada turno:"))
@@ -316,14 +296,7 @@ class DialogoCambiarClave(QDialog):
         formulario.addRow("Confirmar clave nueva:", self.campo_confirmar)
         encadenar_enter(self.campo_actual, self.campo_nueva, self.campo_confirmar, accion_final=self._guardar)
 
-        boton_guardar = QPushButton("Guardar")
-        aplicar_clase(boton_guardar, "primario")
-        boton_guardar.clicked.connect(self._guardar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_guardar)
-        botones.addWidget(boton_cancelar)
+        botones = fila_guardar_cancelar(self, self._guardar)
 
         layout = QVBoxLayout()
         layout.addLayout(formulario)

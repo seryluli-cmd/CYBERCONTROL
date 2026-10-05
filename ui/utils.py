@@ -14,8 +14,11 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QMessageBox, QPushButton, QWidget
+from PySide6.QtCore import QDate, QEvent, QObject, Qt
+from PySide6.QtWidgets import (
+    QAbstractSpinBox, QComboBox, QDateEdit, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
+    QPushButton, QTableWidget, QWidget,
+)
 
 import database
 
@@ -167,6 +170,25 @@ def sin_boton_por_defecto(ventana):
         boton.setDefault(False)
 
 
+def fila_guardar_cancelar(dialogo, al_guardar=None, texto_guardar: str = "Guardar"):
+    """
+    La fila de botones de un formulario: "Guardar" (azul, la acción
+    principal) y "Cancelar" (cierra el diálogo con `reject`). `al_guardar`
+    es lo que hace el primero (por defecto, aceptar el diálogo tal cual) y
+    `texto_guardar` cómo se llama ("Ingresar", "Cobrar y cargar saldo"...).
+    Devuelve el layout, para agregarlo al del diálogo.
+    """
+    boton_guardar = QPushButton(texto_guardar)
+    aplicar_clase(boton_guardar, "primario")
+    boton_guardar.clicked.connect(al_guardar or dialogo.accept)
+    boton_cancelar = QPushButton("Cancelar")
+    boton_cancelar.clicked.connect(dialogo.reject)
+    botones = QHBoxLayout()
+    botones.addWidget(boton_guardar)
+    botones.addWidget(boton_cancelar)
+    return botones
+
+
 class _FiltroEnter(QObject):
     """Intercepta la tecla Enter/Intro en el widget donde se instala y,
     en vez de dejarla pasar, ejecuta `accion` (ver `encadenar_enter`)."""
@@ -220,6 +242,82 @@ def encadenar_enter(*widgets, accion_final=None):
         # Python lo destruye enseguida y el filtro deja de funcionar.
         widget._filtro_enter = filtro
         _widget_de_teclado(widget).installEventFilter(filtro)
+
+
+def crear_tabla(titulos, estirar=None, por_filas=False, una_sola=False) -> QTableWidget:
+    """
+    Una tabla de solo lectura, con filas alternadas, columnas `titulos` y
+    sin filas todavía: así se muestran todas las listas del programa.
+
+    - `estirar`: número de la columna que ocupa el ancho que sobra (las
+      demás se ajustan solas).
+    - `por_filas`: elegir una celda selecciona la fila entera.
+    - `una_sola`: se puede elegir una sola fila a la vez.
+    """
+    tabla = QTableWidget(0, len(titulos))
+    tabla.setHorizontalHeaderLabels(list(titulos))
+    if por_filas:
+        tabla.setSelectionBehavior(QTableWidget.SelectRows)
+    if una_sola:
+        tabla.setSelectionMode(QTableWidget.SingleSelection)
+    tabla.setEditTriggers(QTableWidget.NoEditTriggers)
+    tabla.setAlternatingRowColors(True)
+    if estirar is not None:
+        tabla.horizontalHeader().setSectionResizeMode(estirar, QHeaderView.Stretch)
+    return tabla
+
+
+def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=False, estirar=True):
+    """
+    Arma la fila de filtros de las pantallas que consultan un rango de
+    fechas: "Desde", "Hasta", lo que cada pantalla agregue (`extras`), el
+    botón "Solo Hoy" (si se pide) y "Buscar".
+
+    Devuelve (fecha_desde, fecha_hasta, layout): los dos QDateEdit, con
+    calendario desplegable, para que la pantalla lea el rango, y la fila ya
+    armada para agregarla a su layout.
+
+    - `buscar`: función sin argumentos que hace la búsqueda; la disparan el
+      botón "Buscar" y Enter en el último campo.
+    - `desde_inicial`: QDate con el que arranca "Desde" (hoy, por defecto);
+      "Hasta" siempre arranca en hoy.
+    - `extras`: lista de (etiqueta, widget) que van entre "Hasta" y los
+      botones (por ejemplo, un combo "Agrupar:"). Entran en la cadena de
+      Enter, en ese orden.
+    - `solo_hoy`: agrega "Solo Hoy", que pone las dos fechas en hoy y busca.
+    - `estirar`: deja los botones pegados a la izquierda.
+    """
+    fecha_desde = QDateEdit(desde_inicial or QDate.currentDate())
+    fecha_desde.setCalendarPopup(True)
+    fecha_hasta = QDateEdit(QDate.currentDate())
+    fecha_hasta.setCalendarPopup(True)
+
+    filtros = QHBoxLayout()
+    filtros.addWidget(QLabel("Desde:"))
+    filtros.addWidget(fecha_desde)
+    filtros.addWidget(QLabel("Hasta:"))
+    filtros.addWidget(fecha_hasta)
+    for etiqueta, widget in extras:
+        filtros.addWidget(QLabel(etiqueta))
+        filtros.addWidget(widget)
+
+    if solo_hoy:
+        def poner_solo_hoy():
+            fecha_desde.setDate(QDate.currentDate())
+            fecha_hasta.setDate(QDate.currentDate())
+            buscar()
+
+        boton_hoy = QPushButton("Solo Hoy")
+        boton_hoy.clicked.connect(poner_solo_hoy)
+        filtros.addWidget(boton_hoy)
+    boton_buscar = QPushButton("Buscar")
+    boton_buscar.clicked.connect(buscar)
+    filtros.addWidget(boton_buscar)
+    if estirar:
+        filtros.addStretch()
+
+    encadenar_enter(fecha_desde, fecha_hasta, *[widget for _, widget in extras], accion_final=buscar)
+    return fecha_desde, fecha_hasta, filtros
 
 
 # Cuadros de mensaje. Siempre usarlos en vez de QMessageBox directo, así el

@@ -9,12 +9,13 @@ leer el código de barras. Al elegir un artículo deja su código en
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel,
-    QTableWidget, QTableWidgetItem, QHeaderView
+    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QTableWidgetItem,
 )
 
 from repositories import articulos_repo
-from ui.utils import manejar_errores, aplicar_clase, formato_pesos, sin_boton_por_defecto
+from ui.utils import (
+    manejar_errores, aplicar_clase, formato_pesos, sin_boton_por_defecto, crear_tabla,
+)
 
 
 class DialogoBuscarArticulo(QDialog):
@@ -38,12 +39,10 @@ class DialogoBuscarArticulo(QDialog):
         self.campo_busqueda.textChanged.connect(self._buscar)
         self.campo_busqueda.returnPressed.connect(self._elegir_seleccion)
 
-        self.tabla = QTableWidget(0, 4)
-        self.tabla.setHorizontalHeaderLabels(["Código", "Descripción", "Marca", "Precio Venta"])
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.tabla = crear_tabla(
+            ["Código", "Descripción", "Marca", "Precio Venta"],
+            estirar=1, por_filas=True,
+        )
         self.tabla.doubleClicked.connect(self._elegir_seleccion)
 
         boton_elegir = QPushButton("Seleccionar")

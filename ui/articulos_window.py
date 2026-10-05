@@ -8,17 +8,16 @@ desde Compras (ver compras_window.py).
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLineEdit, QLabel, QComboBox, QDoubleSpinBox, QSpinBox,
-    QFormLayout, QDateEdit, QHeaderView, QInputDialog
+    QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
+    QComboBox, QDoubleSpinBox, QSpinBox, QFormLayout, QInputDialog,
 )
 from PySide6.QtCore import Qt, QDate
 
 from repositories import articulos_repo
 from ui.utils import (
-    formato_pesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores,
-    aplicar_clase, encadenar_enter,
-    sin_boton_por_defecto,
+    formato_pesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase,
+    encadenar_enter, armar_filtro_por_fechas, sin_boton_por_defecto, fila_guardar_cancelar,
+    crear_tabla,
 )
 
 
@@ -59,18 +58,13 @@ class ArticulosWindow(QDialog):
         self.campo_buscar.setPlaceholderText("Buscar por código o descripción...")
         self.campo_buscar.textChanged.connect(self._cargar_grilla)
 
-        self.tabla = QTableWidget(0, 8)
-        self.tabla.setHorizontalHeaderLabels(
+        self.tabla = crear_tabla(
             ["Código", "Descripción", "Marca", "Rubro", "Precio Venta",
-             "Precio Compra", "Stock", "Stock Mínimo"]
+             "Precio Compra", "Stock", "Stock Mínimo"],
+            estirar=1, por_filas=True, una_sola=True,
         )
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setSelectionMode(QTableWidget.SingleSelection)
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
         # Clickeando el título de una columna se ordena la grilla por ella.
         self.tabla.setSortingEnabled(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.tabla.doubleClicked.connect(self._modificar_articulo)
 
         layout = QVBoxLayout()
@@ -252,15 +246,7 @@ class DialogoArticulo(QDialog):
         formulario.addRow("Stock Mínimo:", self.spin_stock_minimo)
         formulario.addRow("Stock actual:", self.etiqueta_stock)
 
-        boton_guardar = QPushButton("Guardar")
-        aplicar_clase(boton_guardar, "primario")
-        boton_guardar.clicked.connect(self._guardar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-
-        botones = QHBoxLayout()
-        botones.addWidget(boton_guardar)
-        botones.addWidget(boton_cancelar)
+        botones = fila_guardar_cancelar(self, self._guardar)
 
         layout = QVBoxLayout()
         layout.addLayout(formulario)
@@ -346,26 +332,11 @@ class DialogoMovimientos(QDialog):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde = QDateEdit(QDate.currentDate().addMonths(-1))
-        self.fecha_desde.setCalendarPopup(True)
-        self.fecha_hasta = QDateEdit(QDate.currentDate())
-        self.fecha_hasta.setCalendarPopup(True)
-        boton_buscar = QPushButton("Buscar")
-        boton_buscar.clicked.connect(self._buscar)
-        encadenar_enter(self.fecha_desde, self.fecha_hasta, accion_final=self._buscar)
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(
+            self._buscar, QDate.currentDate().addMonths(-1), estirar=False
+        )
 
-        filtros = QHBoxLayout()
-        filtros.addWidget(QLabel("Desde:"))
-        filtros.addWidget(self.fecha_desde)
-        filtros.addWidget(QLabel("Hasta:"))
-        filtros.addWidget(self.fecha_hasta)
-        filtros.addWidget(boton_buscar)
-
-        self.tabla = QTableWidget(0, 4)
-        self.tabla.setHorizontalHeaderLabels(["Fecha", "Comprobante", "Nro", "Cantidad"])
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tabla = crear_tabla(["Fecha", "Comprobante", "Nro", "Cantidad"], estirar=0)
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)
@@ -408,14 +379,8 @@ class DialogoGestionRubros(QDialog):
         self._cargar()
 
     def _armar_interfaz(self):
-        self.lista = QTableWidget(0, 1)
-        self.lista.setHorizontalHeaderLabels(["Rubro"])
-        self.lista.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.lista = crear_tabla(["Rubro"], estirar=0, por_filas=True, una_sola=True)
         self.lista.horizontalHeader().setVisible(False)
-        self.lista.setSelectionBehavior(QTableWidget.SelectRows)
-        self.lista.setSelectionMode(QTableWidget.SingleSelection)
-        self.lista.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.lista.setAlternatingRowColors(True)
 
         self.campo_nuevo = QLineEdit()
         self.campo_nuevo.setPlaceholderText("Nombre del rubro nuevo...")

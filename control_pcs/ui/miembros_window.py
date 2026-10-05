@@ -22,16 +22,18 @@ en ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QLabel, QComboBox, QCheckBox, QFormLayout,
-    QHeaderView, QDoubleSpinBox, QSpinBox, QStackedWidget, QWidget
+    QHeaderView, QDoubleSpinBox, QStackedWidget, QWidget
 )
 
 import dominio
 from repositories import config_repo
 from control_pcs.repositories import miembros_repo, bonos_miembro_repo
+from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, confirmar, manejar_errores,
-    aplicar_clase, encadenar_enter, sin_boton_por_defecto,
+    aplicar_clase, encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar,
+    crear_tabla,
 )
 
 
@@ -70,12 +72,10 @@ class MiembrosWindow(QDialog):
         self.check_inactivos = QCheckBox("Mostrar inactivos")
         self.check_inactivos.stateChanged.connect(self._cargar_grilla)
 
-        self.tabla = QTableWidget(0, 6)
-        self.tabla.setHorizontalHeaderLabels(["Usuario", "Nombre", "DNI", "Teléfono", "Saldo", "Estado"])
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.tabla = crear_tabla(
+            ["Usuario", "Nombre", "DNI", "Teléfono", "Saldo", "Estado"],
+            estirar=1, por_filas=True,
+        )
         self.tabla.doubleClicked.connect(self._modificar_miembro)
 
         layout = QVBoxLayout()
@@ -168,14 +168,7 @@ class DialogoMiembro(QDialog):
         formulario.addRow("Teléfono:", self.campo_telefono)
         formulario.addRow("Email:", self.campo_email)
 
-        boton_guardar = QPushButton("Guardar")
-        aplicar_clase(boton_guardar, "primario")
-        boton_guardar.clicked.connect(self._guardar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_guardar)
-        botones.addWidget(boton_cancelar)
+        botones = fila_guardar_cancelar(self, self._guardar)
 
         layout = QVBoxLayout()
         layout.addLayout(formulario)
@@ -279,14 +272,7 @@ class DialogoCargarSaldo(QDialog):
         for metodo in (dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL, dominio.PAGO_MIXTO):
             self.combo_metodo.addItem(dominio.NOMBRE_METODO_PAGO[metodo], metodo)
 
-        boton_confirmar = QPushButton("Cobrar y cargar saldo")
-        aplicar_clase(boton_confirmar, "primario")
-        boton_confirmar.clicked.connect(self._confirmar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_confirmar)
-        botones.addWidget(boton_cancelar)
+        botones = fila_guardar_cancelar(self, self._confirmar, texto_guardar="Cobrar y cargar saldo")
 
         layout = QVBoxLayout()
         layout.addWidget(etiqueta_saldo)
@@ -305,11 +291,9 @@ class DialogoCargarSaldo(QDialog):
 
     def _actualizar_preview_monto(self):
         monto = self.spin_monto.value()
-        tarifa_hora = dominio.tarifa_hora_para_monto(self.tramos_tarifa, monto)
+        # Es la misma cuenta que hace cargar_saldo_por_monto al cobrar.
+        tarifa_hora, minutos = miembros_repo.minutos_por_monto(self.tramos_tarifa, monto)
         self.etiqueta_tarifa_aplicada.setText(f"Tarifa a esta carga: {formato_pesos(tarifa_hora)} / hora")
-        # Solo una vista previa: el redondeo real (hacia abajo, a bloques de
-        # 30 min) lo hace miembros_repo.cargar_saldo_por_monto al cobrar.
-        minutos = int((monto / tarifa_hora * 60) // 30) * 30
         self.etiqueta_preview_monto.setText(f"Equivale a {formato_tiempo(minutos * 60)} de saldo.")
 
     @manejar_errores
@@ -372,14 +356,7 @@ class DialogoTramosTarifaMiembro(QDialog):
         fila_botones.addWidget(boton_agregar)
         fila_botones.addWidget(boton_quitar)
 
-        boton_guardar = QPushButton("Guardar")
-        aplicar_clase(boton_guardar, "primario")
-        boton_guardar.clicked.connect(self._guardar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_guardar)
-        botones.addWidget(boton_cancelar)
+        botones = fila_guardar_cancelar(self, self._guardar)
 
         layout = QVBoxLayout()
         layout.addWidget(QLabel(
@@ -434,165 +411,31 @@ class DialogoTramosTarifaMiembro(QDialog):
         self.accept()
 
 
-class DialogoGestionBonosMiembro(QDialog):
-    """
-    Catálogo de Bonos EXCLUSIVO de socios (bonos_miembro_repo) — mismo
-    espíritu que pcs_gestion_dialogos.DialogoGestionBonos (el de walk-ins), pero
-    tabla y pantalla separadas a propósito (ver el docstring del módulo).
-    Solo se llega acá desde ui.main_window.ConfiguracionAdminWindow, que
-    es exclusiva de ADMIN: nadie más ve el botón que abre este diálogo.
-    """
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Gestionar Bonos de Socios")
-        self.resize(460, 440)
-        self._armar_interfaz()
-        self._cargar()
-
-    def _armar_interfaz(self):
-        self.tabla = QTableWidget(0, 3)
-        self.tabla.setHorizontalHeaderLabels(["Nombre", "Tiempo", "Precio"])
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setSelectionMode(QTableWidget.SingleSelection)
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-
-        boton_nuevo = QPushButton("Nuevo")
-        aplicar_clase(boton_nuevo, "primario")
-        boton_nuevo.clicked.connect(self._nuevo)
-        boton_modificar = QPushButton("Modificar")
-        boton_modificar.clicked.connect(self._modificar)
-        boton_desactivar = QPushButton("Desactivar")
-        aplicar_clase(boton_desactivar, "peligro")
-        boton_desactivar.clicked.connect(self._desactivar)
-        boton_cerrar = QPushButton("Cerrar")
-        boton_cerrar.clicked.connect(self.close)
-
-        barra_botones = QHBoxLayout()
-        for boton in (boton_nuevo, boton_modificar, boton_desactivar, boton_cerrar):
-            barra_botones.addWidget(boton)
-        barra_botones.addStretch()
-
-        layout = QVBoxLayout()
-        layout.addLayout(barra_botones)
-        layout.addWidget(self.tabla)
-        self.setLayout(layout)
-        sin_boton_por_defecto(self)
-
-    @manejar_errores
-    def _cargar(self):
-        self.bonos = bonos_miembro_repo.listar_bonos()
-        self.tabla.setRowCount(0)
-        for bono in self.bonos:
-            fila = self.tabla.rowCount()
-            self.tabla.insertRow(fila)
-            self.tabla.setItem(fila, 0, QTableWidgetItem(bono["nombre"]))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(formato_tiempo(bono["minutos"] * 60)))
-            self.tabla.setItem(fila, 2, QTableWidgetItem(formato_pesos(bono["precio"])))
-
-    def _seleccionado(self):
-        fila = self.tabla.currentRow()
-        if fila < 0:
-            mostrar_error(self, "Nada seleccionado", "Elegí primero un bono de la lista.")
-            return None
-        return self.bonos[fila]
-
-    def _nuevo(self):
-        dialogo = DialogoBonoMiembro(self)
-        if dialogo.exec():
-            self._cargar()
-
-    def _modificar(self):
-        bono = self._seleccionado()
-        if bono is None:
-            return
-        dialogo = DialogoBonoMiembro(self, bono)
-        if dialogo.exec():
-            self._cargar()
-
-    @manejar_errores
-    def _desactivar(self):
-        bono = self._seleccionado()
-        if bono is None:
-            return
-        if confirmar(self, "Confirmar",
-                     f"¿Desactivar el bono de socios '{bono['nombre']}'? Deja de poder cargarse, "
-                     "pero los socios que ya lo usaron conservan su historial."):
-            bonos_miembro_repo.desactivar_bono(bono["id"])
-            self._cargar()
-
-
-class DialogoBonoMiembro(QDialog):
-    """Alta/edición de un bono de socios. Mismo formulario que
-    pcs_gestion_dialogos.DialogoBono (horas/minutos en pasos de 30, nunca minuto
-    suelto) — es el mismo concepto de combo prearmado, solo que este
+class DialogoBonoMiembro(DialogoBonoBase):
+    """Alta/edición de un bono de socios (bonos_miembro_repo). Mismo
+    formulario que el de walk-ins (horas/minutos en pasos de 30, nunca
+    minuto suelto): es el mismo concepto de combo prearmado, solo que este
     catálogo es exclusivo de Miembros."""
 
-    def __init__(self, parent, bono=None):
-        super().__init__(parent)
-        self.bono = bono
-        self.setWindowTitle("Modificar Bono de Socios" if bono else "Nuevo Bono de Socios")
-        self.resize(340, 260)
-        self._armar_interfaz()
-        if bono:
-            self._cargar_datos(bono)
+    repo = bonos_miembro_repo
+    TITULO_NUEVO = "Nuevo Bono de Socios"
+    TITULO_EDICION = "Modificar Bono de Socios"
+    EJEMPLO_NOMBRE = "Ej: 3 horas Socio"
 
-    def _armar_interfaz(self):
-        self.campo_nombre = QLineEdit()
-        self.campo_nombre.setPlaceholderText("Ej: 3 horas Socio")
 
-        self.spin_horas = QSpinBox()
-        self.spin_horas.setRange(0, 99)
-        self.spin_minutos = QSpinBox()
-        self.spin_minutos.setRange(0, 30)
-        self.spin_minutos.setSingleStep(30)
-        fila_tiempo = QHBoxLayout()
-        fila_tiempo.addWidget(self.spin_horas)
-        fila_tiempo.addWidget(QLabel("hs"))
-        fila_tiempo.addWidget(self.spin_minutos)
-        fila_tiempo.addWidget(QLabel("min"))
+class DialogoGestionBonosMiembro(DialogoGestionBonosBase):
+    """
+    Catálogo de Bonos EXCLUSIVO de socios (bonos_miembro_repo) — mismo
+    espíritu que pcs_gestion_dialogos.DialogoGestionBonos (el de walk-ins),
+    pero tabla y pantalla separadas a propósito (ver el docstring del
+    módulo). Solo se llega acá desde ui.main_window.ConfiguracionAdminWindow,
+    que es exclusiva de ADMIN: nadie más ve el botón que abre este diálogo.
+    """
 
-        self.spin_precio = QDoubleSpinBox()
-        self.spin_precio.setMaximum(99_999_999)
-        self.spin_precio.setPrefix("$ ")
-
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Nombre:"))
-        layout.addWidget(self.campo_nombre)
-        layout.addWidget(QLabel("Tiempo:"))
-        layout.addLayout(fila_tiempo)
-        layout.addWidget(QLabel("Precio:"))
-        layout.addWidget(self.spin_precio)
-
-        boton_guardar = QPushButton("Guardar")
-        aplicar_clase(boton_guardar, "primario")
-        boton_guardar.clicked.connect(self._guardar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_guardar)
-        botones.addWidget(boton_cancelar)
-        layout.addLayout(botones)
-        self.setLayout(layout)
-        encadenar_enter(self.campo_nombre, self.spin_horas, self.spin_minutos, self.spin_precio,
-                         accion_final=self._guardar)
-        sin_boton_por_defecto(self)
-
-    def _cargar_datos(self, bono):
-        self.campo_nombre.setText(bono["nombre"])
-        self.spin_horas.setValue(bono["minutos"] // 60)
-        self.spin_minutos.setValue(bono["minutos"] % 60)
-        self.spin_precio.setValue(bono["precio"])
-
-    @manejar_errores
-    def _guardar(self):
-        nombre = self.campo_nombre.text().strip()
-        minutos = self.spin_horas.value() * 60 + self.spin_minutos.value()
-        precio = self.spin_precio.value()
-        if self.bono:
-            bonos_miembro_repo.modificar_bono(self.bono["id"], nombre, minutos, precio)
-        else:
-            bonos_miembro_repo.crear_bono(nombre, minutos, precio)
-        self.accept()
+    repo = bonos_miembro_repo
+    CLASE_FORMULARIO = DialogoBonoMiembro
+    TITULO = "Gestionar Bonos de Socios"
+    CONFIRMAR_DESACTIVAR = (
+        "¿Desactivar el bono de socios '{nombre}'? Deja de poder cargarse, "
+        "pero los socios que ya lo usaron conservan su historial."
+    )

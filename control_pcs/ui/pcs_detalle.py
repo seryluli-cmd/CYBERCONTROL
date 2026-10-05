@@ -8,17 +8,17 @@ diálogo con el que un socio se loguea solo (`DialogoLoginMiembro`).
 """
 
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QVBoxLayout,
+    QButtonGroup, QComboBox, QDialog, QFrame, QLabel, QLineEdit, QPushButton, QVBoxLayout,
 )
 
 import dominio
 from control_pcs.repositories import miembros_repo, pcs_repo
 from ui.dialogo_pago import resolver_pagos
 from ui.utils import (
-    aplicar_clase, confirmar, encadenar_enter, formato_pesos, formato_tiempo,
-    manejar_errores, mostrar_error, mostrar_info, sin_boton_por_defecto,
+    aplicar_clase, confirmar, encadenar_enter, fila_guardar_cancelar, formato_pesos,
+    formato_tiempo, manejar_errores, mostrar_error, mostrar_info, sin_boton_por_defecto,
 )
+
 
 class PanelDetalleEstacion(QFrame):
     """
@@ -204,14 +204,7 @@ class DialogoLoginMiembro(QDialog):
         self.campo_clave = QLineEdit()
         self.campo_clave.setEchoMode(QLineEdit.Password)
 
-        boton_ingresar = QPushButton("Ingresar")
-        aplicar_clase(boton_ingresar, "primario")
-        boton_ingresar.clicked.connect(self._confirmar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_ingresar)
-        botones.addWidget(boton_cancelar)
+        botones = fila_guardar_cancelar(self, self._confirmar, texto_guardar="Ingresar")
 
         layout = QVBoxLayout()
         layout.addWidget(etiqueta)

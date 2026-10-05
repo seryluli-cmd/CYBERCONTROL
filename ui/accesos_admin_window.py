@@ -14,14 +14,15 @@ PC y dejó una PC sin bloqueo, ver control_pcs/ui/accesos_admin_pc_tab.py).
 from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QDateEdit,
-    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QTabWidget, QWidget,
+    QDialog, QVBoxLayout, QLabel, QTableWidgetItem, QComboBox, QTabWidget, QWidget,
 )
 from PySide6.QtCore import QDate
 
 from repositories import usuarios_repo
 from control_pcs.ui.accesos_admin_pc_tab import PestañaAccesosAdminPc
-from ui.utils import manejar_errores, encadenar_enter, sin_boton_por_defecto
+from ui.utils import (
+    armar_filtro_por_fechas, manejar_errores, sin_boton_por_defecto, crear_tabla,
+)
 
 
 class AccesosAdminWindow(QDialog):
@@ -53,38 +54,19 @@ class PestañaLoginsAdmin(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde = QDateEdit(QDate.currentDate().addDays(-7))
-        self.fecha_desde.setCalendarPopup(True)
-        self.fecha_hasta = QDateEdit(QDate.currentDate())
-        self.fecha_hasta.setCalendarPopup(True)
-
         self.combo_quien = QComboBox()
         self.combo_quien.addItem("Solo Admin", True)
         self.combo_quien.addItem("Todos los usuarios", False)
         self.combo_quien.currentIndexChanged.connect(self._buscar)
 
-        boton_buscar = QPushButton("Buscar")
-        boton_buscar.clicked.connect(self._buscar)
-        encadenar_enter(self.fecha_desde, self.fecha_hasta, self.combo_quien, accion_final=self._buscar)
-
-        filtros = QHBoxLayout()
-        filtros.addWidget(QLabel("Desde:"))
-        filtros.addWidget(self.fecha_desde)
-        filtros.addWidget(QLabel("Hasta:"))
-        filtros.addWidget(self.fecha_hasta)
-        filtros.addWidget(QLabel("Mostrar:"))
-        filtros.addWidget(self.combo_quien)
-        filtros.addWidget(boton_buscar)
-        filtros.addStretch()
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(
+            self._buscar, QDate.currentDate().addDays(-7), extras=[("Mostrar:", self.combo_quien)]
+        )
 
         self.etiqueta_cantidad = QLabel()
         self.etiqueta_cantidad.setStyleSheet("font-weight: bold;")
 
-        self.tabla = QTableWidget(0, 4)
-        self.tabla.setHorizontalHeaderLabels(["Fecha", "Hora", "Usuario", "Rol"])
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tabla = crear_tabla(["Fecha", "Hora", "Usuario", "Rol"], estirar=2)
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)

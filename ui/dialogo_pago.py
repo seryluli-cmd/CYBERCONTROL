@@ -13,8 +13,8 @@ cobro Mixto de Control de PCs, vía `resolver_pagos` (más abajo).
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
-    QDoubleSpinBox, QTableWidget, QTableWidgetItem, QHeaderView
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QDoubleSpinBox,
+    QTableWidgetItem,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence, QFont
@@ -22,7 +22,7 @@ from PySide6.QtGui import QShortcut, QKeySequence, QFont
 import dominio
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_aviso, aplicar_clase, encadenar_enter,
-    sin_boton_por_defecto,
+    sin_boton_por_defecto, crear_tabla,
 )
 
 
@@ -93,11 +93,7 @@ class DialogoPago(QDialog):
         etiqueta_ayuda.setWordWrap(True)
         etiqueta_ayuda.setStyleSheet("color: gray; font-style: italic; font-size: 11px;")
 
-        self.tabla_pagos = QTableWidget(0, 2)
-        self.tabla_pagos.setHorizontalHeaderLabels(["Medio de pago", "Monto"])
-        self.tabla_pagos.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla_pagos.setAlternatingRowColors(True)
-        self.tabla_pagos.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tabla_pagos = crear_tabla(["Medio de pago", "Monto"], estirar=0)
 
         boton_quitar_pago = QPushButton("Quitar pago seleccionado")
         boton_quitar_pago.clicked.connect(self._quitar_pago)

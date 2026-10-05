@@ -20,18 +20,19 @@ Y dos más, para controlar los cierres después (Admin, o una Empleada con
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QInputDialog, QWidget, QListWidget
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidgetItem,
+    QInputDialog, QWidget, QListWidget,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
 import dominio
 from turnos import etiqueta_turno
-from repositories import turnos_repo, ventas_repo
+from repositories import turnos_repo
+from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta
 from ui.utils import (
-    formato_pesos, mostrar_info, confirmar, mostrar_error, manejar_errores,
-    aplicar_clase, sin_boton_por_defecto,
+    formato_pesos, mostrar_info, confirmar, mostrar_error, manejar_errores, aplicar_clase,
+    sin_boton_por_defecto, crear_tabla,
 )
 
 
@@ -290,15 +291,11 @@ class ControlCierresWindow(QDialog):
         panel_layout.addWidget(nota_faltantes)
         self.panel_faltantes.hide()
 
-        self.tabla = QTableWidget(0, 10)
-        self.tabla.setHorizontalHeaderLabels(
+        self.tabla = crear_tabla(
             ["Fecha", "Turno", "Empleada", "Fondo", "Ventas Ef.", "Kiosko", "Alquiler PCs",
-             "A Retirar", "Contado", "Diferencia"]
+             "A Retirar", "Contado", "Diferencia"],
+            estirar=2, por_filas=True,
         )
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.tabla.doubleClicked.connect(self._ver_detalle)
 
         boton_detalle = QPushButton("Ver Detalle del cierre seleccionado")
@@ -411,7 +408,7 @@ class ControlCierresWindow(QDialog):
         self._cargar()
 
 
-class DialogoDetalleCierre(QDialog):
+class DialogoDetalleCierre(VentanaConDetalleDeVenta):
     """
     Detalle de un cierre puntual: la lista de ventas que cayeron dentro
     de ese turno (ver turnos_repo.detalle_cierre), para que el Admin
@@ -438,19 +435,13 @@ class DialogoDetalleCierre(QDialog):
         self.encabezado.setWordWrap(True)
         self.encabezado.setStyleSheet("font-weight: 600;")
 
-        self.tabla = QTableWidget(0, 6)
-        self.tabla.setHorizontalHeaderLabels(["Hora", "Vendedor", "Origen", "Total", "Método", "Estado"])
-        self.tabla.setSelectionBehavior(QTableWidget.SelectRows)
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.tabla.itemSelectionChanged.connect(self._mostrar_detalle_venta)
+        self.tabla = crear_tabla(
+            ["Hora", "Vendedor", "Origen", "Total", "Método", "Estado"],
+            estirar=1, por_filas=True,
+        )
+        self.tabla.itemSelectionChanged.connect(self._mostrar_detalle)
 
-        self.tabla_detalle = QTableWidget(0, 4)
-        self.tabla_detalle.setHorizontalHeaderLabels(["Código", "Descripción", "Cantidad", "Subtotal"])
-        self.tabla_detalle.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla_detalle.setAlternatingRowColors(True)
-        self.tabla_detalle.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.tabla_detalle = crear_tabla_detalle_venta()
 
         boton_cerrar = QPushButton("Cerrar")
         boton_cerrar.clicked.connect(self.close)
@@ -499,23 +490,3 @@ class DialogoDetalleCierre(QDialog):
             self.tabla.setItem(fila, 5, item_estado)
         self.tabla_detalle.setRowCount(0)
 
-    def _venta_seleccionada(self):
-        fila = self.tabla.currentRow()
-        if fila < 0:
-            return None
-        return self.ventas[fila]
-
-    @manejar_errores
-    def _mostrar_detalle_venta(self):
-        venta = self._venta_seleccionada()
-        self.tabla_detalle.setRowCount(0)
-        if venta is None:
-            return
-        _venta, detalle, _pagos = ventas_repo.buscar_venta(venta["id"])
-        for linea in detalle:
-            fila = self.tabla_detalle.rowCount()
-            self.tabla_detalle.insertRow(fila)
-            self.tabla_detalle.setItem(fila, 0, QTableWidgetItem(linea["articulo_codigo"]))
-            self.tabla_detalle.setItem(fila, 1, QTableWidgetItem(linea["descripcion"]))
-            self.tabla_detalle.setItem(fila, 2, QTableWidgetItem(str(linea["cantidad"])))
-            self.tabla_detalle.setItem(fila, 3, QTableWidgetItem(formato_pesos(linea["subtotal"])))

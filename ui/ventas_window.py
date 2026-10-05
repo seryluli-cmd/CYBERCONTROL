@@ -19,8 +19,8 @@ Reglas de permisos, tal como se definieron:
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLineEdit, QLabel, QHeaderView, QInputDialog
+    QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
+    QInputDialog,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -29,9 +29,8 @@ from datetime import datetime
 import dominio
 from repositories import articulos_repo, ventas_repo
 from ui.utils import (
-    formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores,
-    aplicar_clase,
-    sin_boton_por_defecto,
+    formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
+    sin_boton_por_defecto, crear_tabla,
 )
 from ui.buscar_articulo import DialogoBuscarArticulo
 from ui.dialogo_pago import DialogoPago
@@ -66,11 +65,7 @@ class VentasWindow(QDialog):
         self.etiqueta_aviso_stock = QLabel("")
         self.etiqueta_aviso_stock.setStyleSheet("color: #A6323C; font-weight: bold;")
 
-        self.tabla = QTableWidget(0, 5)
-        self.tabla.setHorizontalHeaderLabels(["Cantidad", "Código", "Descripción", "$ Unit.", "$ Total"])
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tabla = crear_tabla(["Cantidad", "Código", "Descripción", "$ Unit.", "$ Total"], estirar=2)
         self.tabla.cellDoubleClicked.connect(self._al_hacer_doble_clic)
 
         boton_f5 = QPushButton("F5 Cód.")

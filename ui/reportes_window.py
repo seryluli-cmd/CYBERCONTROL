@@ -26,7 +26,10 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QFont
 
 from repositories import reportes_repo, turnos_repo
-from ui.utils import formato_pesos, manejar_errores, encadenar_enter, sin_boton_por_defecto
+from ui.utils import (
+    armar_filtro_por_fechas, formato_pesos, manejar_errores, sin_boton_por_defecto,
+    crear_tabla,
+)
 
 
 class ReportesWindow(QDialog):
@@ -61,24 +64,7 @@ class PestañaResumen(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde = QDateEdit(QDate.currentDate())
-        self.fecha_desde.setCalendarPopup(True)
-        self.fecha_hasta = QDateEdit(QDate.currentDate())
-        self.fecha_hasta.setCalendarPopup(True)
-        boton_hoy = QPushButton("Solo Hoy")
-        boton_hoy.clicked.connect(self._poner_solo_hoy)
-        boton_buscar = QPushButton("Buscar")
-        boton_buscar.clicked.connect(self._buscar)
-        encadenar_enter(self.fecha_desde, self.fecha_hasta, accion_final=self._buscar)
-
-        filtros = QHBoxLayout()
-        filtros.addWidget(QLabel("Desde:"))
-        filtros.addWidget(self.fecha_desde)
-        filtros.addWidget(QLabel("Hasta:"))
-        filtros.addWidget(self.fecha_hasta)
-        filtros.addWidget(boton_hoy)
-        filtros.addWidget(boton_buscar)
-        filtros.addStretch()
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(self._buscar, solo_hoy=True)
 
         fuente_grande = QFont()
         fuente_grande.setPointSize(20)
@@ -112,11 +98,6 @@ class PestañaResumen(QWidget):
         layout.addStretch()
         self.setLayout(layout)
         sin_boton_por_defecto(self)
-
-    def _poner_solo_hoy(self):
-        self.fecha_desde.setDate(QDate.currentDate())
-        self.fecha_hasta.setDate(QDate.currentDate())
-        self._buscar()
 
     @manejar_errores
     def _buscar(self):
@@ -294,30 +275,9 @@ class PestañaPorTurno(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde = QDateEdit(QDate.currentDate())
-        self.fecha_desde.setCalendarPopup(True)
-        self.fecha_hasta = QDateEdit(QDate.currentDate())
-        self.fecha_hasta.setCalendarPopup(True)
-        boton_hoy = QPushButton("Solo Hoy")
-        boton_hoy.clicked.connect(self._poner_solo_hoy)
-        boton_buscar = QPushButton("Buscar")
-        boton_buscar.clicked.connect(self._buscar)
-        encadenar_enter(self.fecha_desde, self.fecha_hasta, accion_final=self._buscar)
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(self._buscar, solo_hoy=True)
 
-        filtros = QHBoxLayout()
-        filtros.addWidget(QLabel("Desde:"))
-        filtros.addWidget(self.fecha_desde)
-        filtros.addWidget(QLabel("Hasta:"))
-        filtros.addWidget(self.fecha_hasta)
-        filtros.addWidget(boton_hoy)
-        filtros.addWidget(boton_buscar)
-        filtros.addStretch()
-
-        self.tabla = QTableWidget(0, 5)
-        self.tabla.setHorizontalHeaderLabels(["Turno", "Total vendido", "Ventas", "Efectivo", "Digital"])
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tabla = crear_tabla(["Turno", "Total vendido", "Ventas", "Efectivo", "Digital"], estirar=0)
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)
@@ -325,11 +285,6 @@ class PestañaPorTurno(QWidget):
         layout.addWidget(self.tabla)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
-
-    def _poner_solo_hoy(self):
-        self.fecha_desde.setDate(QDate.currentDate())
-        self.fecha_hasta.setDate(QDate.currentDate())
-        self._buscar()
 
     @manejar_errores
     def _buscar(self):
@@ -359,11 +314,6 @@ class PestañaKioskoVsPCs(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde = QDateEdit(QDate.currentDate())
-        self.fecha_desde.setCalendarPopup(True)
-        self.fecha_hasta = QDateEdit(QDate.currentDate())
-        self.fecha_hasta.setCalendarPopup(True)
-
         self.combo_agrupar = QComboBox()
         self.combo_agrupar.addItem("Total del rango", "rango")
         self.combo_agrupar.addItem("Por Turno", "turno")
@@ -371,28 +321,11 @@ class PestañaKioskoVsPCs(QWidget):
         self.combo_agrupar.addItem("Por Semana", "semana")
         self.combo_agrupar.currentIndexChanged.connect(self._buscar)
 
-        boton_hoy = QPushButton("Solo Hoy")
-        boton_hoy.clicked.connect(self._poner_solo_hoy)
-        boton_buscar = QPushButton("Buscar")
-        boton_buscar.clicked.connect(self._buscar)
-        encadenar_enter(self.fecha_desde, self.fecha_hasta, self.combo_agrupar, accion_final=self._buscar)
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(
+            self._buscar, extras=[("Agrupar:", self.combo_agrupar)], solo_hoy=True
+        )
 
-        filtros = QHBoxLayout()
-        filtros.addWidget(QLabel("Desde:"))
-        filtros.addWidget(self.fecha_desde)
-        filtros.addWidget(QLabel("Hasta:"))
-        filtros.addWidget(self.fecha_hasta)
-        filtros.addWidget(QLabel("Agrupar:"))
-        filtros.addWidget(self.combo_agrupar)
-        filtros.addWidget(boton_hoy)
-        filtros.addWidget(boton_buscar)
-        filtros.addStretch()
-
-        self.tabla = QTableWidget(0, 4)
-        self.tabla.setHorizontalHeaderLabels(["Período", "Kiosko", "Alquiler de PCs", "Total"])
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tabla = crear_tabla(["Período", "Kiosko", "Alquiler de PCs", "Total"], estirar=0)
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)
@@ -400,11 +333,6 @@ class PestañaKioskoVsPCs(QWidget):
         layout.addWidget(self.tabla)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
-
-    def _poner_solo_hoy(self):
-        self.fecha_desde.setDate(QDate.currentDate())
-        self.fecha_hasta.setDate(QDate.currentDate())
-        self._buscar()
 
     def _agregar_fila(self, etiqueta: str, kiosko: float, pcs: float, total: float, negrita: bool = False):
         fila = self.tabla.rowCount()
@@ -451,37 +379,20 @@ class PestañaRanking(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde = QDateEdit(QDate.currentDate().addMonths(-1))
-        self.fecha_desde.setCalendarPopup(True)
-        self.fecha_hasta = QDateEdit(QDate.currentDate())
-        self.fecha_hasta.setCalendarPopup(True)
-
         self.combo_orden = QComboBox()
         self.combo_orden.addItem("Por Cantidad vendida", "cantidad")
         self.combo_orden.addItem("Por Monto ($)", "monto")
 
-        boton_buscar = QPushButton("Buscar")
-        boton_buscar.clicked.connect(self._buscar)
-        encadenar_enter(self.fecha_desde, self.fecha_hasta, self.combo_orden, accion_final=self._buscar)
-
-        filtros = QHBoxLayout()
-        filtros.addWidget(QLabel("Desde:"))
-        filtros.addWidget(self.fecha_desde)
-        filtros.addWidget(QLabel("Hasta:"))
-        filtros.addWidget(self.fecha_hasta)
-        filtros.addWidget(QLabel("Ordenar:"))
-        filtros.addWidget(self.combo_orden)
-        filtros.addWidget(boton_buscar)
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(
+            self._buscar, QDate.currentDate().addMonths(-1),
+            extras=[("Ordenar:", self.combo_orden)], estirar=False,
+        )
 
         self.etiqueta_titulo = QLabel()
         self.etiqueta_titulo.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.etiqueta_titulo.setAlignment(Qt.AlignCenter)
 
-        self.tabla = QTableWidget(0, 5)
-        self.tabla.setHorizontalHeaderLabels(["Cantidad", "Categoría", "Código", "Descripción", "Importe"])
-        self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabla.setAlternatingRowColors(True)
-        self.tabla.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.tabla = crear_tabla(["Cantidad", "Categoría", "Código", "Descripción", "Importe"], estirar=3)
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)
