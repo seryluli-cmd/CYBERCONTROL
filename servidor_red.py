@@ -75,6 +75,10 @@ PUERTO_SERVIDOR = 8899
 
 _servidor = None  # el servidor en marcha, o None si no arrancó (ver iniciar_servidor)
 
+# Mensajes de error que se repiten en varios endpoints.
+_PEDIDO_INVALIDO = "Pedido inválido."
+_ERROR_INTERNO = "Error interno."
+
 
 def _estado_a_json(item):
     """
@@ -118,6 +122,17 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(cuerpo)
 
+    def _responder_vacio(self, status: int):
+        """Responde solo con el código de estado, sin cuerpo: así se rechaza
+        un pedido sin autorización y los errores de GET /estado."""
+        self.send_response(status)
+        self.end_headers()
+
+    def _responder_error(self, status: int, mensaje: str):
+        """Responde con {"ok": False, "error": mensaje}: el formato de error
+        de los POST (el Cliente PC muestra ese mensaje tal cual)."""
+        self._responder_json(status, {"ok": False, "error": mensaje})
+
     def _autorizado(self) -> bool:
         """
         Todo pedido de un Cliente PC viaja con `Authorization: Bearer <clave>`
@@ -134,20 +149,17 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if not self._autorizado():
-            self.send_response(403)
-            self.end_headers()
+            self._responder_vacio(403)
             return
 
         ruta = urlparse(self.path)
         if ruta.path != "/estado":
-            self.send_response(404)
-            self.end_headers()
+            self._responder_vacio(404)
             return
 
         nombre_estacion = (parse_qs(ruta.query).get("estacion") or [""])[0]
         if not nombre_estacion:
-            self.send_response(400)
-            self.end_headers()
+            self._responder_vacio(400)
             return
 
         try:
@@ -155,8 +167,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         except Exception:
             # Un problema leyendo la base no puede tirar abajo el hilo
             # del servidor -- se responde 500 y sigue escuchando.
-            self.send_response(500)
-            self.end_headers()
+            self._responder_vacio(500)
             return
 
         cuerpo = _estado_a_json(item)
@@ -217,19 +228,18 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         try:
             item = pcs_repo.estado_de_estacion(nombre_estacion)
         except Exception:
-            self._responder_json(500, {"ok": False, "error": "Error interno."})
+            self._responder_error(500, _ERROR_INTERNO)
             return None
         if item is None:
             # Mismo criterio fail-safe que _estado_a_json: un nombre de
             # estación que no existe en Kiosko nunca deja pasar nada.
-            self._responder_json(404, {"ok": False, "error": "Estación desconocida."})
+            self._responder_error(404, "Estación desconocida.")
             return None
         return item
 
     def do_POST(self):
         if not self._autorizado():
-            self.send_response(403)
-            self.end_headers()
+            self._responder_vacio(403)
             return
 
         ruta = urlparse(self.path)
@@ -242,7 +252,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         elif ruta.path == "/comando_resultado":
             self._manejar_comando_resultado()
         else:
-            self._responder_json(404, {"ok": False, "error": "No existe."})
+            self._responder_error(404, "No existe.")
 
     def _manejar_login(self):
         try:
@@ -251,7 +261,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             usuario = str(cuerpo["usuario"])
             clave = str(cuerpo["clave"])
         except Exception:
-            self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+            self._responder_error(400, _PEDIDO_INVALIDO)
             return
 
         item = self._resolver_estacion(nombre_estacion)
@@ -265,10 +275,10 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         except ValueError as error:
             # Credenciales incorrectas o saldo insuficiente -- el mensaje
             # ya viene pensado para mostrarle al Miembro tal cual.
-            self._responder_json(400, {"ok": False, "error": str(error)})
+            self._responder_error(400, str(error))
             return
         except Exception:
-            self._responder_json(500, {"ok": False, "error": "Error interno."})
+            self._responder_error(500, _ERROR_INTERNO)
             return
 
         self._responder_json(200, {"ok": True, **resumen})
@@ -294,7 +304,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             nombre_estacion = str(cuerpo["estacion"])
             sesion_id_pedida = cuerpo.get("sesion_id")
         except Exception:
-            self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+            self._responder_error(400, _PEDIDO_INVALIDO)
             return
 
         item = self._resolver_estacion(nombre_estacion)
@@ -302,7 +312,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             return  # _resolver_estacion ya respondió 404/500
 
         if item["sesion"] is None:
-            self._responder_json(400, {"ok": False, "error": "No hay ninguna sesión activa en esta estación."})
+            self._responder_error(400, "No hay ninguna sesión activa en esta estación.")
             return
 
         if sesion_id_pedida is not None and sesion_id_pedida != item["sesion"]["id"]:
@@ -312,7 +322,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         try:
             pcs_repo.finalizar_sesion(item["sesion"]["id"])
         except Exception:
-            self._responder_json(500, {"ok": False, "error": "Error interno."})
+            self._responder_error(500, _ERROR_INTERNO)
             return
 
         self._responder_json(200, {"ok": True})
@@ -329,10 +339,10 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             tipo = str(cuerpo["tipo"])
             segundos_atras = float(cuerpo.get("segundos_atras") or 0)
         except Exception:
-            self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+            self._responder_error(400, _PEDIDO_INVALIDO)
             return
         if tipo not in dominio.EVENTOS_ADMIN_REPORTADOS_POR_CLIENTE:
-            self._responder_json(400, {"ok": False, "error": "Tipo de evento inválido."})
+            self._responder_error(400, "Tipo de evento inválido.")
             return
 
         item = self._resolver_estacion(nombre_estacion)
@@ -342,10 +352,10 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         try:
             accesos_admin_pc_repo.registrar_evento(item["estacion"]["id"], tipo, segundos_atras)
         except ValueError:
-            self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+            self._responder_error(400, _PEDIDO_INVALIDO)
             return
         except Exception:
-            self._responder_json(500, {"ok": False, "error": "Error interno."})
+            self._responder_error(500, _ERROR_INTERNO)
             return
 
         self._responder_json(200, {"ok": True})
@@ -365,7 +375,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             cuerpo = self._leer_cuerpo_json()
             comando_id = int(cuerpo["comando_id"])
         except Exception:
-            self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+            self._responder_error(400, _PEDIDO_INVALIDO)
             return
 
         try:
@@ -375,10 +385,10 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             elif "texto" in cuerpo:
                 comandos_pc_repo.marcar_resultado(comando_id, str(cuerpo["texto"])[:500])
             else:
-                self._responder_json(400, {"ok": False, "error": "Pedido inválido."})
+                self._responder_error(400, _PEDIDO_INVALIDO)
                 return
         except Exception:
-            self._responder_json(500, {"ok": False, "error": "Error interno."})
+            self._responder_error(500, _ERROR_INTERNO)
             return
 
         self._responder_json(200, {"ok": True})
