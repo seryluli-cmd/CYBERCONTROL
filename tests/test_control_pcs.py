@@ -13,6 +13,7 @@ import base64
 import http.client
 import json
 import os
+import sqlite3
 import threading
 import unittest
 from datetime import datetime
@@ -972,6 +973,25 @@ class TestComandosPcRepo(BaseConBaseTemporal):
         self.assertEqual(segundo["id"], id_mensaje)
         self.assertEqual(segundo["payload"], "Hola")
 
+    def test_se_pueden_encolar_todos_los_tipos_de_comando(self):
+        # Regresión: el CHECK de comandos_pc.tipo solo admitía los 4 primeros
+        # tipos, así que "Cambiar red..." y "Ajustar volumen..." fallaban al
+        # encolar con "CHECK constraint failed" en cualquier base.
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+
+        for tipo in dominio.TIPOS_COMANDO_PC:
+            comando_id = comandos_pc_repo.encolar_comando(estacion_id, tipo, "x")
+            self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["tipo"], tipo)
+
+    def test_los_tipos_de_comando_del_repo_coinciden_con_los_de_dominio(self):
+        # Si alguien suma un TIPO_* acá y se olvida de dominio.TIPOS_COMANDO_PC
+        # (de donde sale el CHECK de la base), este test lo avisa antes de que
+        # el comando falle recién en el mostrador.
+        tipos_del_repo = {
+            valor for nombre, valor in vars(comandos_pc_repo).items() if nombre.startswith("TIPO_")
+        }
+        self.assertEqual(tipos_del_repo, set(dominio.TIPOS_COMANDO_PC))
+
     def test_marcar_entregado_lo_saca_de_pendientes_para_siempre(self):
         estacion_id = pcs_repo.crear_estacion("PC 1")
         comando_id = comandos_pc_repo.encolar_comando(estacion_id, comandos_pc_repo.TIPO_APAGAR)
@@ -1005,6 +1025,117 @@ class TestComandosPcRepo(BaseConBaseTemporal):
         with open(ruta_completa, "rb") as archivo:
             self.assertEqual(archivo.read(), b"no es un PNG real, solo bytes de prueba")
         self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["resultado"], ruta_relativa)
+
+
+class TestMigracionCheckTipoEnComandosPc(BaseConBaseTemporal):
+    """database._migrar_check_tipo_en_comandos_pc: una base creada antes de
+    que existieran CAMBIAR_RED y VOLUMEN tiene el CHECK viejo en comandos_pc."""
+
+    def _dejar_la_tabla_como_en_una_base_vieja(self, conexion):
+        conexion.execute("DROP TABLE comandos_pc")
+        conexion.execute(database._sql_tabla_comandos_pc(database._TIPOS_COMANDO_PC_ORIGINALES))
+        conexion.execute(
+            "CREATE INDEX idx_comandos_pc_estacion ON comandos_pc(estacion_id, estado)"
+        )
+
+    def test_agrega_los_tipos_nuevos_sin_perder_los_comandos_ya_encolados(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+
+        with database.conexion_db() as conexion:
+            self._dejar_la_tabla_como_en_una_base_vieja(conexion)
+            pendiente_id = conexion.execute(
+                "INSERT INTO comandos_pc (estacion_id, tipo, payload, fecha_creacion) "
+                "VALUES (?, 'MENSAJE', 'Hola', '2026-01-01T10:00:00')",
+                (estacion_id,),
+            ).lastrowid
+            captura_id = conexion.execute(
+                "INSERT INTO comandos_pc (estacion_id, tipo, fecha_creacion, estado, resultado) "
+                "VALUES (?, 'SCREENSHOT', '2026-01-01T10:01:00', 'ENTREGADO', 'screenshots/comando_2.png')",
+                (estacion_id,),
+            ).lastrowid
+
+            # El CHECK viejo rechaza el tipo nuevo.
+            with self.assertRaises(sqlite3.IntegrityError):
+                conexion.execute(
+                    "INSERT INTO comandos_pc (estacion_id, tipo, fecha_creacion) "
+                    "VALUES (?, 'CAMBIAR_RED', '2026-01-01T10:02:00')",
+                    (estacion_id,),
+                )
+
+            database._migrar_check_tipo_en_comandos_pc(conexion)
+
+            pendiente = conexion.execute("SELECT * FROM comandos_pc WHERE id = ?", (pendiente_id,)).fetchone()
+            captura = conexion.execute("SELECT * FROM comandos_pc WHERE id = ?", (captura_id,)).fetchone()
+            self.assertEqual((pendiente["tipo"], pendiente["payload"], pendiente["estado"]),
+                             ("MENSAJE", "Hola", "PENDIENTE"))
+            self.assertEqual((captura["estado"], captura["resultado"]),
+                             ("ENTREGADO", "screenshots/comando_2.png"))
+            for tipo in ("CAMBIAR_RED", "VOLUMEN"):
+                conexion.execute(
+                    "INSERT INTO comandos_pc (estacion_id, tipo, fecha_creacion) VALUES (?, ?, ?)",
+                    (estacion_id, tipo, "2026-01-01T10:03:00"),
+                )
+
+    def test_correrla_de_nuevo_no_hace_nada(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        comando_id = comandos_pc_repo.encolar_comando(estacion_id, comandos_pc_repo.TIPO_VOLUMEN, "50")
+
+        with database.conexion_db() as conexion:
+            database._migrar_check_tipo_en_comandos_pc(conexion)
+            database._migrar_check_tipo_en_comandos_pc(conexion)
+
+        self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["payload"], "50")
+
+    def test_al_arrancar_el_programa_se_migra_y_el_indice_queda_en_la_tabla_nueva(self):
+        # Reconstruir la tabla borra sus índices: inicializar_base_de_datos
+        # migra ANTES de crear el índice, así que tiene que quedar uno solo.
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        with database.conexion_db() as conexion:
+            self._dejar_la_tabla_como_en_una_base_vieja(conexion)
+            conexion.execute(
+                "INSERT INTO comandos_pc (estacion_id, tipo, fecha_creacion) "
+                "VALUES (?, 'APAGAR', '2026-01-01T10:00:00')",
+                (estacion_id,),
+            )
+
+        database.inicializar_base_de_datos()
+
+        with database.conexion_db() as conexion:
+            indices = conexion.execute(
+                "SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = 'idx_comandos_pc_estacion'"
+            ).fetchall()
+            self.assertEqual([fila["tbl_name"] for fila in indices], ["comandos_pc"])
+            self.assertEqual(conexion.execute("SELECT COUNT(*) AS n FROM comandos_pc").fetchone()["n"], 1)
+            conexion.execute(
+                "INSERT INTO comandos_pc (estacion_id, tipo, fecha_creacion) "
+                "VALUES (?, 'VOLUMEN', '2026-01-01T10:01:00')",
+                (estacion_id,),
+            )
+
+    def test_recupera_comandos_de_una_tabla_viejo_dejada_por_un_corte_anterior(self):
+        # Mismo escenario de corte de luz que las migraciones de
+        # movimientos_saldo_miembro: la tabla nueva ya quedó con el CHECK
+        # correcto pero VACÍA, y los comandos reales quedaron en "..._viejo".
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+
+        with database.conexion_db() as conexion:
+            conexion.execute("ALTER TABLE comandos_pc RENAME TO comandos_pc_viejo")
+            comando_id = conexion.execute(
+                "INSERT INTO comandos_pc_viejo (estacion_id, tipo, payload, fecha_creacion) "
+                "VALUES (?, 'MENSAJE', 'Hola', '2026-01-01T10:00:00')",
+                (estacion_id,),
+            ).lastrowid
+            conexion.execute(database._sql_tabla_comandos_pc(dominio.TIPOS_COMANDO_PC))
+
+            database._migrar_check_tipo_en_comandos_pc(conexion)
+
+            fila = conexion.execute("SELECT * FROM comandos_pc WHERE id = ?", (comando_id,)).fetchone()
+            self.assertEqual(fila["payload"], "Hola")
+            self.assertIsNone(
+                conexion.execute(
+                    "SELECT name FROM sqlite_master WHERE name = 'comandos_pc_viejo'"
+                ).fetchone()
+            )
 
 
 class TestClientesRepo(BaseConBaseTemporal):
@@ -1424,6 +1555,108 @@ class TestServidorRedEventoAdmin(_ConServidorRed):
         # Y los siguientes pedidos normales no anotan nada más.
         self._get("/estado?estacion=PC+12")
         self.assertEqual(self._eventos(), ["CIERRE_CLIENTE", "CLIENTE_REANUDADO"])
+
+
+class TestServidorRedRespuestasDeError(_ConServidorRed):
+    """Los códigos y mensajes con los que servidor_red.py rechaza un pedido
+    (sin autorización, ruta desconocida, pedido mal armado, estación que no
+    existe) y POST /comando_resultado. El Cliente PC depende de estos
+    códigos para decidir qué hacer, por eso se fijan acá."""
+
+    def _crudo(self, metodo: str, ruta: str, cuerpo: str = None, token: str = None):
+        """Como _pedir, pero devuelve (status, texto) sin interpretar la
+        respuesta: varias de estas respuestas no traen cuerpo."""
+        conexion = http.client.HTTPConnection("127.0.0.1", self._puerto, timeout=5)
+        try:
+            cabeceras = {"Content-Type": "application/json"}
+            if token is not None:
+                cabeceras["Authorization"] = "Bearer " + token
+            conexion.request(metodo, ruta, body=cuerpo, headers=cabeceras)
+            respuesta = conexion.getresponse()
+            return respuesta.status, respuesta.read().decode("utf-8")
+        finally:
+            conexion.close()
+
+    def test_sin_clave_o_con_clave_equivocada_responde_403_sin_cuerpo(self):
+        for token in (None, "clave-equivocada"):
+            self.assertEqual(self._crudo("GET", "/estado?estacion=PC+1", token=token), (403, ""))
+            self.assertEqual(self._crudo("POST", "/login", "{}", token=token), (403, ""))
+
+    def test_get_a_una_ruta_desconocida_responde_404_sin_cuerpo(self):
+        self.assertEqual(self._crudo("GET", "/otra", token=self._clave), (404, ""))
+
+    def test_get_estado_sin_nombre_de_estacion_responde_400_sin_cuerpo(self):
+        self.assertEqual(self._crudo("GET", "/estado", token=self._clave), (400, ""))
+
+    def test_get_estado_de_una_estacion_desconocida_la_deja_bloqueada(self):
+        status, datos = self._get("/estado?estacion=PC+99")
+
+        self.assertEqual(status, 200)
+        self.assertFalse(datos["existe"])
+        self.assertTrue(datos["bloqueada"])
+
+    def test_post_a_una_ruta_desconocida_responde_404_con_mensaje(self):
+        self.assertEqual(self._post("/otra", {}), (404, {"ok": False, "error": "No existe."}))
+
+    def test_post_con_cuerpo_que_no_es_json_o_incompleto_responde_400(self):
+        status, texto = self._crudo("POST", "/login", "esto no es json", token=self._clave)
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(texto), {"ok": False, "error": "Pedido inválido."})
+        for ruta in ("/login", "/logout", "/evento_admin", "/comando_resultado"):
+            self.assertEqual(
+                self._post(ruta, {}), (400, {"ok": False, "error": "Pedido inválido."}), ruta
+            )
+
+    def test_login_logout_y_evento_en_una_estacion_desconocida_responden_404(self):
+        for ruta, cuerpo in (
+            ("/login", {"estacion": "PC 99", "usuario": "u", "clave": "c"}),
+            ("/logout", {"estacion": "PC 99"}),
+            ("/evento_admin", {"estacion": "PC 99", "tipo": "ACCESO"}),
+        ):
+            self.assertEqual(
+                self._post(ruta, cuerpo), (404, {"ok": False, "error": "Estación desconocida."}), ruta
+            )
+
+    def test_logout_de_una_estacion_sin_sesion_activa_responde_400_con_mensaje(self):
+        pcs_repo.crear_estacion("PC 1")
+
+        status, datos = self._post("/logout", {"estacion": "PC 1"})
+
+        self.assertEqual(status, 400)
+        self.assertEqual(datos, {"ok": False, "error": "No hay ninguna sesión activa en esta estación."})
+
+    def test_login_con_credenciales_incorrectas_responde_400_con_el_motivo(self):
+        pcs_repo.crear_estacion("PC 1")
+
+        status, datos = self._post("/login", {"estacion": "PC 1", "usuario": "nadie", "clave": "x"})
+
+        self.assertEqual(status, 400)
+        self.assertEqual(datos, {"ok": False, "error": "Usuario o contraseña incorrectos."})
+
+    def test_comando_resultado_guarda_el_texto_del_resultado(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        comando_id = comandos_pc_repo.encolar_comando(
+            estacion_id, comandos_pc_repo.TIPO_CAMBIAR_RED, "192.168.1.201"
+        )
+
+        status, datos = self._post("/comando_resultado", {"comando_id": comando_id, "texto": "OK"})
+
+        self.assertEqual((status, datos), (200, {"ok": True}))
+        self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["resultado"], "OK")
+
+    def test_comando_resultado_sin_imagen_ni_texto_o_con_id_invalido_responde_400(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        comando_id = comandos_pc_repo.encolar_comando(
+            estacion_id, comandos_pc_repo.TIPO_CAMBIAR_RED, "192.168.1.201"
+        )
+
+        for cuerpo in ({"comando_id": comando_id}, {"comando_id": "abc", "texto": "x"}):
+            self.assertEqual(
+                self._post("/comando_resultado", cuerpo),
+                (400, {"ok": False, "error": "Pedido inválido."}),
+                cuerpo,
+            )
+        self.assertIsNone(comandos_pc_repo.obtener_comando(comando_id)["resultado"])
 
 
 if __name__ == "__main__":

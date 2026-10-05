@@ -110,6 +110,18 @@ NOMBRE_ORIGEN_VENTA = {
 
 
 # --------------------------------------------------------------------
+# Comandos remotos a una PC cliente
+# --------------------------------------------------------------------
+# Lo que el mostrador le puede pedir a una estación desde el menú contextual
+# de Control de PCs. control_pcs/repositories/comandos_pc_repo.py le da un
+# nombre a cada uno (TIPO_REINICIAR, ...). Tienen que coincidir con el CHECK
+# de `comandos_pc.tipo` en database.py: si se suma uno nuevo, va acá y en una
+# migración que actualice ese CHECK (regla 5 de CLAUDE.md). Sin eso, el INSERT
+# falla recién cuando alguien usa el comando.
+TIPOS_COMANDO_PC = ("REINICIAR", "APAGAR", "MENSAJE", "SCREENSHOT", "CAMBIAR_RED", "VOLUMEN")
+
+
+# --------------------------------------------------------------------
 # Accesos de admin en las PCs cliente
 # --------------------------------------------------------------------
 # Lo que el Cliente PC le avisa al servidor cuando alguien entra a su panel

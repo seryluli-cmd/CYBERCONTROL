@@ -538,17 +538,13 @@ def inicializar_base_de_datos():
     # la ruta relativa (dentro de data/) del archivo que subió el Cliente PC
     # después de entregado -- para REINICIAR/APAGAR/MENSAJE queda en NULL,
     # no hay nada que el Cliente PC tenga que devolver.
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS comandos_pc (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            estacion_id     INTEGER NOT NULL REFERENCES estaciones(id),
-            tipo            TEXT NOT NULL CHECK (tipo IN ('REINICIAR', 'APAGAR', 'MENSAJE', 'SCREENSHOT')),
-            payload         TEXT,
-            fecha_creacion  TEXT NOT NULL,
-            estado          TEXT NOT NULL DEFAULT 'PENDIENTE' CHECK (estado IN ('PENDIENTE', 'ENTREGADO')),
-            resultado       TEXT
-        )
-    """)
+    # (El SQL de esta tabla está en _sql_tabla_comandos_pc, más abajo: una
+    # migración la reconstruye en su versión anterior. "tipo" admite todos los
+    # dominio.TIPOS_COMANDO_PC.)
+    cursor.execute(_sql_tabla_comandos_pc(dominio.TIPOS_COMANDO_PC, si_no_existe=True))
+    # Tiene que ir ANTES de crear el índice de abajo: reconstruir la tabla
+    # borra los índices que tenía, y así se recrea sobre la tabla nueva.
+    _migrar_check_tipo_en_comandos_pc(conexion)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_comandos_pc_estacion ON comandos_pc(estacion_id, estado)")
 
     # -------------------------------------------------------------------
@@ -747,7 +743,12 @@ def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
-# --- movimientos_saldo_miembro: el único CREATE TABLE y las dos migraciones que la reconstruyen ---
+# --- Reconstruir una tabla (cambiar un CHECK o un REFERENCES) ---
+
+# Columnas de movimientos_saldo_miembro, para copiarlas al reconstruir la tabla.
+_COLUMNAS_MOVIMIENTOS_SALDO = (
+    "id", "miembro_id", "tipo", "minutos", "fecha", "venta_id", "bono_id", "sesion_id",
+)
 
 # Tipos de movimiento del ledger de saldo de socios (el CHECK de "tipo"). Los
 # "originales" son los del primer esquema; ANULACION se sumó después.
@@ -781,44 +782,49 @@ def _sql_tabla_movimientos_saldo_miembro(tipos: tuple, referencia_bono: str, si_
     """
 
 
-def _reconstruir_movimientos_saldo_miembro(conexion: sqlite3.Connection, ya_esta_al_dia, sql_tabla_nueva):
+def _reconstruir_tabla(conexion: sqlite3.Connection, tabla: str, columnas: tuple, ya_esta_al_dia, sql_tabla_nueva):
     """
-    Esqueleto común de las migraciones que reconstruyen
-    movimientos_saldo_miembro: renombrar la vieja, crear la nueva con el
-    esquema correcto, copiar las filas tal cual y borrar la vieja (la única
-    forma que soporta SQLite de cambiar un CHECK o un REFERENCES ya
-    grabados). Mira la definición guardada en sqlite_master para saber si
-    hace falta, así que es segura de correr en cada arranque y no hace nada
-    en una base nueva.
+    Esqueleto común de las migraciones que reconstruyen una tabla: renombrar
+    la vieja, crear la nueva con el esquema correcto, copiar las filas tal
+    cual (`columnas`) y borrar la vieja. Es la única forma que soporta
+    SQLite de cambiar un CHECK o un REFERENCES ya grabados. Mira la
+    definición guardada en sqlite_master para saber si hace falta, así que
+    es segura de correr en cada arranque y no hace nada en una base nueva.
 
     - `ya_esta_al_dia(sql_actual)`: True si esa definición ya tiene el cambio.
     - `sql_tabla_nueva(sql_actual)`: el CREATE TABLE de la tabla reconstruida
       (recibe la definición vieja por si tiene que conservar algo de ella).
 
-    Dos casos borde, para que la migración nunca deje movimientos
-    históricos fuera del historial visible:
+    Reconstruir una tabla borra los índices que tenía: hay que recrearlos
+    después (con CREATE INDEX IF NOT EXISTS, más adelante en
+    inicializar_base_de_datos).
+
+    Dos casos borde, para que la migración nunca deje datos históricos
+    afuera:
 
     1. **Corte a mitad de camino.** Si el programa se cierra (por ejemplo,
        un corte de luz) entre el RENAME y el final de la copia, el
-       próximo arranque ve la tabla "movimientos_saldo_miembro" recreada
-       pero VACÍA -- la recrea el CREATE TABLE IF NOT EXISTS de
-       inicializar_base_de_datos(), que corre antes que las migraciones --
-       con el historial real atrapado en "movimientos_saldo_miembro_viejo".
-       Por eso no alcanza con preguntar "¿ya está al día?": también se
-       chequea si quedó una "_viejo" pendiente, y se la termina de absorber.
-    2. **bono_id heredado que ya no existe en el catálogo nuevo.** Con
-       foreign_keys en ON, copiar un bono_id que no matchea ningún bono de
-       bonos_miembro rompía la migración entera a mitad de la copia. Por
+       próximo arranque ve la tabla recreada pero VACÍA -- la recrea el
+       CREATE TABLE IF NOT EXISTS de inicializar_base_de_datos(), que corre
+       antes que las migraciones -- con el historial real atrapado en
+       "<tabla>_viejo". Por eso no alcanza con preguntar "¿ya está al día?":
+       también se chequea si quedó una "_viejo" pendiente, y se la termina
+       de absorber.
+    2. **Referencias heredadas que ya no existen.** Con foreign_keys en ON,
+       copiar una fila cuyo REFERENCES ya no apunta a nada vigente (por
+       ejemplo un bono_id de movimientos_saldo_miembro que no está en
+       bonos_miembro) rompía la migración entera a mitad de la copia. Por
        eso el chequeo de FK se apaga SOLO durante esta copia de datos
-       históricos (nunca en el uso normal): conservar el bono_id aunque ya
-       no apunte a nada vigente es mejor que perder el movimiento.
+       históricos (nunca en el uso normal): conservar la fila aunque ya no
+       apunte a nada vigente es mejor que perderla.
     """
+    tabla_vieja = f"{tabla}_viejo"
     tabla_vieja_pendiente = conexion.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro_viejo'"
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", (tabla_vieja,)
     ).fetchone() is not None
 
     definicion = conexion.execute(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_saldo_miembro'"
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (tabla,)
     ).fetchone()
     if definicion is None:
         return  # base nueva: la tabla ni existe todavía, nada que migrar
@@ -829,31 +835,29 @@ def _reconstruir_movimientos_saldo_miembro(conexion: sqlite3.Connection, ya_esta
         return  # ya se migró en un arranque anterior, sin cortes de por medio
 
     if not al_dia:
-        conexion.execute("ALTER TABLE movimientos_saldo_miembro RENAME TO movimientos_saldo_miembro_viejo")
+        conexion.execute(f"ALTER TABLE {tabla} RENAME TO {tabla_vieja}")
         conexion.execute(sql_tabla_nueva(sql_actual))
 
-    # A este punto "movimientos_saldo_miembro_viejo" existe siempre -- recién
-    # renombrada arriba, o ya estaba de un corte anterior (ver punto 1). Se
-    # copia con FK apagado (punto 2) y con INSERT OR IGNORE: si el corte
-    # anterior pasó DESPUÉS de copiar pero ANTES de borrar la vieja, algunas
-    # filas ya están de las dos veces y no hace falta duplicarlas ni romper
-    # por choque de "id".
+    # A este punto "<tabla>_viejo" existe siempre -- recién renombrada
+    # arriba, o ya estaba de un corte anterior (ver punto 1). Se copia con FK
+    # apagado (punto 2) y con INSERT OR IGNORE: si el corte anterior pasó
+    # DESPUÉS de copiar pero ANTES de borrar la vieja, algunas filas ya están
+    # de las dos veces y no hace falta duplicarlas ni romper por choque de
+    # "id".
     #
     # "PRAGMA foreign_keys" es un no-op silencioso si queda una transacción
     # pendiente (por ejemplo, si quien llamó a esta función venía de hacer
     # un INSERT propio sin comitear todavía, como en un test) -- por eso se
     # comitea antes de tocarlo, para no apagar el chequeo "en el papel" y
     # que la FK siga rompiendo igual.
+    lista_columnas = ", ".join(columnas)
     conexion.commit()
     conexion.execute("PRAGMA foreign_keys = OFF")
     try:
-        conexion.execute("""
-            INSERT OR IGNORE INTO movimientos_saldo_miembro
-                (id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id)
-            SELECT id, miembro_id, tipo, minutos, fecha, venta_id, bono_id, sesion_id
-            FROM movimientos_saldo_miembro_viejo
-        """)
-        conexion.execute("DROP TABLE movimientos_saldo_miembro_viejo")
+        conexion.execute(
+            f"INSERT OR IGNORE INTO {tabla} ({lista_columnas}) SELECT {lista_columnas} FROM {tabla_vieja}"
+        )
+        conexion.execute(f"DROP TABLE {tabla_vieja}")
         conexion.commit()
     finally:
         conexion.execute("PRAGMA foreign_keys = ON")
@@ -869,11 +873,11 @@ def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Conne
     existiera también en bonos_tiempo rompía con "FOREIGN KEY constraint
     failed" (pasa recién cuando las dos secuencias de ids se separan).
 
-    Reconstruye la tabla (ver _reconstruir_movimientos_saldo_miembro, que
-    explica los dos casos borde).
+    Reconstruye la tabla (ver _reconstruir_tabla, que explica los dos casos
+    borde).
     """
-    _reconstruir_movimientos_saldo_miembro(
-        conexion,
+    _reconstruir_tabla(
+        conexion, "movimientos_saldo_miembro", _COLUMNAS_MOVIMIENTOS_SALDO,
         ya_esta_al_dia=lambda sql: "bonos_miembro(id)" in sql,
         sql_tabla_nueva=lambda sql: _sql_tabla_movimientos_saldo_miembro(
             _TIPOS_MOVIMIENTO_SALDO_ORIGINALES, "bonos_miembro(id)"
@@ -891,18 +895,65 @@ def _migrar_check_tipo_en_movimientos_saldo_miembro(conexion: sqlite3.Connection
     un REINTEGRO que no fueron.
 
     SQLite no deja tocar un CHECK ya grabado con ALTER TABLE, así que
-    reconstruye la tabla (ver _reconstruir_movimientos_saldo_miembro). Corre
+    reconstruye la tabla (ver _reconstruir_tabla). Corre
     siempre DESPUÉS de _migrar_referencia_bono_en_movimientos_saldo_miembro,
     así que el REFERENCES de bono_id puede llegar ya corregido o no: esta
     migración lo conserva tal cual y solo agrega el valor nuevo al CHECK.
     """
-    _reconstruir_movimientos_saldo_miembro(
-        conexion,
+    _reconstruir_tabla(
+        conexion, "movimientos_saldo_miembro", _COLUMNAS_MOVIMIENTOS_SALDO,
         ya_esta_al_dia=lambda sql: "'ANULACION'" in sql,
         sql_tabla_nueva=lambda sql: _sql_tabla_movimientos_saldo_miembro(
             _TIPOS_MOVIMIENTO_SALDO,
             "bonos_miembro(id)" if "bonos_miembro(id)" in sql else "bonos_tiempo(id)",
         ),
+    )
+
+
+# Tipos de comando que admitía el CHECK de comandos_pc.tipo antes de que se
+# sumaran CAMBIAR_RED y VOLUMEN (ver dominio.TIPOS_COMANDO_PC).
+_TIPOS_COMANDO_PC_ORIGINALES = ("REINICIAR", "APAGAR", "MENSAJE", "SCREENSHOT")
+
+
+def _sql_tabla_comandos_pc(tipos: tuple, si_no_existe: bool = False) -> str:
+    """
+    El CREATE TABLE de comandos_pc, escrito una sola vez. Lo usa
+    inicializar_base_de_datos() con todos los dominio.TIPOS_COMANDO_PC y la
+    migración de abajo para reconstruir la tabla. Lo único que cambió con el
+    tiempo es qué `tipos` admite el CHECK (los tests usan los originales para
+    simular una base vieja).
+    """
+    tipos_sql = ", ".join(f"'{tipo}'" for tipo in tipos)
+    existe = "IF NOT EXISTS " if si_no_existe else ""
+    return f"""
+        CREATE TABLE {existe}comandos_pc (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id     INTEGER NOT NULL REFERENCES estaciones(id),
+            tipo            TEXT NOT NULL CHECK (tipo IN ({tipos_sql})),
+            payload         TEXT,
+            fecha_creacion  TEXT NOT NULL,
+            estado          TEXT NOT NULL DEFAULT 'PENDIENTE' CHECK (estado IN ('PENDIENTE', 'ENTREGADO')),
+            resultado       TEXT
+        )
+    """
+
+
+def _migrar_check_tipo_en_comandos_pc(conexion: sqlite3.Connection):
+    """
+    Agrega CAMBIAR_RED y VOLUMEN a los tipos válidos de comandos_pc.tipo (el
+    CHECK (tipo IN (...)) del esquema). Sin esto, "Cambiar red..." y "Ajustar
+    volumen..." del menú de Control de PCs no podían ni encolar el comando:
+    el INSERT fallaba con "CHECK constraint failed" en cualquier base.
+
+    SQLite no deja tocar un CHECK ya grabado con ALTER TABLE, así que
+    reconstruye la tabla (ver _reconstruir_tabla). Los comandos ya encolados
+    y sus resultados se conservan.
+    """
+    _reconstruir_tabla(
+        conexion, "comandos_pc",
+        ("id", "estacion_id", "tipo", "payload", "fecha_creacion", "estado", "resultado"),
+        ya_esta_al_dia=lambda sql: "'VOLUMEN'" in sql,
+        sql_tabla_nueva=lambda sql: _sql_tabla_comandos_pc(dominio.TIPOS_COMANDO_PC),
     )
 
 
