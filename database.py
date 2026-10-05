@@ -193,6 +193,24 @@ def copiar_backup_a(carpeta_destino: str) -> str:
     return destino
 
 
+def _sql_tabla_de_bonos(tabla: str) -> str:
+    """
+    El CREATE TABLE de un catálogo de bonos de tiempo. Hay dos con el mismo
+    esquema -- "bonos_tiempo" (walk-ins) y "bonos_miembro" (exclusivo de
+    socios) -- a propósito en tablas separadas: ver CLAUDE.md, "Hay DOS
+    catálogos de bonos".
+    """
+    return f"""
+        CREATE TABLE IF NOT EXISTS {tabla} (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre  TEXT NOT NULL,
+            minutos INTEGER NOT NULL,
+            precio  REAL NOT NULL,
+            activo  INTEGER NOT NULL DEFAULT 1
+        )
+    """
+
+
 def inicializar_base_de_datos():
     """
     Crea todas las tablas si todavía no existen (no borra nada si ya
@@ -441,15 +459,7 @@ def inicializar_base_de_datos():
     _migrar_columna_ultima_conexion_estaciones(conexion)
     _migrar_columna_ultima_ip_estaciones(conexion)
     _migrar_columna_cliente_cerrado_desde_estaciones(conexion)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bonos_tiempo (
-            id      INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre  TEXT NOT NULL,
-            minutos INTEGER NOT NULL,
-            precio  REAL NOT NULL,
-            activo  INTEGER NOT NULL DEFAULT 1
-        )
-    """)
+    cursor.execute(_sql_tabla_de_bonos("bonos_tiempo"))
 
     # Una fila por uso continuo de una estación. Al vender un bono a una
     # estación sin sesión activa se crea una fila nueva; al vender un
@@ -577,15 +587,7 @@ def inicializar_base_de_datos():
     # que uno de bonos_tiempo, es exclusivo de ADMIN (ver
     # ui/main_window.ConfiguracionAdminWindow) -- cualquiera con
     # 'permiso_control_pcs' puede usar un bono ya creado, no editarlo.
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bonos_miembro (
-            id      INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre  TEXT NOT NULL,
-            minutos INTEGER NOT NULL,
-            precio  REAL NOT NULL,
-            activo  INTEGER NOT NULL DEFAULT 1
-        )
-    """)
+    cursor.execute(_sql_tabla_de_bonos("bonos_miembro"))
     # Ledger de auditoría de todo movimiento de saldo: CARGA (siempre con
     # venta_id, porque implica cobrar plata real — y bono_id si se cargó
     # comprando un bono en vez de un monto libre, SIEMPRE del catálogo

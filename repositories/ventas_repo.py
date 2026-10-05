@@ -37,6 +37,43 @@ def total_carrito(lineas: list) -> float:
     return sum(subtotal_linea(linea) for linea in lineas)
 
 
+def _insertar_cabecera_venta(conexion, ahora: datetime, usuario_id: int, total: float, origen: str) -> int:
+    """
+    Graba la cabecera de una venta CONFIRMADA y devuelve su id. Único lugar
+    donde se hace el INSERT INTO ventas: tanto confirmar_venta (kiosko) como
+    registrar_venta_sin_detalle (bonos y cargas de saldo) pasan por acá. El
+    turno sale de la hora de la venta (turnos.calcular_turno), no de quién
+    la hace.
+
+    La fecha lleva microsegundos, no segundos: turnos_repo compara
+    "ventas.fecha" contra "cierres_turno.fecha_cierre" con un corte estricto
+    (> / <=) para decidir a qué turno pertenece cada venta. Una venta y un
+    cierre en el mismo segundo empataban en el string de fecha y la venta
+    quedaba afuera de los DOS turnos. turnos_repo.cerrar_turno graba la
+    fecha de cierre con la misma precisión, por la misma razón.
+    """
+    cursor = conexion.execute(
+        """
+        INSERT INTO ventas (fecha, usuario_id, turno, total, estado, origen)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (ahora.isoformat(timespec="microseconds"), usuario_id, calcular_turno(ahora),
+         round(total, 2), dominio.VENTA_CONFIRMADA, origen),
+    )
+    return cursor.lastrowid
+
+
+def _insertar_pagos(conexion, venta_id: int, pagos: list):
+    """Graba los pagos de una venta, uno por fila (puede haber más de uno
+    para un cobro combinado). Único lugar donde se hace el INSERT INTO
+    venta_pagos."""
+    for pago in pagos:
+        conexion.execute(
+            "INSERT INTO venta_pagos (venta_id, metodo, monto) VALUES (?, ?, ?)",
+            (venta_id, pago["metodo"], round(pago["monto"], 2)),
+        )
+
+
 def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     """
     Graba una venta ya armada y cobrada.
@@ -61,25 +98,11 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     acumulando venta tras venta a lo largo de los años.
     """
     ahora = datetime.now()
-    # Microsegundos, no segundos: turnos_repo compara "ventas.fecha" contra
-    # "cierres_turno.fecha_cierre" con un corte estricto (> / <=) para
-    # decidir a qué turno pertenece cada venta. Una venta y un cierre en el
-    # mismo segundo empataban en el string de fecha y la venta quedaba
-    # afuera de los DOS turnos. turnos_repo.cerrar_turno graba la fecha de
-    # cierre con la misma precisión, por la misma razón.
-    ahora_iso = ahora.isoformat(timespec="microseconds")
-    turno = calcular_turno(ahora)
-    total = round(total_carrito(lineas), 2)
 
     with conexion_db() as conexion:
-        cursor = conexion.execute(
-            """
-            INSERT INTO ventas (fecha, usuario_id, turno, total, estado, origen)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (ahora_iso, usuario_id, turno, total, dominio.VENTA_CONFIRMADA, dominio.ORIGEN_KIOSKO),
+        venta_id = _insertar_cabecera_venta(
+            conexion, ahora, usuario_id, total_carrito(lineas), dominio.ORIGEN_KIOSKO
         )
-        venta_id = cursor.lastrowid
 
         for linea in lineas:
             conexion.execute(
@@ -98,11 +121,7 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
                 (linea["cantidad"], linea["codigo"]),
             )
 
-        for pago in pagos:
-            conexion.execute(
-                "INSERT INTO venta_pagos (venta_id, metodo, monto) VALUES (?, ?, ?)",
-                (venta_id, pago["metodo"], round(pago["monto"], 2)),
-            )
+        _insertar_pagos(conexion, venta_id, pagos)
 
         return venta_id
 
@@ -198,32 +217,15 @@ def registrar_venta_sin_detalle(
     que llama a esta función ya está adentro de su propio `with
     conexion_db()` (por ejemplo, junto con el INSERT de sesion_bonos o el
     UPDATE del saldo del socio), y todo tiene que quedar en la misma
-    transacción. Es el único lugar que arma una venta sin detalle -- antes
-    cada llamador insertaba su propio "INSERT INTO ventas" casi idéntico.
+    transacción. Es el único lugar que arma una venta sin detalle.
 
     También recibe `ahora` en vez de llamar a su propio `datetime.now()`:
     el llamador ya calculó un `ahora` para el resto de la operación (la
     sesión de PC, el movimiento de saldo) y tiene que ser exactamente el
     mismo instante en los dos lados, no uno un poco después del otro.
     """
-    # Microsegundos, no segundos: ver el mismo comentario en
-    # confirmar_venta -- acá aplica igual, esto también graba "ventas.fecha".
-    ahora_iso = ahora.isoformat(timespec="microseconds")
-    turno = calcular_turno(ahora)
-
-    cursor = conexion.execute(
-        """
-        INSERT INTO ventas (fecha, usuario_id, turno, total, estado, origen)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (ahora_iso, usuario_id, turno, round(monto, 2), dominio.VENTA_CONFIRMADA, origen),
-    )
-    venta_id = cursor.lastrowid
-    for pago in pagos:
-        conexion.execute(
-            "INSERT INTO venta_pagos (venta_id, metodo, monto) VALUES (?, ?, ?)",
-            (venta_id, pago["metodo"], round(pago["monto"], 2)),
-        )
+    venta_id = _insertar_cabecera_venta(conexion, ahora, usuario_id, monto, origen)
+    _insertar_pagos(conexion, venta_id, pagos)
     return venta_id
 
 

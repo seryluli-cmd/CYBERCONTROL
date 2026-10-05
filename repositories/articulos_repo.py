@@ -25,18 +25,21 @@ def listar_marcas():
         return conexion.execute("SELECT * FROM marcas ORDER BY nombre").fetchall()
 
 
+def _crear_o_buscar(tabla: str, nombre: str) -> int:
+    """El id de `nombre` en un catálogo auxiliar (marcas o rubros), creándolo
+    si todavía no existía. `tabla` la pone el código, nunca la usuaria."""
+    nombre = nombre.strip()
+    with conexion_db() as conexion:
+        conexion.execute(f"INSERT OR IGNORE INTO {tabla} (nombre) VALUES (?)", (nombre,))
+        fila = conexion.execute(f"SELECT id FROM {tabla} WHERE nombre = ?", (nombre,)).fetchone()
+        return fila["id"]
+
+
 def crear_marca(nombre: str) -> int:
     """Crea la marca y devuelve su id; si ya existía una con ese nombre,
     devuelve el id de la existente en vez de fallar (así se puede "agregar
     al vuelo" desde Artículos sin chequear antes)."""
-    with conexion_db() as conexion:
-        conexion.execute(
-            "INSERT OR IGNORE INTO marcas (nombre) VALUES (?)", (nombre.strip(),)
-        )
-        fila = conexion.execute(
-            "SELECT id FROM marcas WHERE nombre = ?", (nombre.strip(),)
-        ).fetchone()
-        return fila["id"]
+    return _crear_o_buscar("marcas", nombre)
 
 
 def listar_rubros():
@@ -46,14 +49,7 @@ def listar_rubros():
 
 def crear_rubro(nombre: str) -> int:
     """Igual que crear_marca: devuelve el id, sea nuevo o ya existente."""
-    with conexion_db() as conexion:
-        conexion.execute(
-            "INSERT OR IGNORE INTO rubros (nombre) VALUES (?)", (nombre.strip(),)
-        )
-        fila = conexion.execute(
-            "SELECT id FROM rubros WHERE nombre = ?", (nombre.strip(),)
-        ).fetchone()
-        return fila["id"]
+    return _crear_o_buscar("rubros", nombre)
 
 
 def renombrar_rubro(rubro_id: int, nuevo_nombre: str):

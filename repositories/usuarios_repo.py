@@ -222,6 +222,28 @@ def _nombre_en_uso(conexion, nombre: str, excluir_id: int = None) -> bool:
     return False
 
 
+def _exigir_nombre_libre(conexion, nombre: str, excluir_id: int = None):
+    """Levanta ValueError (con un mensaje pensado para mostrar tal cual) si
+    otro usuario activo ya se llama así -- ver _nombre_en_uso."""
+    if _nombre_en_uso(conexion, nombre, excluir_id=excluir_id):
+        raise ValueError(
+            f"Ya hay un usuario activo llamado '{nombre.strip()}'. Como se ingresa "
+            "por nombre, no puede haber dos iguales — probá con otro (por ejemplo, "
+            "agregando el apellido)."
+        )
+
+
+def _columnas_y_valores_de_permisos(permisos: dict = None):
+    """
+    (columnas, valores) de TODOS los permisos de PERMISOS_EMPLEADA, listos
+    para un INSERT o un UPDATE: los que no vengan en `permisos` quedan en 0
+    (no conservan lo que tenían antes).
+    """
+    permisos = permisos or {}
+    columnas = [columna for columna, _ in PERMISOS_EMPLEADA]
+    return columnas, [1 if permisos.get(columna) else 0 for columna in columnas]
+
+
 def crear_usuario(nombre: str, clave: str, rol: str, permisos: dict = None):
     """
     Crea un nuevo usuario (Admin o Empleada) y devuelve su id (el
@@ -234,18 +256,11 @@ def crear_usuario(nombre: str, clave: str, rol: str, permisos: dict = None):
     (ya tiene todo, ver tiene_permiso()), pero igual se guarda tal cual
     para no perderlo si algún día lo bajan a EMPLEADA.
     """
-    permisos = permisos or {}
     ahora = datetime.now().isoformat(timespec="seconds")
     with conexion_db() as conexion:
-        if _nombre_en_uso(conexion, nombre):
-            raise ValueError(
-                f"Ya hay un usuario activo llamado '{nombre.strip()}'. Como se ingresa "
-                "por nombre, no puede haber dos iguales — probá con otro (por ejemplo, "
-                "agregando el apellido)."
-            )
+        _exigir_nombre_libre(conexion, nombre)
         nuevo_id = _proximo_numero_disponible(conexion)
-        columnas_permiso = [clave_col for clave_col, _ in PERMISOS_EMPLEADA]
-        valores_permiso = [1 if permisos.get(c) else 0 for c in columnas_permiso]
+        columnas_permiso, valores_permiso = _columnas_y_valores_de_permisos(permisos)
         conexion.execute(
             f"""
             INSERT INTO usuarios
@@ -266,27 +281,19 @@ def modificar_usuario(usuario_id: int, nombre: str, rol: str, clave: str = None,
     en crear_usuario (las claves de PERMISOS_EMPLEADA que no se pasen
     quedan en False, no como estaban antes).
     """
-    permisos = permisos or {}
     with conexion_db() as conexion:
-        if _nombre_en_uso(conexion, nombre, excluir_id=usuario_id):
-            raise ValueError(
-                f"Ya hay un usuario activo llamado '{nombre.strip()}'. Como se ingresa "
-                "por nombre, no puede haber dos iguales — probá con otro (por ejemplo, "
-                "agregando el apellido)."
-            )
-        columnas_permiso = [clave_col for clave_col, _ in PERMISOS_EMPLEADA]
-        valores_permiso = [1 if permisos.get(c) else 0 for c in columnas_permiso]
-        set_permisos = ", ".join(f"{c} = ?" for c in columnas_permiso)
+        _exigir_nombre_libre(conexion, nombre, excluir_id=usuario_id)
+        columnas_permiso, valores_permiso = _columnas_y_valores_de_permisos(permisos)
+        asignaciones = ["nombre = ?", "rol = ?"]
+        valores = [nombre, rol]
         if clave:
-            conexion.execute(
-                f"UPDATE usuarios SET nombre = ?, rol = ?, clave_hash = ?, {set_permisos} WHERE id = ?",
-                (nombre, rol, hash_clave(clave), *valores_permiso, usuario_id),
-            )
-        else:
-            conexion.execute(
-                f"UPDATE usuarios SET nombre = ?, rol = ?, {set_permisos} WHERE id = ?",
-                (nombre, rol, *valores_permiso, usuario_id),
-            )
+            asignaciones.append("clave_hash = ?")
+            valores.append(hash_clave(clave))
+        asignaciones += [f"{columna} = ?" for columna in columnas_permiso]
+        valores += valores_permiso
+        conexion.execute(
+            f"UPDATE usuarios SET {', '.join(asignaciones)} WHERE id = ?", (*valores, usuario_id)
+        )
 
 
 def desactivar_usuario(usuario_id: int):

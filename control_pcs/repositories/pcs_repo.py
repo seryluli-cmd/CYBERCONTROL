@@ -34,6 +34,7 @@ import dominio
 from database import conexion_db
 from repositories import ventas_repo
 from control_pcs.repositories import accesos_admin_pc_repo
+from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 
 # Más que el intervalo de consulta del Cliente PC (5s, ver
 # control_pcs/ui/pcs_window.py) para darle margen de red antes de
@@ -156,46 +157,16 @@ def obtener_estacion(estacion_id: int):
 # Bonos de tiempo (catálogo de combos vendibles)
 # ---------------------------------------------------------------------
 
-def listar_bonos(solo_activos: bool = True):
-    """Los bonos de walk-ins ordenados por duración; por defecto solo los
-    activos. Para los bonos exclusivos de socios ver bonos_miembro_repo."""
-    with conexion_db() as conexion:
-        if solo_activos:
-            return conexion.execute(
-                "SELECT * FROM bonos_tiempo WHERE activo = 1 ORDER BY minutos"
-            ).fetchall()
-        return conexion.execute("SELECT * FROM bonos_tiempo ORDER BY minutos").fetchall()
-
-
-def obtener_bono(bono_id: int):
-    with conexion_db() as conexion:
-        return conexion.execute("SELECT * FROM bonos_tiempo WHERE id = ?", (bono_id,)).fetchone()
-
-
-def crear_bono(nombre: str, minutos: int, precio: float) -> int:
-    dominio.validar_datos_bono(nombre, minutos, precio)
-    with conexion_db() as conexion:
-        cursor = conexion.execute(
-            "INSERT INTO bonos_tiempo (nombre, minutos, precio) VALUES (?, ?, ?)",
-            (nombre.strip(), minutos, round(precio, 2)),
-        )
-        return cursor.lastrowid
-
-
-def modificar_bono(bono_id: int, nombre: str, minutos: int, precio: float):
-    dominio.validar_datos_bono(nombre, minutos, precio)
-    with conexion_db() as conexion:
-        conexion.execute(
-            "UPDATE bonos_tiempo SET nombre = ?, minutos = ?, precio = ? WHERE id = ?",
-            (nombre.strip(), minutos, round(precio, 2), bono_id),
-        )
-
-
-def desactivar_bono(bono_id: int):
-    """No se borra (un bono ya vendido queda referenciado desde
-    sesion_bonos), solo deja de ofrecerse para sesiones nuevas."""
-    with conexion_db() as conexion:
-        conexion.execute("UPDATE bonos_tiempo SET activo = 0 WHERE id = ?", (bono_id,))
+# Catálogo de bonos de walk-ins (tabla bonos_tiempo). La mecánica es la de
+# CatalogoDeBonos; los bonos exclusivos de socios son OTRO catálogo, en
+# bonos_miembro_repo. Un bono dado de baja (desactivar_bono) no se borra: queda
+# referenciado desde sesion_bonos.
+_catalogo_bonos = CatalogoDeBonos("bonos_tiempo")
+listar_bonos = _catalogo_bonos.listar
+obtener_bono = _catalogo_bonos.obtener
+crear_bono = _catalogo_bonos.crear
+modificar_bono = _catalogo_bonos.modificar
+desactivar_bono = _catalogo_bonos.desactivar
 
 
 # ---------------------------------------------------------------------

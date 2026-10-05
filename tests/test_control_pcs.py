@@ -930,6 +930,31 @@ class TestTramosTarifaHoraMiembroRepo(BaseConBaseTemporal):
         self.assertEqual(tramos, [{"monto_minimo": 0, "tarifa_hora": 1500}])
 
 
+class TestMinutosPorMonto(unittest.TestCase):
+    """miembros_repo.minutos_por_monto: la conversión monto -> minutos que
+    usan tanto el cobro (cargar_saldo_por_monto) como la vista previa de la
+    pantalla de Cargar Saldo. No toca la base: recibe los tramos."""
+
+    TRAMOS = [
+        {"monto_minimo": 0, "tarifa_hora": 1000},
+        {"monto_minimo": 5000, "tarifa_hora": 800},
+    ]
+
+    def test_un_monto_exacto_devuelve_los_minutos_justos(self):
+        self.assertEqual(miembros_repo.minutos_por_monto(self.TRAMOS, 1500), (1000, 90))
+
+    def test_redondea_hacia_abajo_al_bloque_de_30_minutos(self):
+        # $1.400 a $1.000/h son 84 minutos: se cargan 60, nunca 90.
+        self.assertEqual(miembros_repo.minutos_por_monto(self.TRAMOS, 1400), (1000, 60))
+
+    def test_usa_la_tarifa_del_tramo_que_le_toca_al_monto(self):
+        # $5.000 ya cae en el tramo de $800/h: 375 minutos -> 360.
+        self.assertEqual(miembros_repo.minutos_por_monto(self.TRAMOS, 5000), (800, 360))
+
+    def test_un_monto_que_no_alcanza_para_un_bloque_da_cero_minutos(self):
+        self.assertEqual(miembros_repo.minutos_por_monto(self.TRAMOS, 100), (1000, 0))
+
+
 class TestComandosPcRepo(BaseConBaseTemporal):
     """Control remoto de una estación (reiniciar, apagar, mensaje,
     screenshot) desde el mostrador -- ver docstring de comandos_pc_repo.py."""

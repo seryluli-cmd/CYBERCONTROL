@@ -22,6 +22,7 @@ tiene que poder auditarse.
 """
 
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 import dominio
 from database import conexion_db, hash_clave, verificar_clave
@@ -45,26 +46,47 @@ def _validar_datos_miembro(usuario: str, nombre: str, dni: str, telefono: str):
         raise ValueError("El teléfono no puede quedar vacío.")
 
 
+def _datos_de_miembro(usuario: str, nombre: str, dni: str, telefono: str, email: str = None) -> dict:
+    """Valida los datos de un socio y los devuelve ya recortados (un email
+    vacío queda en None). Los usan crear_miembro y modificar_miembro."""
+    _validar_datos_miembro(usuario, nombre, dni, telefono)
+    return {
+        "usuario": usuario.strip(),
+        "nombre": nombre.strip(),
+        "dni": dni.strip(),
+        "telefono": telefono.strip(),
+        "email": (email or "").strip() or None,
+    }
+
+
+@contextmanager
+def _usuario_de_socio_unico(usuario: str):
+    """`miembros.usuario` es UNIQUE (es el login del socio): si ya existe, la
+    base tira IntegrityError y acá se convierte en un mensaje para mostrar."""
+    try:
+        yield
+    except sqlite3.IntegrityError:
+        raise ValueError(f"Ya existe un socio con el usuario '{usuario}'.")
+
+
 def crear_miembro(usuario: str, clave: str, nombre: str, dni: str, telefono: str, email: str = None) -> int:
     """Da de alta un socio (arranca con saldo 0) y devuelve su id. Levanta
     ValueError si falta un dato o si ya existe otro socio con ese usuario."""
-    _validar_datos_miembro(usuario, nombre, dni, telefono)
+    datos = _datos_de_miembro(usuario, nombre, dni, telefono, email)
     if not clave:
         raise ValueError("El socio necesita una contraseña para poder loguearse solo.")
     ahora = datetime.now().isoformat(timespec="seconds")
-    try:
+    with _usuario_de_socio_unico(datos["usuario"]):
         with conexion_db() as conexion:
             cursor = conexion.execute(
                 """
                 INSERT INTO miembros (usuario, clave_hash, nombre, dni, telefono, email, fecha_creacion)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (usuario.strip(), hash_clave(clave), nombre.strip(), dni.strip(),
-                 telefono.strip(), (email or "").strip() or None, ahora),
+                (datos["usuario"], hash_clave(clave), datos["nombre"], datos["dni"],
+                 datos["telefono"], datos["email"], ahora),
             )
             return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        raise ValueError(f"Ya existe un socio con el usuario '{usuario.strip()}'.")
 
 
 def modificar_miembro(miembro_id: int, usuario: str, nombre: str, dni: str, telefono: str,
@@ -72,30 +94,15 @@ def modificar_miembro(miembro_id: int, usuario: str, nombre: str, dni: str, tele
     """Actualiza los datos de un socio. Si `clave` viene vacía se conserva
     la anterior. No toca el saldo: eso solo se mueve con cargas, consumos y
     reintegros (ver el ledger movimientos_saldo_miembro)."""
-    _validar_datos_miembro(usuario, nombre, dni, telefono)
-    try:
+    datos = _datos_de_miembro(usuario, nombre, dni, telefono, email)
+    if clave:
+        datos["clave_hash"] = hash_clave(clave)
+    asignaciones = ", ".join(f"{columna} = ?" for columna in datos)
+    with _usuario_de_socio_unico(datos["usuario"]):
         with conexion_db() as conexion:
-            if clave:
-                conexion.execute(
-                    """
-                    UPDATE miembros SET usuario = ?, clave_hash = ?, nombre = ?, dni = ?,
-                                         telefono = ?, email = ?
-                    WHERE id = ?
-                    """,
-                    (usuario.strip(), hash_clave(clave), nombre.strip(), dni.strip(),
-                     telefono.strip(), (email or "").strip() or None, miembro_id),
-                )
-            else:
-                conexion.execute(
-                    """
-                    UPDATE miembros SET usuario = ?, nombre = ?, dni = ?, telefono = ?, email = ?
-                    WHERE id = ?
-                    """,
-                    (usuario.strip(), nombre.strip(), dni.strip(),
-                     telefono.strip(), (email or "").strip() or None, miembro_id),
-                )
-    except sqlite3.IntegrityError:
-        raise ValueError(f"Ya existe un socio con el usuario '{usuario.strip()}'.")
+            conexion.execute(
+                f"UPDATE miembros SET {asignaciones} WHERE id = ?", (*datos.values(), miembro_id)
+            )
 
 
 def desactivar_miembro(miembro_id: int):
@@ -181,22 +188,35 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pag
     return venta_id
 
 
+def minutos_por_monto(tramos: list, monto: float):
+    """
+    (tarifa_hora, minutos) que corresponden a cargar `monto` en pesos: la
+    tarifa $/hora del tramo que le toca a ESE monto (ver
+    dominio.tarifa_hora_para_monto -- tabla de tramos por monto mínimo, no
+    una tarifa única) y los minutos que alcanzan a esa tarifa, redondeados
+    siempre hacia ABAJO al bloque de MINUTOS_POR_FRACCION más cercano:
+    nunca se regala tiempo de más por un redondeo, y el saldo solo se gasta
+    en esos mismos bloques (ver abrir_estacion_por_miembro).
+
+    Es la única cuenta de esta conversión: la usa cargar_saldo_por_monto al
+    cobrar y la pantalla de Cargar Saldo para mostrar la vista previa.
+    `tramos` viene de config_repo.obtener_tramos_tarifa_hora_miembro.
+    """
+    tarifa_hora = dominio.tarifa_hora_para_monto(tramos, monto)
+    minutos = int((monto / tarifa_hora * 60) // MINUTOS_POR_FRACCION) * MINUTOS_POR_FRACCION
+    return tarifa_hora, minutos
+
+
 def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int) -> int:
     """
-    Convierte un pago en pesos a minutos de saldo, según la tarifa $/hora
-    que corresponda a ESE monto (ver
-    config_repo.obtener_tramos_tarifa_hora_miembro y
-    dominio.tarifa_hora_para_monto -- tabla de tramos por monto mínimo,
-    no una tarifa única). Se redondea siempre hacia ABAJO al bloque de 30
-    minutos más cercano — nunca se regala tiempo de más por un
-    redondeo, y el saldo solo se gasta en esos mismos bloques de 30 (ver
-    abrir_estacion_por_miembro).
+    Convierte un pago en pesos a minutos de saldo (ver minutos_por_monto) y
+    se los suma al socio. Levanta ValueError si el monto es cero o no
+    alcanza ni para un bloque.
     """
     if monto <= 0:
         raise ValueError("El monto tiene que ser mayor a 0.")
     tramos = config_repo.obtener_tramos_tarifa_hora_miembro()
-    tarifa_hora = dominio.tarifa_hora_para_monto(tramos, monto)
-    minutos = int((monto / tarifa_hora * 60) // MINUTOS_POR_FRACCION) * MINUTOS_POR_FRACCION
+    tarifa_hora, minutos = minutos_por_monto(tramos, monto)
     if minutos <= 0:
         raise ValueError(
             f"Ese monto no alcanza para {MINUTOS_POR_FRACCION} minutos a la tarifa actual "

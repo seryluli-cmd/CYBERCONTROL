@@ -19,46 +19,15 @@ aplica en la UI (qué botón se muestra), no acá: este repo no sabe nada de
 permisos, igual que el resto de repositories/ (ver CLAUDE.md, regla 1).
 """
 
-import dominio
-from database import conexion_db
+from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 
-
-def listar_bonos(solo_activos: bool = True):
-    with conexion_db() as conexion:
-        if solo_activos:
-            return conexion.execute(
-                "SELECT * FROM bonos_miembro WHERE activo = 1 ORDER BY minutos"
-            ).fetchall()
-        return conexion.execute("SELECT * FROM bonos_miembro ORDER BY minutos").fetchall()
-
-
-def obtener_bono(bono_id: int):
-    with conexion_db() as conexion:
-        return conexion.execute("SELECT * FROM bonos_miembro WHERE id = ?", (bono_id,)).fetchone()
-
-
-def crear_bono(nombre: str, minutos: int, precio: float) -> int:
-    dominio.validar_datos_bono(nombre, minutos, precio)
-    with conexion_db() as conexion:
-        cursor = conexion.execute(
-            "INSERT INTO bonos_miembro (nombre, minutos, precio) VALUES (?, ?, ?)",
-            (nombre.strip(), minutos, round(precio, 2)),
-        )
-        return cursor.lastrowid
-
-
-def modificar_bono(bono_id: int, nombre: str, minutos: int, precio: float):
-    dominio.validar_datos_bono(nombre, minutos, precio)
-    with conexion_db() as conexion:
-        conexion.execute(
-            "UPDATE bonos_miembro SET nombre = ?, minutos = ?, precio = ? WHERE id = ?",
-            (nombre.strip(), minutos, round(precio, 2), bono_id),
-        )
-
-
-def desactivar_bono(bono_id: int):
-    """No se borra (un bono ya cargado por algún socio queda referenciado
-    desde movimientos_saldo_miembro), solo deja de ofrecerse para cargas
-    nuevas."""
-    with conexion_db() as conexion:
-        conexion.execute("UPDATE bonos_miembro SET activo = 0 WHERE id = ?", (bono_id,))
+# La mecánica (listar, crear, ...) es la de CatalogoDeBonos sobre la tabla
+# bonos_miembro. Un bono dado de baja (desactivar_bono) no se borra: un bono
+# ya cargado por algún socio queda referenciado desde
+# movimientos_saldo_miembro, y solo deja de ofrecerse para cargas nuevas.
+_catalogo_bonos = CatalogoDeBonos("bonos_miembro")
+listar_bonos = _catalogo_bonos.listar
+obtener_bono = _catalogo_bonos.obtener
+crear_bono = _catalogo_bonos.crear
+modificar_bono = _catalogo_bonos.modificar
+desactivar_bono = _catalogo_bonos.desactivar
