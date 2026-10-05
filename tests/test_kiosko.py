@@ -1499,6 +1499,21 @@ class TestMigracionCheckTipoEnMovimientosSaldoMiembro(BaseConBaseTemporal):
             ).fetchone()
             self.assertEqual(fila["minutos"], 60)
 
+    def test_un_tipo_nuevo_se_agrega_solo_en_una_base_ya_migrada(self):
+        # La migración mira TODOS los tipos de _TIPOS_MOVIMIENTO_SALDO, no solo
+        # el último que se sumó: si algún día aparece un tipo nuevo, las bases
+        # que ya estaban al día se reconstruyen solas al arrancar.
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+
+        with mock.patch.object(database, "_TIPOS_MOVIMIENTO_SALDO", database._TIPOS_MOVIMIENTO_SALDO + ("NUEVO",)):
+            with database.conexion_db() as conexion:
+                database._migrar_check_tipo_en_movimientos_saldo_miembro(conexion)
+                conexion.execute(
+                    "INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha) "
+                    "VALUES (?, 'NUEVO', ?, ?)",
+                    (miembro_id, 5, "2026-01-01T10:00:00"),
+                )
+
     def test_recupera_movimientos_de_una_tabla_viejo_dejada_por_un_corte_anterior(self):
         # Mismo escenario de corte de luz que la migración hermana (ver
         # TestMigracionReferenciaBonoEnMovimientosSaldoMiembro): la tabla

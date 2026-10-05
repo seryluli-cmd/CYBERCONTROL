@@ -1076,6 +1076,24 @@ class TestMigracionCheckTipoEnComandosPc(BaseConBaseTemporal):
                     (estacion_id, tipo, "2026-01-01T10:03:00"),
                 )
 
+    def test_un_tipo_nuevo_en_dominio_se_agrega_solo_en_una_base_ya_migrada(self):
+        # La migración mira TODOS los tipos de dominio.TIPOS_COMANDO_PC, no
+        # solo el último que se sumó: el día que aparezca un comando nuevo, las
+        # bases que ya estaban al día se reconstruyen solas al arrancar.
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        comando_id = comandos_pc_repo.encolar_comando(estacion_id, comandos_pc_repo.TIPO_VOLUMEN, "50")
+
+        with mock.patch.object(dominio, "TIPOS_COMANDO_PC", dominio.TIPOS_COMANDO_PC + ("NUEVO",)):
+            with database.conexion_db() as conexion:
+                database._migrar_check_tipo_en_comandos_pc(conexion)
+                conexion.execute(
+                    "INSERT INTO comandos_pc (estacion_id, tipo, fecha_creacion) "
+                    "VALUES (?, 'NUEVO', '2026-01-01T10:00:00')",
+                    (estacion_id,),
+                )
+
+        self.assertEqual(comandos_pc_repo.obtener_comando(comando_id)["payload"], "50")
+
     def test_correrla_de_nuevo_no_hace_nada(self):
         estacion_id = pcs_repo.crear_estacion("PC 1")
         comando_id = comandos_pc_repo.encolar_comando(estacion_id, comandos_pc_repo.TIPO_VOLUMEN, "50")

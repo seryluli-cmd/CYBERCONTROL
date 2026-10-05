@@ -863,6 +863,16 @@ def _reconstruir_tabla(conexion: sqlite3.Connection, tabla: str, columnas: tuple
         conexion.execute("PRAGMA foreign_keys = ON")
 
 
+def _admite_todos_los_tipos(tipos: tuple):
+    """
+    La función `ya_esta_al_dia` de las migraciones que agregan valores al
+    CHECK (tipo IN (...)) de una tabla: True si la definición guardada ya
+    admite TODOS los `tipos`. Mirar solo el último que se sumó dejaba sin
+    migrar a las bases ya existentes el día que se agrega uno nuevo.
+    """
+    return lambda sql: all(f"'{tipo}'" in sql for tipo in tipos)
+
+
 def _migrar_referencia_bono_en_movimientos_saldo_miembro(conexion: sqlite3.Connection):
     """
     Para una base creada antes de que existiera "bonos_miembro": hace que
@@ -899,10 +909,14 @@ def _migrar_check_tipo_en_movimientos_saldo_miembro(conexion: sqlite3.Connection
     siempre DESPUÉS de _migrar_referencia_bono_en_movimientos_saldo_miembro,
     así que el REFERENCES de bono_id puede llegar ya corregido o no: esta
     migración lo conserva tal cual y solo agrega el valor nuevo al CHECK.
+
+    Mira TODOS los tipos de _TIPOS_MOVIMIENTO_SALDO (no solo el último que se
+    sumó): si algún día se agrega otro, alcanza con sumarlo ahí y el próximo
+    arranque reconstruye la tabla.
     """
     _reconstruir_tabla(
         conexion, "movimientos_saldo_miembro", _COLUMNAS_MOVIMIENTOS_SALDO,
-        ya_esta_al_dia=lambda sql: "'ANULACION'" in sql,
+        ya_esta_al_dia=_admite_todos_los_tipos(_TIPOS_MOVIMIENTO_SALDO),
         sql_tabla_nueva=lambda sql: _sql_tabla_movimientos_saldo_miembro(
             _TIPOS_MOVIMIENTO_SALDO,
             "bonos_miembro(id)" if "bonos_miembro(id)" in sql else "bonos_tiempo(id)",
@@ -948,11 +962,15 @@ def _migrar_check_tipo_en_comandos_pc(conexion: sqlite3.Connection):
     SQLite no deja tocar un CHECK ya grabado con ALTER TABLE, así que
     reconstruye la tabla (ver _reconstruir_tabla). Los comandos ya encolados
     y sus resultados se conservan.
+
+    Mira TODOS los tipos de dominio.TIPOS_COMANDO_PC (no solo el último que
+    se sumó): si algún día se agrega otro comando, alcanza con sumarlo ahí y
+    el próximo arranque reconstruye la tabla; no hace falta otra migración.
     """
     _reconstruir_tabla(
         conexion, "comandos_pc",
         ("id", "estacion_id", "tipo", "payload", "fecha_creacion", "estado", "resultado"),
-        ya_esta_al_dia=lambda sql: "'VOLUMEN'" in sql,
+        ya_esta_al_dia=_admite_todos_los_tipos(dominio.TIPOS_COMANDO_PC),
         sql_tabla_nueva=lambda sql: _sql_tabla_comandos_pc(dominio.TIPOS_COMANDO_PC),
     )
 
