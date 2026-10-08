@@ -87,10 +87,12 @@ repo correspondiente). `main.py` es el único punto de entrada.
   (una venta puede tener varias filas — pago mixto Efectivo + Digital).
 - **`tramites`** (`id`, `nombre`, `activo` — baja lógica) + **`tramites_venta`**
   (`venta_id` único, `tramite_id`, `descripcion` = foto del nombre al cobrar)
-  — servicios de mostrador con monto libre ("Sacar boleta de luz"). El
-  catálogo lo arma el Admin; cobrar uno es una venta común (origen KIOSKO,
-  sin `venta_detalle`) más una fila en `tramites_venta` que dice cuál fue.
-  Ver `tramites_repo.registrar_tramite`.
+  — servicios que los empleados hacen en el mostrador (sacar e imprimir una
+  boleta de luz o gas, trámites online, turnos...) con monto libre. Se
+  cobra el servicio, nunca la boleta en sí: no hay stock ni costo, es
+  ganancia pura. El catálogo lo arma el Admin; cobrar uno es una venta
+  común (origen KIOSKO, sin `venta_detalle`) más una fila en
+  `tramites_venta` que dice cuál fue. Ver `tramites_repo.registrar_tramite`.
 - **`cierres_turno`** — `fecha`/`turno` del cierre, `usuario_id` (quién
   cerró), `fecha_cierre` (momento exacto — es el límite "desde" del
   próximo turno), `fondo_cambio`/`ventas_efectivo`/`ventas_digital`/

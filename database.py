@@ -380,8 +380,10 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
-    # TRÁMITES (servicios que se cobran en el mostrador, ej. "Sacar boleta
-    # de luz", con el monto que se tipee en el momento)
+    # TRÁMITES (servicios que los empleados hacen en el mostrador -- sacar e
+    # imprimir una boleta de luz o gas, un trámite online, un turno -- y se
+    # cobran con el monto que se tipee en el momento: se cobra el servicio,
+    # nunca la boleta en sí)
     # -------------------------------------------------------------------
     # "tramites" es el catálogo que arma el Admin (activo = 0 es la baja:
     # nada se borra, las ventas ya hechas lo siguen referenciando).

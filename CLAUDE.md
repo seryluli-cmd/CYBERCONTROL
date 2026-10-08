@@ -289,6 +289,12 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   `permiso_control_pcs`). No fusionar estos catálogos "para simplificar":
   son dos negocios distintos con reglas de negocio propias, aunque ahora
   compartan el mismo nivel de permiso para editarlos.
+- **Un trámite es un servicio que se cobra, no el pago de una boleta.** Lo que
+  se tipea en "Trámites" es lo que el local cobra por hacerle el trámite al
+  cliente (imprimir la boleta de luz, un trámite online, sacar un turno...);
+  la boleta en sí nunca pasa por la caja, así que no se la modela como una
+  entrada y salida de plata de terceros. No tiene stock ni costo: es ganancia
+  pura (la hace un empleado). Ver `tramites_repo`.
 
 ---
 
@@ -680,9 +686,12 @@ entran por esos medios). El Ranking de Ventas ya las mostraba como una fila
 más. 221 tests (4 nuevos en `TestResumenPorOrigen` y `TestResumenDelDia`).
 
 **2026-10-08 (más tarde):** **botón "Trámites"** en la barra principal, entre
-"Vender" y "Miembros". Pedido del dueño: servicios que se cobran en el
-mostrador con un monto libre en $ (ej. "Sacar boleta de luz"), con un catálogo
-que arma el Admin. Lo ve cualquiera logueado (`ui/tramites_window.DialogoTramites`:
+"Vender" y "Miembros". Pedido del dueño: servicios que los empleados le hacen
+al cliente en el mostrador (sacar e imprimir una boleta de luz o gas, trámites
+online, sacar turnos... cosas que mucha gente grande no sabe hacer sola) y se
+cobran con un monto libre en $, con un catálogo que arma el Admin. **Se cobra el
+servicio, NO la boleta** (esa plata no pasa por la caja): es ganancia pura, sin
+stock ni costo. Lo ve cualquiera logueado (`ui/tramites_window.DialogoTramites`:
 elegir trámite, tipear monto, medio de pago Efectivo/Digital/Mixto con el mismo
 `resolver_pagos` de Cargar Saldo). El Admin agrega/edita/desactiva trámites
 desde "Gestionar trámites" dentro del mismo diálogo o desde Configuración ADMIN
@@ -694,6 +703,8 @@ renombrar un trámite no cambia el historial. **Decisión a tener presente:** no
 tiene origen propio, así que Caja, Cierre de Turno y todos los reportes lo cuentan
 DENTRO de Kiosko (no se tocó `cierres_turno`). Si el dueño lo quiere separado como
 las Impresiones, `tramites_venta` ya identifica cada venta: se resta de Kiosko igual
-que se hizo con `dominio.CODIGO_ARTICULO_IMPRESIONES`. Consulta de Ventas muestra la
+que se hizo con `dominio.CODIGO_ARTICULO_IMPRESIONES`. Pendiente conocido: el
+Ranking de Ventas todavía NO los lista (no tienen `venta_detalle`; habría que
+sumarle una quinta fuente con `tramites_venta`). Consulta de Ventas muestra la
 fila "Trámite: <nombre>" en el detalle; anular funciona como en cualquier venta. 235
 tests (14 nuevos en `TestTramites`).

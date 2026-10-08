@@ -1,10 +1,13 @@
 """
 tramites_repo.py
 ==================
-Trámites: servicios que se cobran en el mostrador sin un artículo de por
-medio, ej. "Sacar boleta de luz". El Admin arma el catálogo (nombre
-solamente) y al cobrar se tipea el monto que corresponda en ese momento: no
-hay precio fijo.
+Trámites: servicios que los empleados le hacen a un cliente en el mostrador
+-- sacar e imprimir una boleta de luz o de gas, un trámite online, sacar un
+turno, etc. (mucha gente grande no sabe hacerlos sola). Lo que se cobra es
+el SERVICIO, no la boleta ni el trámite en sí: esa plata nunca pasa por la
+caja. Como lo hace un empleado no hay stock ni costo de por medio (es
+ganancia pura). El Admin arma el catálogo (nombre solamente) y al cobrar se
+tipea el monto que corresponda en ese momento: no hay precio fijo.
 
 Cobrar un trámite es una venta más: una fila común de `ventas` (origen
 KIOSKO, sin `venta_detalle`, se arma con ventas_repo.registrar_venta_sin_detalle)

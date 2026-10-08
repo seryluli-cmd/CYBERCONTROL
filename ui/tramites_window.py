@@ -1,8 +1,9 @@
 """
 tramites_window.py
 ====================
-Trámites: servicios que se cobran en el mostrador con un monto libre en $
-(ej. "Sacar boleta de luz"). Dos pantallas:
+Trámites: servicios que los empleados hacen en el mostrador (sacar e
+imprimir una boleta de luz o gas, trámites online, turnos...) y se cobran
+con un monto libre en $. Se cobra el servicio, no la boleta. Dos pantallas:
 
 - `DialogoTramites`: la que usa cualquiera que atiende. Se elige el trámite
   de la lista, se escribe el monto, se elige el medio de pago y se cobra.
