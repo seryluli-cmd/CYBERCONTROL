@@ -5,9 +5,10 @@ Reportes, una pestaña por cada pregunta que se le hace a las ventas:
 
 - Resumen de Ventas: cuánta plata se trabajó en un rango de fechas.
 - Resumen del Día: un día abierto por turno, con quién cerró y si el sobre
-  cuadró.
+  cuadró; Kiosko, Impresiones y Alquiler de PCs van en columnas aparte.
 - Por Turno: el total de un rango repartido entre Mañana/Tarde/Noche.
-- Totales: Kiosko vs. Alquiler de PCs, por turno, día, semana o rango.
+- Totales: Kiosko / Impresiones / Alquiler de PCs, por turno, día, semana o
+  rango.
 - Ranking de Ventas: qué se vendió más -- artículos de kiosko, bonos de PC,
   bonos de socios y cargas de saldo por tarifa, todo junto, con una columna
   Categoría para distinguir de qué negocio vino cada fila (ver
@@ -39,7 +40,7 @@ class ReportesWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Reportes")
-        self.resize(1050, 560)
+        self.resize(1150, 560)
 
         pestañas = QTabWidget()
         pestañas.addTab(PestañaResumen(), "Resumen de Ventas")
@@ -128,7 +129,7 @@ class PestañaResumenDelDia(QWidget):
         turnos_repo.ESTADO_SIN_CERRAR: "#C62828",
         turnos_repo.ESTADO_PENDIENTE: "#7A869A",
     }
-    _COLUMNAS = ["Turno", "Estado", "Cerró", "Ventas", "Kiosko", "Alquiler de PCs",
+    _COLUMNAS = ["Turno", "Estado", "Cerró", "Ventas", "Kiosko", "Impresiones", "Alquiler de PCs",
                  "Efectivo", "Digital", "Total", "Sobre (contado - esperado)"]
 
     def __init__(self):
@@ -167,7 +168,8 @@ class PestañaResumenDelDia(QWidget):
 
         nota = QLabel(
             "Cada turno cuenta lo que se vendió hasta que se lo cerró (la Noche incluye hasta las 06:00 "
-            "del día siguiente). \"Sin contar\": el Admin todavía no cargó cuánto contó del sobre."
+            "del día siguiente). \"Sin contar\": el Admin todavía no cargó cuánto contó del sobre. "
+            "Impresiones se muestra aparte: no está sumada en Kiosko."
         )
         nota.setWordWrap(True)
         nota.setStyleSheet("color: #7A869A;")
@@ -239,6 +241,7 @@ class PestañaResumenDelDia(QWidget):
                     cerro,
                     self._texto_ventas(turno["cantidad_ventas"], turno["cantidad_anuladas"]) if tiene_plata else "—",
                     formato_pesos(turno["kiosko"]) if tiene_plata else "—",
+                    formato_pesos(turno["impresiones"]) if tiene_plata else "—",
                     formato_pesos(turno["pcs"]) if tiene_plata else "—",
                     formato_pesos(turno["efectivo"]) if tiene_plata else "—",
                     formato_pesos(turno["digital"]) if tiene_plata else "—",
@@ -254,7 +257,7 @@ class PestañaResumenDelDia(QWidget):
             [
                 "TOTAL DEL DÍA", "", "",
                 self._texto_ventas(total["cantidad_ventas"], total["cantidad_anuladas"]),
-                formato_pesos(total["kiosko"]), formato_pesos(total["pcs"]),
+                formato_pesos(total["kiosko"]), formato_pesos(total["impresiones"]), formato_pesos(total["pcs"]),
                 formato_pesos(total["efectivo"]), formato_pesos(total["digital"]),
                 formato_pesos(total["total"]), "",
             ],
@@ -322,20 +325,25 @@ class PestañaKioskoVsPCs(QWidget):
             self._buscar, extras=[("Agrupar:", self.combo_agrupar)], solo_hoy=True
         )
 
-        self.tabla = crear_tabla(["Período", "Kiosko", "Alquiler de PCs", "Total"], estirar=0)
+        self.tabla = crear_tabla(["Período", "Kiosko", "Impresiones", "Alquiler de PCs", "Total"], estirar=0)
+
+        nota = QLabel("Impresiones se muestra aparte: no está sumada en Kiosko.")
+        nota.setStyleSheet("color: #7A869A;")
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)
         layout.addSpacing(10)
         layout.addWidget(self.tabla)
+        layout.addWidget(nota)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
-    def _agregar_fila(self, etiqueta: str, kiosko: float, pcs: float, total: float, negrita: bool = False):
+    def _agregar_fila(self, etiqueta: str, kiosko: float, impresiones: float, pcs: float, total: float,
+                      negrita: bool = False):
         fila = self.tabla.rowCount()
         self.tabla.insertRow(fila)
         for columna, valor in enumerate(
-            [etiqueta, formato_pesos(kiosko), formato_pesos(pcs), formato_pesos(total)]
+            [etiqueta, formato_pesos(kiosko), formato_pesos(impresiones), formato_pesos(pcs), formato_pesos(total)]
         ):
             item = QTableWidgetItem(valor)
             if negrita:
@@ -355,14 +363,21 @@ class PestañaKioskoVsPCs(QWidget):
 
         self.tabla.setRowCount(0)
         for fila_datos in filas:
-            self._agregar_fila(fila_datos["etiqueta"], fila_datos["kiosko"], fila_datos["pcs"], fila_datos["total"])
+            self._agregar_fila(
+                fila_datos["etiqueta"], fila_datos["kiosko"], fila_datos["impresiones"],
+                fila_datos["pcs"], fila_datos["total"],
+            )
 
         # Fila TOTAL al pie cuando hay más de un período listado -- con
         # "Total del rango" ya sobraría, es la única fila que hay.
         if agrupar_por != "rango" and len(filas) > 1:
             total_kiosko = sum(fila["kiosko"] for fila in filas)
+            total_impresiones = sum(fila["impresiones"] for fila in filas)
             total_pcs = sum(fila["pcs"] for fila in filas)
-            self._agregar_fila("TOTAL", total_kiosko, total_pcs, total_kiosko + total_pcs, negrita=True)
+            self._agregar_fila(
+                "TOTAL", total_kiosko, total_impresiones, total_pcs,
+                total_kiosko + total_impresiones + total_pcs, negrita=True,
+            )
 
 
 class PestañaRanking(QWidget):

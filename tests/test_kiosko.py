@@ -903,6 +903,46 @@ class TestResumenDelDia(BaseConBaseTemporal):
         self.assertFalse(tarde["verificado"])
         self.assertIsNone(tarde["diferencia"])
 
+    def _vender_impresiones(self, momento, cantidad, metodo="EFECTIVO"):
+        total = cantidad * 150.0
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            return ventas_repo.confirmar_venta(
+                self.lucia_id,
+                [{"codigo": dominio.CODIGO_ARTICULO_IMPRESIONES, "descripcion": "IMPRESIONES",
+                  "cantidad": cantidad, "precio_unitario": 150.0}],
+                [{"metodo": metodo, "monto": total}],
+            )
+
+    def test_impresiones_sale_aparte_de_kiosko_en_turnos_cerrados_y_en_curso(self):
+        articulos_repo.crear_articulo(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None, 150.0, 0.0, 0)
+        self._cerrar(datetime(2026, 1, 5, 6, 0))
+        self._vender(datetime(2026, 1, 5, 9, 0), 10.0)
+        self._vender_impresiones(datetime(2026, 1, 5, 10, 0), 2)                    # $300 en efectivo
+        self._vender_impresiones(datetime(2026, 1, 5, 11, 0), 1, metodo="DIGITAL")  # $150 digital
+        self._cerrar(datetime(2026, 1, 5, 14, 5))
+        self._vender_impresiones(datetime(2026, 1, 5, 15, 0), 4)                    # Tarde, todavía abierta
+
+        resumen = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 16, 0))
+        manana, tarde, noche = resumen["turnos"]
+
+        # Cerrada: el cierre guardó $460 como Kiosko; $450 son impresiones.
+        self.assertEqual(manana["kiosko"], 10.0)
+        self.assertEqual(manana["impresiones"], 450.0)
+        self.assertEqual(manana["total"], 460.0)
+        # El cobro por medio de pago no cambia: las impresiones también entraron ahí.
+        self.assertEqual(manana["efectivo"], 310.0)
+        self.assertEqual(manana["digital"], 150.0)
+        # En curso: se ve en vivo, igual que el resto de la plata.
+        self.assertEqual(tarde["estado"], turnos_repo.ESTADO_EN_CURSO)
+        self.assertEqual(tarde["kiosko"], 0.0)
+        self.assertEqual(tarde["impresiones"], 600.0)
+        self.assertEqual(noche["impresiones"], 0.0)
+
+        total = resumen["total"]
+        self.assertEqual(total["impresiones"], 1050.0)
+        self.assertEqual(total["kiosko"] + total["impresiones"] + total["pcs"], total["total"])
+
     def test_cuenta_las_ventas_anuladas_aparte_y_no_las_suma_al_total(self):
         self._cerrar(datetime(2026, 1, 5, 6, 0))
         self._vender(datetime(2026, 1, 5, 9, 0), 10.0)
@@ -1062,6 +1102,25 @@ class TestResumenPorOrigen(BaseConBaseTemporal):
                 [{"metodo": "EFECTIVO", "monto": monto}],
             )
 
+    def _preparar_impresiones(self):
+        # El artículo que los reportes muestran como renglón aparte. No hace
+        # falta cargar stock: puede quedar negativo (ver CLAUDE.md).
+        articulos_repo.crear_articulo(
+            dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None, 150.0, 0.0, 0
+        )
+
+    def _vender_impresiones(self, usuario_id, momento, cantidad, con_producto=False):
+        """Vende `cantidad` impresiones a $150 (más un COD9 de $100 si
+        `con_producto`) pagado en efectivo. Devuelve el id de la venta."""
+        lineas = [{"codigo": dominio.CODIGO_ARTICULO_IMPRESIONES, "descripcion": "IMPRESIONES",
+                   "cantidad": cantidad, "precio_unitario": 150.0}]
+        if con_producto:
+            lineas.append({"codigo": "COD9", "descripcion": "Producto", "cantidad": 1, "precio_unitario": 100.0})
+        total = ventas_repo.total_carrito(lineas)
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            return ventas_repo.confirmar_venta(usuario_id, lineas, [{"metodo": "EFECTIVO", "monto": total}])
+
     def _vender_pcs(self, usuario_id, momento, monto=200.0):
         # Estación y bono nuevos por venta -- evita depender de la lógica
         # de "extender sesión existente" de asignar_bono, que no viene al
@@ -1080,12 +1139,59 @@ class TestResumenPorOrigen(BaseConBaseTemporal):
 
         filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")
 
-        self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 100.0, "pcs": 3000.0, "total": 3100.0}])
+        self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 100.0, "impresiones": 0.0,
+                                  "pcs": 3000.0, "total": 3100.0}])
 
     def test_rango_sin_ventas_devuelve_una_fila_en_cero(self):
         filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")
 
-        self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 0.0, "pcs": 0.0, "total": 0.0}])
+        self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 0.0, "impresiones": 0.0,
+                                  "pcs": 0.0, "total": 0.0}])
+
+    def test_impresiones_sale_aparte_de_kiosko_aunque_se_vendan_en_la_misma_venta(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self._preparar_articulo(usuario_id)
+        self._preparar_impresiones()
+        self._vender_pcs(usuario_id, datetime(2026, 1, 5, 7, 0, 0), 3000.0)
+        # Una venta con un producto ($100) y 3 impresiones ($450) juntos, y
+        # otra con solo 2 impresiones ($300).
+        self._vender_impresiones(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 3, con_producto=True)
+        self._vender_impresiones(usuario_id, datetime(2026, 1, 5, 9, 0, 0), 2)
+
+        fila = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")[0]
+
+        self.assertEqual(fila["kiosko"], 100.0)
+        self.assertEqual(fila["impresiones"], 750.0)
+        self.assertEqual(fila["pcs"], 3000.0)
+        # Las tres columnas suman lo facturado: nada se cuenta dos veces ni se pierde.
+        self.assertEqual(fila["total"], 3850.0)
+        self.assertEqual(fila["total"], reportes_repo.resumen_ventas("2026-01-05", "2026-01-05")["total"])
+
+    def test_impresiones_se_separa_tambien_por_turno_y_por_dia(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self._preparar_impresiones()
+        self._vender_impresiones(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 1)    # lunes, Mañana
+        self._vender_impresiones(usuario_id, datetime(2026, 1, 6, 15, 0, 0), 2)   # martes, Tarde
+
+        por_turno = {f["etiqueta"]: f for f in reportes_repo.resumen_por_origen("2026-01-05", "2026-01-06", "turno")}
+        self.assertEqual(por_turno["Mañana"]["impresiones"], 150.0)
+        self.assertEqual(por_turno["Tarde"]["impresiones"], 300.0)
+        self.assertEqual(por_turno["Noche"]["impresiones"], 0.0)
+        self.assertEqual(por_turno["Tarde"]["kiosko"], 0.0)
+
+        por_dia = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-06", "dia")
+        self.assertEqual([f["impresiones"] for f in por_dia], [150.0, 300.0])
+
+    def test_una_venta_anulada_de_impresiones_no_cuenta(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self._preparar_impresiones()
+        venta_id = self._vender_impresiones(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 4)
+        ventas_repo.anular_venta(venta_id, usuario_id, "Test")
+
+        fila = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")[0]
+
+        self.assertEqual(fila["impresiones"], 0.0)
+        self.assertEqual(fila["total"], 0.0)
 
     def test_turno_siempre_devuelve_los_tres_aunque_falten_ventas(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")

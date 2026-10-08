@@ -208,17 +208,20 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   **Por Turno** (`reportes_repo.resumen_por_turno`: mismo desglose pero
   separado por Mañana/Tarde/Noche, siempre las 3 aunque alguna quede en
   $0), **Totales** (`reportes_repo.resumen_por_origen`: cuánto se
-  facturó de Kiosko contra Alquiler de PCs — ver `dominio.ORIGENES_VENTA`
-  —, con un combo para agrupar por Turno/Día/Semana o el total del rango
-  completo; agrega una fila TOTAL al pie cuando hay más de un período
-  listado) y **Ranking de Ventas** (`reportes_repo.ranking_ventas`: TODO
+  facturó de Kiosko, de Impresiones y de Alquiler de PCs — ver
+  `dominio.ORIGENES_VENTA` y `dominio.CODIGO_ARTICULO_IMPRESIONES`; las
+  impresiones, el producto Nº 1, salen en columna aparte y NO están
+  sumadas en Kiosko —, con un combo para agrupar por Turno/Día/Semana o
+  el total del rango completo; agrega una fila TOTAL al pie cuando hay
+  más de un período listado) y **Ranking de Ventas** (`reportes_repo.ranking_ventas`: TODO
   lo que se vendió junto —artículos de kiosko, bonos de PC, bonos de
   socios y cargas de saldo por tarifa—, con columna Categoría para
   distinguir de dónde vino cada fila, por cantidad o por monto). La
   quinta, **Resumen del Día** (`turnos_repo.resumen_del_dia`), muestra UN
   día abierto por turno (Mañana/Tarde/Noche, o Domingo T1/T2) con estado
   (Cerrado / En curso / SIN CERRAR / Pendiente), quién cerró y a qué hora,
-  cantidad de ventas, Kiosko vs. Alquiler de PCs, Efectivo/Digital, Total
+  cantidad de ventas, Kiosko / Impresiones / Alquiler de PCs (mismo
+  criterio que Totales), Efectivo/Digital, Total
   y la diferencia del sobre si el Admin ya lo contó; tiene botones de día
   anterior/siguiente y una fila TOTAL DEL DÍA. La plata de cada turno es
   la de su cierre (no la que daría mirar el reloj).

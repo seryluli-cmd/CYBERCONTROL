@@ -272,6 +272,27 @@ def _contar_ventas_entre(conexion, desde: str, hasta: str):
     return fila["confirmadas"], fila["anuladas"]
 
 
+def _impresiones_entre(conexion, desde: str, hasta: str) -> float:
+    """Cuánta plata se vendió del artículo IMPRESIONES
+    (dominio.CODIGO_ARTICULO_IMPRESIONES) en la ventana (desde, hasta] --
+    mismo rango y mismo filtro de ventas confirmadas que
+    `_sumar_ventas_por_origen_y_metodo`. Es parte de lo cobrado como
+    Kiosko (resumen_del_dia la muestra aparte), no un monto extra."""
+    fila = conexion.execute(
+        """
+        SELECT COALESCE(SUM(venta_detalle.subtotal), 0) AS total
+        FROM venta_detalle
+        JOIN ventas ON ventas.id = venta_detalle.venta_id
+        WHERE venta_detalle.articulo_codigo = ?
+          AND ventas.estado = ?
+          AND ventas.fecha > ?
+          AND ventas.fecha <= ?
+        """,
+        (dominio.CODIGO_ARTICULO_IMPRESIONES, dominio.VENTA_CONFIRMADA, desde, hasta),
+    ).fetchone()
+    return fila["total"]
+
+
 def resumen_del_dia(dia):
     """
     El reporte de UN día calendario, abierto por turno (Mañana/Tarde/Noche,
@@ -297,6 +318,12 @@ def resumen_del_dia(dia):
 
     Devuelve {"fecha", "turnos": [...], "total": {...}} con el total del
     día sumando los turnos.
+
+    "impresiones" (lo vendido del artículo IMPRESIONES, ver
+    dominio.CODIGO_ARTICULO_IMPRESIONES) sale aparte de "kiosko": el
+    cierre guarda un solo importe de Kiosko, así que acá se le resta, y
+    kiosko + impresiones + pcs sigue dando "total". Efectivo/Digital no
+    cambian (las impresiones se cobraron igual, por esos medios).
     """
     dia = date.fromisoformat((dia if isinstance(dia, str) else dia.isoformat())[:10])
     ahora_dt = datetime.now()
@@ -314,10 +341,15 @@ def resumen_del_dia(dia):
         ).fetchall()
 
         cierres_por_turno = {}
+        impresiones_por_turno = {}
         for cierre in cierres:
             desde = _desde_del_cierre(conexion, cierre["id"])
             confirmadas, anuladas = _contar_ventas_entre(conexion, desde, cierre["fecha_cierre"])
             cierres_por_turno.setdefault(cierre["turno"], []).append((cierre, confirmadas, anuladas))
+            impresiones_por_turno[cierre["turno"]] = (
+                impresiones_por_turno.get(cierre["turno"], 0.0)
+                + _impresiones_entre(conexion, desde, cierre["fecha_cierre"])
+            )
 
         # La ventana que está abierta ahora, si pertenece a este día.
         ventana = _ventana_en_curso(conexion, ahora_dt)
@@ -328,6 +360,7 @@ def resumen_del_dia(dia):
             desglose = _desglose_de_totales(totales)
             abierta = {
                 "turno": ventana["turno"], "confirmadas": confirmadas, "anuladas": anuladas,
+                "impresiones": _impresiones_entre(conexion, ventana["desde"], ventana["hasta"]),
                 **{campo: desglose[campo] for campo in _CAMPOS_PLATA},
             }
 
@@ -350,6 +383,8 @@ def resumen_del_dia(dia):
         if parcial is not None:
             for campo in _CAMPOS_PLATA:
                 plata[campo] += parcial[campo]
+
+        impresiones = impresiones_por_turno.get(turno, 0.0) + (parcial["impresiones"] if parcial else 0.0)
 
         if parcial is not None:
             estado = ESTADO_EN_CURSO
@@ -374,7 +409,8 @@ def resumen_del_dia(dia):
             "cantidad_ventas": sum(g[1] for g in grupo) + (parcial["confirmadas"] if parcial else 0),
             "cantidad_anuladas": sum(g[2] for g in grupo) + (parcial["anuladas"] if parcial else 0),
             **plata,
-            "kiosko": plata["kiosko_efectivo"] + plata["kiosko_digital"],
+            "kiosko": round(plata["kiosko_efectivo"] + plata["kiosko_digital"] - impresiones, 2),
+            "impresiones": round(impresiones, 2),
             "pcs": plata["pcs_efectivo"] + plata["pcs_digital"],
             "efectivo": plata["kiosko_efectivo"] + plata["pcs_efectivo"],
             "digital": plata["kiosko_digital"] + plata["pcs_digital"],
@@ -385,7 +421,8 @@ def resumen_del_dia(dia):
 
     total = {
         clave: sum(fila[clave] for fila in resultado)
-        for clave in ("kiosko", "pcs", "efectivo", "digital", "total", "cantidad_ventas", "cantidad_anuladas")
+        for clave in ("kiosko", "impresiones", "pcs", "efectivo", "digital", "total",
+                      "cantidad_ventas", "cantidad_anuladas")
     }
     return {"fecha": dia, "turnos": resultado, "total": total}
 

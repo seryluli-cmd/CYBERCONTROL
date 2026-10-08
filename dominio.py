@@ -108,6 +108,15 @@ NOMBRE_ORIGEN_VENTA = {
     ORIGEN_ALQUILER_PCS: "Alquiler de PCs",
 }
 
+# IMPRESIONES es un artículo más del kiosko (se vende por el mismo
+# mostrador, con `origen` KIOSKO), pero es el producto Nº 1 y el dueño lo
+# quiere ver como renglón propio en Reportes (Totales y Resumen del Día),
+# separado del resto de lo que se vende en Kiosko. Se lo reconoce por el
+# código del artículo, que es la clave primaria y no se puede cambiar una
+# vez creado. Si este artículo no existe (o se creó con otro código), esas
+# columnas simplemente muestran $0.
+CODIGO_ARTICULO_IMPRESIONES = "1"
+
 
 # --------------------------------------------------------------------
 # Comandos remotos a una PC cliente

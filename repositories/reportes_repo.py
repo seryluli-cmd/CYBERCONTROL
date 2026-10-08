@@ -2,8 +2,8 @@
 reportes_repo.py
 ==================
 Consultas para la sección de Reportes: el Resumen (cuánta plata se
-trabajó en un rango de fechas), el desglose Kiosko vs. Alquiler de PCs
-(por turno, día, semana o el rango completo) y el Ranking de Ventas
+trabajó en un rango de fechas), el desglose Kiosko / Impresiones /
+Alquiler de PCs (por turno, día, semana o el rango completo) y el Ranking de Ventas
 (qué se vende más, de cualquiera de los cuatro negocios del programa).
 Son solo consultas SQL con agregación (SUM, GROUP BY), apoyadas en los
 índices que se crean en database.py — por eso van a ser rápidas incluso
@@ -149,11 +149,18 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
       - "dia": una fila por día calendario con al menos una venta.
       - "semana": una fila por semana (lunes a domingo) con al menos una
         venta.
-    Cada fila trae "etiqueta" (ya lista para mostrar), "kiosko", "pcs" y
-    "total" (= kiosko + pcs). Usa `ventas.total` (no venta_pagos): acá
-    no importa el medio de pago, solo de qué negocio vino cada peso.
+    Cada fila trae "etiqueta" (ya lista para mostrar), "kiosko",
+    "impresiones", "pcs" y "total" (= kiosko + impresiones + pcs). Usa
+    `ventas.total` (no venta_pagos): acá no importa el medio de pago,
+    solo de qué negocio vino cada peso.
+
+    "impresiones" es lo vendido del artículo dominio.CODIGO_ARTICULO_IMPRESIONES
+    (se saca de venta_detalle); "kiosko" es el resto de las ventas de origen
+    Kiosko, SIN las impresiones -- así las tres columnas suman el total y
+    nada se cuenta dos veces.
     """
     columna_grupo = _COLUMNA_AGRUPACION[agrupar_por]
+    rango = (dominio.VENTA_CONFIRMADA, desde, hasta)
 
     with conexion_db() as conexion:
         filas = conexion.execute(
@@ -164,7 +171,19 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
             WHERE estado = ? AND date(fecha) BETWEEN date(?) AND date(?)
             GROUP BY clave, ventas.origen
             """,
-            (dominio.VENTA_CONFIRMADA, desde, hasta),
+            rango,
+        ).fetchall()
+
+        filas_impresiones = conexion.execute(
+            f"""
+            SELECT {columna_grupo} AS clave, COALESCE(SUM(venta_detalle.subtotal), 0) AS total
+            FROM venta_detalle
+            JOIN ventas ON ventas.id = venta_detalle.venta_id
+            WHERE venta_detalle.articulo_codigo = ?
+              AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            GROUP BY clave
+            """,
+            (dominio.CODIGO_ARTICULO_IMPRESIONES, *rango),
         ).fetchall()
 
     totales_por_clave = {}
@@ -173,6 +192,7 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
             fila["clave"], {origen: 0.0 for origen in dominio.ORIGENES_VENTA}
         )
         totales[fila["origen"]] = fila["total"] or 0.0
+    impresiones_por_clave = {fila["clave"]: fila["total"] or 0.0 for fila in filas_impresiones}
 
     if agrupar_por == "turno":
         claves = list(dominio.TURNOS)
@@ -186,13 +206,15 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
     resultado = []
     for clave in claves:
         totales = totales_por_clave[clave]
-        kiosko = totales[dominio.ORIGEN_KIOSKO]
+        impresiones = round(impresiones_por_clave.get(clave, 0.0), 2)
+        kiosko = round(totales[dominio.ORIGEN_KIOSKO] - impresiones, 2)
         pcs = totales[dominio.ORIGEN_ALQUILER_PCS]
         resultado.append({
             "etiqueta": _etiqueta_agrupacion(clave, agrupar_por),
             "kiosko": kiosko,
+            "impresiones": impresiones,
             "pcs": pcs,
-            "total": kiosko + pcs,
+            "total": kiosko + impresiones + pcs,
         })
     return resultado
 

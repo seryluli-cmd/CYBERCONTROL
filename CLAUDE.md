@@ -196,6 +196,7 @@ abra no alcanza si los tests no pasan.
 | `bonos_miembro_repo.listar_bonos()` / `.obtener_bono(id)` | catálogo de bonos EXCLUSIVO de socios (no confundir con `pcs_repo`) |
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
+| `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
 | `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter |
@@ -657,3 +658,22 @@ y arreglado en el camino: "Cambiar red..." y "Ajustar volumen..." no podían
 ni encolarse (el CHECK de `comandos_pc.tipo` no admitía esos tipos); migración
 `_migrar_check_tipo_en_comandos_pc`, con tests. El proyecto hermano
 `CLIENTE PC` recibió la misma limpieza. 213 tests.
+
+**2026-10-08:** **Impresiones como renglón propio en Reportes.** Pedido del
+dueño: IMPRESIONES es el producto Nº 1 del kiosko y quería verlo aparte en los
+reportes. Sigue siendo un artículo de kiosko más (se vende por el mismo
+mostrador, `origen` KIOSKO, descuenta stock); lo único que cambia es cómo se
+muestra: las pestañas **Totales** y **Resumen del Día** ahora traen la columna
+**Impresiones** entre "Kiosko" y "Alquiler de PCs", y **Kiosko** pasó a ser el
+resto de lo vendido SIN las impresiones (las tres columnas suman el total, nada
+se cuenta dos veces). Se lo reconoce por `dominio.CODIGO_ARTICULO_IMPRESIONES`
+(`"1"`, el código del artículo en la base real); si ese artículo no existe, la
+columna da $0. Cálculo: `reportes_repo.resumen_por_origen` (suma
+`venta_detalle.subtotal` por período, resta de Kiosko) y
+`turnos_repo._impresiones_entre` / `resumen_del_dia` (misma ventana
+`(desde, hasta]` de cada cierre, sin tocar `cierres_turno`: el cierre sigue
+guardando UN solo importe de Kiosko). Ojo: **Caja, Cierre de Turno y Resumen de
+Ventas NO cambiaron** -- ahí las impresiones siguen sumadas dentro de Kiosko, y
+Efectivo/Digital tampoco cambian en ningún reporte (las impresiones también
+entran por esos medios). El Ranking de Ventas ya las mostraba como una fila
+más. 221 tests (4 nuevos en `TestResumenPorOrigen` y `TestResumenDelDia`).
