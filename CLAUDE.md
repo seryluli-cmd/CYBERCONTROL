@@ -197,6 +197,7 @@ abra no alcanza si los tests no pasan.
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
+| `turnos_repo._vendido_aparte_entre(...)` | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día |
 | `tramites_repo.registrar_tramite(...)` | se cobra un trámite de mostrador (monto libre): venta KIOSKO sin detalle + vínculo en `tramites_venta` |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
@@ -677,7 +678,7 @@ se cuenta dos veces). Se lo reconoce por `dominio.CODIGO_ARTICULO_IMPRESIONES`
 (`"1"`, el código del artículo en la base real); si ese artículo no existe, la
 columna da $0. Cálculo: `reportes_repo.resumen_por_origen` (suma
 `venta_detalle.subtotal` por período, resta de Kiosko) y
-`turnos_repo._impresiones_entre` / `resumen_del_dia` (misma ventana
+`turnos_repo._vendido_aparte_entre` (antes `_impresiones_entre`) / `resumen_del_dia` (misma ventana
 `(desde, hasta]` de cada cierre, sin tocar `cierres_turno`: el cierre sigue
 guardando UN solo importe de Kiosko). Ojo: **Caja, Cierre de Turno y Resumen de
 Ventas NO cambiaron** -- ahí las impresiones siguen sumadas dentro de Kiosko, y
@@ -700,11 +701,29 @@ desde "Gestionar trámites" dentro del mismo diálogo o desde Configuración ADM
 arma la venta con `ventas_repo.registrar_venta_sin_detalle` (origen **KIOSKO**) y
 la liga al trámite en la misma transacción; el nombre se guarda como foto, así
 renombrar un trámite no cambia el historial. **Decisión a tener presente:** no
-tiene origen propio, así que Caja, Cierre de Turno y todos los reportes lo cuentan
-DENTRO de Kiosko (no se tocó `cierres_turno`). Si el dueño lo quiere separado como
-las Impresiones, `tramites_venta` ya identifica cada venta: se resta de Kiosko igual
-que se hizo con `dominio.CODIGO_ARTICULO_IMPRESIONES`. Pendiente conocido: el
-Ranking de Ventas todavía NO los lista (no tienen `venta_detalle`; habría que
-sumarle una quinta fuente con `tramites_venta`). Consulta de Ventas muestra la
-fila "Trámite: <nombre>" en el detalle; anular funciona como en cualquier venta. 235
-tests (14 nuevos en `TestTramites`).
+tiene origen propio, así que Caja y Cierre de Turno lo cuentan DENTRO de Kiosko (no
+se tocó `cierres_turno`); en Reportes sale aparte, ver la entrada siguiente. Consulta
+de Ventas muestra la fila "Trámite: <nombre>" en el detalle; anular funciona como en
+cualquier venta. 235 tests (14 nuevos en `TestTramites`).
+
+**2026-10-08 (más tarde todavía):** **los trámites salen aparte en Reportes**, igual
+que las Impresiones (el dueño aclaró que son ganancia 100%: los hace un empleado, sin
+costo). **Totales** y **Resumen del Día** traen la columna **Trámites** entre
+"Impresiones" y "Alquiler de PCs" (`reportes_repo.resumen_por_origen` y
+`turnos_repo.resumen_del_dia` devuelven `tramites`), y **Kiosko** pasa a ser el resto
+SIN impresiones ni trámites: Kiosko + Impresiones + Trámites + PCs = Total. El
+**Ranking de Ventas** ahora lista los trámites como quinta fuente (categoría
+"Trámite", agrupados por el nombre que tenían al cobrarse; hasta acá faltaban porque
+no tienen `venta_detalle`). Caja, Cierre de Turno, Resumen de Ventas y Por Turno NO
+cambiaron: ahí siguen dentro de Kiosko. El helper que calcula lo que se muestra
+aparte en el Resumen del Día es ahora `turnos_repo._vendido_aparte_entre`
+(reemplaza a `_impresiones_entre`; `_LINEAS_APARTE` lista las columnas, así que una
+tercera sale barata). **Bug corregido de paso (afectaba a Impresiones desde el mismo
+día):** el cierre guarda una foto de lo cobrado, así que una venta anulada DESPUÉS
+del cierre sigue sumada en su importe de Kiosko; como impresiones/trámites se
+calculaban ignorando las anuladas, esos pesos pasaban a verse como "Kiosko". Ahora
+para un turno ya cerrado se cuentan también las anuladas con `anulada_fecha`
+posterior al cierre (`cierre_grabado=True`, comparando con `julianday` porque
+`anulada_fecha` se graba con segundos y `fecha_cierre` con microsegundos). La ventana
+de Reportes pasó de 1150 a 1300 px: con 12 columnas el Resumen del Día no entraba.
+244 tests (9 nuevos).

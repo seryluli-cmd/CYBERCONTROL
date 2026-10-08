@@ -2,9 +2,9 @@
 reportes_repo.py
 ==================
 Consultas para la sección de Reportes: el Resumen (cuánta plata se
-trabajó en un rango de fechas), el desglose Kiosko / Impresiones /
-Alquiler de PCs (por turno, día, semana o el rango completo) y el Ranking de Ventas
-(qué se vende más, de cualquiera de los cuatro negocios del programa).
+trabajó en un rango de fechas), el desglose Kiosko / Impresiones / Trámites
+/ Alquiler de PCs (por turno, día, semana o el rango completo) y el Ranking
+de Ventas (qué se vende más, de cualquiera de los rubros del programa).
 Son solo consultas SQL con agregación (SUM, GROUP BY), apoyadas en los
 índices que se crean en database.py — por eso van a ser rápidas incluso
 con años de ventas acumuladas.
@@ -18,13 +18,15 @@ from database import conexion_db
 # Categorías del Ranking de Ventas -- son un rótulo de la pantalla, no un
 # valor que se guarda en la base (por eso viven acá y no en dominio.py,
 # que es para strings que sí viajan hasta una columna). Un artículo de
-# kiosko sale de venta_detalle; los otros tres no tienen fila ahí (ver
+# kiosko sale de venta_detalle; los otros no tienen fila ahí (ver
 # ventas_repo.registrar_venta_sin_detalle) y hay que ir a buscarlos a
-# sesion_bonos / movimientos_saldo_miembro para saber qué se vendió.
+# sesion_bonos / movimientos_saldo_miembro / tramites_venta para saber qué
+# se vendió.
 CATEGORIA_KIOSKO = "Kiosko"
 CATEGORIA_BONO_PC = "Bono de PC (walk-in)"
 CATEGORIA_BONO_SOCIO = "Bono de Socio"
 CATEGORIA_CARGA_TARIFA_SOCIO = "Carga de saldo de Socio (tarifa por hora)"
+CATEGORIA_TRAMITE = "Trámite"
 
 
 def resumen_ventas(desde: str, hasta: str):
@@ -137,9 +139,15 @@ def _etiqueta_agrupacion(clave, agrupar_por: str) -> str:
     return f"Semana del {fecha.strftime('%d/%m')} al {fin_semana.strftime('%d/%m/%Y')}"
 
 
+def _sumar_por_clave(conexion, consulta: str, parametros) -> dict:
+    """{clave: total} de una consulta que devuelve las columnas `clave`
+    (el período, ver _COLUMNA_AGRUPACION) y `total`."""
+    return {fila["clave"]: fila["total"] or 0.0 for fila in conexion.execute(consulta, parametros)}
+
+
 def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
     """
-    Desglosa lo facturado en Kiosko vs. Alquiler de PCs (ver
+    Desglosa lo facturado en Kiosko, Impresiones, Trámites y Alquiler de PCs (ver
     dominio.ORIGENES_VENTA) entre dos fechas, agrupado según
     `agrupar_por`:
       - "rango" (default): una sola fila con el total del período completo.
@@ -150,14 +158,16 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
       - "semana": una fila por semana (lunes a domingo) con al menos una
         venta.
     Cada fila trae "etiqueta" (ya lista para mostrar), "kiosko",
-    "impresiones", "pcs" y "total" (= kiosko + impresiones + pcs). Usa
-    `ventas.total` (no venta_pagos): acá no importa el medio de pago,
-    solo de qué negocio vino cada peso.
+    "impresiones", "tramites", "pcs" y "total" (= kiosko + impresiones +
+    tramites + pcs). Usa `ventas.total` (no venta_pagos): acá no importa
+    el medio de pago, solo de qué negocio vino cada peso.
 
     "impresiones" es lo vendido del artículo dominio.CODIGO_ARTICULO_IMPRESIONES
-    (se saca de venta_detalle); "kiosko" es el resto de las ventas de origen
-    Kiosko, SIN las impresiones -- así las tres columnas suman el total y
-    nada se cuenta dos veces.
+    (se saca de venta_detalle) y "tramites" lo cobrado por trámites (se saca
+    de tramites_venta, ver tramites_repo). Los dos se cobran por el mostrador
+    como cualquier venta de origen Kiosko, pero acá salen en columna propia:
+    "kiosko" es el resto de las ventas de origen Kiosko, SIN ellos -- así las
+    columnas suman el total y nada se cuenta dos veces.
     """
     columna_grupo = _COLUMNA_AGRUPACION[agrupar_por]
     rango = (dominio.VENTA_CONFIRMADA, desde, hasta)
@@ -174,7 +184,8 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
             rango,
         ).fetchall()
 
-        filas_impresiones = conexion.execute(
+        impresiones_por_clave = _sumar_por_clave(
+            conexion,
             f"""
             SELECT {columna_grupo} AS clave, COALESCE(SUM(venta_detalle.subtotal), 0) AS total
             FROM venta_detalle
@@ -184,7 +195,19 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
             GROUP BY clave
             """,
             (dominio.CODIGO_ARTICULO_IMPRESIONES, *rango),
-        ).fetchall()
+        )
+
+        tramites_por_clave = _sumar_por_clave(
+            conexion,
+            f"""
+            SELECT {columna_grupo} AS clave, COALESCE(SUM(ventas.total), 0) AS total
+            FROM tramites_venta
+            JOIN ventas ON ventas.id = tramites_venta.venta_id
+            WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            GROUP BY clave
+            """,
+            rango,
+        )
 
     totales_por_clave = {}
     for fila in filas:
@@ -192,7 +215,6 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
             fila["clave"], {origen: 0.0 for origen in dominio.ORIGENES_VENTA}
         )
         totales[fila["origen"]] = fila["total"] or 0.0
-    impresiones_por_clave = {fila["clave"]: fila["total"] or 0.0 for fila in filas_impresiones}
 
     if agrupar_por == "turno":
         claves = list(dominio.TURNOS)
@@ -207,14 +229,16 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
     for clave in claves:
         totales = totales_por_clave[clave]
         impresiones = round(impresiones_por_clave.get(clave, 0.0), 2)
-        kiosko = round(totales[dominio.ORIGEN_KIOSKO] - impresiones, 2)
+        tramites = round(tramites_por_clave.get(clave, 0.0), 2)
+        kiosko = round(totales[dominio.ORIGEN_KIOSKO] - impresiones - tramites, 2)
         pcs = totales[dominio.ORIGEN_ALQUILER_PCS]
         resultado.append({
             "etiqueta": _etiqueta_agrupacion(clave, agrupar_por),
             "kiosko": kiosko,
             "impresiones": impresiones,
+            "tramites": tramites,
             "pcs": pcs,
-            "total": kiosko + impresiones + pcs,
+            "total": kiosko + impresiones + tramites + pcs,
         })
     return resultado
 
@@ -222,20 +246,22 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
 def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
     """
     Ranking de TODO lo que se vendió entre dos fechas -- artículos de
-    kiosko, bonos de tiempo de walk-ins, bonos de socios y cargas de
-    saldo por tarifa -- con la cantidad total vendida y el importe total
-    facturado de cada uno. `ordenar_por` puede ser "cantidad" o "monto".
+    kiosko, bonos de tiempo de walk-ins, bonos de socios, cargas de saldo
+    por tarifa y trámites -- con la cantidad total vendida y el importe
+    total facturado de cada uno. `ordenar_por` puede ser "cantidad" o
+    "monto".
 
-    Un artículo de kiosko deja su fila en venta_detalle, pero un bono o
-    una carga de saldo se registran sin detalle (ver
+    Un artículo de kiosko deja su fila en venta_detalle, pero un bono, una
+    carga de saldo o un trámite se registran sin detalle (ver
     ventas_repo.registrar_venta_sin_detalle): para saber QUÉ se vendió
-    hay que ir a sesion_bonos (bono de PC) o movimientos_saldo_miembro
+    hay que ir a sesion_bonos (bono de PC), movimientos_saldo_miembro
     (bono de socio o carga por tarifa, distinguidos por si el movimiento
     de tipo 'CARGA' trae bono_id o no -- ver
-    miembros_repo.cargar_saldo_por_monto/_por_bono). Las cuatro fuentes
-    se traen con UNION ALL y se ordenan juntas al final, para que el
-    dueño vea en un solo ranking qué es lo que más funciona de cualquiera
-    de los cuatro negocios.
+    miembros_repo.cargar_saldo_por_monto/_por_bono) o tramites_venta
+    (trámite, agrupado por el nombre que tenía al cobrarse). Las cinco
+    fuentes se traen con UNION ALL y se ordenan juntas al final, para que
+    el dueño vea en un solo ranking qué es lo que más funciona de
+    cualquiera de los rubros.
     """
     columna_orden = "cantidad" if ordenar_por == "cantidad" else "importe"
     rango = (dominio.VENTA_CONFIRMADA, desde, hasta)
@@ -298,6 +324,19 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                   AND movimientos_saldo_miembro.bono_id IS NULL
                   AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
                 HAVING COUNT(*) > 0
+
+                UNION ALL
+
+                SELECT
+                    ? AS categoria,
+                    '' AS codigo,
+                    tramites_venta.descripcion AS descripcion,
+                    COUNT(*) AS cantidad,
+                    SUM(ventas.total) AS importe
+                FROM tramites_venta
+                JOIN ventas ON ventas.id = tramites_venta.venta_id
+                WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                GROUP BY tramites_venta.tramite_id, tramites_venta.descripcion
             )
             ORDER BY {columna_orden} DESC
             """,
@@ -306,5 +345,6 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 CATEGORIA_BONO_PC, *rango,
                 CATEGORIA_BONO_SOCIO, *rango,
                 CATEGORIA_CARGA_TARIFA_SOCIO, CATEGORIA_CARGA_TARIFA_SOCIO, *rango,
+                CATEGORIA_TRAMITE, *rango,
             ),
         ).fetchall()

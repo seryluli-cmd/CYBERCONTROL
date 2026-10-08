@@ -272,25 +272,65 @@ def _contar_ventas_entre(conexion, desde: str, hasta: str):
     return fila["confirmadas"], fila["anuladas"]
 
 
-def _impresiones_entre(conexion, desde: str, hasta: str) -> float:
-    """Cuánta plata se vendió del artículo IMPRESIONES
-    (dominio.CODIGO_ARTICULO_IMPRESIONES) en la ventana (desde, hasta] --
-    mismo rango y mismo filtro de ventas confirmadas que
-    `_sumar_ventas_por_origen_y_metodo`. Es parte de lo cobrado como
-    Kiosko (resumen_del_dia la muestra aparte), no un monto extra."""
-    fila = conexion.execute(
-        """
+# Lo que se cobra por el mostrador como cualquier venta de Kiosko pero que el
+# reporte "Resumen del Día" muestra en una columna propia (ver
+# _vendido_aparte_entre): las impresiones (un artículo) y los trámites (un
+# servicio, ver tramites_repo).
+_LINEAS_APARTE = ("impresiones", "tramites")
+
+
+def _vendido_aparte_entre(conexion, desde: str, hasta: str, cierre_grabado: bool = False) -> dict:
+    """
+    {"impresiones": ..., "tramites": ...}: cuánta plata se vendió de cada una
+    en la ventana (desde, hasta] -- mismo rango que
+    `_sumar_ventas_por_origen_y_metodo`. Las impresiones son el artículo
+    dominio.CODIGO_ARTICULO_IMPRESIONES (de venta_detalle); los trámites
+    salen de tramites_venta. Las dos cosas ya están sumadas dentro de lo
+    cobrado como Kiosko (resumen_del_dia las muestra aparte), no son un
+    monto extra.
+
+    Solo cuentan las ventas confirmadas, salvo con `cierre_grabado=True`
+    (la ventana de un cierre que YA se guardó, `hasta` = su fecha_cierre):
+    la plata de ese cierre es una foto de lo que estaba confirmado al
+    cerrar, así que una venta anulada DESPUÉS del cierre sigue sumada en el
+    importe de Kiosko que quedó guardado y acá se la sigue contando. Si no,
+    esos pesos dejarían de figurar como impresiones/trámites y pasarían a
+    verse como Kiosko. (`julianday` y no una comparación de texto porque
+    `anulada_fecha` se graba con segundos y `fecha_cierre` con microsegundos.)
+    """
+    if cierre_grabado:
+        vigente = "(ventas.estado = ? OR (ventas.estado = ? AND julianday(ventas.anulada_fecha) > julianday(?)))"
+        parametros_vigente = (dominio.VENTA_CONFIRMADA, dominio.VENTA_ANULADA, hasta)
+    else:
+        vigente = "ventas.estado = ?"
+        parametros_vigente = (dominio.VENTA_CONFIRMADA,)
+
+    # `vigente` es un texto fijo de arriba (nunca un dato de la usuaria),
+    # por eso es seguro armarlo dentro del SQL.
+    impresiones = conexion.execute(
+        f"""
         SELECT COALESCE(SUM(venta_detalle.subtotal), 0) AS total
         FROM venta_detalle
         JOIN ventas ON ventas.id = venta_detalle.venta_id
         WHERE venta_detalle.articulo_codigo = ?
-          AND ventas.estado = ?
+          AND {vigente}
           AND ventas.fecha > ?
           AND ventas.fecha <= ?
         """,
-        (dominio.CODIGO_ARTICULO_IMPRESIONES, dominio.VENTA_CONFIRMADA, desde, hasta),
-    ).fetchone()
-    return fila["total"]
+        (dominio.CODIGO_ARTICULO_IMPRESIONES, *parametros_vigente, desde, hasta),
+    ).fetchone()["total"]
+    tramites = conexion.execute(
+        f"""
+        SELECT COALESCE(SUM(ventas.total), 0) AS total
+        FROM tramites_venta
+        JOIN ventas ON ventas.id = tramites_venta.venta_id
+        WHERE {vigente}
+          AND ventas.fecha > ?
+          AND ventas.fecha <= ?
+        """,
+        (*parametros_vigente, desde, hasta),
+    ).fetchone()["total"]
+    return {"impresiones": impresiones, "tramites": tramites}
 
 
 def resumen_del_dia(dia):
@@ -320,10 +360,11 @@ def resumen_del_dia(dia):
     día sumando los turnos.
 
     "impresiones" (lo vendido del artículo IMPRESIONES, ver
-    dominio.CODIGO_ARTICULO_IMPRESIONES) sale aparte de "kiosko": el
-    cierre guarda un solo importe de Kiosko, así que acá se le resta, y
-    kiosko + impresiones + pcs sigue dando "total". Efectivo/Digital no
-    cambian (las impresiones se cobraron igual, por esos medios).
+    dominio.CODIGO_ARTICULO_IMPRESIONES) y "tramites" (lo cobrado por
+    trámites, ver tramites_repo) salen aparte de "kiosko": el cierre guarda
+    un solo importe de Kiosko, así que acá se les resta, y kiosko +
+    impresiones + tramites + pcs sigue dando "total". Efectivo/Digital no
+    cambian (se cobraron igual, por esos medios).
     """
     dia = date.fromisoformat((dia if isinstance(dia, str) else dia.isoformat())[:10])
     ahora_dt = datetime.now()
@@ -341,15 +382,15 @@ def resumen_del_dia(dia):
         ).fetchall()
 
         cierres_por_turno = {}
-        impresiones_por_turno = {}
+        aparte_por_turno = {}
         for cierre in cierres:
             desde = _desde_del_cierre(conexion, cierre["id"])
             confirmadas, anuladas = _contar_ventas_entre(conexion, desde, cierre["fecha_cierre"])
             cierres_por_turno.setdefault(cierre["turno"], []).append((cierre, confirmadas, anuladas))
-            impresiones_por_turno[cierre["turno"]] = (
-                impresiones_por_turno.get(cierre["turno"], 0.0)
-                + _impresiones_entre(conexion, desde, cierre["fecha_cierre"])
-            )
+            vendido = _vendido_aparte_entre(conexion, desde, cierre["fecha_cierre"], cierre_grabado=True)
+            acumulado = aparte_por_turno.setdefault(cierre["turno"], {linea: 0.0 for linea in _LINEAS_APARTE})
+            for linea in _LINEAS_APARTE:
+                acumulado[linea] += vendido[linea]
 
         # La ventana que está abierta ahora, si pertenece a este día.
         ventana = _ventana_en_curso(conexion, ahora_dt)
@@ -360,7 +401,7 @@ def resumen_del_dia(dia):
             desglose = _desglose_de_totales(totales)
             abierta = {
                 "turno": ventana["turno"], "confirmadas": confirmadas, "anuladas": anuladas,
-                "impresiones": _impresiones_entre(conexion, ventana["desde"], ventana["hasta"]),
+                **_vendido_aparte_entre(conexion, ventana["desde"], ventana["hasta"]),
                 **{campo: desglose[campo] for campo in _CAMPOS_PLATA},
             }
 
@@ -384,7 +425,10 @@ def resumen_del_dia(dia):
             for campo in _CAMPOS_PLATA:
                 plata[campo] += parcial[campo]
 
-        impresiones = impresiones_por_turno.get(turno, 0.0) + (parcial["impresiones"] if parcial else 0.0)
+        aparte = {
+            linea: aparte_por_turno.get(turno, {}).get(linea, 0.0) + (parcial[linea] if parcial else 0.0)
+            for linea in _LINEAS_APARTE
+        }
 
         if parcial is not None:
             estado = ESTADO_EN_CURSO
@@ -409,8 +453,8 @@ def resumen_del_dia(dia):
             "cantidad_ventas": sum(g[1] for g in grupo) + (parcial["confirmadas"] if parcial else 0),
             "cantidad_anuladas": sum(g[2] for g in grupo) + (parcial["anuladas"] if parcial else 0),
             **plata,
-            "kiosko": round(plata["kiosko_efectivo"] + plata["kiosko_digital"] - impresiones, 2),
-            "impresiones": round(impresiones, 2),
+            "kiosko": round(plata["kiosko_efectivo"] + plata["kiosko_digital"] - sum(aparte.values()), 2),
+            **{linea: round(monto, 2) for linea, monto in aparte.items()},
             "pcs": plata["pcs_efectivo"] + plata["pcs_digital"],
             "efectivo": plata["kiosko_efectivo"] + plata["pcs_efectivo"],
             "digital": plata["kiosko_digital"] + plata["pcs_digital"],
@@ -421,7 +465,7 @@ def resumen_del_dia(dia):
 
     total = {
         clave: sum(fila[clave] for fila in resultado)
-        for clave in ("kiosko", "impresiones", "pcs", "efectivo", "digital", "total",
+        for clave in ("kiosko", *_LINEAS_APARTE, "pcs", "efectivo", "digital", "total",
                       "cantidad_ventas", "cantidad_anuladas")
     }
     return {"fecha": dia, "turnos": resultado, "total": total}

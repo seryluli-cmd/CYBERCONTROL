@@ -1048,6 +1048,88 @@ class TestResumenDelDia(BaseConBaseTemporal):
                 [{"metodo": metodo, "monto": total}],
             )
 
+    def _cobrar_tramite(self, momento, monto, metodo="EFECTIVO"):
+        tramite_id = tramites_repo.crear_tramite(f"Trámite {momento.isoformat()}")
+        with mock.patch("repositories.tramites_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            return tramites_repo.registrar_tramite(
+                self.lucia_id, tramite_id, monto, [{"metodo": metodo, "monto": monto}]
+            )
+
+    def _anular(self, venta_id, momento):
+        """Anula la venta como si fuera `momento` (la fecha de anulación es
+        lo que decide si fue antes o después del cierre del turno)."""
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            ventas_repo.anular_venta(venta_id, self.admin_id, "Test")
+
+    def test_tramites_sale_aparte_de_kiosko_junto_con_las_impresiones(self):
+        articulos_repo.crear_articulo(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None, 150.0, 0.0, 0)
+        self._cerrar(datetime(2026, 1, 5, 6, 0))
+        self._vender(datetime(2026, 1, 5, 9, 0), 10.0)
+        self._vender_impresiones(datetime(2026, 1, 5, 10, 0), 2)                    # $300 efectivo
+        self._cobrar_tramite(datetime(2026, 1, 5, 11, 0), 2500.0)                   # efectivo
+        self._cobrar_tramite(datetime(2026, 1, 5, 12, 0), 500.0, metodo="DIGITAL")
+        self._cerrar(datetime(2026, 1, 5, 14, 5))
+        self._cobrar_tramite(datetime(2026, 1, 5, 15, 0), 1000.0)                   # Tarde, todavía abierta
+
+        resumen = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 16, 0))
+        manana, tarde, noche = resumen["turnos"]
+
+        # Cerrada: el cierre guardó $3.310 como Kiosko; de eso, $300 son
+        # impresiones y $3.000 trámites.
+        self.assertEqual(manana["kiosko"], 10.0)
+        self.assertEqual(manana["impresiones"], 300.0)
+        self.assertEqual(manana["tramites"], 3000.0)
+        self.assertEqual(manana["total"], 3310.0)
+        self.assertEqual(manana["efectivo"], 2810.0)
+        self.assertEqual(manana["digital"], 500.0)
+        # En curso: se ve en vivo, igual que el resto de la plata.
+        self.assertEqual(tarde["estado"], turnos_repo.ESTADO_EN_CURSO)
+        self.assertEqual(tarde["kiosko"], 0.0)
+        self.assertEqual(tarde["tramites"], 1000.0)
+        self.assertEqual(noche["tramites"], 0.0)
+
+        total = resumen["total"]
+        self.assertEqual(total["tramites"], 4000.0)
+        self.assertEqual(total["kiosko"] + total["impresiones"] + total["tramites"] + total["pcs"], total["total"])
+
+    def test_una_venta_anulada_despues_del_cierre_sigue_en_su_columna(self):
+        # El cierre es una foto: la venta anulada DESPUÉS sigue sumada en el
+        # importe de Kiosko que guardó. Si acá se la dejara de contar como
+        # impresiones/trámite, esos pesos pasarían a verse como "Kiosko".
+        articulos_repo.crear_articulo(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None, 150.0, 0.0, 0)
+        self._cerrar(datetime(2026, 1, 5, 6, 0))
+        venta_impresiones = self._vender_impresiones(datetime(2026, 1, 5, 9, 0), 2)
+        venta_tramite = self._cobrar_tramite(datetime(2026, 1, 5, 10, 0), 2500.0)
+        self._cerrar(datetime(2026, 1, 5, 14, 5))
+        self._anular(venta_impresiones, datetime(2026, 1, 5, 18, 0))
+        self._anular(venta_tramite, datetime(2026, 1, 5, 18, 5))
+
+        manana = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 19, 0))["turnos"][0]
+
+        self.assertEqual(manana["total"], 2800.0)
+        self.assertEqual(manana["impresiones"], 300.0)
+        self.assertEqual(manana["tramites"], 2500.0)
+        self.assertEqual(manana["kiosko"], 0.0)
+        self.assertEqual(manana["cantidad_anuladas"], 2)
+
+    def test_una_venta_anulada_antes_del_cierre_no_figura_en_ninguna_columna(self):
+        articulos_repo.crear_articulo(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None, 150.0, 0.0, 0)
+        self._cerrar(datetime(2026, 1, 5, 6, 0))
+        venta_impresiones = self._vender_impresiones(datetime(2026, 1, 5, 9, 0), 2)
+        venta_tramite = self._cobrar_tramite(datetime(2026, 1, 5, 10, 0), 2500.0)
+        self._anular(venta_impresiones, datetime(2026, 1, 5, 11, 0))
+        self._anular(venta_tramite, datetime(2026, 1, 5, 11, 5))
+        self._cerrar(datetime(2026, 1, 5, 14, 5))
+
+        manana = self._resumen(date(2026, 1, 5), datetime(2026, 1, 5, 19, 0))["turnos"][0]
+
+        self.assertEqual(manana["total"], 0.0)
+        self.assertEqual(manana["impresiones"], 0.0)
+        self.assertEqual(manana["tramites"], 0.0)
+        self.assertEqual(manana["kiosko"], 0.0)
+
     def test_impresiones_sale_aparte_de_kiosko_en_turnos_cerrados_y_en_curso(self):
         articulos_repo.crear_articulo(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None, 150.0, 0.0, 0)
         self._cerrar(datetime(2026, 1, 5, 6, 0))
@@ -1255,6 +1337,17 @@ class TestResumenPorOrigen(BaseConBaseTemporal):
             datetime_mock.now.return_value = momento
             return ventas_repo.confirmar_venta(usuario_id, lineas, [{"metodo": "EFECTIVO", "monto": total}])
 
+    def _cobrar_tramite(self, usuario_id, momento, monto, tramite_id=None):
+        """Cobra un trámite de `monto` en efectivo en el momento dado (si no
+        se pasa `tramite_id`, crea uno nuevo). Devuelve el id de la venta."""
+        if tramite_id is None:
+            tramite_id = tramites_repo.crear_tramite(f"Trámite {momento.isoformat()}")
+        with mock.patch("repositories.tramites_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            return tramites_repo.registrar_tramite(
+                usuario_id, tramite_id, monto, [{"metodo": "EFECTIVO", "monto": monto}]
+            )
+
     def _vender_pcs(self, usuario_id, momento, monto=200.0):
         # Estación y bono nuevos por venta -- evita depender de la lógica
         # de "extender sesión existente" de asignar_bono, que no viene al
@@ -1274,13 +1367,13 @@ class TestResumenPorOrigen(BaseConBaseTemporal):
         filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")
 
         self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 100.0, "impresiones": 0.0,
-                                  "pcs": 3000.0, "total": 3100.0}])
+                                  "tramites": 0.0, "pcs": 3000.0, "total": 3100.0}])
 
     def test_rango_sin_ventas_devuelve_una_fila_en_cero(self):
         filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")
 
         self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 0.0, "impresiones": 0.0,
-                                  "pcs": 0.0, "total": 0.0}])
+                                  "tramites": 0.0, "pcs": 0.0, "total": 0.0}])
 
     def test_impresiones_sale_aparte_de_kiosko_aunque_se_vendan_en_la_misma_venta(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
@@ -1325,6 +1418,56 @@ class TestResumenPorOrigen(BaseConBaseTemporal):
         fila = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")[0]
 
         self.assertEqual(fila["impresiones"], 0.0)
+        self.assertEqual(fila["total"], 0.0)
+
+    def test_tramites_sale_aparte_de_kiosko_impresiones_y_pcs(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self._preparar_articulo(usuario_id)
+        self._preparar_impresiones()
+        self._vender_kiosko(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 100.0)
+        self._vender_impresiones(usuario_id, datetime(2026, 1, 5, 9, 0, 0), 2)           # $300
+        self._cobrar_tramite(usuario_id, datetime(2026, 1, 5, 10, 0, 0), 2500.0)
+        self._cobrar_tramite(usuario_id, datetime(2026, 1, 5, 11, 0, 0), 500.0)
+        self._vender_pcs(usuario_id, datetime(2026, 1, 5, 12, 0, 0), 3000.0)
+
+        fila = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")[0]
+
+        self.assertEqual(fila["kiosko"], 100.0)
+        self.assertEqual(fila["impresiones"], 300.0)
+        self.assertEqual(fila["tramites"], 3000.0)
+        self.assertEqual(fila["pcs"], 3000.0)
+        # Las cuatro columnas suman lo facturado: nada se cuenta dos veces ni se pierde.
+        self.assertEqual(fila["total"], 6400.0)
+        self.assertEqual(fila["total"], reportes_repo.resumen_ventas("2026-01-05", "2026-01-05")["total"])
+
+    def test_tramites_se_separa_tambien_por_turno_dia_y_semana(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        boleta_id = tramites_repo.crear_tramite("Sacar boleta de luz")
+        self._cobrar_tramite(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 1000.0, boleta_id)    # lunes, Mañana
+        self._cobrar_tramite(usuario_id, datetime(2026, 1, 6, 15, 0, 0), 2000.0, boleta_id)   # martes, Tarde
+        self._cobrar_tramite(usuario_id, datetime(2026, 1, 12, 8, 0, 0), 4000.0, boleta_id)   # lunes siguiente
+
+        por_turno = {f["etiqueta"]: f for f in reportes_repo.resumen_por_origen("2026-01-05", "2026-01-06", "turno")}
+        self.assertEqual(por_turno["Mañana"]["tramites"], 1000.0)
+        self.assertEqual(por_turno["Tarde"]["tramites"], 2000.0)
+        self.assertEqual(por_turno["Noche"]["tramites"], 0.0)
+        self.assertEqual(por_turno["Mañana"]["kiosko"], 0.0)
+
+        por_dia = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-06", "dia")
+        self.assertEqual([f["tramites"] for f in por_dia], [1000.0, 2000.0])
+
+        por_semana = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-12", "semana")
+        self.assertEqual([f["tramites"] for f in por_semana], [3000.0, 4000.0])
+
+    def test_un_tramite_anulado_no_cuenta(self):
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        venta_id = self._cobrar_tramite(usuario_id, datetime(2026, 1, 5, 8, 0, 0), 2500.0)
+        ventas_repo.anular_venta(venta_id, usuario_id, "Test")
+
+        fila = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")[0]
+
+        self.assertEqual(fila["tramites"], 0.0)
+        self.assertEqual(fila["kiosko"], 0.0)
         self.assertEqual(fila["total"], 0.0)
 
     def test_turno_siempre_devuelve_los_tres_aunque_falten_ventas(self):
@@ -1373,9 +1516,9 @@ class TestResumenPorOrigen(BaseConBaseTemporal):
 
 class TestRankingVentas(BaseConBaseTemporal):
     """reportes_repo.ranking_ventas: el Ranking de Ventas tiene que traer
-    las CUATRO fuentes de venta del programa (artículo de kiosko, bono de
-    PC walk-in, bono de socio, carga de saldo por tarifa), no solo los
-    artículos -- pedido explícito del dueño (2026-09-30) para poder ver
+    las CINCO fuentes de venta del programa (artículo de kiosko, bono de
+    PC walk-in, bono de socio, carga de saldo por tarifa, trámite), no solo
+    los artículos -- pedido explícito del dueño (2026-09-30) para poder ver
     en un solo lugar qué es lo que más funciona de cada negocio."""
 
     def setUp(self):
@@ -1435,6 +1578,44 @@ class TestRankingVentas(BaseConBaseTemporal):
         self.assertEqual(fila["categoria"], reportes_repo.CATEGORIA_CARGA_TARIFA_SOCIO)
         self.assertEqual(fila["cantidad"], 1)
         self.assertEqual(fila["importe"], 1000.0)
+
+    def _cobrar_tramite(self, tramite_id, monto):
+        return tramites_repo.registrar_tramite(
+            self.usuario_id, tramite_id, monto, [{"metodo": "EFECTIVO", "monto": monto}]
+        )
+
+    def test_incluye_tramites_con_su_cantidad_y_su_importe(self):
+        boleta_id = tramites_repo.crear_tramite("Sacar boleta de luz")
+        turno_id = tramites_repo.crear_tramite("Sacar turno online")
+        self._cobrar_tramite(boleta_id, 500.0)
+        self._cobrar_tramite(boleta_id, 700.0)
+        self._cobrar_tramite(turno_id, 1000.0)
+
+        ranking = self._ranking()
+
+        self.assertEqual(ranking["Sacar boleta de luz"]["categoria"], reportes_repo.CATEGORIA_TRAMITE)
+        self.assertEqual(ranking["Sacar boleta de luz"]["cantidad"], 2)
+        self.assertEqual(ranking["Sacar boleta de luz"]["importe"], 1200.0)
+        self.assertEqual(ranking["Sacar turno online"]["cantidad"], 1)
+        self.assertEqual(ranking["Sacar turno online"]["importe"], 1000.0)
+
+    def test_un_tramite_renombrado_se_lista_con_el_nombre_que_tenia_al_cobrarse(self):
+        boleta_id = tramites_repo.crear_tramite("Boleta de luz")
+        self._cobrar_tramite(boleta_id, 500.0)
+        tramites_repo.modificar_tramite(boleta_id, "Sacar boleta de luz")
+        self._cobrar_tramite(boleta_id, 700.0)
+
+        ranking = self._ranking()
+
+        self.assertEqual(ranking["Boleta de luz"]["importe"], 500.0)
+        self.assertEqual(ranking["Sacar boleta de luz"]["importe"], 700.0)
+
+    def test_un_tramite_anulado_no_figura_en_el_ranking(self):
+        boleta_id = tramites_repo.crear_tramite("Sacar boleta de luz")
+        venta_id = self._cobrar_tramite(boleta_id, 500.0)
+        ventas_repo.anular_venta(venta_id, self.usuario_id, "Test")
+
+        self.assertEqual(reportes_repo.ranking_ventas(self.hoy, self.hoy), [])
 
     def test_no_confunde_bono_de_pc_con_bono_de_socio_del_mismo_nombre(self):
         # Los dos catálogos son independientes (ver dominio.py) -- un
