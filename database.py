@@ -193,12 +193,52 @@ def copiar_backup_a(carpeta_destino: str) -> str:
     return destino
 
 
+# Columnas de "ventas", para copiarlas al reconstruir la tabla.
+_COLUMNAS_VENTAS = (
+    "id", "fecha", "usuario_id", "turno", "total", "estado", "anulada_por",
+    "anulada_fecha", "anulada_motivo", "origen",
+)
+
+
+def _origenes_venta_sql() -> str:
+    """Los orígenes de venta (dominio.ORIGENES_VENTA) como van dentro de un
+    CHECK (origen IN (...)): una sola fuente, así el esquema nunca queda
+    desfasado de dominio.py."""
+    return ", ".join(f"'{origen}'" for origen in dominio.ORIGENES_VENTA)
+
+
+def _sql_tabla_ventas(nombre: str = "ventas", si_no_existe: bool = False) -> str:
+    """
+    El CREATE TABLE de "ventas", escrito una sola vez. Lo usa
+    inicializar_base_de_datos() para una base nueva y
+    _migrar_check_origen_en_ventas() para reconstruir la tabla de una base
+    vieja (SQLite no deja cambiar un CHECK ya grabado). `nombre` es el de la
+    tabla a crear: la migración arma "ventas_nueva" aparte y recién al final
+    la renombra, porque otras cinco tablas apuntan a "ventas".
+    """
+    existe = "IF NOT EXISTS " if si_no_existe else ""
+    return f"""
+        CREATE TABLE {existe}{nombre} (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha             TEXT NOT NULL,
+            usuario_id        INTEGER NOT NULL REFERENCES usuarios(id),
+            turno             TEXT NOT NULL CHECK (turno IN ('MAÑANA', 'TARDE', 'NOCHE')),
+            total              REAL NOT NULL,
+            estado            TEXT NOT NULL DEFAULT 'CONFIRMADA' CHECK (estado IN ('CONFIRMADA', 'ANULADA')),
+            anulada_por        INTEGER REFERENCES usuarios(id),
+            anulada_fecha      TEXT,
+            anulada_motivo     TEXT,
+            origen             TEXT NOT NULL DEFAULT 'KIOSKO' CHECK (origen IN ({_origenes_venta_sql()}))
+        )
+    """
+
+
 def _sql_tabla_de_bonos(tabla: str) -> str:
     """
-    El CREATE TABLE de un catálogo de bonos de tiempo. Hay dos con el mismo
-    esquema -- "bonos_tiempo" (walk-ins) y "bonos_miembro" (exclusivo de
-    socios) -- a propósito en tablas separadas: ver CLAUDE.md, "Hay DOS
-    catálogos de bonos".
+    El CREATE TABLE de un catálogo de bonos de tiempo. Hay tres con el mismo
+    esquema -- "bonos_tiempo" (walk-ins), "bonos_miembro" (exclusivo de
+    socios) y "bonos_playstation" (exclusivo de la consola) -- a propósito en
+    tablas separadas: ver CLAUDE.md, "Hay TRES catálogos de bonos".
     """
     return f"""
         CREATE TABLE IF NOT EXISTS {tabla} (
@@ -336,26 +376,16 @@ def inicializar_base_de_datos():
     # Admin necesita corregir un error después de cobrada, se anula (queda
     # el rastro de quién, cuándo y por qué) y el stock se repone solo.
     #
-    # "origen" separa cuánto se vendió de productos de kiosko (KIOSKO) de
-    # cuánto entró por alquiler de PCs -- bonos y cargas de saldo de
-    # Miembros (ALQUILER_PCS) -- para que Caja/Cierre de Turno puedan
-    # mostrar el desglose exacto entre los dos negocios (ver
-    # dominio.ORIGENES_VENTA, ventas_repo.registrar_venta_sin_detalle y
-    # _migrar_columna_origen_en_ventas para el backfill de bases viejas).
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ventas (
-            id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha             TEXT NOT NULL,
-            usuario_id        INTEGER NOT NULL REFERENCES usuarios(id),
-            turno             TEXT NOT NULL CHECK (turno IN ('MAÑANA', 'TARDE', 'NOCHE')),
-            total              REAL NOT NULL,
-            estado            TEXT NOT NULL DEFAULT 'CONFIRMADA' CHECK (estado IN ('CONFIRMADA', 'ANULADA')),
-            anulada_por        INTEGER REFERENCES usuarios(id),
-            anulada_fecha      TEXT,
-            anulada_motivo     TEXT,
-            origen             TEXT NOT NULL DEFAULT 'KIOSKO' CHECK (origen IN ('KIOSKO', 'ALQUILER_PCS'))
-        )
-    """)
+    # "origen" separa cuánto se vendió de productos de kiosko (KIOSKO), cuánto
+    # entró por alquiler de PCs -- bonos y cargas de saldo de Miembros
+    # (ALQUILER_PCS) -- y cuánto por la PlayStation 5 (PLAYSTATION), para que
+    # Caja/Cierre de Turno puedan mostrar el desglose exacto entre los tres
+    # negocios (ver dominio.ORIGENES_VENTA, ventas_repo.registrar_venta_sin_detalle,
+    # _migrar_columna_origen_en_ventas para el backfill de bases viejas y
+    # _migrar_check_origen_en_ventas para las que no admiten PLAYSTATION).
+    # (El SQL de esta tabla está en _sql_tabla_ventas, más abajo: la migración
+    # del CHECK de "origen" la reconstruye con el mismo molde.)
+    cursor.execute(_sql_tabla_ventas(si_no_existe=True))
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS venta_detalle (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -419,12 +449,13 @@ def inicializar_base_de_datos():
     # Más tarde, el Admin puede cargar "monto_contado" (lo que realmente
     # había en el sobre) para llevar un control por empleada y por turno.
     #
-    # "kiosko_*"/"pcs_*" repiten el mismo desglose que "ventas_efectivo"/
-    # "ventas_digital" pero separado por origen (ver dominio.ORIGENES_VENTA):
-    # el dueño necesita poder controlar, turno por turno, cuánto entró por
-    # productos de kiosko contra cuánto por alquiler de PCs, no solo el
-    # total mezclado. Quedan guardados en el cierre (no solo calculados al
-    # vuelo) para que el historial sea auditable después, no solo "ahora".
+    # "kiosko_*"/"pcs_*"/"playstation_*" repiten el mismo desglose que
+    # "ventas_efectivo"/"ventas_digital" pero separado por origen (ver
+    # dominio.ORIGENES_VENTA): el dueño necesita poder controlar, turno por
+    # turno, cuánto entró por productos de kiosko, cuánto por alquiler de PCs y
+    # cuánto por la PlayStation 5, no solo el total mezclado. Quedan guardados
+    # en el cierre (no solo calculados al vuelo) para que el historial sea
+    # auditable después, no solo "ahora".
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cierres_turno (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -443,7 +474,9 @@ def inicializar_base_de_datos():
             kiosko_efectivo     REAL NOT NULL DEFAULT 0,
             kiosko_digital      REAL NOT NULL DEFAULT 0,
             pcs_efectivo        REAL NOT NULL DEFAULT 0,
-            pcs_digital         REAL NOT NULL DEFAULT 0
+            pcs_digital         REAL NOT NULL DEFAULT 0,
+            playstation_efectivo REAL NOT NULL DEFAULT 0,
+            playstation_digital  REAL NOT NULL DEFAULT 0
         )
     """)
     _migrar_columnas_origen_en_cierres(conexion)
@@ -558,6 +591,56 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # PLAYSTATION 5 (una única consola, se alquila por tiempo como una PC)
+    # -------------------------------------------------------------------
+    # La consola NO es una fila de "estaciones": una estación es una PC con su
+    # Cliente PC (bloqueo, comandos remotos, IP, "Gestionar Estaciones"), y nada
+    # de eso existe en una consola. Por eso tiene sus propias tablas, y ningún
+    # camino pensado para PCs (renombrar, dar de baja, reiniciar, pasarle un
+    # bono de PC) puede alcanzarla por error. Ver playstation_repo.py.
+    #
+    # "bonos_playstation" es su catálogo de bonos, aparte del de las PCs
+    # (bonos_tiempo) y del de socios (bonos_miembro): mismo esquema, tablas
+    # distintas, para que un bono de una nunca se pueda vender en la otra.
+    cursor.execute(_sql_tabla_de_bonos("bonos_playstation"))
+    # Misma idea que "sesiones_pc"/"sesion_bonos": una sesión por cada uso
+    # continuo de la consola, que se extiende (fecha_fin_prevista) si se vende
+    # otro bono mientras sigue en curso. El vencimiento es una fecha ABSOLUTA,
+    # no un contador: cerrar y reabrir el programa no cambia cuánto queda. Al
+    # llegar a cero la sesión NO se da de baja sola (a diferencia de una PC, que
+    # se bloquea): queda ACTIVA con el tiempo agotado, avisando en rojo, hasta
+    # que el operador la libera o vende otro bono (ver playstation_repo).
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sesiones_playstation (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha_inicio        TEXT NOT NULL,
+            fecha_fin_prevista  TEXT NOT NULL,
+            estado              TEXT NOT NULL DEFAULT 'ACTIVA' CHECK (estado IN ('ACTIVA', 'FINALIZADA')),
+            fecha_fin_real      TEXT
+        )
+    """)
+    # Una sola consola, así que a lo sumo UNA sesión ACTIVA a la vez: el índice
+    # parcial lo garantiza desde la base, aunque algún día un error de código (o
+    # dos pedidos juntos) intentara abrir una segunda.
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sesion_playstation_activa "
+        "ON sesiones_playstation(estado) WHERE estado = 'ACTIVA'"
+    )
+    # Qué bono(s) se vendieron en cada sesión, con el venta_id de la venta que
+    # los cobró (origen PLAYSTATION, ver dominio.ORIGEN_PLAYSTATION): la
+    # trazabilidad entre "se vendió este bono" y "esto es lo que se facturó".
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sesion_playstation_bonos (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            sesion_id  INTEGER NOT NULL REFERENCES sesiones_playstation(id),
+            bono_id    INTEGER NOT NULL REFERENCES bonos_playstation(id),
+            minutos    INTEGER NOT NULL,
+            precio     REAL NOT NULL,
+            venta_id   INTEGER NOT NULL REFERENCES ventas(id)
+        )
+    """)
+
+    # -------------------------------------------------------------------
     # COMANDOS_PC (control remoto de una estación desde el mostrador)
     # -------------------------------------------------------------------
     # El mostrador no tiene ninguna conexión directa hacia la PC cliente
@@ -649,6 +732,11 @@ def inicializar_base_de_datos():
     # ahora existen esas dos tablas -- y NO junto al CREATE TABLE de
     # "ventas", más arriba en este archivo.
     _migrar_columna_origen_en_ventas(conexion)
+    # Va justo después: la columna ya existe, pero su CHECK puede no admitir
+    # todavía el origen PLAYSTATION (una base anterior a la consola). Tiene que
+    # correr ANTES de crear los índices de más abajo, porque reconstruir
+    # "ventas" borra los suyos.
+    _migrar_check_origen_en_ventas(conexion)
 
     # -------------------------------------------------------------------
     # CONFIGURACION
@@ -1043,7 +1131,7 @@ def _migrar_columna_origen_en_ventas(conexion: sqlite3.Connection):
     """
     se_agrego = _agregar_columna_si_falta(
         conexion, "ventas", "origen",
-        "TEXT NOT NULL DEFAULT 'KIOSKO' CHECK (origen IN ('KIOSKO', 'ALQUILER_PCS'))",
+        f"TEXT NOT NULL DEFAULT 'KIOSKO' CHECK (origen IN ({_origenes_venta_sql()}))",
     )
     if se_agrego:
         conexion.execute("""
@@ -1056,15 +1144,107 @@ def _migrar_columna_origen_en_ventas(conexion: sqlite3.Connection):
 
 def _migrar_columnas_origen_en_cierres(conexion: sqlite3.Connection):
     """
-    Para una base creada antes del desglose Kiosko/Alquiler de PCs en el
-    cierre de turno: agrega las 4 columnas nuevas de cierres_turno en 0 --
-    los cierres viejos ya cerrados no se pueden reconstruir con el
-    desglose (no queda registro de qué parte de esas ventas ya era de
-    PCs), así que quedan en 0 en vez de inventar un número.
+    Para una base creada antes del desglose por origen en el cierre de turno:
+    agrega las columnas nuevas de cierres_turno en 0 (Kiosko y Alquiler de PCs
+    primero; PlayStation 5 después) -- los cierres viejos ya cerrados no se
+    pueden reconstruir con el desglose (no queda registro de qué parte de esas
+    ventas ya era de PCs), así que quedan en 0 en vez de inventar un número.
+    Para PlayStation 5 es exacto: antes de la consola no se vendió nada de eso.
     """
-    for columna in ("kiosko_efectivo", "kiosko_digital", "pcs_efectivo", "pcs_digital"):
+    for columna in (
+        "kiosko_efectivo", "kiosko_digital", "pcs_efectivo", "pcs_digital",
+        "playstation_efectivo", "playstation_digital",
+    ):
         _agregar_columna_si_falta(conexion, "cierres_turno", columna, "REAL NOT NULL DEFAULT 0")
     conexion.commit()
+
+
+def _migrar_check_origen_en_ventas(conexion: sqlite3.Connection):
+    """
+    Agrega 'PLAYSTATION' a los orígenes válidos de ventas.origen (el CHECK
+    (origen IN (...)) del esquema). Sin esto, la primera venta de un bono de
+    la PlayStation 5 fallaba con "CHECK constraint failed" en cualquier base
+    ya existente.
+
+    SQLite no deja tocar un CHECK ya grabado con ALTER TABLE, así que hay que
+    reconstruir "ventas" -- pero a diferencia de las otras migraciones de este
+    estilo (ver _reconstruir_tabla), esta es la tabla MADRE de la plata: la
+    referencian venta_detalle, venta_pagos, sesion_bonos, tramites_venta,
+    movimientos_saldo_miembro y sesion_playstation_bonos. Por eso no sirve
+    renombrar la vieja primero (SQLite re-apuntaría esas referencias a
+    "ventas_viejo", que después se borra): se arma "ventas_nueva" al lado, se
+    copia, se borra la vieja y recién ahí se la renombra a "ventas". Es el
+    procedimiento que documenta SQLite para esto, con las claves foráneas
+    apagadas solo mientras dura y todo dentro de UNA transacción: si algo
+    falla (o se corta la luz) a mitad de camino, no pasó nada -- la tabla vieja
+    queda tal cual.
+
+    Antes de tocar nada deja una copia de la base en data/backups/ (el nombre
+    empieza con "antes_de_", así la rotación de los backups diarios no la
+    borra nunca): es plata real. Mira TODOS los dominio.ORIGENES_VENTA (no solo
+    el último que se sumó): si algún día se agrega otro origen, alcanza con
+    sumarlo ahí y el próximo arranque reconstruye la tabla; no hace falta otra
+    migración. En una base nueva, o ya al día, no hace nada.
+    """
+    definicion = conexion.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'ventas'"
+    ).fetchone()
+    if definicion is None or _admite_todos_los_tipos(dominio.ORIGENES_VENTA)(definicion["sql"]):
+        return
+
+    conexion.commit()
+    _respaldar_antes_de_migrar("agregar_playstation_a_ventas")
+
+    lista_columnas = ", ".join(_COLUMNAS_VENTAS)
+    # "PRAGMA foreign_keys" es un no-op dentro de una transacción: se apaga acá,
+    # con todo lo anterior ya comiteado.
+    conexion.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conexion.execute("BEGIN")
+        conexion.execute("DROP TABLE IF EXISTS ventas_nueva")
+        conexion.execute(_sql_tabla_ventas("ventas_nueva"))
+        conexion.execute(
+            f"INSERT INTO ventas_nueva ({lista_columnas}) SELECT {lista_columnas} FROM ventas"
+        )
+        # AUTOINCREMENT no reutiliza ids: la tabla nueva tiene que seguir
+        # numerando donde la vieja (no solo desde su mayor id, por si la última
+        # fila alguna vez se hubiera borrado).
+        conexion.execute(
+            """
+            UPDATE sqlite_sequence
+            SET seq = MAX(seq, COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'ventas'), 0))
+            WHERE name = 'ventas_nueva'
+            """
+        )
+        conexion.execute("DROP TABLE ventas")
+        conexion.execute("ALTER TABLE ventas_nueva RENAME TO ventas")
+        conexion.commit()
+    except Exception:
+        conexion.rollback()
+        raise
+    finally:
+        conexion.execute("PRAGMA foreign_keys = ON")
+
+
+def _respaldar_antes_de_migrar(motivo: str):
+    """
+    Copia de seguridad de la base ANTES de una migración que reconstruye una
+    tabla con plata adentro (ver _migrar_check_origen_en_ventas). A propósito
+    NO usa BACKUPS_DIR (se resuelve al importar el módulo): la carpeta sale de
+    DATA_DIR al momento de llamar, así los tests, que apuntan DATA_DIR a una
+    carpeta temporal, nunca escriben en los backups reales.
+
+    Es un extra, no un requisito: la migración es una sola transacción y se
+    deshace sola si falla, así que si no se puede escribir la copia (disco
+    lleno, sin permisos) se sigue igual en vez de dejar el programa sin arrancar.
+    """
+    destino = os.path.join(
+        DATA_DIR, "backups", f"antes_de_{motivo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+    )
+    try:
+        _backup_consistente(destino)
+    except (OSError, sqlite3.Error):
+        pass
 
 
 # --------------------------------------------------------------------

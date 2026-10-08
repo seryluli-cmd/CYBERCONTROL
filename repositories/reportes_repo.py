@@ -3,7 +3,7 @@ reportes_repo.py
 ==================
 Consultas para la sección de Reportes: el Resumen (cuánta plata se
 trabajó en un rango de fechas), el desglose Kiosko / Impresiones / Trámites
-/ Alquiler de PCs (por turno, día, semana o el rango completo) y el Ranking
+/ Alquiler de PCs / PlayStation 5 (por turno, día, semana o el rango completo) y el Ranking
 de Ventas (qué se vende más, de cualquiera de los rubros del programa).
 Son solo consultas SQL con agregación (SUM, GROUP BY), apoyadas en los
 índices que se crean en database.py — por eso van a ser rápidas incluso
@@ -27,6 +27,7 @@ CATEGORIA_BONO_PC = "Bono de PC (walk-in)"
 CATEGORIA_BONO_SOCIO = "Bono de Socio"
 CATEGORIA_CARGA_TARIFA_SOCIO = "Carga de saldo de Socio (tarifa por hora)"
 CATEGORIA_TRAMITE = "Trámite"
+CATEGORIA_BONO_PLAYSTATION = "Bono de PlayStation 5"
 
 
 def resumen_ventas(desde: str, hasta: str):
@@ -147,8 +148,8 @@ def _sumar_por_clave(conexion, consulta: str, parametros) -> dict:
 
 def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
     """
-    Desglosa lo facturado en Kiosko, Impresiones, Trámites y Alquiler de PCs (ver
-    dominio.ORIGENES_VENTA) entre dos fechas, agrupado según
+    Desglosa lo facturado en Kiosko, Impresiones, Trámites, Alquiler de PCs y
+    PlayStation 5 (ver dominio.ORIGENES_VENTA) entre dos fechas, agrupado según
     `agrupar_por`:
       - "rango" (default): una sola fila con el total del período completo.
       - "turno": una fila por turno (Mañana/Tarde/Noche), siempre las 3
@@ -158,9 +159,10 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
       - "semana": una fila por semana (lunes a domingo) con al menos una
         venta.
     Cada fila trae "etiqueta" (ya lista para mostrar), "kiosko",
-    "impresiones", "tramites", "pcs" y "total" (= kiosko + impresiones +
-    tramites + pcs). Usa `ventas.total` (no venta_pagos): acá no importa
-    el medio de pago, solo de qué negocio vino cada peso.
+    "impresiones", "tramites", "pcs", "playstation" y "total" (= kiosko +
+    impresiones + tramites + pcs + playstation). Usa `ventas.total` (no
+    venta_pagos): acá no importa el medio de pago, solo de qué negocio vino
+    cada peso.
 
     "impresiones" es lo vendido del artículo dominio.CODIGO_ARTICULO_IMPRESIONES
     (se saca de venta_detalle) y "tramites" lo cobrado por trámites (se saca
@@ -232,13 +234,15 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
         tramites = round(tramites_por_clave.get(clave, 0.0), 2)
         kiosko = round(totales[dominio.ORIGEN_KIOSKO] - impresiones - tramites, 2)
         pcs = totales[dominio.ORIGEN_ALQUILER_PCS]
+        playstation = totales[dominio.ORIGEN_PLAYSTATION]
         resultado.append({
             "etiqueta": _etiqueta_agrupacion(clave, agrupar_por),
             "kiosko": kiosko,
             "impresiones": impresiones,
             "tramites": tramites,
             "pcs": pcs,
-            "total": kiosko + impresiones + tramites + pcs,
+            "playstation": playstation,
+            "total": kiosko + impresiones + tramites + pcs + playstation,
         })
     return resultado
 
@@ -247,9 +251,9 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
     """
     Ranking de TODO lo que se vendió entre dos fechas -- artículos de
     kiosko, bonos de tiempo de walk-ins, bonos de socios, cargas de saldo
-    por tarifa y trámites -- con la cantidad total vendida y el importe
-    total facturado de cada uno. `ordenar_por` puede ser "cantidad" o
-    "monto".
+    por tarifa, trámites y bonos de la PlayStation 5 -- con la cantidad
+    total vendida y el importe total facturado de cada uno. `ordenar_por`
+    puede ser "cantidad" o "monto".
 
     Un artículo de kiosko deja su fila en venta_detalle, pero un bono, una
     carga de saldo o un trámite se registran sin detalle (ver
@@ -257,11 +261,12 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
     hay que ir a sesion_bonos (bono de PC), movimientos_saldo_miembro
     (bono de socio o carga por tarifa, distinguidos por si el movimiento
     de tipo 'CARGA' trae bono_id o no -- ver
-    miembros_repo.cargar_saldo_por_monto/_por_bono) o tramites_venta
-    (trámite, agrupado por el nombre que tenía al cobrarse). Las cinco
-    fuentes se traen con UNION ALL y se ordenan juntas al final, para que
-    el dueño vea en un solo ranking qué es lo que más funciona de
-    cualquiera de los rubros.
+    miembros_repo.cargar_saldo_por_monto/_por_bono), tramites_venta
+    (trámite, agrupado por el nombre que tenía al cobrarse) o
+    sesion_playstation_bonos (bono de la consola). Las seis fuentes se
+    traen con UNION ALL y se ordenan juntas al final, para que el dueño
+    vea en un solo ranking qué es lo que más funciona de cualquiera de los
+    rubros.
     """
     columna_orden = "cantidad" if ordenar_por == "cantidad" else "importe"
     rango = (dominio.VENTA_CONFIRMADA, desde, hasta)
@@ -337,6 +342,20 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 JOIN ventas ON ventas.id = tramites_venta.venta_id
                 WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
                 GROUP BY tramites_venta.tramite_id, tramites_venta.descripcion
+
+                UNION ALL
+
+                SELECT
+                    ? AS categoria,
+                    '' AS codigo,
+                    bonos_playstation.nombre AS descripcion,
+                    COUNT(*) AS cantidad,
+                    SUM(sesion_playstation_bonos.precio) AS importe
+                FROM sesion_playstation_bonos
+                JOIN bonos_playstation ON bonos_playstation.id = sesion_playstation_bonos.bono_id
+                JOIN ventas ON ventas.id = sesion_playstation_bonos.venta_id
+                WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                GROUP BY bonos_playstation.id, bonos_playstation.nombre
             )
             ORDER BY {columna_orden} DESC
             """,
@@ -346,5 +365,6 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 CATEGORIA_BONO_SOCIO, *rango,
                 CATEGORIA_CARGA_TARIFA_SOCIO, CATEGORIA_CARGA_TARIFA_SOCIO, *rango,
                 CATEGORIA_TRAMITE, *rango,
+                CATEGORIA_BONO_PLAYSTATION, *rango,
             ),
         ).fetchall()

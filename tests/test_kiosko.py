@@ -1367,13 +1367,13 @@ class TestResumenPorOrigen(BaseConBaseTemporal):
         filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")
 
         self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 100.0, "impresiones": 0.0,
-                                  "tramites": 0.0, "pcs": 3000.0, "total": 3100.0}])
+                                  "tramites": 0.0, "pcs": 3000.0, "playstation": 0.0, "total": 3100.0}])
 
     def test_rango_sin_ventas_devuelve_una_fila_en_cero(self):
         filas = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05", "rango")
 
         self.assertEqual(filas, [{"etiqueta": "Total del período", "kiosko": 0.0, "impresiones": 0.0,
-                                  "tramites": 0.0, "pcs": 0.0, "total": 0.0}])
+                                  "tramites": 0.0, "pcs": 0.0, "playstation": 0.0, "total": 0.0}])
 
     def test_impresiones_sale_aparte_de_kiosko_aunque_se_vendan_en_la_misma_venta(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")

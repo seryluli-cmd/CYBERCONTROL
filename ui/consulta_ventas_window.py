@@ -38,7 +38,7 @@ class ConsultaVentasWindow(VentanaConDetalleDeVenta):
 
     def _armar_interfaz(self):
         self.tabla = crear_tabla(
-            ["Nº Factura", "Fecha", "Turno", "Vendedor", "Total", "Estado"],
+            ["Nº Factura", "Fecha", "Turno", "Origen", "Vendedor", "Total", "Estado"],
             estirar=1, por_filas=True,
         )
         self.tabla.itemSelectionChanged.connect(self._mostrar_detalle)
@@ -80,12 +80,13 @@ class ConsultaVentasWindow(VentanaConDetalleDeVenta):
             self.tabla.setItem(fila, 0, QTableWidgetItem(str(venta["id"])))
             self.tabla.setItem(fila, 1, QTableWidgetItem(venta["fecha"]))
             self.tabla.setItem(fila, 2, QTableWidgetItem(venta["turno"]))
-            self.tabla.setItem(fila, 3, QTableWidgetItem(venta["vendedor"]))
-            self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(venta["total"])))
+            self.tabla.setItem(fila, 3, QTableWidgetItem(dominio.NOMBRE_ORIGEN_VENTA[venta["origen"]]))
+            self.tabla.setItem(fila, 4, QTableWidgetItem(venta["vendedor"]))
+            self.tabla.setItem(fila, 5, QTableWidgetItem(formato_pesos(venta["total"])))
             item_estado = QTableWidgetItem(venta["estado"])
             if venta["estado"] == dominio.VENTA_ANULADA:
                 item_estado.setForeground(Qt.red)
-            self.tabla.setItem(fila, 5, item_estado)
+            self.tabla.setItem(fila, 6, item_estado)
         self.tabla_detalle.setRowCount(0)
 
     @manejar_errores
@@ -113,8 +114,10 @@ class ConsultaVentasWindow(VentanaConDetalleDeVenta):
         # Una venta de "Alquiler de PCs" puede ser una carga de saldo de
         # socio -- esa sí necesita revertir los minutos ya acreditados,
         # no solo cambiar el estado de la venta (ver
-        # miembros_repo.anular_carga). Las de Kiosko nunca cargan saldo,
-        # así que siguen con el camino simple de siempre.
+        # miembros_repo.anular_carga). Las de Kiosko y las de PlayStation 5
+        # nunca cargan saldo, así que siguen con el camino simple de siempre
+        # (anular la venta de la consola no corta su cuenta regresiva: se la
+        # libera aparte, desde Control de PCs, como con un bono de PC).
         if venta["origen"] == dominio.ORIGEN_ALQUILER_PCS:
             miembros_repo.anular_carga(venta["id"], self.usuario["id"], motivo.strip())
         else:

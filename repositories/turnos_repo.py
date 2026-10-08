@@ -30,9 +30,24 @@ from repositories.config_repo import obtener_fondo_cambio
 # hay un cierre anterior).
 _PRINCIPIO_DE_LOS_TIEMPOS = "0000-01-01T00:00:00"
 
-# Los cuatro importes en que se desglosa lo cobrado en un turno (origen x
-# método): son las columnas de cierres_turno (ver _desglose_de_totales).
-_CAMPOS_PLATA = ("kiosko_efectivo", "kiosko_digital", "pcs_efectivo", "pcs_digital")
+# Con qué prefijo se llaman, en el desglose de un turno y en las columnas de
+# "cierres_turno", los importes de cada origen de venta (kiosko_efectivo,
+# pcs_digital, ...). Tiene que tener TODOS los dominio.ORIGENES_VENTA: un origen
+# que falte acá haría desaparecer su plata del cierre (ver _desglose_de_totales y
+# TestCadaOrigenSumaEnLaCaja).
+_PREFIJO_COLUMNAS_POR_ORIGEN = {
+    dominio.ORIGEN_KIOSKO: "kiosko",
+    dominio.ORIGEN_ALQUILER_PCS: "pcs",
+    dominio.ORIGEN_PLAYSTATION: "playstation",
+}
+
+# Los importes en que se desglosa lo cobrado en un turno (origen x método): son
+# las columnas de cierres_turno (ver _desglose_de_totales).
+_CAMPOS_PLATA = tuple(
+    f"{prefijo}_{metodo}"
+    for prefijo in _PREFIJO_COLUMNAS_POR_ORIGEN.values()
+    for metodo in ("efectivo", "digital")
+)
 
 
 def _obtener_ultimo_cierre(conexion):
@@ -122,22 +137,20 @@ def _desglose_de_totales(totales: dict) -> dict:
     """
     Pasa {origen: {metodo: total}} (lo que devuelve
     _sumar_ventas_por_origen_y_metodo) al desglose que muestran Caja y los
-    cierres: los cuatro importes de _CAMPOS_PLATA más el total en efectivo y
-    el total digital de los dos negocios juntos. Único lugar donde se hace
-    esta cuenta.
+    cierres: los importes de _CAMPOS_PLATA más el total en efectivo y el total
+    digital de todos los negocios juntos. Único lugar donde se hace esta cuenta.
+
+    Los dos totales suman TODOS los dominio.ORIGENES_VENTA, no una lista
+    escrita a mano: es lo que dice cuánto efectivo tiene que haber en el cajón,
+    y un origen que se olvide acá haría "faltar" esa plata en cada cierre.
     """
-    kiosko_efectivo = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_EFECTIVO]
-    kiosko_digital = totales[dominio.ORIGEN_KIOSKO][dominio.PAGO_DIGITAL]
-    pcs_efectivo = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_EFECTIVO]
-    pcs_digital = totales[dominio.ORIGEN_ALQUILER_PCS][dominio.PAGO_DIGITAL]
-    return {
-        "kiosko_efectivo": kiosko_efectivo,
-        "kiosko_digital": kiosko_digital,
-        "pcs_efectivo": pcs_efectivo,
-        "pcs_digital": pcs_digital,
-        "ventas_efectivo": kiosko_efectivo + pcs_efectivo,
-        "ventas_digital": kiosko_digital + pcs_digital,
-    }
+    desglose = {}
+    for origen, prefijo in _PREFIJO_COLUMNAS_POR_ORIGEN.items():
+        desglose[f"{prefijo}_efectivo"] = totales[origen][dominio.PAGO_EFECTIVO]
+        desglose[f"{prefijo}_digital"] = totales[origen][dominio.PAGO_DIGITAL]
+    desglose["ventas_efectivo"] = sum(totales[origen][dominio.PAGO_EFECTIVO] for origen in dominio.ORIGENES_VENTA)
+    desglose["ventas_digital"] = sum(totales[origen][dominio.PAGO_DIGITAL] for origen in dominio.ORIGENES_VENTA)
+    return desglose
 
 
 def _desde_del_cierre(conexion, cierre_id: int) -> str:
@@ -214,13 +227,16 @@ def cerrar_turno(usuario_id: int):
         # que arma turnos_del_mes_actual() para poder cruzarlos.
         fecha_turno = ventana["inicio"].date()
 
+        # Los nombres de columna salen de _CAMPOS_PLATA (texto fijo del
+        # programa, nunca un dato de la usuaria): sumar un origen nuevo no
+        # obliga a tocar este INSERT.
         cursor = conexion.execute(
-            """
+            f"""
             INSERT INTO cierres_turno
                 (fecha, turno, usuario_id, fecha_cierre, fondo_cambio,
                  ventas_efectivo, ventas_digital, monto_a_retirar,
-                 kiosko_efectivo, kiosko_digital, pcs_efectivo, pcs_digital)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 {", ".join(_CAMPOS_PLATA)})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, {", ".join("?" for _ in _CAMPOS_PLATA)})
             """,
             (
                 fecha_turno.isoformat(),
@@ -231,10 +247,7 @@ def cerrar_turno(usuario_id: int):
                 desglose["ventas_efectivo"],
                 desglose["ventas_digital"],
                 monto_a_retirar,
-                desglose["kiosko_efectivo"],
-                desglose["kiosko_digital"],
-                desglose["pcs_efectivo"],
-                desglose["pcs_digital"],
+                *(desglose[campo] for campo in _CAMPOS_PLATA),
             ),
         )
         cierre_id = cursor.lastrowid
@@ -363,8 +376,9 @@ def resumen_del_dia(dia):
     dominio.CODIGO_ARTICULO_IMPRESIONES) y "tramites" (lo cobrado por
     trámites, ver tramites_repo) salen aparte de "kiosko": el cierre guarda
     un solo importe de Kiosko, así que acá se les resta, y kiosko +
-    impresiones + tramites + pcs sigue dando "total". Efectivo/Digital no
-    cambian (se cobraron igual, por esos medios).
+    impresiones + tramites + pcs + playstation sigue dando "total" ("playstation"
+    es lo cobrado por los bonos de la consola, origen aparte, así que no se resta
+    de nada). Efectivo/Digital no cambian (se cobraron igual, por esos medios).
     """
     dia = date.fromisoformat((dia if isinstance(dia, str) else dia.isoformat())[:10])
     ahora_dt = datetime.now()
@@ -456,8 +470,9 @@ def resumen_del_dia(dia):
             "kiosko": round(plata["kiosko_efectivo"] + plata["kiosko_digital"] - sum(aparte.values()), 2),
             **{linea: round(monto, 2) for linea, monto in aparte.items()},
             "pcs": plata["pcs_efectivo"] + plata["pcs_digital"],
-            "efectivo": plata["kiosko_efectivo"] + plata["pcs_efectivo"],
-            "digital": plata["kiosko_digital"] + plata["pcs_digital"],
+            "playstation": plata["playstation_efectivo"] + plata["playstation_digital"],
+            "efectivo": sum(plata[campo] for campo in _CAMPOS_PLATA if campo.endswith("_efectivo")),
+            "digital": sum(plata[campo] for campo in _CAMPOS_PLATA if campo.endswith("_digital")),
             "total": sum(plata.values()),
             "verificado": verificado,
             "diferencia": round(sum(c["diferencia"] for c, _, _ in grupo), 2) if verificado else None,
@@ -465,7 +480,7 @@ def resumen_del_dia(dia):
 
     total = {
         clave: sum(fila[clave] for fila in resultado)
-        for clave in ("kiosko", *_LINEAS_APARTE, "pcs", "efectivo", "digital", "total",
+        for clave in ("kiosko", *_LINEAS_APARTE, "pcs", "playstation", "efectivo", "digital", "total",
                       "cantidad_ventas", "cantidad_anuladas")
     }
     return {"fecha": dia, "turnos": resultado, "total": total}

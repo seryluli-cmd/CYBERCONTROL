@@ -14,8 +14,15 @@ cargó ninguna fila en `estaciones` (ver "Gestionar Estaciones" en
 "Configuración ADMIN", ui/main_window.py) — sin estaciones no hay nada
 que listar acá.
 
-Este archivo tiene la grilla, su menú contextual (clic derecho), el
-refresco automático y el log de actividad. El resto del módulo vive al lado:
+Arriba de las PCs, como una fila más, está la PlayStation 5 (ver
+`playstation_repo`): una sola consola con nombre fijo, que se vende por tiempo
+con bonos propios. Mientras corre muestra su cuenta regresiva (se redibuja cada
+segundo) y al llegar a cero su fila titila en rojo hasta que el operador avise a
+los clientes y la libere -- a diferencia de una PC, no se da de baja sola.
+
+Este archivo tiene la grilla, su menú contextual (clic derecho) y el
+refresco automático. El resto del módulo vive al lado:
+- `pcs_actividad.py`: el log de "Actividad reciente" de la parte de abajo.
 - `pcs_detalle.py`: el panel lateral (vender un bono, abrir con Miembro,
   finalizar) y el login de socio.
 - `pcs_comandos_dialogos.py`: los diálogos del menú contextual (captura,
@@ -29,19 +36,19 @@ from datetime import datetime
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QLabel,
-    QTextEdit, QHeaderView, QInputDialog, QMenu,
+    QHeaderView, QInputDialog, QMenu,
 )
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
-from control_pcs.repositories import comandos_pc_repo, pcs_repo
+from control_pcs.repositories import comandos_pc_repo, pcs_repo, playstation_repo
 from control_pcs.ui.pcs_comandos_dialogos import (
     DialogoCambiarRed, DialogoCaptura, DialogoTrasladarSesion, DialogoVolumen,
 )
+from control_pcs.ui.pcs_actividad import PanelActividad
 from control_pcs.ui.pcs_detalle import PanelDetalleEstacion
 from ui.utils import (
-    formato_pesos, formato_tiempo, formato_transcurrido, mostrar_info,
-    confirmar, manejar_errores,
+    formato_tiempo, formato_transcurrido, mostrar_info, confirmar, manejar_errores,
 )
 
 # Cada cuántos milisegundos se recalcula el tiempo restante de las
@@ -89,38 +96,28 @@ COLOR_ALERTA_SESION_SIN_CLIENTE_APAGADA = QColor("#FFFFFF")
 # propósito, tiene que notarse a simple vista sin mirar fijo la pantalla.
 INTERVALO_PARPADEO_MS = 500
 
+# Cada cuánto se redibuja la cuenta regresiva de la PlayStation 5.
+INTERVALO_CUENTA_REGRESIVA_MS = 1000
 
-def _texto_evento(evento) -> str:
-    """
-    Convierte un evento de pcs_repo.actividad_reciente() en una línea de
-    texto para el panel de actividad. El repo devuelve datos crudos; el
-    formato ("$ 6.700", "2h 05m") se arma acá porque es un tema de
-    presentación, no de negocio.
-    """
-    hora = datetime.fromisoformat(evento["fecha"]).strftime("%H:%M")
-    tipo = evento["tipo"]
-    if tipo == "INICIO":
-        return f"{hora} — {evento['estacion_nombre']}: sesión iniciada."
-    if tipo == "FIN":
-        return f"{hora} — {evento['estacion_nombre']}: sesión finalizada."
-    if tipo == "BONO":
-        return (f"{hora} — {evento['estacion_nombre']}: bono '{evento['bono_nombre']}' "
-                f"cobrado ({formato_pesos(evento['precio'])}).")
-    if tipo == "CARGA":
-        return f"{hora} — {formato_pesos(evento['monto'])} cargados a {evento['miembro_nombre']}."
-    if tipo == "CONSUMO":
-        return (f"{hora} — {evento['miembro_nombre']} abrió {evento['estacion_nombre']} "
-                f"con su saldo ({formato_tiempo(evento['minutos'] * 60)}).")
-    if tipo == "REINTEGRO":
-        return f"{hora} — {formato_tiempo(evento['minutos'] * 60)} reintegrados a {evento['miembro_nombre']}."
-    if tipo == "TRASLADO":
-        return f"{hora} — Sesión pasada de {evento['origen_nombre']} a {evento['destino_nombre']}."
-    if tipo == "ADMIN_PC":
-        texto = f"{hora} — {evento['estacion_nombre']}: {dominio.NOMBRE_EVENTO_ADMIN_PC[evento['evento_admin']]}"
-        if evento["segundos_sin_cliente"] is not None:
-            texto += f" (estuvo {formato_tiempo(evento['segundos_sin_cliente'])} sin bloqueo)"
-        return texto + "."
-    return hora
+# Posición de la columna "Tiempo restante" en la grilla.
+COLUMNA_TIEMPO_RESTANTE = 2
+
+# Cómo se identifica una fila de la grilla: ("PC", id de la estación) o
+# ("PLAYSTATION", None) -- la consola es una sola, no tiene id. Es lo que
+# permite volver a seleccionar la misma fila cuando la grilla se reconstruye.
+_CLAVE_PLAYSTATION = (dominio.DISPOSITIVO_PLAYSTATION, None)
+
+
+def _es_playstation(item) -> bool:
+    """True si una fila de la grilla es la PlayStation 5 (y no una PC)."""
+    return item["dispositivo"] == dominio.DISPOSITIVO_PLAYSTATION
+
+
+def _clave_de_item(item):
+    """La identidad de una fila de la grilla (ver _CLAVE_PLAYSTATION)."""
+    if _es_playstation(item):
+        return _CLAVE_PLAYSTATION
+    return (dominio.DISPOSITIVO_PC, item["estacion"]["id"])
 
 
 class PanelControlPcs(QWidget):
@@ -136,8 +133,10 @@ class PanelControlPcs(QWidget):
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
-        self._estados = []
-        self._estacion_id_seleccionada = None
+        self._estados = []              # solo las PCs (pcs_repo.estado_estaciones)
+        self._item_playstation = None   # la consola (playstation_repo.estado)
+        self._items_en_grilla = []      # lo que hay en cada fila: la consola y después las PCs
+        self._seleccion = None          # clave de la fila elegida (ver _clave_de_item)
         self._filas_en_alerta = []
         self._parpadeo_encendido = True
         self._armar_interfaz()
@@ -158,11 +157,21 @@ class PanelControlPcs(QWidget):
         self._timer_parpadeo.timeout.connect(self._alternar_parpadeo)
         self._timer_parpadeo.start()
 
+        # Otro más, de un segundo, para la cuenta regresiva de la PlayStation 5
+        # (ver _actualizar_cuenta_regresiva): por la misma razón que el de
+        # arriba, no puede colgarse del refresco de 5s.
+        self._timer_cuenta_regresiva = QTimer(self)
+        self._timer_cuenta_regresiva.setInterval(INTERVALO_CUENTA_REGRESIVA_MS)
+        self._timer_cuenta_regresiva.timeout.connect(self._actualizar_cuenta_regresiva)
+        self._timer_cuenta_regresiva.start()
+
     def detener_actualizacion(self):
-        """Frena los dos timers (refresco y parpadeo); lo llama MainWindow
-        al cerrarse para que no sigan corriendo contra widgets destruidos."""
+        """Frena los timers (refresco, parpadeo y cuenta regresiva); lo llama
+        MainWindow al cerrarse para que no sigan corriendo contra widgets
+        destruidos."""
         self._timer.stop()
         self._timer_parpadeo.stop()
+        self._timer_cuenta_regresiva.stop()
 
     def _armar_interfaz(self):
         self.tabla = QTableWidget(0, 4)
@@ -214,8 +223,75 @@ class PanelControlPcs(QWidget):
             estados = pcs_repo.estado_estaciones()
 
         self._estados = estados
+        # La PlayStation 5 NO entra en el "job de vencimiento" de arriba: al
+        # llegar a cero no se libera sola, queda avisando en rojo hasta que el
+        # operador la libera (ver playstation_repo).
+        self._item_playstation = playstation_repo.estado()
         self._reconstruir_tabla()
         self.panel_actividad.actualizar()
+
+    @staticmethod
+    def _textos_de_pc(item):
+        """(estado, tiempo restante, quién, color de fondo, ¿en alerta?) de la
+        fila de una PC, a partir de un elemento de pcs_repo.estado_estaciones()."""
+        sesion = item["sesion"]
+        segundos = item["segundos_restantes"]
+        en_alerta = False
+
+        if sesion is not None and not item["enlazada"] and item["esperando_cliente"]:
+            # El operador habilitó la PC antes de que el cliente la
+            # prendiera -- el tiempo ya corre, pero no es una alerta.
+            quien_texto = sesion["miembro_nombre"] or "Bono"
+            restante_texto = formato_tiempo(segundos)
+            icono, texto_estado, color = "⏳", "Esperando al cliente", COLOR_ESPERANDO_CLIENTE
+        elif sesion is not None and not item["enlazada"]:
+            # Hay tiempo pago corriendo pero el Cliente PC de esa PC dejó
+            # de responder -- ver COLOR_ALERTA_SESION_SIN_CLIENTE. Esto
+            # va ANTES que "por vencer"/"en uso": importa más avisar
+            # que nadie está viendo esa PC que cuánto tiempo le queda.
+            quien_texto = sesion["miembro_nombre"] or "Bono"
+            restante_texto = formato_tiempo(segundos)
+            texto_alerta = "SIN CLIENTE (revisar)"
+            if item["cliente_cerrado_admin_desde"] is not None:
+                texto_alerta = f"SIN CLIENTE (cerrado por admin hace {formato_transcurrido(item['cliente_cerrado_admin_desde'])})"
+            icono, texto_estado, color = "🚨", texto_alerta, COLOR_ALERTA_SESION_SIN_CLIENTE
+            en_alerta = True
+        elif sesion is not None:
+            quien_texto = sesion["miembro_nombre"] or "Bono"
+            restante_texto = formato_tiempo(segundos)
+            if segundos <= UMBRAL_POR_VENCER_SEGUNDOS:
+                icono, texto_estado, color = "⚠", "Por vencer", COLOR_POR_VENCER
+            else:
+                icono, texto_estado, color = "▶", "En uso", COLOR_EN_USO
+        elif item["enlazada"]:
+            icono, texto_estado, color = "✓", "Disponible", COLOR_DISPONIBLE
+            restante_texto, quien_texto = "—", "—"
+        elif item["cliente_cerrado_admin_desde"] is not None:
+            icono, color = "🔓", COLOR_CLIENTE_CERRADO_ADMIN
+            texto_estado = f"Sin bloqueo (cerrado por admin hace {formato_transcurrido(item['cliente_cerrado_admin_desde'])})"
+            restante_texto, quien_texto = "—", "—"
+        else:
+            icono, texto_estado, color = "🔌", "Sin conexión", COLOR_DESCONECTADA
+            restante_texto, quien_texto = "—", "—"
+
+        return f"{icono} {texto_estado}", restante_texto, quien_texto, color, en_alerta
+
+    @staticmethod
+    def _textos_de_playstation(item):
+        """Lo mismo que _textos_de_pc, para la fila de la PlayStation 5 (un
+        elemento de playstation_repo.estado()). No hay Cliente PC que reporte
+        conexión: la consola está libre, en uso, por vencer, o con el tiempo
+        agotado -- y ESE caso es una alerta: parpadea en rojo hasta que el
+        operador avise a los clientes y la libere (o venda otro bono)."""
+        if item["sesion"] is None:
+            return "✓ Disponible", "—", "—", COLOR_DISPONIBLE, False
+        segundos = item["segundos_restantes"]
+        restante_texto = formato_tiempo(segundos, con_segundos=True)
+        if item["tiempo_agotado"]:
+            return "⏰ TIEMPO AGOTADO — avisar", restante_texto, "Bono", COLOR_ALERTA_SESION_SIN_CLIENTE, True
+        if segundos <= UMBRAL_POR_VENCER_SEGUNDOS:
+            return "⚠ Por vencer", restante_texto, "Bono", COLOR_POR_VENCER, False
+        return "▶ En uso", restante_texto, "Bono", COLOR_EN_USO, False
 
     def _reconstruir_tabla(self):
         # blockSignals evita que cada fila insertada dispare
@@ -227,66 +303,62 @@ class PanelControlPcs(QWidget):
         fila_a_seleccionar = -1
         self._filas_en_alerta = []
         self._parpadeo_encendido = True
-        for item in self._estados:
-            estacion = item["estacion"]
-            sesion = item["sesion"]
-            segundos = item["segundos_restantes"]
-
-            if sesion is not None and not item["enlazada"] and item["esperando_cliente"]:
-                # El operador habilitó la PC antes de que el cliente la
-                # prendiera -- el tiempo ya corre, pero no es una alerta.
-                quien_texto = sesion["miembro_nombre"] or "Bono"
-                restante_texto = formato_tiempo(segundos)
-                icono, texto_estado, color = "⏳", "Esperando al cliente", COLOR_ESPERANDO_CLIENTE
-            elif sesion is not None and not item["enlazada"]:
-                # Hay tiempo pago corriendo pero el Cliente PC de esa PC dejó
-                # de responder -- ver COLOR_ALERTA_SESION_SIN_CLIENTE. Esto
-                # va ANTES que "por vencer"/"en uso": importa más avisar
-                # que nadie está viendo esa PC que cuánto tiempo le queda.
-                quien_texto = sesion["miembro_nombre"] or "Bono"
-                restante_texto = formato_tiempo(segundos)
-                texto_alerta = "SIN CLIENTE (revisar)"
-                if item["cliente_cerrado_admin_desde"] is not None:
-                    texto_alerta = f"SIN CLIENTE (cerrado por admin hace {formato_transcurrido(item['cliente_cerrado_admin_desde'])})"
-                icono, texto_estado, color = "🚨", texto_alerta, COLOR_ALERTA_SESION_SIN_CLIENTE
-            elif sesion is not None:
-                quien_texto = sesion["miembro_nombre"] or "Bono"
-                restante_texto = formato_tiempo(segundos)
-                if segundos <= UMBRAL_POR_VENCER_SEGUNDOS:
-                    icono, texto_estado, color = "⚠", "Por vencer", COLOR_POR_VENCER
-                else:
-                    icono, texto_estado, color = "▶", "En uso", COLOR_EN_USO
-            elif item["enlazada"]:
-                icono, texto_estado, color = "✓", "Disponible", COLOR_DISPONIBLE
-                restante_texto, quien_texto = "—", "—"
-            elif item["cliente_cerrado_admin_desde"] is not None:
-                icono, color = "🔓", COLOR_CLIENTE_CERRADO_ADMIN
-                texto_estado = f"Sin bloqueo (cerrado por admin hace {formato_transcurrido(item['cliente_cerrado_admin_desde'])})"
-                restante_texto, quien_texto = "—", "—"
+        # La PlayStation 5 va primero, arriba de las PCs, como una fila más.
+        self._items_en_grilla = (
+            [self._item_playstation] if self._item_playstation is not None else []
+        ) + list(self._estados)
+        for item in self._items_en_grilla:
+            if _es_playstation(item):
+                nombre = item["nombre"]
+                texto_estado, restante_texto, quien_texto, color, en_alerta = self._textos_de_playstation(item)
             else:
-                icono, texto_estado, color = "🔌", "Sin conexión", COLOR_DESCONECTADA
-                restante_texto, quien_texto = "—", "—"
+                nombre = item["estacion"]["nombre"]
+                texto_estado, restante_texto, quien_texto, color, en_alerta = self._textos_de_pc(item)
 
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
-            valores = (estacion["nombre"], f"{icono} {texto_estado}", restante_texto, quien_texto)
-            for columna, valor in enumerate(valores):
+            for columna, valor in enumerate((nombre, texto_estado, restante_texto, quien_texto)):
                 celda = QTableWidgetItem(valor)
                 celda.setBackground(color)
                 self.tabla.setItem(fila, columna, celda)
 
-            if sesion is not None and not item["enlazada"] and not item["esperando_cliente"]:
+            if en_alerta:
                 self._filas_en_alerta.append(fila)
 
-            if estacion["id"] == self._estacion_id_seleccionada:
+            if _clave_de_item(item) == self._seleccion:
                 fila_a_seleccionar = fila
 
         self.tabla.blockSignals(False)
         if fila_a_seleccionar >= 0:
             self.tabla.selectRow(fila_a_seleccionar)  # dispara _al_cambiar_seleccion, que actualiza el panel
         else:
-            self._estacion_id_seleccionada = None
+            self._seleccion = None
             self.panel_detalle.mostrar(None)
+
+    def _actualizar_cuenta_regresiva(self):
+        """
+        Redibuja, cada segundo, el tiempo restante de la PlayStation 5 (la
+        grilla entera se refresca solo cada 5s, y una cuenta regresiva que
+        salta de a 5 no se ve como tal). Solo cambia el texto de una celda --
+        nunca reconstruye la tabla --, y calcula contra el reloj de AHORA con
+        el vencimiento guardado, así que no deriva ni depende de cuántas veces
+        corrió. Cuando llega a cero pide un refresco completo: ahí la fila pasa
+        a "TIEMPO AGOTADO" y arranca a titilar en rojo (ver _textos_de_playstation).
+        """
+        item = self._item_playstation
+        if item is None or item["sesion"] is None or item["tiempo_agotado"]:
+            return
+        fin_previsto = datetime.fromisoformat(item["sesion"]["fecha_fin_prevista"])
+        segundos = dominio.segundos_restantes(fin_previsto, datetime.now())
+        if segundos == 0:
+            self._refrescar()
+            return
+        # La consola es siempre la primera fila (ver _reconstruir_tabla).
+        celda = self.tabla.item(0, COLUMNA_TIEMPO_RESTANTE)
+        if celda is not None:
+            celda.setText(formato_tiempo(segundos, con_segundos=True))
+        if self._seleccion == _CLAVE_PLAYSTATION:
+            self.panel_detalle.mostrar_estado_playstation({**item, "segundos_restantes": segundos})
 
     def _alternar_parpadeo(self):
         """
@@ -317,12 +389,12 @@ class PanelControlPcs(QWidget):
     @manejar_errores
     def _al_cambiar_seleccion(self):
         fila = self.tabla.currentRow()
-        if 0 <= fila < len(self._estados):
-            item = self._estados[fila]
-            self._estacion_id_seleccionada = item["estacion"]["id"]
+        if 0 <= fila < len(self._items_en_grilla):
+            item = self._items_en_grilla[fila]
+            self._seleccion = _clave_de_item(item)
             self.panel_detalle.mostrar(item)
         else:
-            self._estacion_id_seleccionada = None
+            self._seleccion = None
             self.panel_detalle.mostrar(None)
 
     def _mostrar_menu_contextual(self, posicion):
@@ -342,10 +414,15 @@ class PanelControlPcs(QWidget):
         Sesión" del panel lateral) y de paso encola el reinicio.
         """
         fila = self.tabla.rowAt(posicion.y())
-        if fila < 0 or fila >= len(self._estados):
+        if fila < 0 or fila >= len(self._items_en_grilla):
             return
         self.tabla.selectRow(fila)
-        item = self._estados[fila]
+        item = self._items_en_grilla[fila]
+        if _es_playstation(item):
+            # La consola no se controla a distancia: no tiene Cliente PC, así
+            # que nada de este menú (cerrar y reiniciar, apagar, mensaje,
+            # captura, red, volumen) tiene sentido. Se opera desde el panel.
+            return
         estacion = item["estacion"]
         sesion = item["sesion"]
         segundos_restantes = item["segundos_restantes"]
@@ -374,10 +451,12 @@ class PanelControlPcs(QWidget):
         # al leer qué se eligió. Se pausa el refresco mientras el menú
         # está abierto y se reanuda apenas se cierra (elija algo o no).
         self._timer.stop()
+        self._timer_cuenta_regresiva.stop()
         try:
             elegida = menu.exec(self.tabla.viewport().mapToGlobal(posicion))
         finally:
             self._timer.start()
+            self._timer_cuenta_regresiva.start()
 
         if elegida == accion_cerrar_sesion:
             self._cerrar_sesion_y_reiniciar(estacion, sesion, segundos_restantes)
@@ -465,24 +544,3 @@ class PanelControlPcs(QWidget):
             self, "Enviado",
             f"El mensaje le va a aparecer a '{estacion['nombre']}' en los próximos segundos.",
         )
-
-
-class PanelActividad(QTextEdit):
-    """
-    Log de los últimos movimientos (sesiones, bonos, saldo de socios) en
-    la parte de abajo de la pantalla. De solo lectura: se repuebla entero
-    en cada refresco con pcs_repo.actividad_reciente(), no acumula texto
-    a mano (así nunca se desincroniza de lo que hay realmente en la base).
-    """
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setReadOnly(True)
-        self.setFixedHeight(130)
-
-    def actualizar(self):
-        eventos = pcs_repo.actividad_reciente()
-        lineas = [_texto_evento(evento) for evento in reversed(eventos)]
-        self.setPlainText("\n".join(lineas))
-        barra = self.verticalScrollBar()
-        barra.setValue(barra.maximum())

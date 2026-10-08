@@ -43,7 +43,8 @@ repo correspondiente). `main.py` es el único punto de entrada.
 | [database.py](database.py) | Esquema completo (`CREATE TABLE`), `hash_clave`/`verificar_clave`, seed inicial, backups automáticos/manuales, `calcular_turno()`. Ver modelo de datos abajo. |
 | [repositories/](repositories/) | Capa de datos, un archivo por entidad: `articulos_repo.py`, `compras_repo.py`, `config_repo.py`, `reportes_repo.py`, `turnos_repo.py`, `tramites_repo.py`, `usuarios_repo.py`, `ventas_repo.py`. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
-| [tests/test_kiosko.py](tests/test_kiosko.py) | Tests de la capa de repositorios/lógica de negocio sobre una base SQLite temporal (no toca `data/kiosko.db`). Sin tests de UI. |
+| [tests/test_kiosko.py](tests/test_kiosko.py) | Tests de la capa de repositorios/lógica de negocio sobre una base SQLite temporal (no toca `data/kiosko.db`). |
+| [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
 | [assets/](assets/) | Ícono de la app (`icono.ico`/`.png`). |
 | [data/backups/](data/backups/) | Copias diarias automáticas de la base (últimos 30 días) + copias manuales. |
@@ -93,12 +94,26 @@ repo correspondiente). `main.py` es el único punto de entrada.
   ganancia pura. El catálogo lo arma el Admin; cobrar uno es una venta
   común (origen KIOSKO, sin `venta_detalle`) más una fila en
   `tramites_venta` que dice cuál fue. Ver `tramites_repo.registrar_tramite`.
+- **`bonos_playstation`** + **`sesiones_playstation`** +
+  **`sesion_playstation_bonos`** — la **PlayStation 5** del local (una sola
+  consola, nombre fijo "PLAYSTATION 5"), que se alquila por tiempo como una
+  PC pero con su propio catálogo de bonos (tabla aparte de `bonos_tiempo` y
+  `bonos_miembro`), sus sesiones (el vencimiento es una fecha absoluta, así
+  que el tiempo sigue bien aunque se cierre el programa; a lo sumo una
+  sesión `ACTIVA`, lo garantiza un índice único) y el vínculo con la venta
+  que cobró cada bono. **No es una fila de `estaciones`** a propósito: una
+  estación es una PC con Cliente PC y ninguna de sus acciones (renombrar,
+  dar de baja, reiniciar, bono de PC) puede alcanzar a la consola. Sus ventas
+  llevan `ventas.origen = 'PLAYSTATION'` (`dominio.ORIGEN_PLAYSTATION`), así
+  Caja, Cierre de Turno y Reportes la muestran aparte de Kiosko y de Alquiler
+  de PCs. Ver `control_pcs/repositories/playstation_repo.py`.
 - **`cierres_turno`** — `fecha`/`turno` del cierre, `usuario_id` (quién
   cerró), `fecha_cierre` (momento exacto — es el límite "desde" del
   próximo turno), `fondo_cambio`/`ventas_efectivo`/`ventas_digital`/
   `monto_a_retirar`, más `monto_contado`/`diferencia`/`verificado_por`/
   `fecha_verificacion` (nullable, los completa el Admin después desde
-  Control de Cierres).
+  Control de Cierres) y el desglose por origen (`kiosko_*`, `pcs_*`,
+  `playstation_*`, cada uno en efectivo y digital).
 - **`configuracion`** — tabla genérica clave/valor. Hoy solo dos claves:
   `fondo_cambio` (monto del fondo fijo, arranca en `50000`, editable solo
   por Admin desde Usuarios) y `rubros_iniciales_cargados` (flag interno,
@@ -186,9 +201,25 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   "Gestionar trámites" (`DialogoGestionTramites`: Nuevo / Modificar /
   Desactivar), que también está en Configuración ADMIN. En Consulta de
   Ventas el trámite se ve como una fila "Trámite: <nombre>".
+- **PlayStation 5** (`control_pcs/ui/pcs_window.py` + `pcs_detalle.py`) — es
+  la primera fila de la grilla de Control de PCs, arriba de las PCs, con el
+  nombre fijo "PLAYSTATION 5" (no se edita, no se da de baja, no tiene menú de
+  PC). Al elegirla, el panel lateral habilita **solo** sus bonos (que van
+  debajo de los de PC, que quedan deshabilitados); al elegir una PC pasa lo
+  inverso, y un bono nunca puede cobrarse al equipo equivocado
+  (`PanelDetalleEstacion` toma la lista del equipo elegido, y los repos
+  validan cada uno su catálogo). Muestra una cuenta regresiva que se redibuja
+  cada segundo; al llegar a cero la fila **titila en rojo** hasta que el
+  operador avise a los clientes y la libere ("Ya avisé: liberar la consola")
+  o venda otro bono — no se da de baja sola como una PC. Vender un bono y
+  liberarla pide ser Admin o tener `permiso_control_pcs` ("Operar PCs y
+  Miembros"); crear/modificar/dar de baja sus bonos es solo del Admin, desde
+  Configuración ADMIN → "Gestionar Bonos de PlayStation 5". Ver
+  `playstation_repo.vender_bono`.
 - **Caja** (`caja_window.py`, `CajaWindow`) — solo lectura, resumen del
   turno en curso vía `turnos_repo.resumen_turno_actual()` (fondo, caja
-  actual = fondo + efectivo, ventas efectivo/digital). La caja actual
+  actual = fondo + efectivo, ventas efectivo/digital, y el desglose Kiosko /
+  Alquiler de PCs / PlayStation 5). La caja actual
   excluye a propósito lo cobrado en digital.
 - **Cierre de Turno** (`caja_window.py`, `CierreTurnoWindow`) — cualquiera
   cierra su propio turno. Muestra preview y, al confirmar, llama a
@@ -226,7 +257,8 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   **Por Turno** (`reportes_repo.resumen_por_turno`: mismo desglose pero
   separado por Mañana/Tarde/Noche, siempre las 3 aunque alguna quede en
   $0), **Totales** (`reportes_repo.resumen_por_origen`: cuánto se
-  facturó de Kiosko, de Impresiones, de Trámites y de Alquiler de PCs — ver
+  facturó de Kiosko, de Impresiones, de Trámites, de Alquiler de PCs y de
+  PlayStation 5 — ver
   `dominio.ORIGENES_VENTA`, `dominio.CODIGO_ARTICULO_IMPRESIONES` y
   `tramites_repo`; las impresiones (el producto Nº 1) y los trámites (ganancia
   pura) salen en columna aparte y NO están sumados en Kiosko —, con un
@@ -234,13 +266,13 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   agrega una fila TOTAL al pie cuando hay más de un período listado) y
   **Ranking de Ventas** (`reportes_repo.ranking_ventas`: TODO lo que se
   vendió junto —artículos de kiosko, bonos de PC, bonos de socios, cargas
-  de saldo por tarifa y trámites—, con columna Categoría para distinguir
+  de saldo por tarifa, trámites y bonos de PlayStation 5—, con columna Categoría para distinguir
   de dónde vino cada fila, por cantidad o por monto). La quinta,
   **Resumen del Día** (`turnos_repo.resumen_del_dia`), muestra UN día
   abierto por turno (Mañana/Tarde/Noche, o Domingo T1/T2) con estado
   (Cerrado / En curso / SIN CERRAR / Pendiente), quién cerró y a qué hora,
-  cantidad de ventas, Kiosko / Impresiones / Trámites / Alquiler de PCs
-  (mismo criterio que Totales), Efectivo/Digital, Total
+  cantidad de ventas, Kiosko / Impresiones / Trámites / Alquiler de PCs /
+  PlayStation 5 (mismo criterio que Totales), Efectivo/Digital, Total
   y la diferencia del sobre si el Admin ya lo contó; tiene botones de día
   anterior/siguiente y una fila TOTAL DEL DÍA. La plata de cada turno es
   la de su cierre (no la que daría mirar el reloj).

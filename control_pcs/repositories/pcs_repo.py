@@ -29,11 +29,11 @@ sesión (con el reintegro de saldo a socios) y el feed de actividad reciente.
 """
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 import dominio
 from database import conexion_db
 from repositories import ventas_repo
-from control_pcs.repositories import accesos_admin_pc_repo
+from control_pcs.repositories import accesos_admin_pc_repo, playstation_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 
 # Más que el intervalo de consulta del Cliente PC (5s, ver
@@ -208,7 +208,7 @@ def estado_estaciones():
         segundos_restantes = None
         if sesion is not None:
             fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
-            segundos_restantes = max(0, int((fin_previsto - ahora).total_seconds()))
+            segundos_restantes = dominio.segundos_restantes(fin_previsto, ahora)
 
         enlazada = False
         ultima_conexion = None
@@ -241,6 +241,9 @@ def estado_estaciones():
             )
 
         resultado.append({
+            # La grilla mezcla estas filas con la de la PlayStation 5 (ver
+            # playstation_repo.estado): esto es lo que las distingue.
+            "dispositivo": dominio.DISPOSITIVO_PC,
             "estacion": estacion,
             "sesion": sesion,
             "segundos_restantes": segundos_restantes,
@@ -287,7 +290,7 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
     ).fetchone()
 
     if sesion is None:
-        fin_previsto = ahora + timedelta(minutes=minutos)
+        fin_previsto = dominio.fin_al_sumar_minutos(None, minutos, ahora)
         cursor = conexion.execute(
             """
             INSERT INTO sesiones_pc (estacion_id, fecha_inicio, fecha_fin_prevista, estado, miembro_id)
@@ -300,11 +303,10 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
 
     # Si ya venció y todavía no se finalizó (el refresco automático de la
     # pantalla no pasó todavía), el tiempo nuevo se cuenta desde ahora, no
-    # desde un vencimiento que ya pasó — si no, se perderían los minutos
-    # entre que se agotó el tiempo anterior y que se cargó el siguiente.
+    # desde un vencimiento que ya pasó (eso lo decide fin_al_sumar_minutos,
+    # la misma cuenta que usa la PlayStation 5).
     fin_previo = datetime.fromisoformat(sesion["fecha_fin_prevista"])
-    base = max(fin_previo, ahora)
-    fin_previsto = base + timedelta(minutes=minutos)
+    fin_previsto = dominio.fin_al_sumar_minutos(fin_previo, minutos, ahora)
     conexion.execute(
         "UPDATE sesiones_pc SET fecha_fin_prevista = ? WHERE id = ?",
         (fin_previsto.isoformat(timespec="seconds"), sesion["id"]),
@@ -322,6 +324,11 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
     `pagos`: lista de {"metodo", "monto"} -- una sola fila para Efectivo
     o Digital, dos filas (Efectivo + Digital) para un cobro Mixto, ver
     control_pcs/ui/pcs_detalle.PanelDetalleEstacion._confirmar_bono.
+
+    Solo sirve para una PC (una fila activa de `estaciones`) con un bono de
+    ESTE catálogo (bonos_tiempo). La PlayStation 5 tiene su propio camino y su
+    propio catálogo (ver playstation_repo.vender_bono) y no es una estación:
+    no hay forma de que un bono de PC termine en la consola ni al revés.
     """
     bono = obtener_bono(bono_id)
     if bono is None or not bono["activo"]:
@@ -330,6 +337,11 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
     ahora = datetime.now()
 
     with conexion_db() as conexion:
+        if conexion.execute(
+            "SELECT 1 FROM estaciones WHERE id = ? AND activa = 1", (estacion_id,)
+        ).fetchone() is None:
+            raise ValueError("Esa PC ya no está disponible. Actualizá la pantalla e intentá de nuevo.")
+
         sesion_id = _abrir_o_extender_sesion(conexion, estacion_id, bono["minutos"], ahora)
 
         venta_id = ventas_repo.registrar_venta_sin_detalle(
@@ -543,7 +555,7 @@ def finalizar_sesion(sesion_id: int):
         )
 
         fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
-        segundos_restantes = max(0, int((fin_previsto - ahora).total_seconds()))
+        segundos_restantes = dominio.segundos_restantes(fin_previsto, ahora)
         minutos_restantes = segundos_restantes // 60
         if minutos_restantes <= 0:
             return
@@ -571,7 +583,8 @@ def actividad_reciente(limite: int = 30):
     todo esto por otras razones (facturación, auditoría de saldo de
     socios) — acá solo se junta todo, se ordena por fecha y se corta a
     `limite`. Devuelve datos crudos; el texto para mostrar se arma en la
-    UI (ver control_pcs/ui/pcs_window.py:_texto_evento), no acá.
+    UI (ver control_pcs/ui/pcs_actividad.py:_texto_evento), no acá. Incluye los
+    movimientos de la PlayStation 5.
     """
     eventos = []
     with conexion_db() as conexion:
@@ -641,6 +654,10 @@ def actividad_reciente(limite: int = 30):
                              "evento_admin": fila["tipo"],
                              "estacion_nombre": fila["estacion_nombre"],
                              "segundos_sin_cliente": fila["segundos_sin_cliente"]})
+
+    # La PlayStation 5 comparte el panel con las PCs: sus sesiones y bonos
+    # llegan con la misma forma (ver playstation_repo.eventos_recientes).
+    eventos.extend(playstation_repo.eventos_recientes(limite))
 
     eventos.sort(key=lambda evento: evento["fecha"], reverse=True)
     return eventos[:limite]

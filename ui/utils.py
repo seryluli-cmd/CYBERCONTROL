@@ -55,7 +55,9 @@ def manejar_errores(func):
 
     - Un ValueError (los errores "de negocio", como intentar borrar un
       artículo que ya tiene ventas) se muestra tal cual, con su mensaje
-      pensado para leerse directamente.
+      pensado para leerse directamente. Un PermissionError ("no tenés
+      permiso para esto", ver playstation_repo) también: es un rechazo de
+      negocio con su mensaje listo, no una falla del programa.
     - Cualquier otro error inesperado se guarda en el log de errores y
       se le muestra a la usuaria un cartel genérico, en vez de que la
       aplicación se rompa o quede en un estado raro.
@@ -74,7 +76,7 @@ def manejar_errores(func):
     def wrapper(self, *args, **kwargs):
         try:
             return func(self, *args, **kwargs)
-        except ValueError as error:
+        except (ValueError, PermissionError) as error:
             mostrar_error(self, "No se pudo completar", str(error))
         except RuntimeError as error:
             registrar_error(error)
@@ -118,19 +120,22 @@ def formato_pesos(monto) -> str:
     return f"$ {texto}"
 
 
-def formato_tiempo(segundos: int) -> str:
+def formato_tiempo(segundos: int, con_segundos: bool = False) -> str:
     """
-    Convierte segundos en un texto legible ("2h 05m" o "45m 12s"). Vive
-    acá (y no en control_pcs/) porque tanto control_pcs/ui/pcs_window.py
-    como control_pcs/ui/miembros_window.py lo necesitan, y ui/utils.py ya
-    es el módulo compartido genérico que ambos lados de la app usan (ver
+    Convierte segundos en un texto legible ("2h 05m" o "45m 12s"). Con
+    `con_segundos` también muestra los segundos pasada la hora ("2h 05m 31s"):
+    es lo que usa la cuenta regresiva de la PlayStation 5, que se redibuja
+    cada segundo y tiene que verse correr. Vive acá (y no en control_pcs/)
+    porque tanto control_pcs/ui/pcs_window.py como
+    control_pcs/ui/miembros_window.py lo necesitan, y ui/utils.py ya es el
+    módulo compartido genérico que ambos lados de la app usan (ver
     CLAUDE.md) — puesto en cualquiera de los dos, el otro tendría que
     importarlo cruzado.
     """
     horas, resto = divmod(segundos, 3600)
     minutos, seg = divmod(resto, 60)
     if horas:
-        return f"{horas}h {minutos:02d}m"
+        return f"{horas}h {minutos:02d}m {seg:02d}s" if con_segundos else f"{horas}h {minutos:02d}m"
     return f"{minutos}m {seg:02d}s"
 
 

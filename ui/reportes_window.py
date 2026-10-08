@@ -5,15 +5,15 @@ Reportes, una pestaña por cada pregunta que se le hace a las ventas:
 
 - Resumen de Ventas: cuánta plata se trabajó en un rango de fechas.
 - Resumen del Día: un día abierto por turno, con quién cerró y si el sobre
-  cuadró; Kiosko, Impresiones, Trámites y Alquiler de PCs van en columnas
-  aparte.
+  cuadró; Kiosko, Impresiones, Trámites, Alquiler de PCs y PlayStation 5 van en
+  columnas aparte.
 - Por Turno: el total de un rango repartido entre Mañana/Tarde/Noche.
-- Totales: Kiosko / Impresiones / Trámites / Alquiler de PCs, por turno, día,
-  semana o rango.
+- Totales: Kiosko / Impresiones / Trámites / Alquiler de PCs / PlayStation 5,
+  por turno, día, semana o rango.
 - Ranking de Ventas: qué se vendió más -- artículos de kiosko, bonos de PC,
-  bonos de socios, cargas de saldo por tarifa y trámites, todo junto, con una
-  columna Categoría para distinguir de qué rubro vino cada fila (ver
-  reportes_repo.ranking_ventas).
+  bonos de socios, cargas de saldo por tarifa, trámites y bonos de la
+  PlayStation 5, todo junto, con una columna Categoría para distinguir de qué
+  rubro vino cada fila (ver reportes_repo.ranking_ventas).
 
 Las usa el Admin o una Empleada con `permiso_reportes`.
 """
@@ -41,7 +41,13 @@ class ReportesWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Reportes")
-        self.resize(1300, 560)
+        # El Resumen del Día tiene 13 columnas: con menos ancho la de "Cerró" (el
+        # nombre de quien cerró cada turno) queda tan angosta que corta el nombre.
+        # No más ancho que la pantalla, para que la ventana no se salga de ella.
+        ancho = 1380
+        if self.screen() is not None:
+            ancho = min(ancho, self.screen().availableGeometry().width() - 20)
+        self.resize(ancho, 560)
 
         pestañas = QTabWidget()
         pestañas.addTab(PestañaResumen(), "Resumen de Ventas")
@@ -131,7 +137,8 @@ class PestañaResumenDelDia(QWidget):
         turnos_repo.ESTADO_PENDIENTE: "#7A869A",
     }
     _COLUMNAS = ["Turno", "Estado", "Cerró", "Ventas", "Kiosko", "Impresiones", "Trámites",
-                 "Alquiler de PCs", "Efectivo", "Digital", "Total", "Sobre (contado - esperado)"]
+                 "Alquiler de PCs", "PlayStation 5", "Efectivo", "Digital", "Total",
+                 "Sobre (contado - esperado)"]
 
     def __init__(self):
         super().__init__()
@@ -245,6 +252,7 @@ class PestañaResumenDelDia(QWidget):
                     formato_pesos(turno["impresiones"]) if tiene_plata else "—",
                     formato_pesos(turno["tramites"]) if tiene_plata else "—",
                     formato_pesos(turno["pcs"]) if tiene_plata else "—",
+                    formato_pesos(turno["playstation"]) if tiene_plata else "—",
                     formato_pesos(turno["efectivo"]) if tiene_plata else "—",
                     formato_pesos(turno["digital"]) if tiene_plata else "—",
                     formato_pesos(turno["total"]) if tiene_plata else "—",
@@ -261,6 +269,7 @@ class PestañaResumenDelDia(QWidget):
                 self._texto_ventas(total["cantidad_ventas"], total["cantidad_anuladas"]),
                 formato_pesos(total["kiosko"]), formato_pesos(total["impresiones"]),
                 formato_pesos(total["tramites"]), formato_pesos(total["pcs"]),
+                formato_pesos(total["playstation"]),
                 formato_pesos(total["efectivo"]), formato_pesos(total["digital"]),
                 formato_pesos(total["total"]), "",
             ],
@@ -306,10 +315,15 @@ class PestañaPorTurno(QWidget):
             self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(fila_datos["digital"])))
 
 
+# Las columnas de plata de la pestaña "Totales", en el orden en que se ven: son
+# las claves de cada fila de reportes_repo.resumen_por_origen.
+_COLUMNAS_DE_TOTALES = ("kiosko", "impresiones", "tramites", "pcs", "playstation", "total")
+
+
 class PestañaKioskoVsPCs(QWidget):
-    """Desglosa lo facturado en Kiosko vs. Alquiler de PCs (ver
-    dominio.NOMBRE_ORIGEN_VENTA) en un rango de fechas, agrupado a
-    elección por turno, día, semana o el total del rango completo."""
+    """Desglosa lo facturado en Kiosko, Impresiones, Trámites, Alquiler de PCs y
+    PlayStation 5 (ver dominio.NOMBRE_ORIGEN_VENTA) en un rango de fechas,
+    agrupado a elección por turno, día, semana o el total del rango completo."""
 
     def __init__(self):
         super().__init__()
@@ -329,7 +343,8 @@ class PestañaKioskoVsPCs(QWidget):
         )
 
         self.tabla = crear_tabla(
-            ["Período", "Kiosko", "Impresiones", "Trámites", "Alquiler de PCs", "Total"], estirar=0
+            ["Período", "Kiosko", "Impresiones", "Trámites", "Alquiler de PCs", "PlayStation 5", "Total"],
+            estirar=0,
         )
 
         nota = QLabel("Impresiones y Trámites se muestran aparte: no están sumados en Kiosko.")
@@ -351,7 +366,7 @@ class PestañaKioskoVsPCs(QWidget):
         self.tabla.insertRow(fila)
         for columna, valor in enumerate([
             datos["etiqueta"],
-            *(formato_pesos(datos[clave]) for clave in ("kiosko", "impresiones", "tramites", "pcs", "total")),
+            *(formato_pesos(datos[clave]) for clave in _COLUMNAS_DE_TOTALES),
         ]):
             item = QTableWidgetItem(valor)
             if negrita:
@@ -378,14 +393,15 @@ class PestañaKioskoVsPCs(QWidget):
         if agrupar_por != "rango" and len(filas) > 1:
             sumas = {
                 clave: sum(fila[clave] for fila in filas)
-                for clave in ("kiosko", "impresiones", "tramites", "pcs", "total")
+                for clave in _COLUMNAS_DE_TOTALES
             }
             self._agregar_fila({"etiqueta": "TOTAL", **sumas}, negrita=True)
 
 
 class PestañaRanking(QWidget):
-    """Ranking de TODO lo vendido (kiosko, bonos, cargas de saldo y
-    trámites) en un rango de fechas, ordenable por cantidad o por monto."""
+    """Ranking de TODO lo vendido (kiosko, bonos de PC, de socios y de la
+    PlayStation 5, cargas de saldo y trámites) en un rango de fechas, ordenable
+    por cantidad o por monto."""
 
     def __init__(self):
         super().__init__()
@@ -407,6 +423,10 @@ class PestañaRanking(QWidget):
         self.etiqueta_titulo.setAlignment(Qt.AlignCenter)
 
         self.tabla = crear_tabla(["Cantidad", "Categoría", "Código", "Descripción", "Importe"], estirar=3)
+        # La categoría se muestra entera: con el ancho fijo de siempre, "Bono de
+        # PlayStation 5" y "Bono de Socio" se cortaban igual ("Bono de ...") y no
+        # se podían distinguir.
+        self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)

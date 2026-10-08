@@ -84,7 +84,8 @@ desde ahí, nunca escritos a mano:
 | Estado de venta | `VENTA_CONFIRMADA`, `VENTA_ANULADA` |
 | Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` — y `PAGO_MIXTO`, que NUNCA se guarda (ver más abajo) |
 | Turno | `TURNO_MANANA`, `TURNO_TARDE`, `TURNO_NOCHE`, `TURNOS` |
-| Origen de una venta | `ORIGEN_KIOSKO`, `ORIGEN_ALQUILER_PCS`, `ORIGENES_VENTA` |
+| Origen de una venta | `ORIGEN_KIOSKO`, `ORIGEN_ALQUILER_PCS`, `ORIGEN_PLAYSTATION`, `ORIGENES_VENTA` |
+| Equipo que se alquila por tiempo / estado de su sesión | `DISPOSITIVO_PC`, `DISPOSITIVO_PLAYSTATION`, `NOMBRE_PLAYSTATION`, `SESION_ACTIVA`, `SESION_FINALIZADA` |
 
 Un typo en uno de esos strings **no falla ruidosamente**: la consulta
 devuelve cero filas y nadie se entera hasta que falta plata en un cierre.
@@ -193,6 +194,9 @@ abra no alcanza si los tests no pasan.
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
 | `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono COMÚN (walk-in) |
+| `dominio.segundos_restantes(fin, ahora)` · `dominio.fin_al_sumar_minutos(fin_actual, minutos, ahora)` | se calcula cuánto le queda a una sesión de tiempo y cuándo vence al sumarle un bono (PCs Y PlayStation 5: una sola cuenta) |
+| `playstation_repo.estado()` · `.vender_bono(...)` · `.finalizar_sesion(...)` | se sabe cómo está la PlayStation 5, se le vende un bono (origen PLAYSTATION) y se la libera; ahí mismo se exige el permiso (`puede_operar`) o ser Admin (catálogo) |
+| `turnos_repo._desglose_de_totales(...)` · `_PREFIJO_COLUMNAS_POR_ORIGEN` | se reparte lo cobrado de un turno por origen (kiosko/pcs/playstation × efectivo/digital) y se suma el efectivo del cajón sobre TODOS los `ORIGENES_VENTA` |
 | `bonos_miembro_repo.listar_bonos()` / `.obtener_bono(id)` | catálogo de bonos EXCLUSIVO de socios (no confundir con `pcs_repo`) |
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
@@ -211,8 +215,9 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.fila_agregar_quitar(tabla, ...)` | se arman los botones Agregar/Quitar de una tabla que se edita a mano |
 | `ui.buscar_articulo.armar_botones_de_busqueda(ventana, ...)` | se arman los botones F5/F6/F7 y sus atajos (Ventas y Compras) |
 | `ui.detalle_venta.VentanaConDetalleDeVenta` | lista de ventas + artículos de la elegida (Consulta de Ventas y Detalle de un cierre) |
-| `control_pcs.repositories.catalogo_bonos.CatalogoDeBonos(tabla)` | se hace el alta/edición/baja de un catálogo de bonos (`pcs_repo` para walk-ins, `bonos_miembro_repo` para socios: dos tablas distintas, un solo código) |
+| `control_pcs.repositories.catalogo_bonos.CatalogoDeBonos(tabla)` | se hace el alta/edición/baja de un catálogo de bonos (`pcs_repo` para walk-ins, `bonos_miembro_repo` para socios, `playstation_repo` para la consola: tres tablas distintas, un solo código) |
 | `database._reconstruir_tabla(...)` · `_admite_todos_los_tipos(lista)` | se reconstruye una tabla para cambiar un CHECK/REFERENCES, y se decide si un CHECK de tipos ya está al día |
+| `database._sql_tabla_ventas(...)` · `_migrar_check_origen_en_ventas(...)` | se escribe el CREATE de `ventas` (el CHECK de `origen` sale de `dominio.ORIGENES_VENTA`) y se reconstruye una base vieja SIN romper las tablas que la referencian (ver "Trampas conocidas") |
 
 Si necesitás uno de esos datos, **llamá a la función existente**.
 
@@ -255,8 +260,8 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 - **Toda venta sin artículo real de por medio pasa por
   `ventas_repo.registrar_venta_sin_detalle`, nunca un `INSERT INTO ventas`
   a mano.** Es lo único que le pone el `origen` correcto
-  (`dominio.ORIGENES_VENTA`) — sin eso, el desglose Kiosko/Alquiler de PCs
-  de Caja y Cierre de Turno queda mal. El dueño pidió este desglose
+  (`dominio.ORIGENES_VENTA`) — sin eso, el desglose Kiosko/Alquiler de
+  PCs/PlayStation 5 de Caja y Cierre de Turno queda mal. El dueño pidió este desglose
   explícitamente para poder auditar la caja (sospecha de faltantes), así
   que un error acá no es solo un bug visual.
 - **`dominio.PAGO_MIXTO` no es un método de pago real: nunca llega a
@@ -276,7 +281,8 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   porque un pago en Efectivo puede superar el total si hay vuelto de por
   medio (mismo criterio que `confirmar_venta`, que calcula el total desde
   el carrito y no desde los pagos).
-- **Hay DOS catálogos de bonos, nunca la misma tabla.** `bonos_tiempo`
+- **Hay TRES catálogos de bonos, nunca la misma tabla** (los dos de abajo más
+  `bonos_playstation`, ver la trampa de la PlayStation 5). `bonos_tiempo`
   (`pcs_repo`) es para cualquiera que entra al local sin ser socio
   (walk-in, `pcs_repo.asignar_bono`). `bonos_miembro` (`bonos_miembro_repo`)
   es exclusivo de Miembros, usado solo desde "Cargar Saldo" -> "Bono fijo"
@@ -290,6 +296,54 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   `permiso_control_pcs`). No fusionar estos catálogos "para simplificar":
   son dos negocios distintos con reglas de negocio propias, aunque ahora
   compartan el mismo nivel de permiso para editarlos.
+- **La PlayStation 5 NO es una "estación" y no se debe volver una.** Es una
+  sola consola, nombre fijo `dominio.NOMBRE_PLAYSTATION`, con sus propias tablas
+  (`bonos_playstation`, `sesiones_playstation`, `sesion_playstation_bonos`) y su
+  propio repo (`playstation_repo`), aunque se vea como la primera fila de la
+  grilla de Control de PCs. Una estación es una PC con Cliente PC (bloqueo,
+  reinicio, apagado, IP, renombrar, baja): si la consola viviera en `estaciones`
+  todo eso la alcanzaría, y a la consola no le corresponde nada. Por lo mismo,
+  `playstation_repo` no tiene ningún `estacion_id` y `pcs_repo.asignar_bono` solo
+  acepta una fila activa de `estaciones`: **un bono de PC no puede ir a la
+  consola ni uno de la consola a una PC**, aunque dos ids coincidan (cada camino
+  lee SOLO su catálogo; `PanelDetalleEstacion` además toma la lista de bonos del
+  equipo elegido y deshabilita la otra). Cada fila de la grilla trae su tipo en
+  `item["dispositivo"]`.
+- **La sesión de la PlayStation 5 NO se da de baja sola al llegar a cero.** A
+  diferencia de una PC (que se bloquea y `PanelControlPcs._refrescar` la libera),
+  acá el aviso es para una persona: queda `ACTIVA` con `tiempo_agotado`, su fila
+  titila en rojo (mismo parpadeo que "SIN CLIENTE") y sigue así —también si se
+  cierra y reabre el programa, el vencimiento es una fecha absoluta— hasta que el
+  operador la libera ("Ya avisé: liberar la consola") o le vende otro bono (que
+  cuenta desde ahora, ver `dominio.fin_al_sumar_minutos`). La cuenta regresiva se
+  redibuja cada segundo (`PanelControlPcs._actualizar_cuenta_regresiva`, un timer
+  aparte del refresco de 5s). Si alguna vez se hace que esa sesión se libere sola,
+  se pierde el aviso: no lo hagas sin que el dueño lo pida.
+- **Permisos de la PlayStation 5: se hacen cumplir en el repo, no solo en la
+  pantalla.** Vender un bono y liberarla: ADMIN o `permiso_control_pcs`
+  ("Operar PCs y Miembros"); crear/modificar/dar de baja sus bonos: solo ADMIN
+  (`playstation_repo` levanta `PermissionError`, que `ui.utils.manejar_errores`
+  muestra como mensaje). Se vuelve a leer el usuario de la base en cada operación,
+  así que un permiso quitado o un usuario desactivado corta el acceso en el acto.
+  Ojo con la asimetría, es pedido del dueño: las **PCs** siguen abiertas a
+  cualquier usuario logueado (no piden permiso), la consola no.
+- **Sumar un origen de venta nuevo toca la caja, no solo `dominio.py`.** Si un
+  origen no figura en `turnos_repo._PREFIJO_COLUMNAS_POR_ORIGEN` (y en las
+  columnas de `cierres_turno`), su plata desaparece del efectivo esperado en el
+  cajón sin ningún error visible — el dueño usa este desglose para auditar
+  faltantes. El test `TestCadaOrigenSumaEnLaCaja` lo atrapa. `ventas.origen` tiene
+  un CHECK: agregar un origen exige que `database._migrar_check_origen_en_ventas`
+  reconstruya la tabla (corre sola al arrancar, dejando una copia en
+  `data/backups/antes_de_*.db`).
+- **Reconstruir `ventas` no se hace con `_reconstruir_tabla`.** Esa función
+  renombra la tabla vieja primero, y SQLite (desde 3.26) re-apunta a la renombrada
+  todas las claves foráneas de las tablas hijas (`venta_detalle`, `venta_pagos`,
+  `sesion_bonos`, `tramites_venta`, `movimientos_saldo_miembro`,
+  `sesion_playstation_bonos`): al borrarla, quedarían apuntando a una tabla que ya
+  no existe. Para una tabla MADRE el orden es otro: crear `<tabla>_nueva`, copiar,
+  borrar la vieja y recién ahí renombrar, con las claves foráneas apagadas y todo
+  en UNA transacción — ver `_migrar_check_origen_en_ventas` y
+  `TestMigracionOrigenEnVentas`.
 - **Un trámite es un servicio que se cobra, no el pago de una boleta.** Lo que
   se tipea en "Trámites" es lo que el local cobra por hacerle el trámite al
   cliente (imprimir la boleta de luz, un trámite online, sacar un turno...);
@@ -301,10 +355,10 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 
 ## Qué no cambiar sin que el dueño lo pida explícitamente
 
-- **El modelo de cobro de Control de PCs.** Siempre bonos de tiempo fijos
-  prearmados (ej. "3 horas" = 180 min / $X, en fracciones de 30 min).
-  Nunca hora libre ni minuto suelto, y una PC sin bono/saldo activo queda
-  bloqueada — no "abierta y se cobra después". Esto no es un detalle
+- **El modelo de cobro de Control de PCs (y de la PlayStation 5).** Siempre
+  bonos de tiempo fijos prearmados (ej. "3 horas" = 180 min / $X, en
+  fracciones de 30 min). Nunca hora libre ni minuto suelto, y una PC sin
+  bono/saldo activo queda bloqueada — no "abierta y se cobra después". Esto no es un detalle
   técnico, es una decisión de negocio del dueño del Cyber.
 - **La estructura de carpetas.** Hoy hay DOS árboles a propósito: `ui/` +
   `repositories/` (kiosko) y `control_pcs/ui/` + `control_pcs/repositories/`
@@ -727,3 +781,42 @@ posterior al cierre (`cierre_grabado=True`, comparando con `julianday` porque
 `anulada_fecha` se graba con segundos y `fecha_cierre` con microsegundos). La ventana
 de Reportes pasó de 1150 a 1300 px: con 12 columnas el Resumen del Día no entraba.
 244 tests (9 nuevos).
+
+**2026-10-08 (y más):** **la PlayStation 5.** Pedido del dueño: una única consola que
+aparezca arriba de las PCs en la grilla de Control de PCs, con el nombre fijo
+"PLAYSTATION 5" (no se edita, no se da de baja, no se configura como PC), y que se
+venda por tiempo con bonos propios. Todo lo decidido y por qué está en "Trampas
+conocidas" (la consola NO es una estación, su sesión NO se libera sola, los permisos
+se hacen cumplir en el repo, un origen nuevo toca la caja, reconstruir `ventas`);
+resumen de lo construido:
+- **Datos:** tablas `bonos_playstation` (catálogo propio, el tercero junto a
+  `bonos_tiempo` y `bonos_miembro`), `sesiones_playstation` (a lo sumo una `ACTIVA`,
+  índice único) y `sesion_playstation_bonos`. Origen de venta nuevo
+  `dominio.ORIGEN_PLAYSTATION`: `ventas.origen` cambió su CHECK, así que
+  `_migrar_check_origen_en_ventas` reconstruye `ventas` en las bases viejas (una
+  transacción, copia previa en `data/backups/antes_de_*.db`; probada contra una copia de
+  la base real: mismas ventas, mismos totales, `foreign_key_check` y `integrity_check`
+  limpios). `cierres_turno` ganó `playstation_efectivo`/`playstation_digital`.
+- **Código:** `control_pcs/repositories/playstation_repo.py` (estado, venta de bonos,
+  liberar, permisos, catálogo). La cuenta del tiempo se sacó de `pcs_repo` a
+  `dominio.segundos_restantes`/`fin_al_sumar_minutos` y la usan las PCs y la consola
+  (una sola cuenta). `pcs_repo.asignar_bono` ahora exige que la estación exista y esté
+  activa. `PanelDetalleEstacion` tiene dos listas de bonos (PC arriba, PlayStation
+  debajo) y habilita solo la del equipo elegido; recuerda el bono tildado entre
+  refrescos de 5s (antes volvía al primero justo antes de cobrar).
+- **Reportes y caja:** Caja, Cierre de Turno, Control de Cierres, Totales y Resumen del
+  Día traen la consola como negocio aparte (Kiosko + Impresiones + Trámites + PCs +
+  PlayStation = Total); el Ranking suma sus bonos como sexta fuente; Consulta de Ventas
+  muestra el Origen de cada venta. La ventana de Reportes pasó a 1380 px (13 columnas;
+  se achica si la pantalla es más angosta) y la de Control de Cierres a 1180.
+- **Estilo global (`main.py`):** un botón tildado pero deshabilitado se ve tenue, y un
+  botón rojo ("peligro") deshabilitado se ve apagado (antes parecía activo).
+- **Archivos:** `control_pcs/ui/pcs_window.py` llegó a 599 líneas con esto (la regla 12
+  pide partir cerca de 600), así que el log de "Actividad reciente" (`PanelActividad`
+  y su `_texto_evento`) pasó a `control_pcs/ui/pcs_actividad.py`.
+- **Permisos:** vender y liberar = ADMIN o `permiso_control_pcs`; administrar bonos =
+  solo ADMIN (Configuración ADMIN → "Gestionar Bonos de PlayStation 5").
+- **Fuera de alcance a propósito:** abrir la consola con el saldo de un socio, y que
+  anular una venta de la consola corte su cuenta regresiva (se la libera aparte, como
+  con un bono de PC).
+328 tests (84 nuevos: `tests/test_playstation.py` y `tests/test_playstation_ui.py`).

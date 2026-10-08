@@ -5,12 +5,14 @@ Las dos pantallas con las que se administra un catálogo de bonos de tiempo:
 la lista con Nuevo / Modificar / Desactivar (`DialogoGestionBonosBase`) y el
 formulario de alta y edición de un bono (`DialogoBonoBase`).
 
-Hay DOS catálogos con esta misma mecánica, deliberadamente separados (ver
+Hay TRES catálogos con esta misma mecánica, deliberadamente separados (ver
 control_pcs/repositories/catalogo_bonos.py): el de walk-ins
-(`DialogoGestionBonos` / `DialogoBono` en pcs_gestion_dialogos.py) y el
+(`DialogoGestionBonos` / `DialogoBono` en pcs_gestion_dialogos.py), el
 exclusivo de socios (`DialogoGestionBonosMiembro` / `DialogoBonoMiembro` en
-miembros_window.py). Cada uno es una subclase corta que solo dice qué repo
-usa y cómo se llama en pantalla; todo lo demás se escribe una vez acá.
+miembros_window.py) y el de la PlayStation 5 (`DialogoGestionBonosPlaystation`
+/ `DialogoBonoPlaystation`, otra vez en pcs_gestion_dialogos.py). Cada uno es
+una subclase corta que solo dice qué repo usa y cómo se llama en pantalla;
+todo lo demás se escribe una vez acá.
 """
 
 from PySide6.QtWidgets import (
@@ -33,7 +35,9 @@ class DialogoBonoBase(QDialog):
 
     Cada subclase define: `repo` (el módulo con crear_bono/modificar_bono:
     pcs_repo o bonos_miembro_repo) y los textos TITULO_NUEVO,
-    TITULO_EDICION y EJEMPLO_NOMBRE.
+    TITULO_EDICION y EJEMPLO_NOMBRE. Si el catálogo exige saber QUIÉN lo
+    edita (el de la PlayStation 5, ver playstation_repo.AdministradorDeBonos),
+    el `repo` se pasa al abrir el formulario en vez de ser fijo de la clase.
     """
 
     repo = None
@@ -41,8 +45,10 @@ class DialogoBonoBase(QDialog):
     TITULO_EDICION = "Modificar Bono"
     EJEMPLO_NOMBRE = "Ej: 3 horas"
 
-    def __init__(self, parent, bono=None):
+    def __init__(self, parent, bono=None, repo=None):
         super().__init__(parent)
+        if repo is not None:
+            self.repo = repo
         self.bono = bono
         self.setWindowTitle(self.TITULO_EDICION if bono else self.TITULO_NUEVO)
         self.resize(340, 260)
@@ -107,6 +113,8 @@ class DialogoGestionBonosBase(QDialog):
     Cada subclase define: `repo` (pcs_repo o bonos_miembro_repo),
     `CLASE_FORMULARIO` (el DialogoBonoBase de alta/edición que le toca),
     TITULO y CONFIRMAR_DESACTIVAR (el texto de la pregunta, con `{nombre}`).
+    Igual que el formulario, acepta un `repo` al abrirse (el de la PlayStation 5
+    va atado al usuario) y se lo pasa a los formularios que abre.
     """
 
     repo = None
@@ -114,8 +122,10 @@ class DialogoGestionBonosBase(QDialog):
     TITULO = "Gestionar Bonos"
     CONFIRMAR_DESACTIVAR = "¿Desactivar el bono '{nombre}'?"
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, repo=None):
         super().__init__(parent)
+        if repo is not None:
+            self.repo = repo
         self.setWindowTitle(self.TITULO)
         self.resize(460, 440)
         self._armar_interfaz()
@@ -165,7 +175,7 @@ class DialogoGestionBonosBase(QDialog):
         return self.bonos[fila]
 
     def _nuevo(self):
-        dialogo = self.CLASE_FORMULARIO(self)
+        dialogo = self.CLASE_FORMULARIO(self, repo=self.repo)
         if dialogo.exec():
             self._cargar()
 
@@ -173,7 +183,7 @@ class DialogoGestionBonosBase(QDialog):
         bono = self._seleccionado()
         if bono is None:
             return
-        dialogo = self.CLASE_FORMULARIO(self, bono)
+        dialogo = self.CLASE_FORMULARIO(self, bono, repo=self.repo)
         if dialogo.exec():
             self._cargar()
 

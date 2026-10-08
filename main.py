@@ -129,6 +129,14 @@ HOJA_DE_ESTILOS = """
         background-color: #255BC7;
         border-color: #255BC7;
     }
+    /* Un bono tildado dentro de una lista deshabilitada (la de PC cuando está
+       elegida la PlayStation, y al revés) no tiene que verse tan fuerte como
+       uno activo: es lo que deja claro cuál de las dos listas se puede usar. */
+    QPushButton:checked:disabled {
+        background-color: #AEC3F2;
+        border: 1px solid #AEC3F2;
+        color: #EFF3FE;
+    }
     QPushButton[clase="primario"] {
         background-color: #2F6FED;
         border: 1px solid #2F6FED;
@@ -160,6 +168,11 @@ HOJA_DE_ESTILOS = """
     }
     QPushButton[clase="peligro"]:pressed {
         background-color: #F3D3D3;
+    }
+    QPushButton[clase="peligro"]:disabled {
+        background-color: #F5F6F8;
+        border-color: #E1E4E9;
+        color: #A7ADB8;
     }
     QLineEdit, QDoubleSpinBox, QSpinBox, QComboBox, QDateEdit {
         padding: 7px 9px;

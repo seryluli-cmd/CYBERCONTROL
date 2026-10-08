@@ -38,8 +38,8 @@ from ui.utils import (
 
 def _texto_desglose(efectivo: float, digital: float) -> str:
     """"$X ef. + $Y dig." -- una sola línea para mostrar el desglose de un
-    origen (Kiosko o Alquiler de PCs) sin ocupar dos etiquetas por cada
-    uno, ver CajaWindow/CierreTurnoWindow."""
+    origen (Kiosko, Alquiler de PCs o PlayStation 5) sin ocupar dos etiquetas
+    por cada uno, ver CajaWindow/CierreTurnoWindow."""
     return f"{formato_pesos(efectivo)} ef. + {formato_pesos(digital)} dig."
 
 
@@ -99,7 +99,7 @@ class CajaWindow(_PantallaDeCaja):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Caja")
-        self.resize(460, 360)
+        self.resize(460, 430)
         self._armar_interfaz()
         self._refrescar()
 
@@ -114,6 +114,9 @@ class CajaWindow(_PantallaDeCaja):
         layout_pcs, self.valor_pcs = _etiqueta_dato(
             f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS]}", ""
         )
+        layout_playstation, self.valor_playstation = _etiqueta_dato(
+            f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION]}", ""
+        )
 
         boton_refrescar = QPushButton("Actualizar")
         boton_refrescar.clicked.connect(self._refrescar)
@@ -125,7 +128,8 @@ class CajaWindow(_PantallaDeCaja):
         botones.addWidget(boton_salir)
 
         self._armar_cuerpo(
-            [(layout_fondo, layout_actual), (layout_ventas, layout_digital), (layout_kiosko, layout_pcs)],
+            [(layout_fondo, layout_actual), (layout_ventas, layout_digital),
+             (layout_kiosko, layout_pcs), (layout_playstation, QVBoxLayout())],
             "La Caja Actual suma solo el EFECTIVO; no incluye lo cobrado por Digital.",
             botones,
         )
@@ -140,6 +144,9 @@ class CajaWindow(_PantallaDeCaja):
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
         self.valor_kiosko.setText(_texto_desglose(resumen["kiosko_efectivo"], resumen["kiosko_digital"]))
         self.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
+        self.valor_playstation.setText(
+            _texto_desglose(resumen["playstation_efectivo"], resumen["playstation_digital"])
+        )
 
 
 class CierreTurnoWindow(_PantallaDeCaja):
@@ -154,7 +161,7 @@ class CierreTurnoWindow(_PantallaDeCaja):
         # saber si corresponde volver sola al Login (ver ese método).
         self.turno_cerrado = False
         self.setWindowTitle("Cierre de Turno")
-        self.resize(460, 400)
+        self.resize(460, 470)
         self._armar_interfaz()
         self._refrescar_vista_previa()
 
@@ -169,6 +176,9 @@ class CierreTurnoWindow(_PantallaDeCaja):
         layout_pcs, self.valor_pcs = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS], ""
         )
+        layout_playstation, self.valor_playstation = _etiqueta_dato(
+            dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION], ""
+        )
 
         boton_cerrar_turno = QPushButton("Confirmar Cierre de Turno")
         aplicar_clase(boton_cerrar_turno, "primario")
@@ -182,7 +192,8 @@ class CierreTurnoWindow(_PantallaDeCaja):
         botones.addWidget(boton_cerrar_turno)
 
         self._armar_cuerpo(
-            [(layout_fondo, layout_efectivo), (layout_digital, layout_retirar), (layout_kiosko, layout_pcs)],
+            [(layout_fondo, layout_efectivo), (layout_digital, layout_retirar),
+             (layout_kiosko, layout_pcs), (layout_playstation, QVBoxLayout())],
             "Retirá el efectivo indicado y guardalo en el sobre. Dejá el fondo de "
             "cambio en el cajón para que arranque el próximo turno.",
             botones,
@@ -198,6 +209,9 @@ class CierreTurnoWindow(_PantallaDeCaja):
         self.valor_retirar.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_kiosko.setText(_texto_desglose(resumen["kiosko_efectivo"], resumen["kiosko_digital"]))
         self.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
+        self.valor_playstation.setText(
+            _texto_desglose(resumen["playstation_efectivo"], resumen["playstation_digital"])
+        )
 
     @manejar_errores
     def _cerrar_turno(self):
@@ -227,7 +241,7 @@ class ControlCierresWindow(QDialog):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Control de Cierres de Turno")
-        self.resize(1050, 520)
+        self.resize(1180, 520)
         self._armar_interfaz()
         self._cargar()
 
@@ -277,7 +291,7 @@ class ControlCierresWindow(QDialog):
 
         self.tabla = crear_tabla(
             ["Fecha", "Turno", "Empleada", "Fondo", "Ventas Ef.", "Kiosko", "Alquiler PCs",
-             "A Retirar", "Contado", "Diferencia"],
+             "PlayStation 5", "A Retirar", "Contado", "Diferencia"],
             estirar=2, por_filas=True,
         )
         self.tabla.doubleClicked.connect(self._ver_detalle)
@@ -321,16 +335,19 @@ class ControlCierresWindow(QDialog):
             self.tabla.setItem(fila, 6, QTableWidgetItem(
                 formato_pesos(cierre["pcs_efectivo"] + cierre["pcs_digital"])
             ))
-            self.tabla.setItem(fila, 7, QTableWidgetItem(formato_pesos(cierre["monto_a_retirar"])))
+            self.tabla.setItem(fila, 7, QTableWidgetItem(
+                formato_pesos(cierre["playstation_efectivo"] + cierre["playstation_digital"])
+            ))
+            self.tabla.setItem(fila, 8, QTableWidgetItem(formato_pesos(cierre["monto_a_retirar"])))
 
             contado = cierre["monto_contado"]
-            self.tabla.setItem(fila, 8, QTableWidgetItem(formato_pesos(contado) if contado is not None else "—"))
+            self.tabla.setItem(fila, 9, QTableWidgetItem(formato_pesos(contado) if contado is not None else "—"))
 
             diferencia = cierre["diferencia"]
             item_diferencia = QTableWidgetItem(formato_pesos(diferencia) if diferencia is not None else "—")
             if diferencia is not None and abs(diferencia) > 0.01:
                 item_diferencia.setForeground(Qt.red)
-            self.tabla.setItem(fila, 9, item_diferencia)
+            self.tabla.setItem(fila, 10, item_diferencia)
 
         self._cargar_faltantes()
 
@@ -400,8 +417,8 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
     confiar solo en los números agregados de la tabla de Control de
     Cierres. Mismo patrón maestro-detalle que ConsultaVentasWindow: al
     seleccionar una venta, abajo aparecen sus artículos -- una venta sin
-    detalle real (bono de PC, carga de saldo de Miembro) simplemente deja
-    esa tabla vacía, no hace falta un caso especial.
+    detalle real (bono de PC, bono de la PlayStation 5, carga de saldo de
+    Miembro) simplemente deja esa tabla vacía, no hace falta un caso especial.
     """
 
     def __init__(self, cierre, parent=None):
@@ -437,7 +454,9 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
         layout.addWidget(self.encabezado)
         layout.addWidget(QLabel("Ventas del turno:"))
         layout.addWidget(self.tabla)
-        layout.addWidget(QLabel("Artículos de la venta seleccionada (vacío si es bono de PC o carga de saldo):"))
+        layout.addWidget(QLabel(
+            "Artículos de la venta seleccionada (vacío si es bono de PC, de PlayStation o carga de saldo):"
+        ))
         layout.addWidget(self.tabla_detalle)
         layout.addLayout(botones)
         self.setLayout(layout)

@@ -20,6 +20,8 @@ alguna vez se agrega un valor nuevo, va en los dos lados: acá y en una
 migración que actualice el CHECK.
 """
 
+from datetime import datetime, timedelta
+
 
 # --------------------------------------------------------------------
 # Roles de usuario
@@ -88,24 +90,34 @@ def nombre_metodo(metodo: str) -> str:
 
 
 # --------------------------------------------------------------------
-# Origen de una venta (Kiosko vs. Alquiler de PCs)
+# Origen de una venta (Kiosko, Alquiler de PCs, PlayStation 5)
 # --------------------------------------------------------------------
-# Vender productos de kiosko y alquilar PCs (bonos + saldo de Miembros)
-# son dos negocios distintos para el dueño, aunque comparten la misma
-# caja: "ventas" y "cierres_turno" necesitan saber de cuál vino cada
-# peso para que el cierre de turno pueda mostrar el desglose exacto (ver
-# ventas_repo.registrar_venta_sin_detalle y turnos_repo._sumar_ventas_por_origen_y_metodo).
+# Vender productos de kiosko, alquilar PCs (bonos + saldo de Miembros) y
+# alquilar la PlayStation 5 son negocios distintos para el dueño, aunque
+# comparten la misma caja: "ventas" y "cierres_turno" necesitan saber de
+# cuál vino cada peso para que el cierre de turno pueda mostrar el desglose
+# exacto (ver ventas_repo.registrar_venta_sin_detalle y
+# turnos_repo._sumar_ventas_por_origen_y_metodo).
 # ORIGEN_ALQUILER_PCS describe una categoría de reporte ("Kiosko vs.
 # Alquiler de PCs", con las palabras del dueño) y a propósito no
 # coincide con el nombre del módulo de código (control_pcs).
+#
+# Sumar un origen nuevo NO es solo agregarlo acá: también va en el CHECK de
+# "ventas.origen" (database._migrar_check_origen_en_ventas lo reconstruye solo
+# a partir de esta lista), en el desglose de Caja/Cierre de Turno
+# (turnos_repo._PREFIJO_COLUMNAS_POR_ORIGEN y las columnas de "cierres_turno") y
+# en los reportes. Un origen que quede afuera de eso hace desaparecer su plata
+# de la caja sin avisar: hay un test que lo atrapa (TestCadaOrigenSumaEnLaCaja).
 ORIGEN_KIOSKO = "KIOSKO"
 ORIGEN_ALQUILER_PCS = "ALQUILER_PCS"
+ORIGEN_PLAYSTATION = "PLAYSTATION"
 
-ORIGENES_VENTA = (ORIGEN_KIOSKO, ORIGEN_ALQUILER_PCS)
+ORIGENES_VENTA = (ORIGEN_KIOSKO, ORIGEN_ALQUILER_PCS, ORIGEN_PLAYSTATION)
 
 NOMBRE_ORIGEN_VENTA = {
     ORIGEN_KIOSKO: "Kiosko",
     ORIGEN_ALQUILER_PCS: "Alquiler de PCs",
+    ORIGEN_PLAYSTATION: "PlayStation 5",
 }
 
 # IMPRESIONES es un artículo más del kiosko (se vende por el mismo
@@ -194,13 +206,62 @@ def pagos_netos_de_vuelto(pagos: list, vuelto: float) -> list:
 
 
 # --------------------------------------------------------------------
-# Bonos de tiempo (reglas compartidas por los dos catálogos)
+# Dispositivos que se alquilan por tiempo (PCs y PlayStation 5)
 # --------------------------------------------------------------------
-# Hay dos catálogos de bonos -- pcs_repo.bonos_tiempo (walk-ins) y
-# bonos_miembro_repo (exclusivo de socios) -- deliberadamente separados
-# (distinta tabla, distinto permiso para administrarlos), pero un bono
-# es un bono: mismas tres reglas en los dos. Vive acá para no repetirla
-# en cada repo (ver CLAUDE.md, regla 2).
+# El local alquila tiempo de dos tipos de equipo: las PCs (muchas, cada una
+# una fila de "estaciones") y UNA PlayStation 5. Cada una tiene su catálogo
+# de bonos y sus sesiones, y nunca se mezclan: un bono de PC no se le puede
+# vender a la consola ni al revés. En la grilla de Control de PCs, cada fila
+# trae su tipo en `item["dispositivo"]`.
+DISPOSITIVO_PC = "PC"
+DISPOSITIVO_PLAYSTATION = "PLAYSTATION"
+
+# La consola es una sola y su nombre no se edita (a diferencia de una PC, que
+# es una fila de "estaciones" que el Admin renombra o da de baja).
+NOMBRE_PLAYSTATION = "PLAYSTATION 5"
+
+# Estado de una sesión de tiempo. Tienen que coincidir con el CHECK de
+# "sesiones_playstation.estado" en database.py (las sesiones de PC todavía los
+# escriben a mano, ver CLAUDE.md "Estado").
+SESION_ACTIVA = "ACTIVA"
+SESION_FINALIZADA = "FINALIZADA"
+
+
+def segundos_restantes(fin_previsto: datetime, ahora: datetime) -> int:
+    """
+    Único lugar donde se calcula cuánto le queda a una sesión de tiempo (PC
+    o PlayStation 5): los segundos que faltan hasta `fin_previsto`, nunca
+    negativos (0 = el tiempo se acabó). Es una cuenta contra el reloj de AHORA,
+    no un contador guardado: por eso sigue siendo correcta aunque el programa
+    se cierre y se vuelva a abrir.
+    """
+    return max(0, int((fin_previsto - ahora).total_seconds()))
+
+
+def fin_al_sumar_minutos(fin_actual, minutos: int, ahora: datetime) -> datetime:
+    """
+    Único lugar donde se decide cuándo vence una sesión de tiempo al venderle
+    `minutos` más (PC o PlayStation 5). `fin_actual` es el vencimiento que ya
+    tenía, o None si todavía no hay sesión.
+
+    Si la sesión sigue en curso, los minutos se suman a SU vencimiento (el
+    cliente sigue jugando). Si no hay sesión, o ya venció y nadie la dio de
+    baja todavía, se cuentan desde ahora: si no, se perderían los minutos
+    entre que se agotó el tiempo anterior y que se vendió el siguiente.
+    """
+    base = ahora if fin_actual is None else max(fin_actual, ahora)
+    return base + timedelta(minutes=minutos)
+
+
+# --------------------------------------------------------------------
+# Bonos de tiempo (reglas compartidas por los tres catálogos)
+# --------------------------------------------------------------------
+# Hay tres catálogos de bonos -- pcs_repo.bonos_tiempo (walk-ins),
+# bonos_miembro_repo (exclusivo de socios) y playstation_repo.bonos_playstation
+# (exclusivo de la consola) -- deliberadamente separados (distinta tabla,
+# distinto permiso para administrarlos), pero un bono es un bono: mismas
+# tres reglas en los tres. Vive acá para no repetirla en cada repo (ver
+# CLAUDE.md, regla 2).
 def validar_datos_bono(nombre: str, minutos: int, precio: float):
     """Levanta ValueError (mensaje listo para mostrar) si el bono no es válido."""
     if not nombre.strip():

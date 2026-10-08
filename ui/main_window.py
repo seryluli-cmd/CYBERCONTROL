@@ -14,7 +14,9 @@ del rol y los permisos:
 - Cualquiera logueado: operar la grilla de PCs (asignar un bono ya
   creado, abrir con Miembro, finalizar sesión — es una venta más, como
   Vender), Vender, cobrar un Trámite, Caja, Cierre de Turno, y Cambiar mi
-  Clave.
+  Clave. La PlayStation 5, que está en esa misma grilla, la ve cualquiera pero
+  solo la opera (vender sus bonos, liberarla) quien tenga `permiso_control_pcs`
+  (o sea Admin).
 - Con `permiso_control_pcs` (o Admin): además ve "Miembros" (alta,
   modificar datos, cargar saldo, desactivar — usa la tarifa y los bonos
   ya definidos, no los edita).
@@ -24,9 +26,9 @@ del rol y los permisos:
   Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos).
 - Solo ADMIN, sin excepción: "Configuración ADMIN" — Gestionar
   Estaciones (agregar/quitar/renombrar PC), Gestionar Bonos (catálogo de
-  walk-ins), Tarifa por Hora de Socios, Gestionar Bonos de Socios,
-  Gestionar Trámites y Accesos de Admin (registro de logins de
-  administradores).
+  walk-ins), Gestionar Bonos de PlayStation 5, Tarifa por Hora de Socios,
+  Gestionar Bonos de Socios, Gestionar Trámites y Accesos de Admin (registro
+  de logins de administradores).
   Pedido explícito del dueño: editar estos catálogos es tarea de super
   admin; usarlos (asignar un bono, cobrar con la tarifa ya fijada) sigue
   delegable con `permiso_control_pcs`.
@@ -52,7 +54,9 @@ from ui.reportes_window import ReportesWindow
 from ui.tramites_window import DialogoTramites, DialogoGestionTramites
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs
-from control_pcs.ui.pcs_gestion_dialogos import DialogoGestionEstaciones, DialogoGestionBonos
+from control_pcs.ui.pcs_gestion_dialogos import (
+    DialogoGestionEstaciones, DialogoGestionBonos, DialogoGestionBonosPlaystation,
+)
 from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
 from ui.utils import aplicar_clase, sin_boton_por_defecto
 
@@ -174,7 +178,7 @@ class MainWindow(QMainWindow):
         MiembrosWindow(self.usuario, self).exec()
 
     def _abrir_configuracion_admin(self):
-        ConfiguracionAdminWindow(self).exec()
+        ConfiguracionAdminWindow(self.usuario, self).exec()
 
     def _cerrar_sesion(self):
         self.close()
@@ -283,23 +287,27 @@ class AdministrarKioskoWindow(_VentanaDeBotones):
 class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
     Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
-    Tiempo (walk-in), Tarifa por Hora de Socios, Bonos de Socios y Trámites
-    -- más "Accesos de Admin" (quién entró con una cuenta de administrador, ver
-    ui/accesos_admin_window.py). Exclusiva de ADMIN, sin excepción: no hay
-    permiso delegable para esto (ver MainWindow._armar_interfaz).
+    Tiempo (walk-in), Bonos de PlayStation 5, Tarifa por Hora de Socios, Bonos
+    de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
+    de administrador, ver ui/accesos_admin_window.py). Exclusiva de ADMIN, sin
+    excepción: no hay permiso delegable para esto (ver
+    MainWindow._armar_interfaz). Recibe el `usuario` porque el catálogo de la
+    PlayStation 5 vuelve a exigir en el repo que quien lo edita sea Admin.
 
-    *Usar* esos catálogos (asignarle un bono ya creado a una PC, cargar
-    saldo con la tarifa ya fijada) sigue abierto a cualquier operador con
-    permiso_control_pcs desde la grilla de PCs y "Miembros". Separación
-    pedida explícitamente por el dueño: editar el catálogo es tarea de
-    super admin, usarlo no.
+    *Usar* esos catálogos (asignarle un bono ya creado a una PC o a la
+    PlayStation 5, cargar saldo con la tarifa ya fijada) sigue abierto a
+    cualquier operador con permiso_control_pcs desde la grilla de PCs y
+    "Miembros". Separación pedida explícitamente por el dueño: editar el
+    catálogo es tarea de super admin, usarlo no.
     """
 
-    def __init__(self, parent=None):
-        super().__init__("Configuración ADMIN", 520, parent)
+    def __init__(self, usuario, parent=None):
+        super().__init__("Configuración ADMIN", 580, parent)
+        self.usuario = usuario
         self._armar_botones([
             ("🖥️  Gestionar Estaciones", self._abrir_estaciones),
             ("🎟️  Gestionar Bonos", self._abrir_bonos),
+            ("🎮  Gestionar Bonos de PlayStation 5", self._abrir_bonos_playstation),
             ("💲  Tarifa por Hora de Socios", self._configurar_tarifa),
             ("🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro),
             ("📄  Gestionar Trámites", self._abrir_tramites),
@@ -311,6 +319,9 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
 
     def _abrir_bonos(self):
         DialogoGestionBonos(self).exec()
+
+    def _abrir_bonos_playstation(self):
+        DialogoGestionBonosPlaystation(self.usuario, self).exec()
 
     def _configurar_tarifa(self):
         DialogoTramosTarifaMiembro(self).exec()

@@ -3,9 +3,9 @@ pcs_gestion_dialogos.py
 =========================
 Diálogos para ADMINISTRAR los catálogos de Estaciones (las PCs del local, su
 IP y las claves de los Clientes PC) y de Bonos de Tiempo de walk-ins (mismo
-espíritu que "Gestionar Rubros" en Artículos). Solo se abren desde
-`ConfiguracionAdminWindow` (ui/main_window.py), exclusiva de ADMIN. Los bonos
-exclusivos de socios se gestionan aparte, en miembros_window.py.
+espíritu que "Gestionar Rubros" en Artículos), más los de la PlayStation 5. Solo
+se abren desde `ConfiguracionAdminWindow` (ui/main_window.py), exclusiva de
+ADMIN. Los bonos exclusivos de socios se gestionan aparte, en miembros_window.py.
 """
 
 from PySide6.QtWidgets import (
@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout,
 )
 
-from control_pcs.repositories import clientes_repo, pcs_repo
+from control_pcs.repositories import clientes_repo, pcs_repo, playstation_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from ui.utils import (
     aplicar_clase, confirmar, encadenar_enter, manejar_errores, mostrar_error,
@@ -268,3 +268,34 @@ class DialogoGestionBonos(DialogoGestionBonosBase):
         "¿Desactivar el bono '{nombre}'? Deja de poder venderse, pero "
         "las sesiones que ya lo usaron conservan su historial."
     )
+
+
+class DialogoBonoPlaystation(DialogoBonoBase):
+    """Alta/edición de un bono de la PlayStation 5. Mismo formulario que los
+    otros catálogos (horas/minutos en pasos de 30, nunca minuto suelto); el
+    `repo` llega al abrirse, atado al usuario (ver
+    playstation_repo.AdministradorDeBonos)."""
+
+    TITULO_NUEVO = "Nuevo Bono de PlayStation 5"
+    TITULO_EDICION = "Modificar Bono de PlayStation 5"
+    EJEMPLO_NOMBRE = "Ej: 1 hora de PlayStation"
+
+
+class DialogoGestionBonosPlaystation(DialogoGestionBonosBase):
+    """
+    Catálogo de bonos EXCLUSIVO de la PlayStation 5 (playstation_repo) -- misma
+    pantalla que la de bonos de PC y la de socios, con su propia tabla. Solo se
+    llega desde Configuración ADMIN (exclusiva de ADMIN); aun así, cada
+    alta/cambio/baja vuelve a exigir que el usuario sea Admin en el repo, así que
+    la regla no depende de que este botón esté escondido.
+    """
+
+    CLASE_FORMULARIO = DialogoBonoPlaystation
+    TITULO = "Gestionar Bonos de PlayStation 5"
+    CONFIRMAR_DESACTIVAR = (
+        "¿Desactivar el bono '{nombre}'? Deja de poder venderse, pero "
+        "las ventas que ya lo usaron conservan su historial."
+    )
+
+    def __init__(self, usuario, parent=None):
+        super().__init__(parent, repo=playstation_repo.AdministradorDeBonos(usuario["id"]))
