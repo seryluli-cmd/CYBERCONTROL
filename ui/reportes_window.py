@@ -19,8 +19,8 @@ Las usa el Admin o una Empleada con `permiso_reportes`.
 from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QDateEdit,
-    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QTabWidget, QWidget
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
+    QTableWidgetItem, QHeaderView, QComboBox, QTabWidget, QWidget,
 )
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QFont
@@ -28,7 +28,7 @@ from PySide6.QtGui import QColor, QFont
 from repositories import reportes_repo, turnos_repo
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, manejar_errores, sin_boton_por_defecto,
-    crear_tabla, rango_de_fechas, fecha_iso,
+    crear_tabla, rango_de_fechas, fecha_iso, crear_selector_de_fecha,
 )
 
 
@@ -137,8 +137,7 @@ class PestañaResumenDelDia(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha = QDateEdit(QDate.currentDate())
-        self.fecha.setCalendarPopup(True)
+        self.fecha = crear_selector_de_fecha()
         self.fecha.dateChanged.connect(self._buscar)
         boton_anterior = QPushButton("◀ Día anterior")
         boton_anterior.clicked.connect(lambda: self._mover_dia(-1))

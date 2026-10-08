@@ -290,6 +290,22 @@ def crear_tabla(titulos, estirar=None, por_filas=False, una_sola=False) -> QTabl
     return tabla
 
 
+def crear_selector_de_fecha(fecha_inicial: QDate = None) -> QDateEdit:
+    """
+    Un campo de fecha con calendario desplegable, que arranca en
+    `fecha_inicial` (hoy, por defecto). Qt pinta de rojo los sábados y
+    domingos del calendario; acá se los deja como cualquier otro día, para
+    que en los reportes el rojo no parezca un aviso.
+    """
+    campo = QDateEdit(fecha_inicial or QDate.currentDate())
+    campo.setCalendarPopup(True)
+    calendario = campo.calendarWidget()
+    dia_comun = calendario.weekdayTextFormat(Qt.Monday)
+    for dia in (Qt.Saturday, Qt.Sunday):
+        calendario.setWeekdayTextFormat(dia, dia_comun)
+    return campo
+
+
 def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=False, estirar=True):
     """
     Arma la fila de filtros de las pantallas que consultan un rango de
@@ -310,10 +326,8 @@ def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=Fals
     - `solo_hoy`: agrega "Solo Hoy", que pone las dos fechas en hoy y busca.
     - `estirar`: deja los botones pegados a la izquierda.
     """
-    fecha_desde = QDateEdit(desde_inicial or QDate.currentDate())
-    fecha_desde.setCalendarPopup(True)
-    fecha_hasta = QDateEdit(QDate.currentDate())
-    fecha_hasta.setCalendarPopup(True)
+    fecha_desde = crear_selector_de_fecha(desde_inicial)
+    fecha_hasta = crear_selector_de_fecha()
 
     filtros = QHBoxLayout()
     filtros.addWidget(QLabel("Desde:"))
