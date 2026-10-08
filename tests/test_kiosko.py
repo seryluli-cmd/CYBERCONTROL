@@ -22,7 +22,8 @@ import database
 import dominio
 import turnos
 from repositories import (
-    articulos_repo, compras_repo, config_repo, reportes_repo, turnos_repo, usuarios_repo, ventas_repo,
+    articulos_repo, compras_repo, config_repo, reportes_repo, tramites_repo, turnos_repo, usuarios_repo,
+    ventas_repo,
 )
 from control_pcs.repositories import bonos_miembro_repo, miembros_repo, pcs_repo
 from base import BaseConBaseTemporal
@@ -583,6 +584,139 @@ class TestVentasYStock(BaseConBaseTemporal):
         )
         venta = ventas_repo.listar_ventas_recientes(1)[0]
         self.assertEqual(venta["total"], 100.0)
+
+
+class TestTramites(BaseConBaseTemporal):
+    """tramites_repo: el catálogo que arma el Admin y el cobro de un trámite
+    con monto libre (una venta más, origen KIOSKO, sin artículo)."""
+
+    def setUp(self):
+        super().setUp()
+        self.usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        self.boleta_id = tramites_repo.crear_tramite("Sacar boleta de luz")
+
+    def _cobrar(self, monto=2500.0, tramite_id=None, pagos=None):
+        return tramites_repo.registrar_tramite(
+            self.usuario_id, tramite_id or self.boleta_id, monto,
+            pagos if pagos is not None else [{"metodo": "EFECTIVO", "monto": monto}],
+        )
+
+    # --- catálogo ---
+
+    def test_el_catalogo_se_lista_ordenado_y_sin_los_dados_de_baja(self):
+        tramites_repo.crear_tramite("anses clave")
+        baja_id = tramites_repo.crear_tramite("Pagar patente")
+        tramites_repo.desactivar_tramite(baja_id)
+
+        nombres = [t["nombre"] for t in tramites_repo.listar_tramites()]
+
+        self.assertEqual(nombres, ["anses clave", "Sacar boleta de luz"])
+
+    def test_no_deja_crear_un_tramite_vacio_ni_repetido(self):
+        with self.assertRaises(ValueError):
+            tramites_repo.crear_tramite("   ")
+        # Sin distinguir mayúsculas ni espacios de más.
+        with self.assertRaises(ValueError):
+            tramites_repo.crear_tramite("  SACAR BOLETA DE LUZ ")
+
+    def test_un_nombre_dado_de_baja_se_puede_volver_a_usar(self):
+        tramites_repo.desactivar_tramite(self.boleta_id)
+        nuevo_id = tramites_repo.crear_tramite("Sacar boleta de luz")
+
+        self.assertNotEqual(nuevo_id, self.boleta_id)
+
+    def test_renombrar_a_su_propio_nombre_no_da_error_pero_a_otro_existente_si(self):
+        otro_id = tramites_repo.crear_tramite("Otro trámite")
+        tramites_repo.modificar_tramite(self.boleta_id, "Sacar boleta de LUZ")
+        self.assertEqual(tramites_repo.obtener_tramite(self.boleta_id)["nombre"], "Sacar boleta de LUZ")
+
+        with self.assertRaises(ValueError):
+            tramites_repo.modificar_tramite(otro_id, "sacar boleta de luz")
+
+    # --- cobro ---
+
+    def test_cobrar_un_tramite_graba_una_venta_de_kiosko_sin_detalle(self):
+        venta_id = self._cobrar(2500.0)
+
+        venta, detalle, pagos = ventas_repo.buscar_venta(venta_id)
+        self.assertEqual(venta["total"], 2500.0)
+        self.assertEqual(venta["origen"], dominio.ORIGEN_KIOSKO)
+        self.assertEqual(venta["estado"], dominio.VENTA_CONFIRMADA)
+        self.assertEqual(len(detalle), 0)
+        self.assertEqual([(p["metodo"], p["monto"]) for p in pagos], [("EFECTIVO", 2500.0)])
+        self.assertEqual(tramites_repo.tramite_de_venta(venta_id), "Sacar boleta de luz")
+
+    def test_una_venta_de_kiosko_comun_no_figura_como_tramite(self):
+        articulos_repo.crear_articulo("COD1", "Producto", None, None, 100.0, 50.0, 0)
+        venta_id = ventas_repo.confirmar_venta(
+            self.usuario_id,
+            [{"codigo": "COD1", "descripcion": "Producto", "cantidad": 1, "precio_unitario": 100.0}],
+            [{"metodo": "EFECTIVO", "monto": 100.0}],
+        )
+
+        self.assertIsNone(tramites_repo.tramite_de_venta(venta_id))
+
+    def test_el_monto_es_libre_y_se_redondea_a_dos_decimales(self):
+        venta_id = self._cobrar(1234.5678, pagos=[{"metodo": "DIGITAL", "monto": 1234.5678}])
+
+        self.assertEqual(ventas_repo.buscar_venta(venta_id)[0]["total"], 1234.57)
+
+    def test_un_pago_mixto_se_reparte_en_efectivo_y_digital(self):
+        venta_id = self._cobrar(3000.0, pagos=[
+            {"metodo": "EFECTIVO", "monto": 1000.0}, {"metodo": "DIGITAL", "monto": 2000.0},
+        ])
+
+        pagos = ventas_repo.buscar_venta(venta_id)[2]
+        self.assertEqual({p["metodo"]: p["monto"] for p in pagos}, {"EFECTIVO": 1000.0, "DIGITAL": 2000.0})
+
+    def test_rechaza_monto_cero_o_negativo(self):
+        for monto in (0, -50.0):
+            with self.assertRaises(ValueError):
+                self._cobrar(monto, pagos=[{"metodo": "EFECTIVO", "monto": 100.0}])
+        self.assertEqual(ventas_repo.listar_ventas_recientes(10), [])
+
+    def test_rechaza_pagos_que_no_cubren_el_monto_y_no_graba_nada(self):
+        with self.assertRaises(ValueError):
+            self._cobrar(2500.0, pagos=[{"metodo": "EFECTIVO", "monto": 1000.0}])
+
+        self.assertEqual(ventas_repo.listar_ventas_recientes(10), [])
+
+    def test_rechaza_un_tramite_dado_de_baja_o_inexistente(self):
+        tramites_repo.desactivar_tramite(self.boleta_id)
+
+        with self.assertRaises(ValueError):
+            self._cobrar(100.0)
+        with self.assertRaises(ValueError):
+            self._cobrar(100.0, tramite_id=9999)
+        self.assertEqual(ventas_repo.listar_ventas_recientes(10), [])
+
+    def test_renombrar_el_tramite_no_cambia_el_historial(self):
+        venta_id = self._cobrar(100.0)
+        tramites_repo.modificar_tramite(self.boleta_id, "Boleta de gas")
+
+        self.assertEqual(tramites_repo.tramite_de_venta(venta_id), "Sacar boleta de luz")
+
+    # --- caja y anulación ---
+
+    def test_lo_cobrado_suma_a_la_caja_del_turno_como_kiosko(self):
+        self._cobrar(2500.0)
+        self._cobrar(500.0, pagos=[{"metodo": "DIGITAL", "monto": 500.0}])
+
+        resumen = turnos_repo.resumen_turno_actual()
+
+        self.assertEqual(resumen["ventas_efectivo"], 2500.0)
+        self.assertEqual(resumen["ventas_digital"], 500.0)
+        self.assertEqual(resumen["kiosko_efectivo"], 2500.0)
+        self.assertEqual(resumen["kiosko_digital"], 500.0)
+        self.assertEqual(resumen["pcs_efectivo"] + resumen["pcs_digital"], 0.0)
+
+    def test_anular_la_venta_la_saca_de_la_caja_y_el_trámite_queda_registrado(self):
+        venta_id = self._cobrar(2500.0)
+        ventas_repo.anular_venta(venta_id, self.usuario_id, "se equivocó")
+
+        self.assertEqual(turnos_repo.resumen_turno_actual()["ventas_efectivo"], 0.0)
+        self.assertEqual(ventas_repo.buscar_venta(venta_id)[0]["estado"], dominio.VENTA_ANULADA)
+        self.assertEqual(tramites_repo.tramite_de_venta(venta_id), "Sacar boleta de luz")
 
 
 class TestBorrarArticuloProtegido(BaseConBaseTemporal):

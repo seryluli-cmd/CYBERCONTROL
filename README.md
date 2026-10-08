@@ -41,7 +41,7 @@ repo correspondiente). `main.py` es el único punto de entrada.
 |---|---|
 | [main.py](main.py) | Entry point. Clase `Aplicacion` alterna `LoginWindow` ↔ `MainWindow` (para poder "cerrar sesión" sin cerrar el programa). Define la hoja de estilos Qt global (botones `primario`/`peligro` vía `setProperty("clase", ...)`). `sys.excepthook` propio: cualquier excepción no capturada se loguea en `data/errores.log` y muestra un cartel, en vez de cerrar la app en silencio. |
 | [database.py](database.py) | Esquema completo (`CREATE TABLE`), `hash_clave`/`verificar_clave`, seed inicial, backups automáticos/manuales, `calcular_turno()`. Ver modelo de datos abajo. |
-| [repositories/](repositories/) | Capa de datos, un archivo por entidad: `articulos_repo.py`, `compras_repo.py`, `config_repo.py`, `reportes_repo.py`, `turnos_repo.py`, `usuarios_repo.py`, `ventas_repo.py`. |
+| [repositories/](repositories/) | Capa de datos, un archivo por entidad: `articulos_repo.py`, `compras_repo.py`, `config_repo.py`, `reportes_repo.py`, `turnos_repo.py`, `tramites_repo.py`, `usuarios_repo.py`, `ventas_repo.py`. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
 | [tests/test_kiosko.py](tests/test_kiosko.py) | Tests de la capa de repositorios/lógica de negocio sobre una base SQLite temporal (no toca `data/kiosko.db`). Sin tests de UI. |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
@@ -85,6 +85,12 @@ repo correspondiente). `main.py` es el único punto de entrada.
   `anulada_motivo`) + **`venta_detalle`** (`descripcion` es una foto del
   nombre al momento de vender, no un join en vivo) + **`venta_pagos`**
   (una venta puede tener varias filas — pago mixto Efectivo + Digital).
+- **`tramites`** (`id`, `nombre`, `activo` — baja lógica) + **`tramites_venta`**
+  (`venta_id` único, `tramite_id`, `descripcion` = foto del nombre al cobrar)
+  — servicios de mostrador con monto libre ("Sacar boleta de luz"). El
+  catálogo lo arma el Admin; cobrar uno es una venta común (origen KIOSKO,
+  sin `venta_detalle`) más una fila en `tramites_venta` que dice cuál fue.
+  Ver `tramites_repo.registrar_tramite`.
 - **`cierres_turno`** — `fecha`/`turno` del cierre, `usuario_id` (quién
   cerró), `fecha_cierre` (momento exacto — es el límite "desde" del
   próximo turno), `fondo_cambio`/`ventas_efectivo`/`ventas_digital`/
@@ -168,6 +174,15 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   `DialogoPago` combina Efectivo + Digital: Digital nunca puede superar lo
   que falta pagar (no da "vuelto" en digital); Efectivo sí puede pasarse y
   ahí se calcula `vuelto`. Confirmar llama a `ventas_repo.confirmar_venta`.
+- **Trámites** (`tramites_window.py`, `DialogoTramites`) — botón de la
+  barra entre "Vender" y "Miembros". Se elige un trámite del catálogo, se
+  tipea el monto (libre, en $) y el medio de pago (Efectivo / Digital /
+  Mixto, mismo `resolver_pagos` que Cargar Saldo) y se cobra con
+  `tramites_repo.registrar_tramite`. Cuenta en Caja, Cierre de Turno y
+  reportes como **Kiosko** (no tiene origen propio). El Admin ve además
+  "Gestionar trámites" (`DialogoGestionTramites`: Nuevo / Modificar /
+  Desactivar), que también está en Configuración ADMIN. En Consulta de
+  Ventas el trámite se ve como una fila "Trámite: <nombre>".
 - **Caja** (`caja_window.py`, `CajaWindow`) — solo lectura, resumen del
   turno en curso vía `turnos_repo.resumen_turno_actual()` (fondo, caja
   actual = fondo + efectivo, ventas efectivo/digital). La caja actual

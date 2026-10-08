@@ -197,6 +197,7 @@ abra no alcanza si los tests no pasan.
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
+| `tramites_repo.registrar_tramite(...)` | se cobra un trámite de mostrador (monto libre): venta KIOSKO sin detalle + vínculo en `tramites_venta` |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
 | `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter |
@@ -677,3 +678,22 @@ Ventas NO cambiaron** -- ahí las impresiones siguen sumadas dentro de Kiosko, y
 Efectivo/Digital tampoco cambian en ningún reporte (las impresiones también
 entran por esos medios). El Ranking de Ventas ya las mostraba como una fila
 más. 221 tests (4 nuevos en `TestResumenPorOrigen` y `TestResumenDelDia`).
+
+**2026-10-08 (más tarde):** **botón "Trámites"** en la barra principal, entre
+"Vender" y "Miembros". Pedido del dueño: servicios que se cobran en el
+mostrador con un monto libre en $ (ej. "Sacar boleta de luz"), con un catálogo
+que arma el Admin. Lo ve cualquiera logueado (`ui/tramites_window.DialogoTramites`:
+elegir trámite, tipear monto, medio de pago Efectivo/Digital/Mixto con el mismo
+`resolver_pagos` de Cargar Saldo). El Admin agrega/edita/desactiva trámites
+desde "Gestionar trámites" dentro del mismo diálogo o desde Configuración ADMIN
+(`DialogoGestionTramites`). Tablas nuevas `tramites` y `tramites_venta`
+(`CREATE TABLE IF NOT EXISTS`, sin migración). `tramites_repo.registrar_tramite`
+arma la venta con `ventas_repo.registrar_venta_sin_detalle` (origen **KIOSKO**) y
+la liga al trámite en la misma transacción; el nombre se guarda como foto, así
+renombrar un trámite no cambia el historial. **Decisión a tener presente:** no
+tiene origen propio, así que Caja, Cierre de Turno y todos los reportes lo cuentan
+DENTRO de Kiosko (no se tocó `cierres_turno`). Si el dueño lo quiere separado como
+las Impresiones, `tramites_venta` ya identifica cada venta: se resta de Kiosko igual
+que se hizo con `dominio.CODIGO_ARTICULO_IMPRESIONES`. Consulta de Ventas muestra la
+fila "Trámite: <nombre>" en el detalle; anular funciona como en cualquier venta. 235
+tests (14 nuevos en `TestTramites`).

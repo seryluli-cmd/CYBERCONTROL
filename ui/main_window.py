@@ -5,14 +5,16 @@ Ventana principal: aparece después del login y muestra de entrada la
 grilla de "Control de PCs" (`control_pcs/ui/pcs_window.py:PanelControlPcs`) — es lo
 que se usa todo el día en el mostrador, así que es la pantalla misma, no
 una opción más de un menú. Desde la barra de arriba se llega a Vender
-(kiosko), a "Miembros" (alta/carga de saldo de socios) y, para
+(kiosko), a "Trámites" (servicios con monto libre, ej. sacar una boleta de
+luz), a "Miembros" (alta/carga de saldo de socios) y, para
 "encargados", a "Administrar Kiosko" (el resto de las pantallas de
 gestión) y, solo para Admin, a "Configuración ADMIN". Qué se ve depende
 del rol y los permisos:
 
 - Cualquiera logueado: operar la grilla de PCs (asignar un bono ya
   creado, abrir con Miembro, finalizar sesión — es una venta más, como
-  Vender), Vender, Caja, Cierre de Turno, y Cambiar mi Clave.
+  Vender), Vender, cobrar un Trámite, Caja, Cierre de Turno, y Cambiar mi
+  Clave.
 - Con `permiso_control_pcs` (o Admin): además ve "Miembros" (alta,
   modificar datos, cargar saldo, desactivar — usa la tarifa y los bonos
   ya definidos, no los edita).
@@ -22,8 +24,9 @@ del rol y los permisos:
   Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos).
 - Solo ADMIN, sin excepción: "Configuración ADMIN" — Gestionar
   Estaciones (agregar/quitar/renombrar PC), Gestionar Bonos (catálogo de
-  walk-ins), Tarifa por Hora de Socios, Gestionar Bonos de Socios y
-  Accesos de Admin (registro de logins de administradores).
+  walk-ins), Tarifa por Hora de Socios, Gestionar Bonos de Socios,
+  Gestionar Trámites y Accesos de Admin (registro de logins de
+  administradores).
   Pedido explícito del dueño: editar estos catálogos es tarea de super
   admin; usarlos (asignar un bono, cobrar con la tarifa ya fijada) sigue
   delegable con `permiso_control_pcs`.
@@ -46,6 +49,7 @@ from ui.ventas_window import VentasWindow
 from ui.consulta_ventas_window import ConsultaVentasWindow
 from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
+from ui.tramites_window import DialogoTramites, DialogoGestionTramites
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs
 from control_pcs.ui.pcs_gestion_dialogos import DialogoGestionEstaciones, DialogoGestionBonos
@@ -94,6 +98,7 @@ class MainWindow(QMainWindow):
         layout_barra.addStretch()
 
         self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
+        self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
         if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"):
             self._agregar_boton_barra(layout_barra, "🧑‍🤝‍🧑  Miembros", self._abrir_miembros)
         if self._es_encargado:
@@ -140,6 +145,9 @@ class MainWindow(QMainWindow):
 
     def _abrir_ventas(self):
         VentasWindow(self.usuario, self).exec()
+
+    def _abrir_tramites(self):
+        DialogoTramites(self.usuario, self).exec()
 
     def _abrir_caja(self):
         CajaWindow(self).exec()
@@ -275,8 +283,8 @@ class AdministrarKioskoWindow(_VentanaDeBotones):
 class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
     Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
-    Tiempo (walk-in), Tarifa por Hora de Socios y Bonos de Socios -- más
-    "Accesos de Admin" (quién entró con una cuenta de administrador, ver
+    Tiempo (walk-in), Tarifa por Hora de Socios, Bonos de Socios y Trámites
+    -- más "Accesos de Admin" (quién entró con una cuenta de administrador, ver
     ui/accesos_admin_window.py). Exclusiva de ADMIN, sin excepción: no hay
     permiso delegable para esto (ver MainWindow._armar_interfaz).
 
@@ -288,12 +296,13 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
 
     def __init__(self, parent=None):
-        super().__init__("Configuración ADMIN", 460, parent)
+        super().__init__("Configuración ADMIN", 520, parent)
         self._armar_botones([
             ("🖥️  Gestionar Estaciones", self._abrir_estaciones),
             ("🎟️  Gestionar Bonos", self._abrir_bonos),
             ("💲  Tarifa por Hora de Socios", self._configurar_tarifa),
             ("🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro),
+            ("📄  Gestionar Trámites", self._abrir_tramites),
             ("🔐  Accesos de Admin", self._abrir_accesos_admin),
         ])
 
@@ -308,6 +317,9 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
 
     def _abrir_bonos_miembro(self):
         DialogoGestionBonosMiembro(self).exec()
+
+    def _abrir_tramites(self):
+        DialogoGestionTramites(self).exec()
 
     def _abrir_accesos_admin(self):
         AccesosAdminWindow(self).exec()

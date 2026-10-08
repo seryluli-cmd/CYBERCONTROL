@@ -7,7 +7,7 @@ lista de ventas arriba y, abajo, los artículos de la venta que se elija.
 
 from PySide6.QtWidgets import QDialog, QTableWidget, QTableWidgetItem
 
-from repositories import ventas_repo
+from repositories import tramites_repo, ventas_repo
 from ui.utils import formato_pesos, manejar_errores, crear_tabla
 
 
@@ -22,7 +22,8 @@ class VentanaConDetalleDeVenta(QDialog):
     Base de las pantallas con una lista de ventas (`self.tabla`, con las
     ventas en `self.ventas`, en el mismo orden) y, abajo, los artículos de la
     venta elegida (`self.tabla_detalle`). Una venta sin artículos de por
-    medio (un bono de PC, una carga de saldo de socio) deja esa tabla vacía.
+    medio (un bono de PC, una carga de saldo de socio) deja esa tabla vacía;
+    un trámite deja una sola fila con su nombre.
 
     La subclase arma sus tablas, crea `self.tabla_detalle` con
     `crear_tabla_detalle_venta()` y conecta
@@ -43,10 +44,19 @@ class VentanaConDetalleDeVenta(QDialog):
         if venta is None:
             return
         _venta, detalle, _pagos = ventas_repo.buscar_venta(venta["id"])
-        for linea in detalle:
+        lineas = [
+            (linea["articulo_codigo"], linea["descripcion"], str(linea["cantidad"]), linea["subtotal"])
+            for linea in detalle
+        ]
+        # Un trámite se cobra sin artículo de por medio (no hay detalle), pero
+        # sí hay que poder ver de qué se trató.
+        tramite = tramites_repo.tramite_de_venta(venta["id"])
+        if tramite is not None:
+            lineas.append(("", f"Trámite: {tramite}", "1", venta["total"]))
+        for codigo, descripcion, cantidad, subtotal in lineas:
             fila = self.tabla_detalle.rowCount()
             self.tabla_detalle.insertRow(fila)
-            self.tabla_detalle.setItem(fila, 0, QTableWidgetItem(linea["articulo_codigo"]))
-            self.tabla_detalle.setItem(fila, 1, QTableWidgetItem(linea["descripcion"]))
-            self.tabla_detalle.setItem(fila, 2, QTableWidgetItem(str(linea["cantidad"])))
-            self.tabla_detalle.setItem(fila, 3, QTableWidgetItem(formato_pesos(linea["subtotal"])))
+            self.tabla_detalle.setItem(fila, 0, QTableWidgetItem(codigo))
+            self.tabla_detalle.setItem(fila, 1, QTableWidgetItem(descripcion))
+            self.tabla_detalle.setItem(fila, 2, QTableWidgetItem(cantidad))
+            self.tabla_detalle.setItem(fila, 3, QTableWidgetItem(formato_pesos(subtotal)))

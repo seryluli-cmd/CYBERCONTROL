@@ -380,6 +380,35 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # TRÁMITES (servicios que se cobran en el mostrador, ej. "Sacar boleta
+    # de luz", con el monto que se tipee en el momento)
+    # -------------------------------------------------------------------
+    # "tramites" es el catálogo que arma el Admin (activo = 0 es la baja:
+    # nada se borra, las ventas ya hechas lo siguen referenciando).
+    # "tramites_venta" une cada venta de un trámite con el trámite que se
+    # cobró -- la venta en sí es una fila común de "ventas" (origen KIOSKO,
+    # sin venta_detalle, ver tramites_repo.registrar_tramite), así que la
+    # caja y el cierre de turno la cuentan solos. "descripcion" es una foto
+    # del nombre al momento de cobrar (igual que venta_detalle.descripcion):
+    # si el Admin renombra el trámite después, el historial no cambia.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tramites (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre          TEXT NOT NULL,
+            activo          INTEGER NOT NULL DEFAULT 1,
+            fecha_creacion  TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tramites_venta (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            venta_id     INTEGER NOT NULL UNIQUE REFERENCES ventas(id),
+            tramite_id   INTEGER NOT NULL REFERENCES tramites(id),
+            descripcion  TEXT NOT NULL
+        )
+    """)
+
+    # -------------------------------------------------------------------
     # CIERRES DE TURNO
     # -------------------------------------------------------------------
     # Un registro por cada vez que una empleada cierra su turno. Guarda
