@@ -1,10 +1,10 @@
 # Sistema de Kiosko — CyberBIOS
 
 Aplicación de escritorio (Windows) en **Python + PySide6 (Qt)**, con **SQLite**
-local, para manejar la caja de un kiosko: ventas con lectura de código de
-barras, control de stock por compras, cierre de turno con fondo de cambio
-fijo, y reportes. La usan el Admin (dueño) y las empleadas desde la PC del
-mostrador.
+local, para manejar el kiosko, las PCs del cyber, socios con saldo prepago,
+trámites de mostrador y una PlayStation 5. Incluye ventas, stock, caja,
+cierres de turno y reportes. La usan el Admin y las empleadas desde la PC
+del mostrador.
 
 Para la guía de uso pensada para quien opera el kiosko (no técnica), ver
 [LEEME.txt](LEEME.txt). Este README es la referencia técnica: para cualquier
@@ -25,25 +25,29 @@ función, ir a buscarla puntualmente (está indexada acá por nombre y archivo).
   `main.py` + `assets/`; la carpeta `data/` (con la base) **no** se
   empaqueta, queda al lado del `.exe` real (`database.py` detecta
   `sys.frozen` para ubicarla ahí en vez de dentro del temp de extracción).
-- Sin frameworks de testing externos — `tests/test_kiosko.py` usa
-  `unittest` de la librería estándar (`python -m unittest discover tests`).
+- Tests con `unittest` de la librería estándar
+  (`python -m unittest discover tests`).
 
 ## Arquitectura: repositorio + ventana
 
-El código separa **acceso a datos** (`repositories/`, funciones puras que
-reciben/devuelven dicts o tuplas, sin nada de Qt) de **UI** (`ui/`, una
-clase `QDialog`/`QMainWindow` por pantalla, que llama a las funciones del
-repo correspondiente). `main.py` es el único punto de entrada.
+El código separa **acceso a datos** (repositorios, sin Qt) de **UI**
+(ventanas y paneles, sin SQL). El kiosko usa `repositories/` y `ui/`;
+Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
+`control_pcs/`. Comparten `database.py`, `dominio.py` y `turnos.py`.
+`main.py` es el único punto de entrada. Ver las reglas en `CLAUDE.md`.
 
 ## Archivos
 
 | Archivo | Contenido |
 |---|---|
 | [main.py](main.py) | Entry point. Clase `Aplicacion` alterna `LoginWindow` ↔ `MainWindow` (para poder "cerrar sesión" sin cerrar el programa). Define la hoja de estilos Qt global (botones `primario`/`peligro` vía `setProperty("clase", ...)`). `sys.excepthook` propio: cualquier excepción no capturada se loguea en `data/errores.log` y muestra un cartel, en vez de cerrar la app en silencio. |
-| [database.py](database.py) | Esquema completo (`CREATE TABLE`), `hash_clave`/`verificar_clave`, seed inicial, backups automáticos/manuales, `calcular_turno()`. Ver modelo de datos abajo. |
+| [database.py](database.py) | Esquema, migraciones, claves y copias de seguridad. Ver modelo de datos abajo. |
+| [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
 | [repositories/](repositories/) | Capa de datos, un archivo por entidad: `articulos_repo.py`, `compras_repo.py`, `config_repo.py`, `reportes_repo.py`, `turnos_repo.py`, `tramites_repo.py`, `usuarios_repo.py`, `ventas_repo.py`. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
-| [tests/test_kiosko.py](tests/test_kiosko.py) | Tests de la capa de repositorios/lógica de negocio sobre una base SQLite temporal (no toca `data/kiosko.db`). |
+| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5. |
+| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC y registro de fallos compartido con la UI. |
+| [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
 | [assets/](assets/) | Ícono de la app (`icono.ico`/`.png`). |
@@ -114,20 +118,17 @@ repo correspondiente). `main.py` es el único punto de entrada.
   `fecha_verificacion` (nullable, los completa el Admin después desde
   Control de Cierres) y el desglose por origen (`kiosko_*`, `pcs_*`,
   `playstation_*`, cada uno en efectivo y digital).
-- **`configuracion`** — tabla genérica clave/valor. Hoy solo dos claves:
-  `fondo_cambio` (monto del fondo fijo, arranca en `50000`, editable solo
-  por Admin desde Usuarios) y `rubros_iniciales_cargados` (flag interno,
-  no se muestra en la UI, evita que los 4 rubros semilla —`BEBIDAS`,
-  `KIOSKO`, `ARTÍCULOS DE LIMPIEZA`, `INSUMOS DE PAPELERÍA`— reaparezcan
-  si el Admin borra alguno a propósito).
-- **`calcular_turno(fecha_hora)`** (database.py) — Mañana 06-14, Tarde
+- **`configuracion`** — tabla genérica clave/valor. Incluye el fondo de
+  cambio, el indicador de rubros iniciales, tarifas y claves de Clientes PC.
+  Las claves exactas están centralizadas en los repositorios que las usan.
+- **`calcular_turno(fecha_hora)`** (`turnos.py`) — Mañana 06-14, Tarde
   14-22, Noche 22-06 (cruza medianoche). Se usa al registrar una venta.
   ⚠️ **Excepción: los domingos son distintos** — ese día solo hay 2
   turnos de 12hs en vez de 3 (no existe Tarde): Mañana pasa a durar
   06-18 y Noche pasa a ser 18-06 del lunes. El sábado a la noche sigue
   siendo el turno normal 22-06 (mismo criterio que la PWA web hermana,
   ver `esDiaDomingo`/`turnoActual` en el README de ese repo). Para
-  mostrar el nombre según el día (`database.etiqueta_turno(fecha,
+  mostrar el nombre según el día (`turnos.etiqueta_turno(fecha,
   turno)`) los domingos se muestran como **"Domingo T1"**/**"Domingo
   T2"** en vez de "Mañana"/"Noche"; el resto de los días, con el nombre
   normal.
@@ -138,7 +139,7 @@ repo correspondiente). `main.py` es el único punto de entrada.
   Noche) no cambia a qué turno/día queda atribuido el cierre (ver
   `turnos_repo.cerrar_turno`, cubierto por `TestEtiquetaDeTurnoEnElCierre`
   y `TestFechaDelCierreEsElDiaQueArrancoElTurno` en los tests).
-- **`database.turno_vencimiento(dia, turno)`** — momento en que un turno
+- **`turnos.turno_vencimiento(dia, turno)`** — momento en que un turno
   de un día dado queda vencido: fin de su ventana nominal +
   `TURNO_GRACIA_MIN` (40 min) de gracia, para darle tiempo a quien cierra
   el turno anterior antes de avisar. **`turnos_repo.turnos_del_mes_actual()`**
@@ -173,14 +174,14 @@ no corrió antes, siembra los 4 rubros default.
 del día), conserva los últimos 30 archivos. Copia manual a cualquier
 carpeta desde Usuarios → "Copia de Seguridad" (`database.copiar_backup_a`).
 
-## Pantallas (`ui/`)
+## Pantallas (`ui/` y `control_pcs/ui/`)
 
-Todo se abre como diálogo modal desde `main_window.py` (no hay tabs/vistas
-embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
+`MainWindow` muestra la grilla de PCs y la PlayStation 5 como panel principal;
+el resto se abre en diálogos. Arma los accesos según rol y permisos.
 
 **Para cualquier usuario (Admin o Empleada):**
 - **Ventas** (`ventas_window.py`, `VentasWindow` + `DialogoPago`) —
-  pantalla principal. Escaneo por código de barras (Enter en el campo
+  pantalla de facturación. Escaneo por código de barras (Enter en el campo
   código dispara `_escanear()`; Enter con el campo vacío y carrito no
   vacío pasa directo a cobrar). Atajos F5/F6/F7 abren el buscador
   (`buscar_articulo.py`, `DialogoBuscarArticulo`) por código/descripción/
@@ -227,8 +228,9 @@ embebidas) — `MainWindow` arma el menú según el rol del usuario logueado.
   vendido en efectivo (el fondo de cambio se queda en la caja para el
   turno siguiente).
 
-**Solo Admin** (bloque separado en `main_window.py`, gateado por
-`usuario['rol'] == 'ADMIN'`):
+**Administrar Kiosko:** Artículos, Compras, Consulta de Ventas, Reportes y
+Control de Cierres pueden delegarse por permiso individual a una empleada.
+Usuarios y las configuraciones de catálogos son exclusivos del Admin.
 - **Artículos** (`articulos_window.py`, `ArticulosWindow`) — grilla con
   búsqueda en vivo, resalta en rojo filas con `stock < stock_minimo`.
   `DialogoArticulo` para alta/edición (código no editable una vez creado;
@@ -319,10 +321,12 @@ más allá de la fila en `sesiones` (solo para el aviso de turnos
 faltantes) — el dict `usuario` (con su `rol`) simplemente se pasa por
 parámetro a cada ventana que se abre.
 
-`rol` es `ADMIN` o `EMPLEADA`. Las pantallas de administración ni siquiera
-aparecen en el menú para una Empleada (no es solo un botón deshabilitado).
-Dentro de alguna pantalla ya Admin-only hay chequeos extra de `es_admin`
-(defensa en profundidad, ej. el botón Anular en Consulta de Ventas).
+`rol` es `ADMIN` o `EMPLEADA`. Una empleada puede recibir permisos para
+Artículos, Compras, Consulta de Ventas (sin anular), Reportes, Control de
+Cierres y operación de PCs/Miembros; la lista única está en
+`usuarios_repo.PERMISOS_EMPLEADA`. Usuarios, Configuración ADMIN y Anular
+Venta permanecen exclusivos del Admin. La grilla de PCs es visible para todo
+usuario logueado; operar la PlayStation pide Admin o `permiso_control_pcs`.
 
 ⚠️ No hay cifrado de la base ni protección contra acceso directo al
 archivo `data/kiosko.db` con otra herramienta — la seguridad es a nivel de
@@ -334,11 +338,12 @@ Casi todas las acciones de UI que tocan datos están envueltas con el
 decorador `@manejar_errores` (`ui/utils.py`): si la función levanta
 `ValueError`, se asume un mensaje ya pensado para el usuario y se muestra
 tal cual ("No se pudo completar"); cualquier otra excepción se loguea
-completa (traceback) en `data/errores.log` vía `registrar_error()` y se
+completa (traceback) en `data/errores.log` vía `errores.registrar_error()` y se
 muestra un cartel genérico con el nombre de la excepción, para que el
 programa nunca se cierre en silencio. Además `main.py` instala un
 `sys.excepthook` global como red de seguridad final para lo que se escape
-de ese decorador (por ejemplo, al construir una ventana).
+de ese decorador (por ejemplo, al construir una ventana). El servidor de red
+usa el mismo registro sin importar Qt ni guardar claves en el contexto.
 
 ## Cómo probarlo en local
 
@@ -357,21 +362,23 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-Cubren: límites de `calcular_turno`, hash/verificación de clave (formato
-nuevo y legacy, migración en login), venta/anulación con movimiento de
-stock y redondeo a 2 decimales, borrado de artículo protegido si tiene
-movimientos, y la etiqueta de turno correcta al cerrar tarde.
+332 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
+PCs, Miembros, PlayStation 5, Trámites, servidor de red, migraciones y algunas
+interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
+interfaz con Qt fuera de pantalla.
 
 ## Empaquetado (.exe)
 
-`Kiosko.spec` (PyInstaller): empaqueta `main.py` + `assets/` como app sin
+Instalá PyInstaller para armar el ejecutable (`pip install pyinstaller`) y
+ejecutá `pyinstaller Kiosko.spec`. El archivo está versionado: empaqueta
+`main.py` + `assets/` como app sin
 consola (`console=False`), ícono `assets/icono.ico`. La carpeta `data/`
 (base + backups) **no** se empaqueta — queda al lado del `.exe` instalado,
 así los datos sobreviven a reinstalar/actualizar el programa.
 
 ## Estado del repo
 
-Es un repositorio git local, sin remoto configurado todavía (no hay
-deploy/CI — se distribuye como `.exe` armado a mano con PyInstaller). Ver
-[LEEME.txt](LEEME.txt) para el estado funcional (qué cubre esta primera
-versión y qué quedó afuera a propósito).
+El remoto `origin` es `https://github.com/seryluli-cmd/CYBERCONTROL`.
+No hay CI configurada; el `.exe` se arma con PyInstaller. Ver
+[LEEME.txt](LEEME.txt) para la guía de uso y [docs/HISTORIAL.md](docs/HISTORIAL.md)
+para el historial de decisiones.

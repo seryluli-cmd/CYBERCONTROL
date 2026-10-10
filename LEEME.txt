@@ -1,77 +1,55 @@
-SISTEMA DE KIOSKO - Primera versión
-=====================================
+CYBERCONTROL - Guía rápida
+==========================
 
-CÓMO PROBARLO EN ESTA COMPUTADORA
-----------------------------------
-1. Necesitás Python 3.10 o más nuevo instalado.
-2. Abrí una terminal en esta carpeta y ejecutá:
+INICIO
+------
+Si usás el programa desde el código fuente:
+  pip install -r requirements.txt
+  python main.py
 
-     pip install -r requirements.txt
-     python main.py
+En el primer arranque se crea el usuario Administrador con clave 1234.
+Entrá por nombre y cambiá esa clave desde "Clave". El Admin puede crear
+otras cuentas y elegir sus permisos desde "Usuarios".
 
-3. Se va a abrir la pantalla de Login. La primera vez, el sistema crea
-   solo un usuario Administrador:
+DATOS Y COPIAS
+--------------
+La información del negocio está en data/kiosko.db, junto al programa.
+No borres ni reemplaces esa carpeta al actualizar el ejecutable.
+Se guarda una copia automática diaria en data/backups (hasta 30 copias).
+El Admin puede hacer una copia adicional desde Usuarios > Copia de
+Seguridad, por ejemplo a un pendrive.
 
-     Nombre: Administrador
-     Clave:  1234
+VENTAS Y CAJA
+-------------
+- Vender: escaneá artículos, ajustá cantidades y cobrá en efectivo,
+  digital o ambos. El stock puede quedar negativo; luego se corrige
+  al registrar la compra.
+- Trámites: cobrá el servicio que hizo el local, no el importe de la
+  boleta del cliente. El Admin administra el catálogo de trámites.
+- Caja: muestra el efectivo esperado del turno y el desglose de ventas.
+- Cierre de Turno: registra cuánto retirar, dejando el fondo de cambio.
+- Clave: cada persona puede cambiar su propia contraseña.
 
-   (El login es por nombre, no por número — ignora mayúsculas y
-   espacios de más, así que "administrador" también funciona.)
+PCs, SOCIOS Y PLAYSTATION 5
+----------------------------
+La grilla principal muestra el estado de cada PC y de la PlayStation 5.
+Los bonos de PC, de socios y de PlayStation son catálogos separados.
+Las PCs comunes se pueden operar con cualquier usuario logueado.
+Al vencer el tiempo de una PC, el Cliente PC la bloquea. La PlayStation
+avisa en rojo hasta que un operador confirme que la consola quedó libre.
+Operar la PlayStation y entrar a Miembros requiere el permiso
+"Operar PCs y Miembros" o ser Admin. Los catálogos y las estaciones
+se administran desde Configuración ADMIN.
 
-   Entrá con ese usuario y andá a "Usuarios" para crear a tus empleadas
-   (con su propio nombre y clave) y ajustar el fondo de cambio si hace
-   falta. Cada usuario activo necesita un nombre distinto (no puede
-   haber dos "Matías" activos a la vez, porque el login no sabría a
-   cuál de los dos elegir).
-
-DÓNDE QUEDAN GUARDADOS LOS DATOS
-----------------------------------
-Todo se guarda en un solo archivo: data/kiosko.db (dentro de esta misma
-carpeta). Ese archivo es la base de datos completa: artículos, ventas,
-compras, cierres de turno, todo.
-
-COPIAS DE SEGURIDAD
-----------------------------------
-El sistema guarda solo una copia automática por día en data/backups
-(la primera vez que se abre el programa ese día), conservando los
-últimos 30 días. Además, desde "Usuarios" → "Copia de Seguridad", el
-Admin puede sacar una copia extra a mano hacia cualquier carpeta (por
-ejemplo, un pendrive) — conviene hacerlo de vez en cuando para tener
-una copia fuera de esta PC.
+PERMISOS
+--------
+El Admin puede delegar por separado Artículos, Compras, Consulta de
+Ventas, Reportes, Control de Cierres y el acceso a Miembros/PlayStation.
+Anular ventas, Usuarios y Configuración ADMIN quedan para el Admin.
+Una persona sin esos permisos puede vender, cobrar trámites, ver Caja,
+cerrar turno y cambiar su clave.
 
 SI ALGO FALLA
-----------------------------------
-Si alguna acción no se puede completar, el sistema muestra un cartel
-explicando qué pasó (en vez de romperse en silencio), y guarda el
-detalle técnico en data/errores.log por si hace falta revisarlo.
-
-QUÉ HACE CADA MÓDULO (resumen)
-----------------------------------
-- Ventas: pantalla de facturación para las empleadas. Escaneo de
-  código de barras, cantidad editable, pago dividido entre Efectivo y
-  Digital (Mercado Pago / transferencia).
-- Caja: consulta rápida de cómo viene la plata del turno actual.
-- Cierre de Turno: lo hace cada empleada al terminar su horario.
-  Calcula cuánto tiene que retirar en efectivo dejando el fondo de
-  cambio fijo para el turno siguiente.
-- Artículos, Compras, Reportes, Consulta de Ventas y Usuarios: solo
-  los ve el Admin.
-
-ESTO ES UNA PRIMERA VERSIÓN
-----------------------------------
-Cubre lo que fuimos definiendo juntos: Login con roles, Artículos,
-Compras (única forma de cargar stock), Ventas con pago dividido,
-Caja / Cierre de Turno con fondo fijo, Anular Venta (solo Admin), y
-Reportes de Resumen + Ranking de Ventas.
-
-Lo que quedó afuera a propósito (para no complicar la primera versión,
-se puede sumar después sin romper nada): datos de clientes, cuenta
-corriente, impuestos/IVA, promociones, y el resto de los reportes que
-no usás seguido.
-
-CÓMO SEGUIR
-----------------------------------
-Cuando lo pruebes, contame qué querés ajustar (algo visual, algún dato
-que falte en una pantalla, algún reporte nuevo) y lo vamos afinando.
-Más adelante armamos un instalador (.exe) para que quede como
-cualquier otro programa de Windows en la PC del kiosko.
+-------------
+El programa muestra un aviso. El detalle técnico queda en
+data/errores.log; ese archivo ayuda a investigar el problema.
