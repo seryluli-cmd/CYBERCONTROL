@@ -74,6 +74,21 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.assertEqual(ventana.valor_total.text(), "$ 460,00")
         self.assertTrue({"Efectivo", "Digital", "TOTAL"} <= set(textos), textos)
 
+    def test_muestra_los_tramites_sin_duplicarlos_en_el_total(self):
+        from repositories import tramites_repo
+
+        tramite_id = tramites_repo.crear_tramite("Sacar boleta de luz")
+        tramites_repo.registrar_tramite(
+            self.usuario_id, tramite_id, 2500.0, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 2500.0}]
+        )
+        self._vender("COD9", "Producto", 1, 10.0)
+
+        ventana = self._abrir()
+
+        self.assertEqual(ventana.valor_tramites.text(), "$ 2.500,00")
+        self.assertIn("$ 2.510,00 ef.", ventana.valor_kiosko.text())   # el trámite sigue dentro de Kiosko
+        self.assertEqual(ventana.valor_total.text(), "$ 2.510,00")      # y cuenta una sola vez
+
     def test_sin_impresiones_muestra_cero(self):
         self._vender("COD9", "Producto", 1, 10.0)
 

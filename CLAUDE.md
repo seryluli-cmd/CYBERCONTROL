@@ -373,8 +373,9 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   digital con una cuenta aproximada. Por eso el título dice "incluidas en
   Kiosko" (el Resumen del Día y Reportes sí las muestran aparte, ahí Kiosko es un
   solo importe). Si el dueño pide Kiosko sin impresiones, primero hay que decidir
-  cómo repartirlas por medio de pago. Trámites sigue dentro de Kiosko en esa
-  pantalla.
+  cómo repartirlas por medio de pago. Los trámites van igual: renglón informativo
+  "incluidos en Kiosko" (`resumen["tramites"]`), ya están en el TOTAL, no se
+  suman dos veces.
 - **En pantalla, el fondo de cambio se llama "Cambio Fijo" en TODOS lados**
   (Caja, Cierre de Turno, Control de Cierres, Usuarios; pedido del dueño,
   2026-10-10). Por dentro sigue siendo `fondo_cambio` (columnas, repos, claves):
@@ -454,4 +455,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-339 pruebas al 2026-10-10.
+340 pruebas al 2026-10-10.

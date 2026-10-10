@@ -30,7 +30,7 @@ VENTAS Y CAJA
 - Cierre de Turno: registra cuánto retirar, dejando el Cambio Fijo. Es el
   resumen que se le manda al dueño: muestra Efectivo, Digital y TOTAL
   (Kiosko + Alquiler de PCs + PlayStation 5) y lo vendido en Impresiones
-  (ya está sumado dentro de Kiosko, no se suma de nuevo).
+  y en Trámites (ya están sumados dentro de Kiosko, no se suman de nuevo).
 - Clave: cada persona puede cambiar su propia contraseña.
 
 PCs, SOCIOS Y PLAYSTATION 5

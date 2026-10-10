@@ -1171,6 +1171,7 @@ class TestResumenDelDia(BaseConBaseTemporal):
         self._vender_impresiones(datetime(2026, 1, 5, 9, 0), 1, metodo="DIGITAL")   # $150 digital
         anulada = self._vender_impresiones(datetime(2026, 1, 5, 9, 30), 4)
         self._anular(anulada, datetime(2026, 1, 5, 9, 40))                          # anulada: no cuenta
+        self._cobrar_tramite(datetime(2026, 1, 5, 9, 45), 2500.0)                   # trámite en efectivo
 
         with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = datetime(2026, 1, 5, 10, 0)
@@ -1178,11 +1179,12 @@ class TestResumenDelDia(BaseConBaseTemporal):
             resumen = turnos_repo.resumen_turno_actual()
 
         self.assertEqual(resumen["impresiones"], 450.0)
-        self.assertEqual(resumen["kiosko_efectivo"], 310.0)
+        self.assertEqual(resumen["tramites"], 2500.0)
+        self.assertEqual(resumen["kiosko_efectivo"], 2810.0)
         self.assertEqual(resumen["kiosko_digital"], 150.0)
-        self.assertEqual(resumen["ventas_efectivo"], 310.0)
-        # El TOTAL es efectivo + digital: las impresiones no se suman otra vez.
-        self.assertEqual(resumen["ventas_total"], 460.0)
+        self.assertEqual(resumen["ventas_efectivo"], 2810.0)
+        # El TOTAL es efectivo + digital: ni las impresiones ni los trámites se suman otra vez.
+        self.assertEqual(resumen["ventas_total"], 2960.0)
 
     def test_cuenta_las_ventas_anuladas_aparte_y_no_las_suma_al_total(self):
         self._cerrar(datetime(2026, 1, 5, 6, 0))

@@ -189,6 +189,8 @@ class CierreTurnoWindow(_PantallaDeCaja):
         # Kiosko (y de su "ef. + dig."), por eso el título lo aclara -- así nadie
         # las cuenta dos veces al sumar los renglones a mano.
         layout_impresiones, self.valor_impresiones = _etiqueta_dato("Impresiones (incluidas en Kiosko)", "")
+        # Igual con los trámites: se cobran como una venta de Kiosko, ya están en el TOTAL.
+        layout_tramites, self.valor_tramites = _etiqueta_dato("Trámites (incluidos en Kiosko)", "")
 
         boton_cerrar_turno = QPushButton("Confirmar Cierre de Turno")
         aplicar_clase(boton_cerrar_turno, "primario")
@@ -204,7 +206,8 @@ class CierreTurnoWindow(_PantallaDeCaja):
         self._armar_cuerpo(
             [(layout_fondo, layout_retirar), (layout_efectivo, layout_digital),
              (layout_total, QVBoxLayout()),
-             (layout_kiosko, layout_pcs), (layout_playstation, layout_impresiones)],
+             (layout_kiosko, layout_pcs), (layout_playstation, layout_impresiones),
+             (layout_tramites, QVBoxLayout())],
             "Retirá el efectivo indicado y guardalo en el sobre. Dejá el cambio "
             "fijo en el cajón para que arranque el próximo turno.",
             botones,
@@ -225,6 +228,7 @@ class CierreTurnoWindow(_PantallaDeCaja):
             _texto_desglose(resumen["playstation_efectivo"], resumen["playstation_digital"])
         )
         self.valor_impresiones.setText(formato_pesos(resumen["impresiones"]))
+        self.valor_tramites.setText(formato_pesos(resumen["tramites"]))
 
     @manejar_errores
     def _cerrar_turno(self):
