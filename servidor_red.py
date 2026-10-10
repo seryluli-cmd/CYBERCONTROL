@@ -67,6 +67,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 import dominio
+from errores import registrar_error
 from control_pcs.repositories import (
     accesos_admin_pc_repo, clientes_repo, comandos_pc_repo, miembros_repo, pcs_repo,
 )
@@ -148,7 +149,13 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         return self.headers.get("Authorization") == "Bearer " + clave_configurada
 
     def do_GET(self):
-        if not self._autorizado():
+        try:
+            autorizado = self._autorizado()
+        except Exception as error:
+            registrar_error(error, "Servidor de red: autorización GET")
+            self._responder_vacio(500)
+            return
+        if not autorizado:
             self._responder_vacio(403)
             return
 
@@ -164,9 +171,10 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         try:
             item = pcs_repo.estado_de_estacion(nombre_estacion)
-        except Exception:
+        except Exception as error:
             # Un problema leyendo la base no puede tirar abajo el hilo
             # del servidor -- se responde 500 y sigue escuchando.
+            registrar_error(error, "Servidor de red: leer estado de PC")
             self._responder_vacio(500)
             return
 
@@ -182,8 +190,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 # estaciones.ultima_ip -- lo que lee el botón "Traer IP"
                 # de Gestionar Estaciones.
                 pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0])
-            except Exception:
-                pass  # no puede romper la consulta de bloqueo por esto
+            except Exception as error:
+                registrar_error(error, "Servidor de red: registrar conexión de PC")
             if item["estacion"]["cliente_cerrado_desde"] is not None:
                 # Esta PC había quedado sin Cliente PC (alguien lo cerró
                 # desde el panel admin) y acaba de volver: se anota cuánto
@@ -191,8 +199,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 # pedido normal no cuesta nada de más.
                 try:
                     accesos_admin_pc_repo.registrar_regreso_del_cliente(item["estacion"]["id"])
-                except Exception:
-                    pass  # un registro que falla no puede romper la consulta de bloqueo
+                except Exception as error:
+                    registrar_error(error, "Servidor de red: registrar regreso del Cliente PC")
             try:
                 comando = comandos_pc_repo.proximo_comando_pendiente(item["estacion"]["id"])
                 if comando is not None:
@@ -200,8 +208,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                     cuerpo["comando"] = {
                         "id": comando["id"], "tipo": comando["tipo"], "payload": comando["payload"],
                     }
-            except Exception:
-                pass  # un comando remoto que falla no puede romper la consulta de bloqueo, lo esencial
+            except Exception as error:
+                registrar_error(error, "Servidor de red: consultar comando remoto")
 
         try:
             # Viaja en TODO pedido de estado (exista o no la estación) para
@@ -209,8 +217,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             # local propio, sin tener que ir PC por PC cuando se cambia --
             # ver clientes_repo y el panel admin ("A") de cliente_pc.py.
             cuerpo["clave_admin"] = clientes_repo.obtener_clave_admin_pcs()
-        except Exception:
-            pass
+        except Exception as error:
+            registrar_error(error, "Servidor de red: leer clave admin de PCs")
 
         self._responder_json(200, cuerpo)
 
@@ -227,7 +235,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         """
         try:
             item = pcs_repo.estado_de_estacion(nombre_estacion)
-        except Exception:
+        except Exception as error:
+            registrar_error(error, "Servidor de red: resolver estación")
             self._responder_error(500, _ERROR_INTERNO)
             return None
         if item is None:
@@ -238,7 +247,13 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         return item
 
     def do_POST(self):
-        if not self._autorizado():
+        try:
+            autorizado = self._autorizado()
+        except Exception as error:
+            registrar_error(error, "Servidor de red: autorización POST")
+            self._responder_error(500, _ERROR_INTERNO)
+            return
+        if not autorizado:
             self._responder_vacio(403)
             return
 
@@ -277,7 +292,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             # ya viene pensado para mostrarle al Miembro tal cual.
             self._responder_error(400, str(error))
             return
-        except Exception:
+        except Exception as error:
+            registrar_error(error, "Servidor de red: login de socio")
             self._responder_error(500, _ERROR_INTERNO)
             return
 
@@ -321,7 +337,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         try:
             pcs_repo.finalizar_sesion(item["sesion"]["id"])
-        except Exception:
+        except Exception as error:
+            registrar_error(error, "Servidor de red: logout de socio")
             self._responder_error(500, _ERROR_INTERNO)
             return
 
@@ -354,7 +371,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         except ValueError:
             self._responder_error(400, _PEDIDO_INVALIDO)
             return
-        except Exception:
+        except Exception as error:
+            registrar_error(error, "Servidor de red: evento admin de PC")
             self._responder_error(500, _ERROR_INTERNO)
             return
 
@@ -387,7 +405,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             else:
                 self._responder_error(400, _PEDIDO_INVALIDO)
                 return
-        except Exception:
+        except Exception as error:
+            registrar_error(error, "Servidor de red: resultado de comando")
             self._responder_error(500, _ERROR_INTERNO)
             return
 
@@ -406,7 +425,8 @@ def iniciar_servidor():
     global _servidor
     try:
         _servidor = ThreadingHTTPServer(("0.0.0.0", PUERTO_SERVIDOR), _ManejadorEstado)
-    except OSError:
+    except OSError as error:
+        registrar_error(error, "Servidor de red: abrir puerto")
         return None
     hilo = threading.Thread(target=_servidor.serve_forever, daemon=True)
     hilo.start()

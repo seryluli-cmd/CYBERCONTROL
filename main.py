@@ -352,7 +352,7 @@ def _manejar_excepcion_no_capturada(tipo, valor, tb):
     """
     traceback.print_exception(tipo, valor, tb)
     try:
-        from ui.utils import registrar_error
+        from errores import registrar_error
         registrar_error(valor)
     except Exception:
         pass

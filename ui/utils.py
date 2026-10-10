@@ -10,9 +10,7 @@ por defecto).
 """
 
 import functools
-import traceback
 from datetime import datetime
-from pathlib import Path
 
 from PySide6.QtCore import QDate, QEvent, QObject, Qt
 from PySide6.QtWidgets import (
@@ -20,30 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTableWidget, QWidget,
 )
 
-import database
-
-# Junto al archivo de la base de datos, para tenerlo todo en la misma
-# carpeta "data" (ver database.DATA_DIR, que ya sabe resolver esta
-# ubicación tanto corriendo desde código como empaquetado en un .exe).
-_RUTA_LOG_ERRORES = Path(database.DATA_DIR) / "errores.log"
-
-
-def registrar_error(excepcion: Exception):
-    """
-    Guarda la traza completa de un error en data/errores.log, con fecha
-    y hora, para poder revisarla después sin tener que reproducir el
-    problema en vivo. La usuaria nunca ve este archivo: solo el cartel
-    amigable que muestra `manejar_errores`.
-    """
-    try:
-        _RUTA_LOG_ERRORES.parent.mkdir(parents=True, exist_ok=True)
-        with open(_RUTA_LOG_ERRORES, "a", encoding="utf-8") as archivo:
-            archivo.write(f"\n--- {datetime.now().isoformat(timespec='seconds')} ---\n")
-            archivo.write("".join(
-                traceback.format_exception(type(excepcion), excepcion, excepcion.__traceback__)
-            ))
-    except Exception:
-        pass  # si ni siquiera se puede escribir el log, no hay mucho más para hacer acá
+from errores import registrar_error
 
 
 def manejar_errores(func):
