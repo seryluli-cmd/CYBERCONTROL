@@ -28,7 +28,8 @@ VENTAS Y CAJA
   boleta del cliente. El Admin administra el catálogo de trámites.
 - Caja: muestra el efectivo esperado del turno y el desglose de ventas.
 - Cierre de Turno: registra cuánto retirar, dejando el Cambio Fijo. Es el
-  resumen que se le manda al dueño: incluye lo vendido en Impresiones
+  resumen que se le manda al dueño: muestra Efectivo, Digital y TOTAL
+  (Kiosko + Alquiler de PCs + PlayStation 5) y lo vendido en Impresiones
   (ya está sumado dentro de Kiosko, no se suma de nuevo).
 - Clave: cada persona puede cambiar su propia contraseña.
 

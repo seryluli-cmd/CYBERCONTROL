@@ -229,7 +229,8 @@ el resto se abre en diálogos. Arma los accesos según rol y permisos.
   turno siguiente). Esta pantalla es el resumen que las empleadas le
   mandan al dueño. En pantalla el fondo de cambio se llama **"Cambio Fijo"**
   en todos lados (pedido del dueño; por dentro sigue siendo `fondo_cambio`).
-  Acá se agrega
+  Muestra Efectivo, Digital y **TOTAL** (`resumen["ventas_total"]`: todo lo
+  cobrado, sin sumar las impresiones aparte). Acá se agrega
   **Impresiones** (`resumen["impresiones"]`), informativo: ya está sumado
   dentro de Kiosko, no es un monto extra.
 
@@ -367,7 +368,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-338 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
+339 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red, migraciones y algunas
 interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

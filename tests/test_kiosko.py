@@ -1181,6 +1181,8 @@ class TestResumenDelDia(BaseConBaseTemporal):
         self.assertEqual(resumen["kiosko_efectivo"], 310.0)
         self.assertEqual(resumen["kiosko_digital"], 150.0)
         self.assertEqual(resumen["ventas_efectivo"], 310.0)
+        # El TOTAL es efectivo + digital: las impresiones no se suman otra vez.
+        self.assertEqual(resumen["ventas_total"], 460.0)
 
     def test_cuenta_las_ventas_anuladas_aparte_y_no_las_suma_al_total(self):
         self._cerrar(datetime(2026, 1, 5, 6, 0))

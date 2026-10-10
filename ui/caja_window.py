@@ -170,8 +170,11 @@ class CierreTurnoWindow(_PantallaDeCaja):
         # empleadas le mandan como resumen del turno); por dentro sigue siendo el
         # "fondo de cambio" (`fondo_cambio`).
         layout_fondo, self.valor_fondo = _etiqueta_dato("Cambio Fijo", "")
-        layout_efectivo, self.valor_efectivo = _etiqueta_dato("Ventas en Efectivo", "")
-        layout_digital, self.valor_digital = _etiqueta_dato("Ventas Digital", "")
+        layout_efectivo, self.valor_efectivo = _etiqueta_dato("Efectivo", "")
+        layout_digital, self.valor_digital = _etiqueta_dato("Digital", "")
+        # Efectivo + Digital de Kiosko, PCs y PlayStation 5; las impresiones no se
+        # suman aparte porque ya están dentro de Kiosko.
+        layout_total, self.valor_total = _etiqueta_dato("TOTAL", "")
         layout_retirar, self.valor_retirar = _etiqueta_dato("A RETIRAR EN EFECTIVO", "")
         layout_kiosko, self.valor_kiosko = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO], ""
@@ -199,7 +202,8 @@ class CierreTurnoWindow(_PantallaDeCaja):
         botones.addWidget(boton_cerrar_turno)
 
         self._armar_cuerpo(
-            [(layout_fondo, layout_efectivo), (layout_digital, layout_retirar),
+            [(layout_fondo, layout_retirar), (layout_efectivo, layout_digital),
+             (layout_total, QVBoxLayout()),
              (layout_kiosko, layout_pcs), (layout_playstation, layout_impresiones)],
             "Retirá el efectivo indicado y guardalo en el sobre. Dejá el cambio "
             "fijo en el cajón para que arranque el próximo turno.",
@@ -213,6 +217,7 @@ class CierreTurnoWindow(_PantallaDeCaja):
         self.valor_fondo.setText(formato_pesos(resumen["fondo_cambio"]))
         self.valor_efectivo.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
+        self.valor_total.setText(formato_pesos(resumen["ventas_total"]))
         self.valor_retirar.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_kiosko.setText(_texto_desglose(resumen["kiosko_efectivo"], resumen["kiosko_digital"]))
         self.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))

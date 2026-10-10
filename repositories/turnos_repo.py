@@ -208,6 +208,9 @@ def resumen_turno_actual():
         "fondo_cambio": fondo_cambio,
         **desglose,
         "impresiones": round(impresiones, 2),
+        # Todo lo cobrado en el turno (efectivo + digital de todos los negocios).
+        # Las impresiones no se suman: ya están dentro de Kiosko.
+        "ventas_total": round(desglose["ventas_efectivo"] + desglose["ventas_digital"], 2),
         "caja_actual": fondo_cambio + desglose["ventas_efectivo"],
         "desde": ventana["desde"],
         "hasta": ventana["hasta"],

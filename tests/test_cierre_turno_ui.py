@@ -58,6 +58,22 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.assertIn("$ 460,00 ef.", ventana.valor_kiosko.text())
         self.assertEqual(ventana.valor_retirar.text(), "$ 460,00")
 
+    def test_muestra_efectivo_digital_y_total_sin_duplicar_las_impresiones(self):
+        self._vender(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", 3, 150.0)  # $450 efectivo
+        ventas_repo.confirmar_venta(
+            self.usuario_id,
+            [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 1, "precio_unitario": 10.0}],
+            [{"metodo": dominio.PAGO_DIGITAL, "monto": 10.0}],
+        )
+
+        ventana = self._abrir()
+        textos = [e.text() for e in ventana.findChildren(QLabel)]
+
+        self.assertEqual(ventana.valor_efectivo.text(), "$ 450,00")
+        self.assertEqual(ventana.valor_digital.text(), "$ 10,00")
+        self.assertEqual(ventana.valor_total.text(), "$ 460,00")
+        self.assertTrue({"Efectivo", "Digital", "TOTAL"} <= set(textos), textos)
+
     def test_sin_impresiones_muestra_cero(self):
         self._vender("COD9", "Producto", 1, 10.0)
 
