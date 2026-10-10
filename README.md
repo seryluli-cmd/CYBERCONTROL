@@ -227,8 +227,9 @@ el resto se abre en diálogos. Arma los accesos según rol y permisos.
   `turnos_repo.cerrar_turno(usuario['id'])`: `monto_a_retirar` = lo
   vendido en efectivo (el fondo de cambio se queda en la caja para el
   turno siguiente). Esta pantalla es el resumen que las empleadas le
-  mandan al dueño: en ella el fondo de cambio se llama **"Cambio Fijo"**
-  (pedido del dueño; por dentro sigue siendo `fondo_cambio`) y se agrega
+  mandan al dueño. En pantalla el fondo de cambio se llama **"Cambio Fijo"**
+  en todos lados (pedido del dueño; por dentro sigue siendo `fondo_cambio`).
+  Acá se agrega
   **Impresiones** (`resumen["impresiones"]`), informativo: ya está sumado
   dentro de Kiosko, no es un monto extra.
 
@@ -298,7 +299,7 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   cree vía `_proximo_numero_disponible`; si tiene historial, ofrece
   desactivarlo en su lugar con `desactivar_usuario`, soft-delete que no
   libera el número), check "Mostrar inactivos" (para poder encontrar y
-  borrar del todo a alguien ya desactivado), "Configurar Fondo de Cambio"
+  borrar del todo a alguien ya desactivado), "Configurar Cambio Fijo"
   (`config_repo`), "Copia de Seguridad" (`database.copiar_backup_a`).
   También `DialogoCambiarClave` (accesible para cualquier rol desde el
   menú principal, no desde esta pantalla) — cambia la clave propia
@@ -366,7 +367,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-337 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
+338 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red, migraciones y algunas
 interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

@@ -2,7 +2,7 @@
 usuarios_window.py
 =====================
 Administración de Usuarios: alta, edición y baja de usuarios (Admin o
-Empleada), la configuración del fondo de cambio fijo que se usa en los
+Empleada), la configuración del Cambio Fijo (fondo de cambio) que se usa en los
 cierres de turno y la copia de seguridad manual. Es exclusivo del rol ADMIN
 (no se delega con ningún permiso), con una excepción: DialogoCambiarClave,
 que vive acá pero la usa cualquier usuario para su propia clave.
@@ -23,7 +23,7 @@ from ui.utils import (
 
 
 class UsuariosWindow(QDialog):
-    """Grilla de usuarios con alta/modificación/baja, fondo de cambio y
+    """Grilla de usuarios con alta/modificación/baja, Cambio Fijo y
     backup. `usuario_actual` es quien está logueado (no puede borrarse a
     sí mismo)."""
 
@@ -43,7 +43,7 @@ class UsuariosWindow(QDialog):
         boton_modificar.clicked.connect(self._modificar_usuario)
         boton_borrar = QPushButton("Borrar")
         boton_borrar.clicked.connect(self._borrar_usuario)
-        boton_fondo = QPushButton("Configurar Fondo de Cambio")
+        boton_fondo = QPushButton("Configurar Cambio Fijo")
         boton_fondo.clicked.connect(self._configurar_fondo)
         boton_backup = QPushButton("Copia de Seguridad")
         boton_backup.setToolTip(
@@ -142,7 +142,7 @@ class UsuariosWindow(QDialog):
         dialogo = DialogoFondoCambio(self, actual)
         if dialogo.exec():
             config_repo.actualizar_fondo_cambio(dialogo.spin_monto.value())
-            mostrar_info(self, "Guardado", "Se actualizó el fondo de cambio.")
+            mostrar_info(self, "Guardado", "Se actualizó el cambio fijo.")
 
     @manejar_errores
     def _hacer_backup(self):
@@ -245,12 +245,12 @@ class DialogoUsuario(QDialog):
 
 
 class DialogoFondoCambio(QDialog):
-    """Pide el monto del fondo de cambio; quien lo abre lo lee de
+    """Pide el monto del Cambio Fijo (fondo de cambio); quien lo abre lo lee de
     `spin_monto` si se aceptó (ver UsuariosWindow._configurar_fondo)."""
 
     def __init__(self, parent, valor_actual: float):
         super().__init__(parent)
-        self.setWindowTitle("Fondo de Cambio")
+        self.setWindowTitle("Cambio Fijo")
         self.resize(320, 140)
 
         self.spin_monto = QDoubleSpinBox()
@@ -262,7 +262,7 @@ class DialogoFondoCambio(QDialog):
         botones = fila_guardar_cancelar(self)
 
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("Fondo de cambio fijo que arranca cada turno:"))
+        layout.addWidget(QLabel("Cambio Fijo que arranca cada turno:"))
         layout.addWidget(self.spin_monto)
         layout.addLayout(botones)
         self.setLayout(layout)

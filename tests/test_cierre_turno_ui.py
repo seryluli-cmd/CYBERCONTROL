@@ -69,6 +69,31 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.assertIn("Cambio Fijo", textos)
         self.assertFalse([t for t in textos if "fondo" in t.lower()], textos)
 
+    def test_ninguna_otra_pantalla_llama_fondo_al_cambio_fijo(self):
+        from PySide6.QtWidgets import QPushButton
+        from ui.caja_window import CajaWindow, ControlCierresWindow
+        from ui.usuarios_window import DialogoFondoCambio, UsuariosWindow
+
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        caja = CajaWindow()
+        control = ControlCierresWindow(admin)
+        usuarios = UsuariosWindow(admin)
+        dialogo = DialogoFondoCambio(None, 50000.0)
+        for ventana in (caja, control, usuarios, dialogo):
+            self.addCleanup(ventana.deleteLater)
+
+        textos = []
+        for ventana in (caja, usuarios, dialogo):
+            textos += [e.text() for e in ventana.findChildren(QLabel)]
+            textos += [b.text() for b in ventana.findChildren(QPushButton)]
+        textos.append(dialogo.windowTitle())
+        textos += [control.tabla.horizontalHeaderItem(c).text() for c in range(control.tabla.columnCount())]
+
+        self.assertFalse([t for t in textos if "fondo" in t.lower()], textos)
+        self.assertIn("CAJA INICIAL (Cambio Fijo)", textos)
+        self.assertIn("Configurar Cambio Fijo", textos)
+        self.assertIn("Cambio Fijo", [control.tabla.horizontalHeaderItem(c).text() for c in range(control.tabla.columnCount())])
+
     def test_el_aviso_al_cerrar_habla_de_cambio_fijo(self):
         ventana = self._abrir()
 

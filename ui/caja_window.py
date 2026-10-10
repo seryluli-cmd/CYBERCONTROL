@@ -104,7 +104,7 @@ class CajaWindow(_PantallaDeCaja):
         self._refrescar()
 
     def _armar_interfaz(self):
-        layout_fondo, self.valor_fondo = _etiqueta_dato("CAJA INICIAL (fondo de cambio)", "")
+        layout_fondo, self.valor_fondo = _etiqueta_dato("CAJA INICIAL (Cambio Fijo)", "")
         layout_actual, self.valor_actual = _etiqueta_dato("CAJA ACTUAL (solo efectivo)", "")
         layout_ventas, self.valor_ventas = _etiqueta_dato("VENTAS (efectivo)", "")
         layout_digital, self.valor_digital = _etiqueta_dato("VENTAS POR MEDIO DIGITAL", "")
@@ -298,7 +298,7 @@ class ControlCierresWindow(QDialog):
         self.panel_faltantes.hide()
 
         self.tabla = crear_tabla(
-            ["Fecha", "Turno", "Empleada", "Fondo", "Ventas Ef.", "Kiosko", "Alquiler PCs",
+            ["Fecha", "Turno", "Empleada", "Cambio Fijo", "Ventas Ef.", "Kiosko", "Alquiler PCs",
              "PlayStation 5", "A Retirar", "Contado", "Diferencia"],
             estirar=2, por_filas=True,
         )

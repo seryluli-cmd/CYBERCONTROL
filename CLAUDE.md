@@ -374,8 +374,11 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   Kiosko" (el Resumen del Día y Reportes sí las muestran aparte, ahí Kiosko es un
   solo importe). Si el dueño pide Kiosko sin impresiones, primero hay que decidir
   cómo repartirlas por medio de pago. Trámites sigue dentro de Kiosko en esa
-  pantalla. Y en ella el fondo de cambio se llama **"Cambio Fijo"** (pedido del
-  dueño, 2026-10-10); por dentro sigue siendo `fondo_cambio`.
+  pantalla.
+- **En pantalla, el fondo de cambio se llama "Cambio Fijo" en TODOS lados**
+  (Caja, Cierre de Turno, Control de Cierres, Usuarios; pedido del dueño,
+  2026-10-10). Por dentro sigue siendo `fondo_cambio` (columnas, repos, claves):
+  no se renombra, solo el texto que se ve.
 - **El recolector cíclico está desactivado a propósito** en `main.py`: evita que
   un hilo del servidor destruya un `QTimer` de Qt. Antes de reactivarlo, revisar
   la propiedad de los objetos de UI y sus ciclos de referencias.
@@ -451,4 +454,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-337 pruebas al 2026-10-10.
+338 pruebas al 2026-10-10.
