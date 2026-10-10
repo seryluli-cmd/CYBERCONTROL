@@ -141,7 +141,19 @@ def buscar_por_marca(texto: str):
         ).fetchall()
 
 
-def crear_articulo(codigo, descripcion, marca_id, rubro_id, precio_venta, precio_compra, stock_minimo):
+def _marca_para_guardar(conexion, marca_id, nombre_marca_nueva):
+    """Resuelve una marca nueva dentro de la misma transacción del artículo."""
+    if not nombre_marca_nueva:
+        return marca_id
+    nombre = nombre_marca_nueva.strip()
+    if not nombre:
+        return None
+    conexion.execute("INSERT OR IGNORE INTO marcas (nombre) VALUES (?)", (nombre,))
+    return conexion.execute("SELECT id FROM marcas WHERE nombre = ?", (nombre,)).fetchone()["id"]
+
+
+def crear_articulo(codigo, descripcion, marca_id, rubro_id, precio_venta, precio_compra,
+                   stock_minimo, *, nombre_marca_nueva=None):
     """
     Da de alta un artículo nuevo. El stock arranca en 0: para cargarle
     unidades hay que hacer una Compra (así queda un movimiento
@@ -149,6 +161,7 @@ def crear_articulo(codigo, descripcion, marca_id, rubro_id, precio_venta, precio
     """
     ahora = datetime.now().isoformat(timespec="seconds")
     with conexion_db() as conexion:
+        marca_id = _marca_para_guardar(conexion, marca_id, nombre_marca_nueva)
         conexion.execute(
             """
             INSERT INTO articulos
@@ -161,13 +174,17 @@ def crear_articulo(codigo, descripcion, marca_id, rubro_id, precio_venta, precio
         )
 
 
-def modificar_articulo(codigo, descripcion, marca_id, rubro_id, precio_venta, precio_compra, stock_minimo):
+def modificar_articulo(codigo, descripcion, marca_id, rubro_id, precio_venta, precio_compra,
+                      stock_minimo, *, nombre_marca_nueva=None):
     """
     Actualiza los datos generales de un artículo. A propósito NO recibe
     ni toca el campo "stock" — eso solo cambia vía Compras/Ventas.
     """
     ahora = datetime.now().isoformat(timespec="seconds")
     with conexion_db() as conexion:
+        if conexion.execute("SELECT 1 FROM articulos WHERE codigo = ?", (codigo,)).fetchone() is None:
+            raise ValueError("Ese artículo ya no existe. Actualizá la lista e intentá de nuevo.")
+        marca_id = _marca_para_guardar(conexion, marca_id, nombre_marca_nueva)
         conexion.execute(
             """
             UPDATE articulos

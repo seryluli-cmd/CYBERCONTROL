@@ -280,14 +280,14 @@ class DialogoArticulo(QDialog):
         porcentaje = self.spin_pct_desde_venta.value()
         self.spin_precio_compra.setValue(round(venta / (1 + porcentaje / 100), 2))
 
-    def _resolver_marca_id(self):
+    def _resolver_marca(self):
         texto = self.combo_marca.currentText().strip()
         if not texto:
-            return None
+            return None, None
         indice = self.combo_marca.findText(texto)
         if indice >= 0:
-            return self.combo_marca.itemData(indice)
-        return articulos_repo.crear_marca(texto)  # marca nueva, se crea al vuelo
+            return self.combo_marca.itemData(indice), None
+        return None, texto  # el repo la crea junto con el artículo
 
     @manejar_errores
     def _guardar(self):
@@ -298,14 +298,14 @@ class DialogoArticulo(QDialog):
             mostrar_error(self, "Faltan datos", "El código y la descripción son obligatorios.")
             return
 
-        marca_id = self._resolver_marca_id()
+        marca_id, nombre_marca_nueva = self._resolver_marca()
         rubro_id = self.combo_rubro.currentData()  # ya viene resuelto: no es editable
 
         if self.codigo_existente:
             articulos_repo.modificar_articulo(
                 codigo, descripcion, marca_id, rubro_id,
                 self.spin_precio_venta.value(), self.spin_precio_compra.value(),
-                self.spin_stock_minimo.value(),
+                self.spin_stock_minimo.value(), nombre_marca_nueva=nombre_marca_nueva,
             )
         else:
             if articulos_repo.buscar_por_codigo(codigo):
@@ -314,7 +314,7 @@ class DialogoArticulo(QDialog):
             articulos_repo.crear_articulo(
                 codigo, descripcion, marca_id, rubro_id,
                 self.spin_precio_venta.value(), self.spin_precio_compra.value(),
-                self.spin_stock_minimo.value(),
+                self.spin_stock_minimo.value(), nombre_marca_nueva=nombre_marca_nueva,
             )
         self.accept()
 
