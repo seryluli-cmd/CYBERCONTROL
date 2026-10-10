@@ -265,6 +265,10 @@ def crear_tabla(titulos, estirar=None, por_filas=False, una_sola=False) -> QTabl
         tabla.setSelectionMode(QTableWidget.SingleSelection)
     tabla.setEditTriggers(QTableWidget.NoEditTriggers)
     tabla.setAlternatingRowColors(True)
+    # Sin la numeración de filas (1, 2, 3...), que no le dice nada a nadie, y con
+    # los títulos alineados a la izquierda como el contenido.
+    tabla.verticalHeader().setVisible(False)
+    tabla.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     if estirar is not None:
         tabla.horizontalHeader().setSectionResizeMode(estirar, QHeaderView.Stretch)
     return tabla

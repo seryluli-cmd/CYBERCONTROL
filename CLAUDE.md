@@ -204,6 +204,7 @@ abra no alcanza si los tests no pasan.
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
 | `turnos_repo._vendido_aparte_entre(...)` | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día (y las impresiones, como renglón informativo, en Cierre de Turno vía `resumen_turno_actual()["impresiones"]`) |
 | `tramites_repo.registrar_tramite(...)` | se cobra un trámite de mostrador (monto libre): venta KIOSKO sin detalle + vínculo en `tramites_venta` |
+| `main.aplicar_estilo(app)` | se fija el aspecto de TODO el programa: estilo Fusion, esquema de color CLARO y la hoja de estilos (`HOJA_DE_ESTILOS`) |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
@@ -380,6 +381,14 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   (Caja, Cierre de Turno, Control de Cierres, Usuarios; pedido del dueño,
   2026-10-10). Por dentro sigue siendo `fondo_cambio` (columnas, repos, claves):
   no se renombra, solo el texto que se ve.
+- **El esquema de color se fija en CLARO a propósito (`main.aplicar_estilo`).**
+  Fusion toma los colores de Windows: con el modo oscuro puesto, los widgets que
+  la hoja de estilos no pinta (el log de "Actividad reciente", la numeración de
+  filas) salían negros y con la letra oscura de la hoja encima, ilegibles. Si se
+  agrega un widget nuevo que se vea oscuro, hay que pintarlo en `HOJA_DE_ESTILOS`
+  (no sacar el esquema claro). Para ver cómo queda una pantalla sin abrirla se puede
+  dibujar con `widget.grab()` usando la plataforma real de Windows (la "offscreen" de
+  los tests usa otras tipografías y no aplica el esquema de color).
 - **El recolector cíclico está desactivado a propósito** en `main.py`: evita que
   un hilo del servidor destruya un `QTimer` de Qt. Antes de reactivarlo, revisar
   la propiedad de los objetos de UI y sus ciclos de referencias.
@@ -455,4 +464,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-340 pruebas al 2026-10-10.
+343 pruebas al 2026-10-10.

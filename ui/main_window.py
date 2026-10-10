@@ -131,8 +131,9 @@ class MainWindow(QMainWindow):
         (van en fila, así que no hace falta que midan todos igual)."""
         boton = QPushButton(texto)
         boton.setFixedHeight(38)
-        if clase:
-            aplicar_clase(boton, clase)
+        # Los que no son ni "primario" ni "peligro" van sin borde (clase "barra",
+        # ver la hoja de estilos de main.py).
+        aplicar_clase(boton, clase or "barra")
         boton.clicked.connect(funcion)
         layout.addWidget(boton)
         return boton

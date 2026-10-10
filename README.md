@@ -40,7 +40,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 
 | Archivo | Contenido |
 |---|---|
-| [main.py](main.py) | Entry point. Clase `Aplicacion` alterna `LoginWindow` ↔ `MainWindow` (para poder "cerrar sesión" sin cerrar el programa). Define la hoja de estilos Qt global (botones `primario`/`peligro` vía `setProperty("clase", ...)`). `sys.excepthook` propio: cualquier excepción no capturada se loguea en `data/errores.log` y muestra un cartel, en vez de cerrar la app en silencio. |
+| [main.py](main.py) | Entry point. Clase `Aplicacion` alterna `LoginWindow` ↔ `MainWindow` (para poder "cerrar sesión" sin cerrar el programa). Define la hoja de estilos Qt global (botones `primario`/`peligro`/`barra` vía `setProperty("clase", ...)`) y `aplicar_estilo(app)`, que además fija el esquema de color CLARO (con Windows en modo oscuro, los cuadros sin estilo salían negros). `sys.excepthook` propio: cualquier excepción no capturada se loguea en `data/errores.log` y muestra un cartel, en vez de cerrar la app en silencio. |
 | [database.py](database.py) · [database_esquema.py](database_esquema.py) · [database_migraciones.py](database_migraciones.py) | Conexiones, claves y copias; creación de tablas e índices; migraciones de bases existentes. Ver modelo de datos abajo. |
 | [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
 | [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos y turnos faltantes, trámites, usuarios y ventas. |
@@ -369,7 +369,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-340 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
+343 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red, migraciones y algunas
 interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

@@ -38,6 +38,7 @@ class _ListaDeBonos:
         self.aviso_sin_bonos.setWordWrap(True)
         self.aviso_sin_bonos.setStyleSheet("color: #7A869A;")
         self.layout = QVBoxLayout()
+        self.layout.setSpacing(6)  # los bonos como botones separados, no pegados en un bloque
         self.grupo = QButtonGroup(padre)
         self.grupo.setExclusive(True)
         self.grupo.idClicked.connect(self._recordar)

@@ -9,18 +9,22 @@ ventana principal con los permisos que correspondan según el rol
 """
 
 import time
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QFormLayout, QFrame, QComboBox,
     QGraphicsDropShadowEffect
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette, QColor
+from PySide6.QtGui import QPalette, QColor, QPixmap
 
 import dominio
 from database import verificar_clave
 from repositories.usuarios_repo import autenticar_por_nombre, listar_usuarios
 from ui.utils import mostrar_error, mostrar_aviso, manejar_errores, aplicar_clase
+
+# Mismo ícono que usa main.py para las ventanas (carpeta assets, junto al código).
+RUTA_ICONO_PNG = Path(__file__).resolve().parent.parent / "assets" / "icono.png"
 
 # Protección simple contra prueba y error de claves: después de
 # MAX_INTENTOS fallidos seguidos con el mismo nombre, se bloquea ese
@@ -58,8 +62,15 @@ class LoginWindow(QWidget):
         paleta.setColor(QPalette.Window, QColor("#EEF1F6"))
         self.setPalette(paleta)
 
-        icono = QLabel("🏪")
-        icono.setStyleSheet("font-size: 42px;")
+        # El ícono real del programa (la caja registradora). Si el archivo no
+        # estuviera, se cae al emoji de siempre en vez de dejar el hueco vacío.
+        icono = QLabel()
+        imagen = QPixmap(str(RUTA_ICONO_PNG))
+        if imagen.isNull():
+            icono.setText("🏪")
+            icono.setStyleSheet("font-size: 42px;")
+        else:
+            icono.setPixmap(imagen.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         icono.setAlignment(Qt.AlignCenter)
 
         titulo = QLabel("Sistema de Kiosko")

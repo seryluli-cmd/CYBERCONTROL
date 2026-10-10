@@ -43,17 +43,20 @@ def _texto_desglose(efectivo: float, digital: float) -> str:
     return f"{formato_pesos(efectivo)} ef. + {formato_pesos(digital)} dig."
 
 
-def _etiqueta_dato(titulo, valor_texto):
+def _etiqueta_dato(titulo, valor_texto, destacado=False):
     """Un dato de las pantallas de caja: título gris arriba y valor grande
-    abajo. Devuelve (layout, etiqueta_del_valor) para poder actualizarla."""
+    abajo (en azul si `destacado`, como el TOTAL). Devuelve (layout,
+    etiqueta_del_valor) para poder actualizarla."""
     contenedor = QVBoxLayout()
     titulo_lbl = QLabel(titulo)
-    titulo_lbl.setStyleSheet("color: gray;")
+    titulo_lbl.setStyleSheet("color: #6B7585;")
     valor_lbl = QLabel(valor_texto)
     fuente = QFont()
     fuente.setPointSize(14)
     fuente.setBold(True)
     valor_lbl.setFont(fuente)
+    if destacado:
+        valor_lbl.setStyleSheet("color: #2F6FED;")
     contenedor.addWidget(titulo_lbl)
     contenedor.addWidget(valor_lbl)
     return contenedor, valor_lbl
@@ -174,7 +177,7 @@ class CierreTurnoWindow(_PantallaDeCaja):
         layout_digital, self.valor_digital = _etiqueta_dato("Digital", "")
         # Efectivo + Digital de Kiosko, PCs y PlayStation 5; las impresiones no se
         # suman aparte porque ya están dentro de Kiosko.
-        layout_total, self.valor_total = _etiqueta_dato("TOTAL", "")
+        layout_total, self.valor_total = _etiqueta_dato("TOTAL", "", destacado=True)
         layout_retirar, self.valor_retirar = _etiqueta_dato("A RETIRAR EN EFECTIVO", "")
         layout_kiosko, self.valor_kiosko = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO], ""

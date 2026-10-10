@@ -21,6 +21,7 @@ import socket
 import sys
 import traceback
 from pathlib import Path
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
@@ -316,7 +317,151 @@ HOJA_DE_ESTILOS = """
         border: 1px solid #E1E4EA;
         border-radius: 12px;
     }
+
+    /* --- Pulido visual (2026-10-10) --- */
+
+    /* Botones de la barra de arriba: sin borde hasta que se les pasa el mouse, así
+       la barra no se ve como una hilera de cajitas. Vender (primario) y Cerrar
+       sesión (peligro) siguen destacando. */
+    QPushButton[clase="barra"] {
+        background-color: transparent;
+        border: 1px solid transparent;
+        color: #2B3445;
+        font-weight: 500;
+    }
+    QPushButton[clase="barra"]:hover {
+        background-color: #EEF1F6;
+        border-color: #E1E5EC;
+    }
+    QPushButton[clase="barra"]:pressed {
+        background-color: #E1E6EE;
+    }
+
+    QLabel#tituloSeccion {
+        font-size: 12px;
+        font-weight: 600;
+        color: #5B6472;
+        padding: 6px 2px 2px 2px;
+    }
+
+    /* Cuadros de texto de solo lectura (el log de "Actividad reciente"). */
+    QTextEdit, QPlainTextEdit {
+        background-color: #FFFFFF;
+        border: 1px solid #D3D8E0;
+        border-radius: 8px;
+        padding: 6px 8px;
+        color: #3C4350;
+        selection-background-color: #DCE7FD;
+        selection-color: #1B2233;
+    }
+
+    /* Numeración de filas y esquina de las tablas (por defecto toman el color de
+       Windows); en las tablas del programa la numeración ni se muestra. */
+    QHeaderView {
+        background-color: #F5F7FA;
+    }
+    QHeaderView::section:vertical {
+        background-color: #F5F7FA;
+        color: #8A93A3;
+        border: none;
+        border-right: 1px solid #E4E7EC;
+        padding: 0 8px;
+    }
+    QTableCornerButton::section {
+        background-color: #F5F7FA;
+        border: none;
+    }
+    QHeaderView::section:horizontal {
+        text-align: left;
+    }
+    QTableWidget::item:selected {
+        border: none;
+    }
+
+    /* Selector de fecha: mismo aspecto que el desplegable. */
+    QDateEdit::drop-down {
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
+        width: 28px;
+        border-left: 1px solid #CDD3DE;
+        border-top-right-radius: 7px;
+        border-bottom-right-radius: 7px;
+        background-color: #F5F7FA;
+    }
+    QDateEdit::drop-down:hover {
+        background-color: #EAEFF7;
+    }
+    QDateEdit::down-arrow {
+        image: url(__RUTA_FLECHA_ABAJO__);
+        width: 10px;
+        height: 6px;
+        margin-right: 9px;
+    }
+
+    /* Menús (clic derecho en una PC) y avisos flotantes. */
+    QMenu {
+        background-color: #FFFFFF;
+        border: 1px solid #D3D8E0;
+        border-radius: 8px;
+        padding: 5px;
+    }
+    QMenu::item {
+        padding: 8px 26px 8px 14px;
+        border-radius: 6px;
+    }
+    QMenu::item:selected {
+        background-color: #DCE7FD;
+        color: #1B2233;
+    }
+    QMenu::separator {
+        height: 1px;
+        background: #E4E7EC;
+        margin: 5px 8px;
+    }
+    QToolTip {
+        background-color: #1B2233;
+        color: #FFFFFF;
+        border: none;
+        padding: 5px 8px;
+    }
+
+    /* Carteles de aviso y confirmación: botones parejos. */
+    QMessageBox QPushButton {
+        min-width: 88px;
+    }
+
+    QScrollBar:horizontal {
+        height: 11px;
+        background: #EEF1F6;
+    }
+    QScrollBar::handle:horizontal {
+        background: #C7CDD6;
+        border-radius: 5px;
+        min-width: 24px;
+    }
+    QScrollBar::handle:horizontal:hover {
+        background: #AEB4BF;
+    }
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+        width: 0px;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)
+
+
+def aplicar_estilo(app):
+    """
+    Deja el aspecto de todo el programa en un solo lugar (lo usan main() y las
+    pruebas de pantalla): estilo Fusion (look limpio y parejo entre PCs), esquema
+    de color CLARO y la hoja de estilos de arriba.
+
+    El esquema claro se fija a propósito: Fusion toma los colores de Windows, y con
+    el modo oscuro puesto los cuadros que la hoja no pinta (el log de "Actividad
+    reciente", la numeración de las filas) salían negros y con la letra oscura de la
+    hoja encima, o sea casi ilegibles. El programa está diseñado en claro.
+    """
+    app.setStyle("Fusion")
+    app.styleHints().setColorScheme(Qt.ColorScheme.Light)
+    app.setStyleSheet(HOJA_DE_ESTILOS)
 
 
 class Aplicacion:
@@ -401,8 +546,7 @@ def main():
     # esté logueado -- es lo que consultan las PCs bloqueadas del local
     # (ver servidor_red.py y la carpeta hermana "CLIENTE PC").
     iniciar_servidor()
-    app.setStyle("Fusion")  # look más limpio y consistente entre sistemas operativos
-    app.setStyleSheet(HOJA_DE_ESTILOS)
+    aplicar_estilo(app)
     # Ícono de la caja registradora: al ponerlo en la aplicación (y no en
     # cada ventana por separado), TODAS las ventanas y cuadros de diálogo
     # lo heredan automáticamente en la esquina superior izquierda, en vez

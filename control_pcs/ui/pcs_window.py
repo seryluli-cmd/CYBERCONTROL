@@ -183,7 +183,11 @@ class PanelControlPcs(QWidget):
         # se ajusta a su contenido — si no, con una sola columna en
         # Stretch las otras tres quedan con el ancho mínimo por defecto y
         # el texto ("🔒 Bloqueada", "Tiempo restante") se corta con "...".
+        # Sin numeración de filas (la consola sería la "1" y la PC 1 la "2") y con
+        # los títulos alineados a la izquierda como el contenido.
+        self.tabla.verticalHeader().setVisible(False)
         encabezado = self.tabla.horizontalHeader()
+        encabezado.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         encabezado.setSectionResizeMode(0, QHeaderView.Stretch)
         for columna in (1, 2, 3):
             encabezado.setSectionResizeMode(columna, QHeaderView.ResizeToContents)
@@ -201,7 +205,9 @@ class PanelControlPcs(QWidget):
 
         layout = QVBoxLayout()
         layout.addLayout(fila_principal, 1)
-        layout.addWidget(QLabel("Actividad reciente:"))
+        titulo_actividad = QLabel("Actividad reciente")
+        titulo_actividad.setObjectName("tituloSeccion")
+        layout.addWidget(titulo_actividad)
         layout.addWidget(self.panel_actividad)
         self.setLayout(layout)
 
