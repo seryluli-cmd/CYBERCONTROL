@@ -41,7 +41,7 @@ def resumen_ventas(desde: str, hasta: str):
             """
             SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad_ventas
             FROM ventas
-            WHERE estado = ? AND date(fecha) BETWEEN date(?) AND date(?)
+            WHERE estado = ? AND fecha >= date(?) AND fecha < date(?, '+1 day')
             """,
             (dominio.VENTA_CONFIRMADA, desde, hasta),
         ).fetchone()
@@ -51,7 +51,7 @@ def resumen_ventas(desde: str, hasta: str):
             SELECT venta_pagos.metodo, SUM(venta_pagos.monto) AS total
             FROM venta_pagos
             JOIN ventas ON ventas.id = venta_pagos.venta_id
-            WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
             GROUP BY venta_pagos.metodo
             """,
             (dominio.VENTA_CONFIRMADA, desde, hasta),
@@ -85,7 +85,7 @@ def resumen_por_turno(desde: str, hasta: str):
             """
             SELECT turno, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad_ventas
             FROM ventas
-            WHERE estado = ? AND date(fecha) BETWEEN date(?) AND date(?)
+            WHERE estado = ? AND fecha >= date(?) AND fecha < date(?, '+1 day')
             GROUP BY turno
             """,
             (dominio.VENTA_CONFIRMADA, desde, hasta),
@@ -96,7 +96,7 @@ def resumen_por_turno(desde: str, hasta: str):
             SELECT ventas.turno, venta_pagos.metodo, SUM(venta_pagos.monto) AS total
             FROM venta_pagos
             JOIN ventas ON ventas.id = venta_pagos.venta_id
-            WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
             GROUP BY ventas.turno, venta_pagos.metodo
             """,
             (dominio.VENTA_CONFIRMADA, desde, hasta),
@@ -180,7 +180,7 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
             SELECT {columna_grupo} AS clave, ventas.origen AS origen,
                    COALESCE(SUM(ventas.total), 0) AS total
             FROM ventas
-            WHERE estado = ? AND date(fecha) BETWEEN date(?) AND date(?)
+            WHERE estado = ? AND fecha >= date(?) AND fecha < date(?, '+1 day')
             GROUP BY clave, ventas.origen
             """,
             rango,
@@ -193,7 +193,7 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
             FROM venta_detalle
             JOIN ventas ON ventas.id = venta_detalle.venta_id
             WHERE venta_detalle.articulo_codigo = ?
-              AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+              AND ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
             GROUP BY clave
             """,
             (dominio.CODIGO_ARTICULO_IMPRESIONES, *rango),
@@ -205,7 +205,7 @@ def resumen_por_origen(desde: str, hasta: str, agrupar_por: str = "rango"):
             SELECT {columna_grupo} AS clave, COALESCE(SUM(ventas.total), 0) AS total
             FROM tramites_venta
             JOIN ventas ON ventas.id = tramites_venta.venta_id
-            WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+            WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
             GROUP BY clave
             """,
             rango,
@@ -283,7 +283,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                     SUM(venta_detalle.subtotal) AS importe
                 FROM venta_detalle
                 JOIN ventas ON ventas.id = venta_detalle.venta_id
-                WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
                 GROUP BY venta_detalle.articulo_codigo, venta_detalle.descripcion
 
                 UNION ALL
@@ -297,7 +297,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 FROM sesion_bonos
                 JOIN bonos_tiempo ON bonos_tiempo.id = sesion_bonos.bono_id
                 JOIN ventas ON ventas.id = sesion_bonos.venta_id
-                WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
                 GROUP BY bonos_tiempo.id, bonos_tiempo.nombre
 
                 UNION ALL
@@ -312,7 +312,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 JOIN bonos_miembro ON bonos_miembro.id = movimientos_saldo_miembro.bono_id
                 JOIN ventas ON ventas.id = movimientos_saldo_miembro.venta_id
                 WHERE movimientos_saldo_miembro.tipo = ?
-                  AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                  AND ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
                 GROUP BY bonos_miembro.id, bonos_miembro.nombre
 
                 UNION ALL
@@ -327,7 +327,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 JOIN ventas ON ventas.id = movimientos_saldo_miembro.venta_id
                 WHERE movimientos_saldo_miembro.tipo = ?
                   AND movimientos_saldo_miembro.bono_id IS NULL
-                  AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                  AND ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
                 HAVING COUNT(*) > 0
 
                 UNION ALL
@@ -340,7 +340,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                     SUM(ventas.total) AS importe
                 FROM tramites_venta
                 JOIN ventas ON ventas.id = tramites_venta.venta_id
-                WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
                 GROUP BY tramites_venta.tramite_id, tramites_venta.descripcion
 
                 UNION ALL
@@ -354,7 +354,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 FROM sesion_playstation_bonos
                 JOIN bonos_playstation ON bonos_playstation.id = sesion_playstation_bonos.bono_id
                 JOIN ventas ON ventas.id = sesion_playstation_bonos.venta_id
-                WHERE ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
+                WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
                 GROUP BY bonos_playstation.id, bonos_playstation.nombre
             )
             ORDER BY {columna_orden} DESC
