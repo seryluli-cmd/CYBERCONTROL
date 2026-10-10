@@ -1159,6 +1159,29 @@ class TestResumenDelDia(BaseConBaseTemporal):
         self.assertEqual(total["impresiones"], 1050.0)
         self.assertEqual(total["kiosko"] + total["impresiones"] + total["pcs"], total["total"])
 
+    def test_el_resumen_del_turno_en_curso_trae_las_impresiones_sin_sacarlas_de_kiosko(self):
+        # Cierre de Turno le muestra al dueño cuánto se vendió en Impresiones, pero
+        # ese importe ya está dentro de Kiosko (que lleva el desglose ef./dig.): no
+        # se le resta, y solo cuenta lo confirmado del turno que sigue abierto.
+        articulos_repo.crear_articulo(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None, 150.0, 0.0, 0)
+        self._vender_impresiones(datetime(2026, 1, 5, 5, 30), 9)                    # turno anterior: no cuenta
+        self._cerrar(datetime(2026, 1, 5, 6, 0))
+        self._vender(datetime(2026, 1, 5, 7, 0), 10.0)
+        self._vender_impresiones(datetime(2026, 1, 5, 8, 0), 2)                     # $300 en efectivo
+        self._vender_impresiones(datetime(2026, 1, 5, 9, 0), 1, metodo="DIGITAL")   # $150 digital
+        anulada = self._vender_impresiones(datetime(2026, 1, 5, 9, 30), 4)
+        self._anular(anulada, datetime(2026, 1, 5, 9, 40))                          # anulada: no cuenta
+
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 5, 10, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            resumen = turnos_repo.resumen_turno_actual()
+
+        self.assertEqual(resumen["impresiones"], 450.0)
+        self.assertEqual(resumen["kiosko_efectivo"], 310.0)
+        self.assertEqual(resumen["kiosko_digital"], 150.0)
+        self.assertEqual(resumen["ventas_efectivo"], 310.0)
+
     def test_cuenta_las_ventas_anuladas_aparte_y_no_las_suma_al_total(self):
         self._cerrar(datetime(2026, 1, 5, 6, 0))
         self._vender(datetime(2026, 1, 5, 9, 0), 10.0)

@@ -182,16 +182,23 @@ def _cierre_o_error(conexion, cierre_id: int):
 
 def resumen_turno_actual():
     """
-    Para la pantalla "Caja": muestra cómo viene el turno en curso sin
-    cerrarlo. Devuelve un diccionario con fondo de cambio, ventas en
-    efectivo y digital acumuladas desde el último cierre, y cuánto
-    debería haber ahora mismo en el cajón.
+    Para la pantalla "Caja" y la vista previa de "Cierre de Turno": muestra
+    cómo viene el turno en curso sin cerrarlo. Devuelve un diccionario con
+    fondo de cambio, ventas en efectivo y digital acumuladas desde el último
+    cierre, y cuánto debería haber ahora mismo en el cajón.
+
+    "impresiones" es lo vendido del artículo IMPRESIONES en esta ventana. Es un
+    dato informativo para el Cierre de Turno: YA está sumado dentro de
+    kiosko_efectivo/kiosko_digital, no se le resta, porque esos dos importes
+    llevan el desglose por medio de pago y las impresiones se cuentan por
+    renglón de venta, no por medio de pago.
     """
     with conexion_db() as conexion:
         ventana = _ventana_en_curso(conexion)
         desglose = _desglose_de_totales(
             _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
         )
+        impresiones = _vendido_aparte_entre(conexion, ventana["desde"], ventana["hasta"])["impresiones"]
 
     fondo_cambio = obtener_fondo_cambio()
 
@@ -200,6 +207,7 @@ def resumen_turno_actual():
         "turno_actual_label": etiqueta_turno(ventana["inicio"].date(), ventana["turno"]),
         "fondo_cambio": fondo_cambio,
         **desglose,
+        "impresiones": round(impresiones, 2),
         "caja_actual": fondo_cambio + desglose["ventas_efectivo"],
         "desde": ventana["desde"],
         "hasta": ventana["hasta"],

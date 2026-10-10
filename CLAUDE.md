@@ -202,7 +202,7 @@ abra no alcanza si los tests no pasan.
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
-| `turnos_repo._vendido_aparte_entre(...)` | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día |
+| `turnos_repo._vendido_aparte_entre(...)` | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día (y las impresiones, como renglón informativo, en Cierre de Turno vía `resumen_turno_actual()["impresiones"]`) |
 | `tramites_repo.registrar_tramite(...)` | se cobra un trámite de mostrador (monto libre): venta KIOSKO sin detalle + vínculo en `tramites_venta` |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
@@ -365,6 +365,17 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 - **Un cierre guarda una foto de lo cobrado.** En Resumen del Día, si una venta
   se anula después de cerrar, el desglose de Impresiones y Trámites debe seguir
   conciliando con ese cierre; ver `turnos_repo._vendido_aparte_entre`.
+- **En Cierre de Turno, Impresiones es un renglón informativo: no se le resta a
+  Kiosko.** Esa pantalla es el resumen que las empleadas le mandan al dueño.
+  Kiosko lleva su desglose efectivo/digital (lo que se guarda en el cierre y con
+  lo que cierra el cajón), pero las impresiones se cuentan por renglón de venta y
+  no por medio de pago: restarlas obligaría a repartirlas entre efectivo y
+  digital con una cuenta aproximada. Por eso el título dice "incluidas en
+  Kiosko" (el Resumen del Día y Reportes sí las muestran aparte, ahí Kiosko es un
+  solo importe). Si el dueño pide Kiosko sin impresiones, primero hay que decidir
+  cómo repartirlas por medio de pago. Trámites sigue dentro de Kiosko en esa
+  pantalla. Y en ella el fondo de cambio se llama **"Cambio Fijo"** (pedido del
+  dueño, 2026-10-10); por dentro sigue siendo `fondo_cambio`.
 - **El recolector cíclico está desactivado a propósito** en `main.py`: evita que
   un hilo del servidor destruya un `QTimer` de Qt. Antes de reactivarlo, revisar
   la propiedad de los objetos de UI y sus ciclos de referencias.
@@ -440,4 +451,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-332 pruebas al 2026-10-10.
+337 pruebas al 2026-10-10.

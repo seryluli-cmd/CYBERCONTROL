@@ -6,8 +6,8 @@ Pantallas relacionadas con la plata del día a día:
 - CajaWindow: consulta rápida de "cómo viene la caja" en cualquier
   momento, sin cerrar nada.
 - CierreTurnoWindow: el cierre real de turno. Calcula cuánto tiene que
-  retirar la empleada (dejando el fondo de cambio fijo para el próximo
-  turno) y lo deja guardado.
+  retirar la empleada (dejando el cambio fijo -el "fondo de cambio"- para
+  el próximo turno) y lo deja guardado.
 
 Y dos más, para controlar los cierres después (Admin, o una Empleada con
 `permiso_control_cierres`):
@@ -166,7 +166,10 @@ class CierreTurnoWindow(_PantallaDeCaja):
         self._refrescar_vista_previa()
 
     def _armar_interfaz(self):
-        layout_fondo, self.valor_fondo = _etiqueta_dato("Fondo de cambio", "")
+        # "Cambio Fijo" es como lo llama el dueño en esta pantalla (es lo que las
+        # empleadas le mandan como resumen del turno); por dentro sigue siendo el
+        # "fondo de cambio" (`fondo_cambio`).
+        layout_fondo, self.valor_fondo = _etiqueta_dato("Cambio Fijo", "")
         layout_efectivo, self.valor_efectivo = _etiqueta_dato("Ventas en Efectivo", "")
         layout_digital, self.valor_digital = _etiqueta_dato("Ventas Digital", "")
         layout_retirar, self.valor_retirar = _etiqueta_dato("A RETIRAR EN EFECTIVO", "")
@@ -179,6 +182,10 @@ class CierreTurnoWindow(_PantallaDeCaja):
         layout_playstation, self.valor_playstation = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION], ""
         )
+        # Las impresiones no son un origen aparte: ya están sumadas dentro de
+        # Kiosko (y de su "ef. + dig."), por eso el título lo aclara -- así nadie
+        # las cuenta dos veces al sumar los renglones a mano.
+        layout_impresiones, self.valor_impresiones = _etiqueta_dato("Impresiones (incluidas en Kiosko)", "")
 
         boton_cerrar_turno = QPushButton("Confirmar Cierre de Turno")
         aplicar_clase(boton_cerrar_turno, "primario")
@@ -193,9 +200,9 @@ class CierreTurnoWindow(_PantallaDeCaja):
 
         self._armar_cuerpo(
             [(layout_fondo, layout_efectivo), (layout_digital, layout_retirar),
-             (layout_kiosko, layout_pcs), (layout_playstation, QVBoxLayout())],
-            "Retirá el efectivo indicado y guardalo en el sobre. Dejá el fondo de "
-            "cambio en el cajón para que arranque el próximo turno.",
+             (layout_kiosko, layout_pcs), (layout_playstation, layout_impresiones)],
+            "Retirá el efectivo indicado y guardalo en el sobre. Dejá el cambio "
+            "fijo en el cajón para que arranque el próximo turno.",
             botones,
         )
 
@@ -212,6 +219,7 @@ class CierreTurnoWindow(_PantallaDeCaja):
         self.valor_playstation.setText(
             _texto_desglose(resumen["playstation_efectivo"], resumen["playstation_digital"])
         )
+        self.valor_impresiones.setText(formato_pesos(resumen["impresiones"]))
 
     @manejar_errores
     def _cerrar_turno(self):
@@ -224,7 +232,7 @@ class CierreTurnoWindow(_PantallaDeCaja):
             self, "Turno cerrado",
             f"Turno {resultado['turno_label']} cerrado correctamente.\n\n"
             f"Retirá: {formato_pesos(resultado['monto_a_retirar'])}\n"
-            f"(dejando {formato_pesos(resultado['fondo_cambio'])} de fondo para el próximo turno)\n\n"
+            f"(dejando {formato_pesos(resultado['fondo_cambio'])} de cambio fijo para el próximo turno)\n\n"
             "Ahora volvés a la pantalla de ingreso: quien te releve tiene que "
             "entrar con su propio usuario."
         )
