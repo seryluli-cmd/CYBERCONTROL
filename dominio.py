@@ -134,12 +134,20 @@ CODIGO_ARTICULO_IMPRESIONES = "1"
 # Comandos remotos a una PC cliente
 # --------------------------------------------------------------------
 # Lo que el mostrador le puede pedir a una estación desde el menú contextual
-# de Control de PCs. control_pcs/repositories/comandos_pc_repo.py le da un
-# nombre a cada uno (TIPO_REINICIAR, ...). Tienen que coincidir con el CHECK
+# de Control de PCs. Tienen que coincidir con el CHECK
 # de `comandos_pc.tipo` en database.py: si se suma uno nuevo, va acá y en una
 # migración que actualice ese CHECK (regla 5 de CLAUDE.md). Sin eso, el INSERT
 # falla recién cuando alguien usa el comando.
-TIPOS_COMANDO_PC = ("REINICIAR", "APAGAR", "MENSAJE", "SCREENSHOT", "CAMBIAR_RED", "VOLUMEN")
+COMANDO_REINICIAR = "REINICIAR"
+COMANDO_APAGAR = "APAGAR"
+COMANDO_MENSAJE = "MENSAJE"
+COMANDO_SCREENSHOT = "SCREENSHOT"
+COMANDO_CAMBIAR_RED = "CAMBIAR_RED"
+COMANDO_VOLUMEN = "VOLUMEN"
+TIPOS_COMANDO_PC = (
+    COMANDO_REINICIAR, COMANDO_APAGAR, COMANDO_MENSAJE,
+    COMANDO_SCREENSHOT, COMANDO_CAMBIAR_RED, COMANDO_VOLUMEN,
+)
 
 
 # --------------------------------------------------------------------
@@ -225,6 +233,15 @@ NOMBRE_PLAYSTATION = "PLAYSTATION 5"
 # escriben a mano, ver CLAUDE.md "Estado").
 SESION_ACTIVA = "ACTIVA"
 SESION_FINALIZADA = "FINALIZADA"
+
+# Tipos del historial de saldo de socios. Los usa también el CHECK del esquema.
+MOVIMIENTO_CARGA = "CARGA"
+MOVIMIENTO_CONSUMO = "CONSUMO"
+MOVIMIENTO_REINTEGRO = "REINTEGRO"
+MOVIMIENTO_ANULACION = "ANULACION"
+TIPOS_MOVIMIENTO_SALDO = (
+    MOVIMIENTO_CARGA, MOVIMIENTO_CONSUMO, MOVIMIENTO_REINTEGRO, MOVIMIENTO_ANULACION,
+)
 
 
 def segundos_restantes(fin_previsto: datetime, ahora: datetime) -> int:

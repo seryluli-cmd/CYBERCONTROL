@@ -181,9 +181,9 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pag
     conexion.execute(
         """
         INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, venta_id, bono_id)
-        VALUES (?, 'CARGA', ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (miembro_id, minutos, ahora_iso, venta_id, bono_id),
+        (miembro_id, dominio.MOVIMIENTO_CARGA, minutos, ahora_iso, venta_id, bono_id),
     )
     return venta_id
 
@@ -268,8 +268,8 @@ def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):
 
         ahora_iso = datetime.now().isoformat(timespec="seconds")
         cargas = conexion.execute(
-            "SELECT * FROM movimientos_saldo_miembro WHERE venta_id = ? AND tipo = 'CARGA'",
-            (venta_id,),
+            "SELECT * FROM movimientos_saldo_miembro WHERE venta_id = ? AND tipo = ?",
+            (venta_id, dominio.MOVIMIENTO_CARGA),
         ).fetchall()
         for carga in cargas:
             saldo_actual = conexion.execute(
@@ -344,9 +344,9 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> di
         conexion.execute(
             """
             INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, sesion_id)
-            VALUES (?, 'CONSUMO', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (miembro["id"], minutos_a_usar, ahora_iso, sesion_id),
+            (miembro["id"], dominio.MOVIMIENTO_CONSUMO, minutos_a_usar, ahora_iso, sesion_id),
         )
 
     return {"miembro": miembro["nombre"], "minutos_usados": minutos_a_usar, "sesion_id": sesion_id}

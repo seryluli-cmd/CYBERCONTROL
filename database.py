@@ -872,7 +872,7 @@ _COLUMNAS_MOVIMIENTOS_SALDO = (
 # Tipos de movimiento del ledger de saldo de socios (el CHECK de "tipo"). Los
 # "originales" son los del primer esquema; ANULACION se sumó después.
 _TIPOS_MOVIMIENTO_SALDO_ORIGINALES = ("CARGA", "CONSUMO", "REINTEGRO")
-_TIPOS_MOVIMIENTO_SALDO = _TIPOS_MOVIMIENTO_SALDO_ORIGINALES + ("ANULACION",)
+_TIPOS_MOVIMIENTO_SALDO = dominio.TIPOS_MOVIMIENTO_SALDO
 
 
 def _sql_tabla_movimientos_saldo_miembro(tipos: tuple, referencia_bono: str, si_no_existe: bool = False) -> str:

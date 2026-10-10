@@ -32,12 +32,12 @@ def _texto_evento(evento) -> str:
     if tipo == "BONO":
         return (f"{hora} — {evento['estacion_nombre']}: bono '{evento['bono_nombre']}' "
                 f"cobrado ({formato_pesos(evento['precio'])}).")
-    if tipo == "CARGA":
+    if tipo == dominio.MOVIMIENTO_CARGA:
         return f"{hora} — {formato_pesos(evento['monto'])} cargados a {evento['miembro_nombre']}."
-    if tipo == "CONSUMO":
+    if tipo == dominio.MOVIMIENTO_CONSUMO:
         return (f"{hora} — {evento['miembro_nombre']} abrió {evento['estacion_nombre']} "
                 f"con su saldo ({formato_tiempo(evento['minutos'] * 60)}).")
-    if tipo == "REINTEGRO":
+    if tipo == dominio.MOVIMIENTO_REINTEGRO:
         return f"{hora} — {formato_tiempo(evento['minutos'] * 60)} reintegrados a {evento['miembro_nombre']}."
     if tipo == "TRASLADO":
         return f"{hora} — Sesión pasada de {evento['origen_nombre']} a {evento['destino_nombre']}."

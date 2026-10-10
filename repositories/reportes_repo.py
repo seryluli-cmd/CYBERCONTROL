@@ -311,7 +311,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 FROM movimientos_saldo_miembro
                 JOIN bonos_miembro ON bonos_miembro.id = movimientos_saldo_miembro.bono_id
                 JOIN ventas ON ventas.id = movimientos_saldo_miembro.venta_id
-                WHERE movimientos_saldo_miembro.tipo = 'CARGA'
+                WHERE movimientos_saldo_miembro.tipo = ?
                   AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
                 GROUP BY bonos_miembro.id, bonos_miembro.nombre
 
@@ -325,7 +325,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                     SUM(ventas.total) AS importe
                 FROM movimientos_saldo_miembro
                 JOIN ventas ON ventas.id = movimientos_saldo_miembro.venta_id
-                WHERE movimientos_saldo_miembro.tipo = 'CARGA'
+                WHERE movimientos_saldo_miembro.tipo = ?
                   AND movimientos_saldo_miembro.bono_id IS NULL
                   AND ventas.estado = ? AND date(ventas.fecha) BETWEEN date(?) AND date(?)
                 HAVING COUNT(*) > 0
@@ -362,8 +362,9 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
             (
                 CATEGORIA_KIOSKO, *rango,
                 CATEGORIA_BONO_PC, *rango,
-                CATEGORIA_BONO_SOCIO, *rango,
-                CATEGORIA_CARGA_TARIFA_SOCIO, CATEGORIA_CARGA_TARIFA_SOCIO, *rango,
+                CATEGORIA_BONO_SOCIO, dominio.MOVIMIENTO_CARGA, *rango,
+                CATEGORIA_CARGA_TARIFA_SOCIO, CATEGORIA_CARGA_TARIFA_SOCIO,
+                dominio.MOVIMIENTO_CARGA, *rango,
                 CATEGORIA_TRAMITE, *rango,
                 CATEGORIA_BONO_PLAYSTATION, *rango,
             ),

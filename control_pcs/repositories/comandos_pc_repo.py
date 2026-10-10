@@ -30,15 +30,16 @@ import os
 from datetime import datetime
 
 import database
+import dominio
 from database import conexion_db
 from control_pcs.repositories import accesos_admin_pc_repo
 
-TIPO_REINICIAR = "REINICIAR"
-TIPO_APAGAR = "APAGAR"
-TIPO_MENSAJE = "MENSAJE"
-TIPO_SCREENSHOT = "SCREENSHOT"
-TIPO_CAMBIAR_RED = "CAMBIAR_RED"
-TIPO_VOLUMEN = "VOLUMEN"
+TIPO_REINICIAR = dominio.COMANDO_REINICIAR
+TIPO_APAGAR = dominio.COMANDO_APAGAR
+TIPO_MENSAJE = dominio.COMANDO_MENSAJE
+TIPO_SCREENSHOT = dominio.COMANDO_SCREENSHOT
+TIPO_CAMBIAR_RED = dominio.COMANDO_CAMBIAR_RED
+TIPO_VOLUMEN = dominio.COMANDO_VOLUMEN
 
 
 def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:

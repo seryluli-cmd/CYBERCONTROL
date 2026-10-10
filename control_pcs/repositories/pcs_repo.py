@@ -197,8 +197,8 @@ def estado_estaciones():
             SELECT sesiones_pc.*, miembros.nombre AS miembro_nombre
             FROM sesiones_pc
             LEFT JOIN miembros ON miembros.id = sesiones_pc.miembro_id
-            WHERE sesiones_pc.estado = 'ACTIVA'
-        """).fetchall()
+            WHERE sesiones_pc.estado = ?
+        """, (dominio.SESION_ACTIVA,)).fetchall()
 
     sesiones_por_estacion = {sesion["estacion_id"]: sesion for sesion in sesiones}
 
@@ -285,8 +285,8 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
     extendiendo una sesión que ya existía, se respeta lo que ya tenía.
     """
     sesion = conexion.execute(
-        "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = 'ACTIVA'",
-        (estacion_id,),
+        "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = ?",
+        (estacion_id, dominio.SESION_ACTIVA),
     ).fetchone()
 
     if sesion is None:
@@ -294,10 +294,10 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
         cursor = conexion.execute(
             """
             INSERT INTO sesiones_pc (estacion_id, fecha_inicio, fecha_fin_prevista, estado, miembro_id)
-            VALUES (?, ?, ?, 'ACTIVA', ?)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (estacion_id, ahora.isoformat(timespec="seconds"),
-             fin_previsto.isoformat(timespec="seconds"), miembro_id),
+             fin_previsto.isoformat(timespec="seconds"), dominio.SESION_ACTIVA, miembro_id),
         )
         return cursor.lastrowid
 
@@ -403,20 +403,20 @@ def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_
             raise ValueError("Esa PC ya no está disponible. Actualizá la pantalla e intentá de nuevo.")
 
         sesion_origen = conexion.execute(
-            "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = 'ACTIVA'",
-            (estacion_origen_id,),
+            "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = ?",
+            (estacion_origen_id, dominio.SESION_ACTIVA),
         ).fetchone()
         if sesion_origen is None or datetime.fromisoformat(sesion_origen["fecha_fin_prevista"]) <= ahora:
             raise ValueError(f"'{origen['nombre']}' ya no tiene una sesión activa.")
 
         sesion_destino = conexion.execute(
-            "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = 'ACTIVA'",
-            (estacion_destino_id,),
+            "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = ?",
+            (estacion_destino_id, dominio.SESION_ACTIVA),
         ).fetchone()
         if sesion_destino is not None and datetime.fromisoformat(sesion_destino["fecha_fin_prevista"]) <= ahora:
             conexion.execute(
-                "UPDATE sesiones_pc SET estado = 'FINALIZADA', fecha_fin_real = ? WHERE id = ?",
-                (ahora.isoformat(timespec="seconds"), sesion_destino["id"]),
+                "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ? WHERE id = ?",
+                (dominio.SESION_FINALIZADA, ahora.isoformat(timespec="seconds"), sesion_destino["id"]),
             )
             sesion_destino = None
 
@@ -466,10 +466,10 @@ def _contribuciones_de_sesion(conexion, sesion_id: int):
         UNION ALL
         SELECT 'SOCIO' AS tipo, m.miembro_id AS miembro_id, m.minutos AS minutos, m.fecha AS fecha
         FROM movimientos_saldo_miembro m
-        WHERE m.sesion_id = ? AND m.tipo = 'CONSUMO'
+        WHERE m.sesion_id = ? AND m.tipo = ?
         ORDER BY fecha
         """,
-        (sesion_id, sesion_id),
+        (sesion_id, sesion_id, dominio.MOVIMIENTO_CONSUMO),
     ).fetchall()
 
 
@@ -544,14 +544,15 @@ def finalizar_sesion(sesion_id: int):
         conexion.execute("BEGIN IMMEDIATE")
 
         sesion = conexion.execute(
-            "SELECT * FROM sesiones_pc WHERE id = ? AND estado = 'ACTIVA'", (sesion_id,)
+            "SELECT * FROM sesiones_pc WHERE id = ? AND estado = ?",
+            (sesion_id, dominio.SESION_ACTIVA),
         ).fetchone()
         if sesion is None:
             return
 
         conexion.execute(
-            "UPDATE sesiones_pc SET estado = 'FINALIZADA', fecha_fin_real = ? WHERE id = ?",
-            (ahora.isoformat(timespec="seconds"), sesion_id),
+            "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ? WHERE id = ?",
+            (dominio.SESION_FINALIZADA, ahora.isoformat(timespec="seconds"), sesion_id),
         )
 
         fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
@@ -569,9 +570,10 @@ def finalizar_sesion(sesion_id: int):
             conexion.execute(
                 """
                 INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, sesion_id)
-                VALUES (?, 'REINTEGRO', ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (miembro_id, minutos_a_reintegrar, ahora.isoformat(timespec="seconds"), sesion_id),
+                (miembro_id, dominio.MOVIMIENTO_REINTEGRO, minutos_a_reintegrar,
+                 ahora.isoformat(timespec="seconds"), sesion_id),
             )
 
 
