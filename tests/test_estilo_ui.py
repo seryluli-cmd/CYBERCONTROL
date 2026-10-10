@@ -19,11 +19,12 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication, QFrame, QPushButton  # noqa: E402
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton  # noqa: E402
 
 import dominio  # noqa: E402
 import main as programa  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
+from ui.login_window import LoginWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from ui.utils import crear_tabla  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
@@ -49,6 +50,17 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         self.addCleanup(tabla.deleteLater)
 
         self.assertFalse(tabla.verticalHeader().isVisible())
+
+    def test_la_pantalla_de_ingreso_se_llama_cyberbios(self):
+        # Pedido del dueño (2026-10-10): el título de la primera pantalla es la marca,
+        # no "Sistema de Kiosko".
+        ventana = LoginWindow(lambda usuario: None)
+        self.addCleanup(ventana.deleteLater)
+
+        textos = [etiqueta.text() for etiqueta in ventana.findChildren(QLabel)]
+
+        self.assertIn("CyberBIOS", textos)
+        self.assertNotIn("Sistema de Kiosko", textos)
 
     def test_la_barra_de_arriba_usa_botones_sin_borde_salvo_vender_y_cerrar_sesion(self):
         admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))

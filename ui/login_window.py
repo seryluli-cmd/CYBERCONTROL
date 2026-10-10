@@ -73,7 +73,7 @@ class LoginWindow(QWidget):
             icono.setPixmap(imagen.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         icono.setAlignment(Qt.AlignCenter)
 
-        titulo = QLabel("Sistema de Kiosko")
+        titulo = QLabel("CyberBIOS")
         titulo.setStyleSheet("font-size: 21px; font-weight: 700; color: #1F2430;")
         titulo.setAlignment(Qt.AlignCenter)
 
