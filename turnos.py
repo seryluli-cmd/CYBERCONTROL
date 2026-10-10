@@ -97,6 +97,23 @@ def etiqueta_turno(fecha, turno: str) -> str:
 TURNO_GRACIA_MIN = 40
 
 
+def turno_que_arranca_tras_un_cierre(momento_del_cierre: datetime) -> str:
+    """
+    A qué turno pertenece lo que se venda DESPUÉS de un cierre hecho en
+    `momento_del_cierre`: es el turno con el que va a quedar anotado el cierre
+    siguiente (ver turnos_repo._desde_y_turno_en_curso).
+
+    Un cierre hecho hasta TURNO_GRACIA_MIN minutos ANTES del cambio de turno
+    (quien cierra y se va a las 13:55, con la Tarde ya llegando) cuenta como el
+    cierre del turno que termina, no como el arranque del que sigue. Sin esa
+    tolerancia, lo que se cerraba después quedaba anotado un turno corrido (la
+    Tarde como "Mañana", la Noche como "Tarde") y el reporte mostraba como "sin
+    cerrar" un turno que sí se había cerrado. Es la misma gracia que
+    turno_vencimiento da a los cierres tardíos, pero en el otro sentido.
+    """
+    return calcular_turno(momento_del_cierre + timedelta(minutes=TURNO_GRACIA_MIN))
+
+
 def turno_vencimiento(dia_base, turno: str) -> datetime:
     """
     Momento exacto en que el turno `turno` de un día calendario dado

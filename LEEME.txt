@@ -32,6 +32,11 @@ VENTAS Y CAJA
   (Kiosko + Alquiler de PCs + PlayStation 5) y lo vendido en Impresiones
   y en Trámites (ya están sumados dentro de Kiosko, no se suman de nuevo).
 - Clave: cada persona puede cambiar su propia contraseña.
+- Cada cierre se anota en el turno y el día donde EMPEZÓ lo que cierra (desde
+  el cierre anterior). Cerrar hasta 40 minutos antes del cambio de turno
+  cuenta como cerrar ese turno. Si pasaron días sin cerrar, el cierre de hoy
+  queda anotado en el día viejo: Reportes > Resumen del Día lo avisa y tiene
+  un botón para ir a verlo.
 
 PCs, SOCIOS Y PLAYSTATION 5
 ----------------------------

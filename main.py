@@ -344,6 +344,18 @@ HOJA_DE_ESTILOS = """
         padding: 6px 2px 2px 2px;
     }
 
+    /* Aviso informativo, en azul suave (no es una alarma): lo usa el Resumen del
+       Día cuando un cierre de ese día quedó anotado en otro. */
+    QFrame#avisoInformativo {
+        background-color: #EEF4FF;
+        border: 1px solid #C9D9FB;
+        border-radius: 10px;
+    }
+    QFrame#avisoInformativo QLabel#avisoTitulo {
+        color: #1D48A0;
+        font-weight: 600;
+    }
+
     /* Cuadros de texto de solo lectura (el log de "Actividad reciente"). */
     QTextEdit, QPlainTextEdit {
         background-color: #FFFFFF;

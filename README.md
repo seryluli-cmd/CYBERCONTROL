@@ -139,6 +139,15 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   Noche) no cambia a qué turno/día queda atribuido el cierre (ver
   `turnos_repo.cerrar_turno`, cubierto por `TestEtiquetaDeTurnoEnElCierre`
   y `TestFechaDelCierreEsElDiaQueArrancoElTurno` en los tests).
+  ⚠️ Ese "momento en que empezó" se toma con una **tolerancia de
+  `TURNO_GRACIA_MIN` (40 min)**, `turnos.turno_que_arranca_tras_un_cierre`:
+  un cierre hecho hasta 40 minutos ANTES del cambio de turno (el que se va a
+  las 13:55) cuenta como el cierre del turno que termina, y lo que sigue ya es
+  del turno nuevo. Sin eso, cerrar un par de minutos antes de las 14, las 22
+  o las 06 corría de turno a todos los cierres siguientes (la Tarde quedaba
+  como "Mañana") y el reporte mostraba "SIN CERRAR" un turno que sí se cerró
+  (`TestCierreHechoUnPocoAntesDelCambioDeTurno`). El primer cierre de todos
+  no tiene cierre anterior: usa la hora en que se hace.
 - **`turnos.turno_vencimiento(dia, turno)`** — momento en que un turno
   de un día dado queda vencido: fin de su ventana nominal +
   `TURNO_GRACIA_MIN` (40 min) de gracia, para darle tiempo a quien cierra
@@ -284,7 +293,15 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   PlayStation 5 (mismo criterio que Totales), Efectivo/Digital, Total
   y la diferencia del sobre si el Admin ya lo contó; tiene botones de día
   anterior/siguiente y una fila TOTAL DEL DÍA. La plata de cada turno es
-  la de su cierre (no la que daría mirar el reloj).
+  la de su cierre (no la que daría mirar el reloj). Como un cierre se anota
+  donde EMPEZÓ lo que cierra, un cierre hecho tras días sin cerrar cae en el
+  turno viejo y las filas de hoy salen en cero: por eso arriba de la tabla
+  aparece un aviso azul ("Hoy se cerró un turno que quedó anotado en otro
+  día", con botón "Ver el dd/mm/aaaa"), que sale de
+  `resumen_del_dia()["cierres_de_otro_dia"]`, y en el día donde quedó anotado
+  el estado dice "Cerrado el dd/mm" (`"cerrado_otro_dia"`). La Noche que se
+  cierra a la madrugada (lo normal) no dispara nada
+  (`turnos_repo._cerrado_pasado_su_vencimiento`).
 - **Control de Cierres de Turno** (`caja_window.py`,
   `ControlCierresWindow`) — lista `turnos_repo.listar_cierres()` (columna
   Turno con la etiqueta de `etiqueta_turno`, incluye "Domingo T1"/"T2"),
@@ -369,7 +386,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-343 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
+358 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red, migraciones y algunas
 interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

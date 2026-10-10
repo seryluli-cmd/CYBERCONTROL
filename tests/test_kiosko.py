@@ -15,7 +15,7 @@ Se ejecutan con:
 
 import hashlib
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest import mock
 
 import database
@@ -247,6 +247,48 @@ class TestTurnoVencimiento(unittest.TestCase):
     def test_noche_vence_a_la_madrugada_del_dia_siguiente(self):
         lunes = date(2026, 1, 5)
         self.assertEqual(turnos.turno_vencimiento(lunes, "NOCHE"), datetime(2026, 1, 6, 6, 40))
+
+
+class TestTurnoQueArrancaTrasUnCierre(unittest.TestCase):
+    """Un cierre hecho unos minutos ANTES del cambio de turno cuenta como el
+    cierre del turno que termina: lo que se venda después ya es del turno nuevo."""
+
+    def test_un_cierre_a_su_hora_o_un_poco_antes_arranca_el_turno_que_sigue(self):
+        casos = [
+            (datetime(2026, 1, 5, 5, 55), "MAÑANA"),    # la Noche, cerrada 5 min antes de las 6
+            (datetime(2026, 1, 5, 6, 5), "MAÑANA"),
+            (datetime(2026, 1, 5, 13, 55), "TARDE"),    # la Mañana, cerrada 5 min antes de las 14
+            (datetime(2026, 1, 5, 14, 5), "TARDE"),
+            (datetime(2026, 1, 5, 21, 55), "NOCHE"),    # la Tarde, cerrada 5 min antes de las 22
+            (datetime(2026, 1, 5, 22, 5), "NOCHE"),
+            (datetime(2026, 1, 5, 23, 50), "NOCHE"),
+            (datetime(2026, 1, 6, 0, 30), "NOCHE"),
+            (datetime(2026, 1, 5, 10, 0), "MAÑANA"),    # a mitad de turno no cambia nada
+        ]
+        for cuando, esperado in casos:
+            with self.subTest(cuando=cuando):
+                self.assertEqual(turnos.turno_que_arranca_tras_un_cierre(cuando), esperado)
+
+    def test_la_tolerancia_es_la_misma_gracia_que_tienen_los_turnos_vencidos(self):
+        cambio_de_turno = datetime(2026, 1, 5, 14, 0)
+        justo_antes_de_la_gracia = cambio_de_turno - timedelta(minutes=turnos.TURNO_GRACIA_MIN + 1)
+        justo_en_la_gracia = cambio_de_turno - timedelta(minutes=turnos.TURNO_GRACIA_MIN)
+
+        self.assertEqual(turnos.turno_que_arranca_tras_un_cierre(justo_antes_de_la_gracia), "MAÑANA")
+        self.assertEqual(turnos.turno_que_arranca_tras_un_cierre(justo_en_la_gracia), "TARDE")
+
+    def test_los_domingos_el_cambio_es_a_las_18_y_a_las_6_del_lunes(self):
+        casos = [
+            (datetime(2026, 1, 3, 21, 55), "NOCHE"),    # sábado: la Tarde normal, cerrada 5 min antes de las 22
+            (datetime(2026, 1, 3, 23, 50), "NOCHE"),    # sábado a la noche, ya cruzando a domingo
+            (datetime(2026, 1, 4, 5, 55), "MAÑANA"),    # la Noche del sábado, cerrada 5 min antes: Domingo T1
+            (datetime(2026, 1, 4, 14, 5), "MAÑANA"),    # el domingo no existe la Tarde
+            (datetime(2026, 1, 4, 17, 55), "NOCHE"),    # Domingo T1 cerrado 5 min antes: arranca Domingo T2
+            (datetime(2026, 1, 5, 5, 55), "MAÑANA"),    # Domingo T2 cerrado 5 min antes de las 6 del lunes
+        ]
+        for cuando, esperado in casos:
+            with self.subTest(cuando=cuando):
+                self.assertEqual(turnos.turno_que_arranca_tras_un_cierre(cuando), esperado)
 
 
 class TestHashClave(unittest.TestCase):
@@ -827,6 +869,77 @@ class TestFechaDelCierreEsElDiaQueArrancoElTurno(BaseConBaseTemporal):
         self.assertEqual(resultado["turno_label"], "Noche")
 
 
+class TestCierreHechoUnPocoAntesDelCambioDeTurno(BaseConBaseTemporal):
+    """
+    Quien cierra un par de minutos antes del cambio de turno (el que se va a las
+    13:55 porque ya llegó la Tarde) no tiene que correr de turno a todos los cierres
+    que vienen después: antes la Tarde quedaba anotada como "Mañana", la Noche como
+    "Tarde", y el reporte marcaba "SIN CERRAR" un turno que sí se había cerrado.
+    Ver turnos.turno_que_arranca_tras_un_cierre.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+
+    def _cerrar(self, momento):
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            return turnos_repo.cerrar_turno(self.usuario_id)
+
+    def test_cerrando_cinco_minutos_antes_cada_cierre_queda_en_su_turno(self):
+        # Martes 6 a la noche arranca el sistema; de ahí en adelante, todos los
+        # cierres se hacen 5 minutos antes del cambio de turno.
+        self._cerrar(datetime(2026, 1, 6, 21, 55))
+        self._cerrar(datetime(2026, 1, 7, 5, 55))     # la Noche del martes
+        self._cerrar(datetime(2026, 1, 7, 13, 55))    # la Mañana del miércoles
+        self._cerrar(datetime(2026, 1, 7, 21, 55))    # la Tarde del miércoles
+        self._cerrar(datetime(2026, 1, 8, 5, 55))     # la Noche del miércoles
+
+        anotados = [(c["fecha"], c["turno"]) for c in reversed(turnos_repo.listar_cierres())][1:]
+
+        self.assertEqual(anotados, [
+            ("2026-01-06", "NOCHE"), ("2026-01-07", "MAÑANA"), ("2026-01-07", "TARDE"), ("2026-01-07", "NOCHE"),
+        ])
+
+    def test_el_reporte_del_dia_no_marca_sin_cerrar_un_turno_que_si_se_cerro(self):
+        self._cerrar(datetime(2026, 1, 7, 6, 5))      # arranca el sistema, sin ventas
+        self._cerrar(datetime(2026, 1, 7, 13, 55))    # la Mañana, 5 minutos antes de las 14
+        self._cerrar(datetime(2026, 1, 7, 21, 55))    # la Tarde, 5 minutos antes de las 22
+
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 7, 23, 0)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            resumen = turnos_repo.resumen_del_dia(date(2026, 1, 7))
+
+        # La Tarde ya venció (22:40) y se cerró: no está "sin cerrar". La Noche, recién
+        # arrancada, sigue en curso. (Sin la tolerancia, el cierre de las 13:55 contaba como
+        # arranque de la Mañana, el de las 21:55 quedaba anotado como "Mañana" y la Tarde
+        # figuraba sin cerrar.)
+        self.assertEqual([t["estado"] for t in resumen["turnos"]], [
+            turnos_repo.ESTADO_CERRADO, turnos_repo.ESTADO_CERRADO, turnos_repo.ESTADO_EN_CURSO,
+        ])
+
+    def test_el_primer_cierre_de_todos_sigue_siendo_el_turno_de_la_hora_en_que_se_hace(self):
+        # No hay cierre anterior del que tomar la hora: la tolerancia no corre.
+        self.assertEqual(self._cerrar(datetime(2026, 1, 7, 13, 55))["turno"], "MAÑANA")
+        self.assertEqual(self._cerrar(datetime(2026, 1, 7, 22, 5))["turno"], "TARDE")
+
+    def test_la_vista_previa_de_caja_anticipa_el_turno_que_se_va_a_grabar(self):
+        self._cerrar(datetime(2026, 1, 7, 6, 5))
+        self._cerrar(datetime(2026, 1, 7, 13, 55))
+
+        with mock.patch("repositories.turnos_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 1, 7, 14, 10)
+            datetime_mock.fromisoformat = datetime.fromisoformat
+            resumen = turnos_repo.resumen_turno_actual()
+            cierre = turnos_repo.cerrar_turno(self.usuario_id)
+
+        self.assertEqual(resumen["turno_actual"], "TARDE")
+        self.assertEqual(cierre["turno"], "TARDE")
+
+
 class TestDetalleCierre(BaseConBaseTemporal):
     def _vender(self, usuario_id, momento, total=10.0):
         with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
@@ -1197,6 +1310,54 @@ class TestResumenDelDia(BaseConBaseTemporal):
         self.assertEqual(manana["total"], 10.0)
         self.assertEqual(manana["cantidad_ventas"], 1)
         self.assertEqual(manana["cantidad_anuladas"], 1)
+
+    def test_un_cierre_hecho_tras_dias_sin_cerrar_se_avisa_el_dia_en_que_se_hizo(self):
+        # El lunes 5 a la noche se cierra por primera vez y el siguiente cierre es
+        # recién el jueves 8 a las 19:58: cubre desde el lunes, así que queda anotado
+        # en la Noche del lunes 5 y NO en las filas del jueves.
+        self._cerrar(datetime(2026, 1, 5, 23, 58))
+        self._vender(datetime(2026, 1, 7, 12, 0), 40.0)
+        self._cerrar(datetime(2026, 1, 8, 19, 58), self.pedro_id)
+        ahora = datetime(2026, 1, 8, 20, 0)
+
+        jueves = self._resumen(date(2026, 1, 8), ahora)
+
+        self.assertEqual(len(jueves["cierres_de_otro_dia"]), 1)
+        aviso = jueves["cierres_de_otro_dia"][0]
+        self.assertEqual((aviso["fecha"], aviso["turno"], aviso["etiqueta"]), ("2026-01-05", "NOCHE", "Noche"))
+        self.assertEqual(aviso["responsable"], "Pedro")
+        self.assertTrue(aviso["cerrado_a"].startswith("2026-01-08T19:58"), aviso["cerrado_a"])
+        # Las filas del jueves quedan en cero; la plata está en el día anotado.
+        self.assertEqual(jueves["total"]["total"], 0.0)
+        lunes = self._resumen(date(2026, 1, 5), ahora)
+        self.assertEqual(lunes["turnos"][2]["total"], 40.0)
+        # Y en ese día el turno queda marcado como cerrado otro día (la pantalla lo aclara).
+        self.assertTrue(lunes["turnos"][2]["cerrado_otro_dia"])
+        # Ni el lunes (donde quedó anotado) ni los días del medio (no se cerró nada
+        # en ellos) tienen nada que avisar.
+        for dia in (date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7)):
+            with self.subTest(dia=dia):
+                self.assertEqual(self._resumen(dia, ahora)["cierres_de_otro_dia"], [])
+
+    def test_la_noche_cerrada_a_la_madrugada_y_un_turno_cerrado_tarde_el_mismo_dia_no_se_avisan(self):
+        self._cerrar(datetime(2026, 1, 5, 22, 5))                       # arranca la Noche del lunes 5
+        self._cerrar(datetime(2026, 1, 6, 6, 30), self.pedro_id)        # la cierra a la madrugada: lo normal
+        self._cerrar(datetime(2026, 1, 6, 23, 0), self.pedro_id)        # la Mañana del 6, cerrada tardísimo pero el mismo día
+
+        ahora = datetime(2026, 1, 7, 8, 0)
+        self.assertEqual(self._resumen(date(2026, 1, 6), ahora)["cierres_de_otro_dia"], [])
+        # La Noche del 5, cerrada a la madrugada, y la Mañana del 6, cerrada tarde pero el mismo
+        # día, no se marcan como cerradas otro día.
+        self.assertFalse(self._resumen(date(2026, 1, 5), ahora)["turnos"][2]["cerrado_otro_dia"])
+        self.assertFalse(self._resumen(date(2026, 1, 6), ahora)["turnos"][0]["cerrado_otro_dia"])
+
+    def test_un_turno_cerrado_pasado_su_vencimiento_al_dia_siguiente_si_se_avisa(self):
+        self._cerrar(datetime(2026, 1, 5, 22, 5))
+        self._cerrar(datetime(2026, 1, 6, 10, 0), self.pedro_id)         # la Noche del 5, cerrada a las 10 (vence 06:40)
+
+        avisos = self._resumen(date(2026, 1, 6), datetime(2026, 1, 6, 11, 0))["cierres_de_otro_dia"]
+
+        self.assertEqual([(a["fecha"], a["turno"]) for a in avisos], [("2026-01-05", "NOCHE")])
 
 
 class TestTurnosFaltantes(BaseConBaseTemporal):

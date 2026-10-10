@@ -20,10 +20,12 @@ Las fechas se comparan como texto ISO con microsegundos (ver el comentario
 en `cerrar_turno`): la ventana de un turno es (último cierre, ahora].
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import dominio
 from database import conexion_db
-from turnos import calcular_turno, etiqueta_turno, turno_vencimiento, turnos_del_dia
+from turnos import (
+    calcular_turno, etiqueta_turno, turno_que_arranca_tras_un_cierre, turno_vencimiento, turnos_del_dia,
+)
 from repositories.config_repo import obtener_fondo_cambio
 from repositories import turnos_faltantes_repo as _faltantes_repo
 from repositories.turnos_faltantes_repo import _responsables_del_mes
@@ -100,10 +102,20 @@ def _desde_y_turno_en_curso(ultimo_cierre, ahora_dt):
     `cerrar_turno`. El turno es el de cuándo ARRANCÓ lo que sigue sin
     cerrar, no el de la hora actual: a las 14:05, con la Mañana todavía
     sin cerrar, el cierre se graba como "Mañana", no como "Tarde".
+
+    "Cuándo arrancó" es la hora del cierre anterior con una tolerancia
+    (turnos.turno_que_arranca_tras_un_cierre): si ese cierre se hizo unos
+    minutos ANTES del cambio de turno (13:55), lo que sigue es de la Tarde.
+    El primer cierre de todos no tiene cierre anterior: arranca "ahora".
     """
-    desde = ultimo_cierre["fecha_cierre"] if ultimo_cierre else _PRINCIPIO_DE_LOS_TIEMPOS
-    inicio_del_turno = datetime.fromisoformat(desde) if ultimo_cierre else ahora_dt
-    turno = calcular_turno(inicio_del_turno)
+    if ultimo_cierre:
+        desde = ultimo_cierre["fecha_cierre"]
+        inicio_del_turno = datetime.fromisoformat(desde)
+        turno = turno_que_arranca_tras_un_cierre(inicio_del_turno)
+    else:
+        desde = _PRINCIPIO_DE_LOS_TIEMPOS
+        inicio_del_turno = ahora_dt
+        turno = calcular_turno(inicio_del_turno)
     return desde, turno, inicio_del_turno
 
 
@@ -361,6 +373,58 @@ def _vendido_aparte_entre(conexion, desde: str, hasta: str, cierre_grabado: bool
     return {"impresiones": impresiones, "tramites": tramites}
 
 
+def _cerrado_pasado_su_vencimiento(dia_del_turno, turno: str, cerrado_a: str) -> bool:
+    """
+    Si el turno `turno` del día `dia_del_turno` (date o "YYYY-MM-DD") se cerró en
+    `cerrado_a` (fecha ISO del cierre) pasado su vencimiento, con su gracia (ver
+    turnos.turno_vencimiento). La Noche que se cierra a la madrugada siguiente es lo
+    normal y no cuenta; un turno que quedó abierto hasta el día siguiente o más, sí.
+    Es lo que decide qué cierres avisa y aclara el Resumen del Día. Se compara como
+    texto ISO, igual que el resto del archivo.
+    """
+    return cerrado_a > turno_vencimiento(dia_del_turno, turno).isoformat()
+
+
+def _cierres_hechos_ese_dia_y_anotados_antes(conexion, dia: date) -> list:
+    """
+    Los cierres que se HICIERON el día `dia` pero quedaron anotados
+    (`cierres_turno.fecha`) en un día anterior. Un cierre se anota en el turno
+    donde ARRANCÓ lo que cierra, o sea desde el cierre anterior (ver
+    _desde_y_turno_en_curso): si pasaron días sin cerrar, el cierre de hoy cae
+    en el turno viejo y su plata NO figura en las filas de hoy. El reporte lo
+    avisa para que no parezca que esa plata se perdió.
+
+    No se avisa la Noche que se cierra a la madrugada siguiente, que es lo normal
+    (ver _cerrado_pasado_su_vencimiento).
+    """
+    desde = dia.isoformat()
+    hasta = (dia + timedelta(days=1)).isoformat()
+    filas = conexion.execute(
+        """
+        SELECT cierres_turno.fecha, cierres_turno.turno, cierres_turno.fecha_cierre,
+               usuarios.nombre AS empleada
+        FROM cierres_turno
+        JOIN usuarios ON usuarios.id = cierres_turno.usuario_id
+        WHERE cierres_turno.fecha < ?
+          AND cierres_turno.fecha_cierre >= ?
+          AND cierres_turno.fecha_cierre < ?
+        ORDER BY cierres_turno.id
+        """,
+        (desde, desde, hasta),
+    ).fetchall()
+    return [
+        {
+            "fecha": fila["fecha"],
+            "turno": fila["turno"],
+            "etiqueta": etiqueta_turno(fila["fecha"], fila["turno"]),
+            "responsable": fila["empleada"],
+            "cerrado_a": fila["fecha_cierre"],
+        }
+        for fila in filas
+        if _cerrado_pasado_su_vencimiento(fila["fecha"], fila["turno"], fila["fecha_cierre"])
+    ]
+
+
 def resumen_del_dia(dia):
     """
     El reporte de UN día calendario, abierto por turno (Mañana/Tarde/Noche,
@@ -384,8 +448,11 @@ def resumen_del_dia(dia):
         y nadie lo cerró.
       - PENDIENTE: todavía no es hora de que esté cerrado.
 
-    Devuelve {"fecha", "turnos": [...], "total": {...}} con el total del
-    día sumando los turnos.
+    Devuelve {"fecha", "turnos": [...], "total": {...}, "cierres_de_otro_dia":
+    [...]} con el total del día sumando los turnos. "cierres_de_otro_dia" son
+    los cierres que se hicieron este día pero quedaron anotados en un turno de
+    un día anterior (ver _cierres_hechos_ese_dia_y_anotados_antes): su plata
+    está en las filas de ESE día, no en las de este.
 
     "impresiones" (lo vendido del artículo IMPRESIONES, ver
     dominio.CODIGO_ARTICULO_IMPRESIONES) y "tramites" (lo cobrado por
@@ -420,6 +487,8 @@ def resumen_del_dia(dia):
             acumulado = aparte_por_turno.setdefault(cierre["turno"], {linea: 0.0 for linea in _LINEAS_APARTE})
             for linea in _LINEAS_APARTE:
                 acumulado[linea] += vendido[linea]
+
+        cierres_de_otro_dia = _cierres_hechos_ese_dia_y_anotados_antes(conexion, dia)
 
         # La ventana que está abierta ahora, si pertenece a este día.
         ventana = _ventana_en_curso(conexion, ahora_dt)
@@ -473,12 +542,21 @@ def resumen_del_dia(dia):
         # abierta sumando más plata encima.
         verificado = bool(grupo) and parcial is None and all(c["monto_contado"] is not None for c, _, _ in grupo)
 
+        cerrado_a = grupo[-1][0]["fecha_cierre"] if grupo and parcial is None else None
         resultado.append({
             "turno": turno,
             "etiqueta": etiqueta_turno(dia, turno),
             "estado": estado,
             "responsables": list(dict.fromkeys(c["empleada"] for c, _, _ in grupo)),
-            "cerrado_a": grupo[-1][0]["fecha_cierre"] if grupo and parcial is None else None,
+            "cerrado_a": cerrado_a,
+            # Se terminó de cerrar OTRO día y pasado su vencimiento (no la Noche que se
+            # cierra a la madrugada): la pantalla lo aclara ("Cerrado el 10/10"), porque
+            # la hora sola parecería de este mismo día.
+            "cerrado_otro_dia": bool(
+                cerrado_a
+                and cerrado_a[:10] != dia.isoformat()
+                and _cerrado_pasado_su_vencimiento(dia, turno, cerrado_a)
+            ),
             "cantidad_ventas": sum(g[1] for g in grupo) + (parcial["confirmadas"] if parcial else 0),
             "cantidad_anuladas": sum(g[2] for g in grupo) + (parcial["anuladas"] if parcial else 0),
             **plata,
@@ -498,7 +576,7 @@ def resumen_del_dia(dia):
         for clave in ("kiosko", *_LINEAS_APARTE, "pcs", "playstation", "efectivo", "digital", "total",
                       "cantidad_ventas", "cantidad_anuladas")
     }
-    return {"fecha": dia, "turnos": resultado, "total": total}
+    return {"fecha": dia, "turnos": resultado, "total": total, "cierres_de_otro_dia": cierres_de_otro_dia}
 
 
 def listar_cierres(limite: int = 100):

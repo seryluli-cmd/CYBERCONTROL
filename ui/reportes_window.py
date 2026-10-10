@@ -21,7 +21,7 @@ Las usa el Admin o una Empleada con `permiso_reportes`.
 from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
+    QDialog, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QComboBox, QTabWidget, QWidget,
 )
 from PySide6.QtCore import Qt, QDate
@@ -44,7 +44,7 @@ class ReportesWindow(QDialog):
         # El Resumen del Día tiene 13 columnas: con menos ancho la de "Cerró" (el
         # nombre de quien cerró cada turno) queda tan angosta que corta el nombre.
         # No más ancho que la pantalla, para que la ventana no se salga de ella.
-        ancho = 1380
+        ancho = 1420
         if self.screen() is not None:
             ancho = min(ancho, self.screen().availableGeometry().width() - 20)
         self.resize(ancho, 560)
@@ -173,6 +173,9 @@ class PestañaResumenDelDia(QWidget):
         self.tabla.setHorizontalHeaderLabels(self._COLUMNAS)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setAlternatingRowColors(True)
+        # Sin la numeración de filas (como en el resto de las tablas, ver ui.utils.crear_tabla):
+        # acá además le quitaba lugar a la columna "Cerró".
+        self.tabla.verticalHeader().setVisible(False)
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
 
@@ -184,8 +187,31 @@ class PestañaResumenDelDia(QWidget):
         nota.setWordWrap(True)
         nota.setStyleSheet("color: #7A869A;")
 
+        # Aviso (oculto salvo que haga falta) de los cierres hechos este día que
+        # quedaron anotados en otro: ver _mostrar_aviso.
+        self.aviso = QFrame()
+        self.aviso.setObjectName("avisoInformativo")
+        self.aviso_titulo = QLabel()
+        self.aviso_titulo.setObjectName("avisoTitulo")
+        self.aviso_titulo.setWordWrap(True)
+        self.aviso_filas = QVBoxLayout()
+        self.aviso_filas.setSpacing(4)
+        aviso_explicacion = QLabel(
+            "El cierre cuenta todo lo vendido desde el cierre anterior y se anota en el día en que "
+            "ese período empezó: por eso esa plata no figura en las filas de este día."
+        )
+        aviso_explicacion.setWordWrap(True)
+        aviso_layout = QVBoxLayout(self.aviso)
+        aviso_layout.setContentsMargins(14, 10, 14, 10)
+        aviso_layout.setSpacing(6)
+        aviso_layout.addWidget(self.aviso_titulo)
+        aviso_layout.addLayout(self.aviso_filas)
+        aviso_layout.addWidget(aviso_explicacion)
+        self.aviso.hide()
+
         layout = QVBoxLayout()
         layout.addLayout(filtros)
+        layout.addWidget(self.aviso)
         layout.addWidget(self.etiqueta_titulo)
         layout.addWidget(self.tabla)
         layout.addWidget(nota)
@@ -195,11 +221,55 @@ class PestañaResumenDelDia(QWidget):
     def _mover_dia(self, dias: int):
         self.fecha.setDate(self.fecha.date().addDays(dias))
 
+    def _mostrar_aviso(self, cierres, dia: QDate):
+        """
+        Avisa los cierres que se hicieron en `dia` pero quedaron anotados en otro
+        día (ver turnos_repo.resumen_del_dia, "cierres_de_otro_dia"), con un botón
+        para ir a verlos. Sin eso, un cierre hecho hoy tras varios días sin cerrar
+        parece perdido: las filas de hoy salen en cero y su plata está en el día
+        viejo. Con la lista vacía el aviso se esconde.
+        """
+        while self.aviso_filas.count():
+            fila = self.aviso_filas.takeAt(0).widget()
+            if fila is not None:
+                fila.deleteLater()
+
+        if not cierres:
+            self.aviso.hide()
+            return
+
+        cuando = "Hoy" if dia == QDate.currentDate() else "Este día"
+        if len(cierres) == 1:
+            self.aviso_titulo.setText(f"{cuando} se cerró un turno que quedó anotado en otro día:")
+        else:
+            self.aviso_titulo.setText(f"{cuando} se cerraron {len(cierres)} turnos que quedaron anotados en otros días:")
+
+        for cierre in cierres:
+            dia_anotado = QDate.fromString(cierre["fecha"], "yyyy-MM-dd")
+            fecha_texto = dia_anotado.toString("dd/MM/yyyy")
+            hora = datetime.fromisoformat(cierre["cerrado_a"]).strftime("%H:%M")
+            boton = QPushButton(f"Ver el {fecha_texto}")
+            boton.clicked.connect(lambda _=False, destino=dia_anotado: self.fecha.setDate(destino))
+
+            texto = f"•  {cierre['etiqueta']} del {fecha_texto} — cerró {cierre['responsable']} a las {hora}"
+            fila = QWidget()
+            fila_layout = QHBoxLayout(fila)
+            fila_layout.setContentsMargins(0, 0, 0, 0)
+            fila_layout.addWidget(QLabel(texto))
+            fila_layout.addStretch()
+            fila_layout.addWidget(boton)
+            self.aviso_filas.addWidget(fila)
+        self.aviso.show()
+
     def _agregar_fila(self, valores, negrita=False, color_estado=None, color_sobre=None):
         fila = self.tabla.rowCount()
         self.tabla.insertRow(fila)
         for columna, valor in enumerate(valores):
             item = QTableWidgetItem(valor)
+            if columna == 2 and valor != "—":
+                # "Cerró" es la columna que se estira: si aun así un nombre largo no entra,
+                # el texto completo se ve al pasar el mouse.
+                item.setToolTip(valor)
             if columna >= 3:
                 item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if negrita or (columna == 1 and color_estado):
@@ -235,6 +305,11 @@ class PestañaResumenDelDia(QWidget):
             else:
                 cerro = "—"
 
+            texto_estado = self._TEXTO_ESTADO[turno["estado"]]
+            if turno["cerrado_otro_dia"]:
+                # La hora de "Cerró" sola parecería de este mismo día: se aclara cuál fue.
+                texto_estado += f" el {datetime.fromisoformat(turno['cerrado_a']).strftime('%d/%m')}"
+
             tiene_plata = turno["estado"] in (turnos_repo.ESTADO_CERRADO, turnos_repo.ESTADO_EN_CURSO)
             if turno["verificado"]:
                 sobre = formato_pesos(turno["diferencia"])
@@ -247,7 +322,7 @@ class PestañaResumenDelDia(QWidget):
             self._agregar_fila(
                 [
                     turno["etiqueta"],
-                    self._TEXTO_ESTADO[turno["estado"]],
+                    texto_estado,
                     cerro,
                     self._texto_ventas(turno["cantidad_ventas"], turno["cantidad_anuladas"]) if tiene_plata else "—",
                     formato_pesos(turno["kiosko"]) if tiene_plata else "—",
@@ -277,6 +352,8 @@ class PestañaResumenDelDia(QWidget):
             ],
             negrita=True,
         )
+
+        self._mostrar_aviso(resumen["cierres_de_otro_dia"], dia)
 
 
 class PestañaPorTurno(QWidget):

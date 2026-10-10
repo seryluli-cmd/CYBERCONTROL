@@ -184,6 +184,8 @@ abra no alcanza si los tests no pasan.
 | `turnos.turnos_del_dia(fecha)` | se decide qué turnos existen en un día (3, o 2 el domingo) |
 | `turnos.etiqueta_turno(fecha, turno)` | se arma el nombre legible de un turno |
 | `turnos.turno_vencimiento(dia, turno)` | se decide si un turno ya debería estar cerrado |
+| `turnos.turno_que_arranca_tras_un_cierre(momento)` | se decide con qué turno queda anotado lo que sigue a un cierre (la hora del cierre + `TURNO_GRACIA_MIN`); la usa `turnos_repo._desde_y_turno_en_curso`, que es lo que ven Caja y Cierre de Turno y lo que graba `cerrar_turno` |
+| `turnos_repo._cerrado_pasado_su_vencimiento(dia, turno, cerrado_a)` | se decide si un turno se cerró "tarde" (pasado su vencimiento): lo usan el aviso y el "Cerrado el dd/mm" del Resumen del Día |
 | `dominio.es_admin(usuario)` | se pregunta si alguien es Administrador |
 | `dominio.nombre_metodo(metodo)` | se arma el nombre corto de un método de pago |
 | `ventas_repo.subtotal_linea(linea)` | se calcula lo que se cobra por un renglón |
@@ -363,6 +365,23 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 - **Un traslado de PC conserva la sesión y su saldo.** `pcs_repo.trasladar_sesion`
   mueve o intercambia la misma sesión bajo `BEGIN IMMEDIATE`; el historial de
   qué PC ocupó está en `traslados_sesion`, no en el nombre actual de la estación.
+- **El turno de un cierre sale de la hora del cierre ANTERIOR, con 40 minutos
+  de tolerancia.** `cerrar_turno` anota el cierre en el turno donde ARRANCÓ lo
+  que cierra, no en el de la hora en que se aprieta el botón (cerrar la Mañana a
+  las 14:05 sigue siendo "Mañana"). Pero la hora del cierre anterior se toma con
+  `TURNO_GRACIA_MIN` de más (`turnos.turno_que_arranca_tras_un_cierre`): quien
+  cierra a las 13:55 ya está cerrando la Mañana, y lo que sigue es de la Tarde.
+  Sin esa tolerancia todos los cierres siguientes quedaban un turno corrido y el
+  reporte marcaba "SIN CERRAR" turnos que sí se cerraron. No usarla para el
+  primer cierre de todos (no hay cierre anterior). Cambiar esta regla toca lo que
+  ven Caja, Cierre de Turno y Resumen del Día a la vez: todo sale de
+  `turnos_repo._desde_y_turno_en_curso`.
+- **Un cierre hecho tras días sin cerrar NO aparece en las filas de hoy.** Cubre
+  desde el cierre anterior, así que queda anotado en el turno viejo (días atrás) y
+  el Resumen del Día de hoy sale en cero. No es un error ni plata perdida: el
+  reporte lo avisa arriba de la tabla (`cierres_de_otro_dia`) con un botón para ir a
+  verlo, y en ese día viejo el estado dice "Cerrado el dd/mm". Ver
+  `TestResumenDelDia` y `tests/test_reportes_ui.py`.
 - **Un cierre guarda una foto de lo cobrado.** En Resumen del Día, si una venta
   se anula después de cerrar, el desglose de Impresiones y Trámites debe seguir
   conciliando con ese cierre; ver `turnos_repo._vendido_aparte_entre`.
@@ -464,4 +483,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-343 pruebas al 2026-10-10.
+358 pruebas al 2026-10-10.
