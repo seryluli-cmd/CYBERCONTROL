@@ -65,6 +65,9 @@ precisión del indicador «en línea». No se cambió ese contrato sin datos de
 uso. Tampoco se cambió el modelo de bonos, los dos árboles de carpetas ni
 ninguna decisión de negocio.
 
+La receta `Kiosko.spec` quedó versionada, pero no se generó ni probó un
+ejecutable en esta pasada; esa validación queda para el próximo empaquetado.
+
 ## Verificación
 
 `python -m unittest discover tests`: **332 tests, OK**.
