@@ -141,10 +141,9 @@ se cuelga de uno existente "porque es parecido".
 
 **12. Cuando un archivo pasa las ~600 líneas, se parte.**
 Ya se hizo con `ventas_window.py` (carrito y diálogo de pago) y con
-`turnos.py` (calendario separado de la base). Hoy los candidatos son
-`database.py` (esquema, migraciones, copias y claves),
-`repositories/turnos_repo.py` (turno actual, resumen diario e historial)
-y `control_pcs/repositories/pcs_repo.py` (estaciones, sesiones y actividad).
+`turnos.py` (calendario separado de la base), `turnos_faltantes_repo.py`
+(turnos vencidos sin cierre) y `actividad_repo.py` (feed de PCs).
+`database.py` sigue pendiente: esquema, migraciones, copias y claves.
 Conservá las funciones públicas al partirlos para no tocar otras pantallas.
 
 **13. Comentar el porqué, no el qué.**

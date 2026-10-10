@@ -43,9 +43,9 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [main.py](main.py) | Entry point. Clase `Aplicacion` alterna `LoginWindow` ↔ `MainWindow` (para poder "cerrar sesión" sin cerrar el programa). Define la hoja de estilos Qt global (botones `primario`/`peligro` vía `setProperty("clase", ...)`). `sys.excepthook` propio: cualquier excepción no capturada se loguea en `data/errores.log` y muestra un cartel, en vez de cerrar la app en silencio. |
 | [database.py](database.py) | Esquema, migraciones, claves y copias de seguridad. Ver modelo de datos abajo. |
 | [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
-| [repositories/](repositories/) | Capa de datos, un archivo por entidad: `articulos_repo.py`, `compras_repo.py`, `config_repo.py`, `reportes_repo.py`, `turnos_repo.py`, `tramites_repo.py`, `usuarios_repo.py`, `ventas_repo.py`. |
+| [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos y turnos faltantes, trámites, usuarios y ventas. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
-| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5. |
+| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el feed de actividad está en `control_pcs/repositories/actividad_repo.py`. |
 | [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC y registro de fallos compartido con la UI. |
 | [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
