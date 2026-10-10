@@ -9,7 +9,9 @@ La cronología anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 
 Reglas esenciales:
 - La UI no escribe SQL ni abre conexiones. Los repositorios contienen las
-  reglas de negocio; database.py administra esquema, migraciones y conexión.
+  reglas de negocio; `database.py` administra conexiones, claves y copias;
+  `database_esquema.py` crea tablas e índices, y `database_migraciones.py`
+  actualiza bases anteriores.
 - Kiosko y Control de PCs mantienen sus dos árboles de carpetas separados.
 - Los estados, tipos de movimiento y orígenes viven en dominio.py.
 - Cada operación que mueve plata, saldo o stock se guarda en una transacción.

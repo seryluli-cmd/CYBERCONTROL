@@ -94,7 +94,8 @@ Nombrándolos, un typo es un error de Python que salta al instante.
 Esto vale también dentro del SQL: el estado va como parámetro
 (`WHERE estado = ?` con `dominio.VENTA_CONFIRMADA`), no como literal
 pegado en la consulta. La excepción son los `CHECK (... IN (...))` del
-esquema en `database.py`: ahí el literal *es* la definición. Si algún día
+esquema en `database_esquema.py` o `database_migraciones.py`: ahí el literal
+*es* la definición. Si algún día
 se agrega un valor nuevo, va en los dos lados — `dominio.py` y una
 migración que actualice el CHECK. (Para `comandos_pc.tipo` y
 `movimientos_saldo_miembro.tipo` ya está resuelto: el CHECK sale de la lista
@@ -142,8 +143,9 @@ se cuelga de uno existente "porque es parecido".
 **12. Cuando un archivo pasa las ~600 líneas, se parte.**
 Ya se hizo con `ventas_window.py` (carrito y diálogo de pago) y con
 `turnos.py` (calendario separado de la base), `turnos_faltantes_repo.py`
-(turnos vencidos sin cierre) y `actividad_repo.py` (feed de PCs).
-`database.py` sigue pendiente: esquema, migraciones, copias y claves.
+(turnos vencidos sin cierre), `actividad_repo.py` (feed de PCs) y
+`database.py` (esquema en `database_esquema.py`, migraciones en
+`database_migraciones.py`, conexiones/copias/claves en `database.py`).
 Conservá las funciones públicas al partirlos para no tocar otras pantallas.
 
 **13. Comentar el porqué, no el qué.**
