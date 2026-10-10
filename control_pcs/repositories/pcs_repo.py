@@ -202,58 +202,48 @@ def estado_estaciones():
 
     sesiones_por_estacion = {sesion["estacion_id"]: sesion for sesion in sesiones}
 
-    resultado = []
-    for estacion in estaciones:
-        sesion = sesiones_por_estacion.get(estacion["id"])
-        segundos_restantes = None
-        if sesion is not None:
-            fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
-            segundos_restantes = dominio.segundos_restantes(fin_previsto, ahora)
+    return [
+        _estado_para_estacion(estacion, sesiones_por_estacion.get(estacion["id"]), ahora)
+        for estacion in estaciones
+    ]
 
-        enlazada = False
-        ultima_conexion = None
-        if estacion["ultima_conexion"] is not None:
-            ultima_conexion = datetime.fromisoformat(estacion["ultima_conexion"])
-            enlazada = (ahora - ultima_conexion).total_seconds() <= UMBRAL_ENLACE_SEGUNDOS
 
-        # Sesión activa en una PC que NO estaba enlazada cuando arrancó la
-        # sesión y todavía no se conectó desde entonces: el operador la
-        # habilitó antes de que el cliente la prendiera (típico cuando
-        # llegan muchos juntos). El tiempo ya corre desde que se activó el
-        # bono -- el Cliente PC, al prenderse, lo toma solo del servidor --
-        # pero esto NO es una alerta: es una espera normal. La alerta de
-        # "SIN CLIENTE" queda para una PC que SÍ estuvo enlazada durante la
-        # sesión (o justo antes) y dejó de responder.
-        #
-        # Si en cambio alguien cerró el Cliente PC desde su panel admin
-        # (ver accesos_admin_pc_repo), la PC NO va a volver sola: tampoco es
-        # una espera normal, es una PC sin bloqueo con tiempo pago corriendo.
-        cliente_cerrado_admin_desde = None
-        if estacion["cliente_cerrado_desde"] is not None and not enlazada:
-            cliente_cerrado_admin_desde = datetime.fromisoformat(estacion["cliente_cerrado_desde"])
+def _estado_para_estacion(estacion, sesion, ahora):
+    """Misma cuenta para la grilla y para la consulta individual de un Cliente PC."""
+    segundos_restantes = None
+    if sesion is not None:
+        fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
+        segundos_restantes = dominio.segundos_restantes(fin_previsto, ahora)
 
-        esperando_cliente = False
-        if sesion is not None and not enlazada and cliente_cerrado_admin_desde is None:
-            inicio_sesion = datetime.fromisoformat(sesion["fecha_inicio"])
-            esperando_cliente = (
-                ultima_conexion is None
-                or (inicio_sesion - ultima_conexion).total_seconds() > UMBRAL_ENLACE_SEGUNDOS
-            )
+    enlazada = False
+    ultima_conexion = None
+    if estacion["ultima_conexion"] is not None:
+        ultima_conexion = datetime.fromisoformat(estacion["ultima_conexion"])
+        enlazada = (ahora - ultima_conexion).total_seconds() <= UMBRAL_ENLACE_SEGUNDOS
 
-        resultado.append({
-            # La grilla mezcla estas filas con la de la PlayStation 5 (ver
-            # playstation_repo.estado): esto es lo que las distingue.
-            "dispositivo": dominio.DISPOSITIVO_PC,
-            "estacion": estacion,
-            "sesion": sesion,
-            "segundos_restantes": segundos_restantes,
-            "enlazada": enlazada,
-            "esperando_cliente": esperando_cliente,
-            # datetime desde cuándo la PC está sin Cliente PC por un cierre
-            # desde el panel admin, o None (ver comentario de arriba).
-            "cliente_cerrado_admin_desde": cliente_cerrado_admin_desde,
-        })
-    return resultado
+    # Una PC habilitada antes de encender su Cliente PC está esperando; una
+    # que ya estuvo enlazada y dejó de responder necesita una alerta.
+    cliente_cerrado_admin_desde = None
+    if estacion["cliente_cerrado_desde"] is not None and not enlazada:
+        cliente_cerrado_admin_desde = datetime.fromisoformat(estacion["cliente_cerrado_desde"])
+
+    esperando_cliente = False
+    if sesion is not None and not enlazada and cliente_cerrado_admin_desde is None:
+        inicio_sesion = datetime.fromisoformat(sesion["fecha_inicio"])
+        esperando_cliente = (
+            ultima_conexion is None
+            or (inicio_sesion - ultima_conexion).total_seconds() > UMBRAL_ENLACE_SEGUNDOS
+        )
+
+    return {
+        "dispositivo": dominio.DISPOSITIVO_PC,
+        "estacion": estacion,
+        "sesion": sesion,
+        "segundos_restantes": segundos_restantes,
+        "enlazada": enlazada,
+        "esperando_cliente": esperando_cliente,
+        "cliente_cerrado_admin_desde": cliente_cerrado_admin_desde,
+    }
 
 
 def estado_de_estacion(nombre: str):
@@ -264,10 +254,23 @@ def estado_de_estacion(nombre: str):
     decidir si debe mostrarse bloqueada o no. Devuelve None si no existe
     una estación activa con ese nombre.
     """
-    for item in estado_estaciones():
-        if item["estacion"]["nombre"] == nombre:
-            return item
-    return None
+    with conexion_db() as conexion:
+        estacion = conexion.execute(
+            "SELECT * FROM estaciones WHERE nombre = ? AND activa = 1", (nombre,)
+        ).fetchone()
+        if estacion is None:
+            return None
+        sesion = conexion.execute(
+            """
+            SELECT sesiones_pc.*, miembros.nombre AS miembro_nombre
+            FROM sesiones_pc
+            LEFT JOIN miembros ON miembros.id = sesiones_pc.miembro_id
+            WHERE sesiones_pc.estacion_id = ? AND sesiones_pc.estado = ?
+            ORDER BY sesiones_pc.id DESC LIMIT 1
+            """,
+            (estacion["id"], dominio.SESION_ACTIVA),
+        ).fetchone()
+    return _estado_para_estacion(estacion, sesion, datetime.now())
 
 
 def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: datetime, miembro_id: int = None) -> int:
