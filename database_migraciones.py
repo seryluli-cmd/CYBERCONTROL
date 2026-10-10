@@ -457,5 +457,3 @@ def _migrar_check_origen_en_ventas(conexion: sqlite3.Connection):
         raise
     finally:
         conexion.execute("PRAGMA foreign_keys = ON")
-
-

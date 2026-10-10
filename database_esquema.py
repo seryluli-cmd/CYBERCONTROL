@@ -539,5 +539,3 @@ def inicializar_base_de_datos():
     _cargar_datos_iniciales(conexion)
 
     conexion.close()
-
-
