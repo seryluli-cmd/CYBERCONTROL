@@ -386,7 +386,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-359 tests al 2026-10-10. Cubren turnos, caja, stock, ventas y anulaciones,
+360 tests al 2026-10-11. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red, migraciones y algunas
 interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

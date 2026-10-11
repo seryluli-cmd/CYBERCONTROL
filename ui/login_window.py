@@ -49,7 +49,7 @@ class LoginWindow(QWidget):
         self._armar_interfaz()
 
     def _armar_interfaz(self):
-        self.setWindowTitle("CYBERBIOS - Ingreso")
+        self.setWindowTitle("CyberBIOS - Ingreso")
         self.setFixedSize(400, 420)
         # Fondo gris claro detrás de la tarjeta blanca, para que la
         # tarjeta se destaque en vez de que todo sea un único blanco liso.

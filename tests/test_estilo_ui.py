@@ -53,7 +53,7 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
 
     def test_la_pantalla_de_ingreso_se_llama_cyberbios(self):
         # Pedido del dueño (2026-10-10): el título de la primera pantalla es la marca,
-        # no "Sistema de Kiosko".
+        # no "Sistema de Kiosko", y escrita igual (CyberBIOS) en la barra de la ventana.
         ventana = LoginWindow(lambda usuario: None)
         self.addCleanup(ventana.deleteLater)
 
@@ -61,6 +61,15 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
 
         self.assertIn("CyberBIOS", textos)
         self.assertNotIn("Sistema de Kiosko", textos)
+        self.assertEqual(ventana.windowTitle(), "CyberBIOS - Ingreso")
+
+    def test_la_barra_de_la_ventana_principal_dice_cyberbios_con_el_nombre_y_el_rol(self):
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        ventana = MainWindow(admin, lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+
+        self.assertEqual(ventana.windowTitle(), f"CyberBIOS - Admin ({dominio.ROL_ADMIN})")
 
     def test_la_barra_de_arriba_usa_botones_sin_borde_salvo_vender_y_cerrar_sesion(self):
         admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))

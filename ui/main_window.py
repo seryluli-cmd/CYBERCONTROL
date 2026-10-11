@@ -85,7 +85,7 @@ class MainWindow(QMainWindow):
         self._armar_interfaz()
 
     def _armar_interfaz(self):
-        self.setWindowTitle(f"CYBERBIOS - {self.usuario['nombre']} ({self.usuario['rol']})")
+        self.setWindowTitle(f"CyberBIOS - {self.usuario['nombre']} ({self.usuario['rol']})")
         self.resize(980, 680)
 
         # Tarjeta blanca "#encabezadoInicio" (estilo en la hoja de estilos
