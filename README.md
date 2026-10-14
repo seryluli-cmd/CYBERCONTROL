@@ -46,7 +46,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos y turnos faltantes, trámites, usuarios y ventas. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
 | [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el feed de actividad está en `control_pcs/repositories/actividad_repo.py`. |
-| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC y registro de fallos compartido con la UI. |
+| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`) y registro de fallos compartido con la UI. |
 | [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
@@ -119,8 +119,11 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   Control de Cierres) y el desglose por origen (`kiosko_*`, `pcs_*`,
   `playstation_*`, cada uno en efectivo y digital).
 - **`configuracion`** — tabla genérica clave/valor. Incluye el fondo de
-  cambio, el indicador de rubros iniciales, tarifas y claves de Clientes PC.
-  Las claves exactas están centralizadas en los repositorios que las usan.
+  cambio, el indicador de rubros iniciales, tarifas y la contraseña de admin de
+  los Clientes PC. Las claves exactas están centralizadas en los repositorios
+  que las usan. La clave de CONEXIÓN de los Clientes PC ya no se guarda acá: es
+  fija y el programa conserva solo su huella (`clientes_repo.py`); una fila
+  `clave_clientes` que haya quedado en una base anterior no se usa.
 - **`calcular_turno(fecha_hora)`** (`turnos.py`) — Mañana 06-14, Tarde
   14-22, Noche 22-06 (cruza medianoche). Se usa al registrar una venta.
   ⚠️ **Excepción: los domingos son distintos** — ese día solo hay 2

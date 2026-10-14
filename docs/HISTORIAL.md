@@ -407,3 +407,26 @@ resumen de lo construido:
   anular una venta de la consola corte su cuenta regresiva (se la libera aparte, como
   con un bono de PC).
 328 tests (84 nuevos: `tests/test_playstation.py` y `tests/test_playstation_ui.py`).
+
+**2026-10-14:** **la clave de los Clientes PC pasó a ser fija.** Pedido del dueño: que la
+clave de conexión de las PCs (no la contraseña de admin, la otra) quede para siempre, sin
+tener que pegarla en cada PC ni poder perderla o renovarla por error; aceptó expresamente
+que quede dentro del `.exe`. Antes se generaba al azar ("Generar/renovar clave de Clientes
+PC..."), se guardaba en la base y había que copiarla al asistente de cada PC; renovarla
+dejaba sin conexión a todas las demás, y una vez generada no se podía volver a ver.
+- **Servidor:** este repo es PÚBLICO, así que la clave no se escribe acá: `clientes_repo`
+  guarda solo su huella SHA-256 (`HUELLA_CLAVE_CLIENTES`) y `es_clave_de_clientes()` la
+  compara en tiempo constante; `servidor_red._autorizado` usa eso. Se sacaron
+  `generar_clave_clientes`/`obtener_clave_clientes` y el botón de Gestionar Estaciones;
+  la fila `clave_clientes` que quede en una base anterior ya no se usa (no se tocó la base).
+  La contraseña de ADMIN de los Clientes PC no cambió.
+- **Cliente PC:** la clave vive en `CLIENTE PC/configuracion.py` (repo privado) y el
+  asistente ya no la pide. Compatible en las dos direcciones: un `.exe` anterior con su
+  config.json y un servidor nuevo (o al revés) siguen conectando, porque es la MISMA clave
+  que ya estaba en uso (se comprobó que coincidían la del `config.json.ejemplo`, la del
+  `config.json` de la PC de prueba y la de la base, y que su huella es la guardada acá).
+- **Para cambiarla alguna vez** (decisión de fondo): clave nueva en CLIENTE PC, huella nueva
+  en `clientes_repo.py` y el `.exe` reinstalado en TODAS las PCs. Un test vigila que nadie
+  vuelva a agregar el botón de renovar sin hablarlo con el dueño.
+362 tests (3 que probaban generar/renovar se reemplazaron por 3 de la huella y 2 nuevos
+del servidor: clave sin "Bearer" y clave correcta).

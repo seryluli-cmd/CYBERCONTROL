@@ -9,11 +9,11 @@ importar quién esté logueado ni qué pantalla esté abierta -- las PCs
 clientes tienen que poder preguntar en cualquier momento.
 
 Autenticación: todo pedido (GET y POST) exige la cabecera
-`Authorization: Bearer <clave>` con la clave generada en Control de PCs ->
-Gestionar Estaciones -> Generar/renovar clave de Clientes PC (ver
-`control_pcs/repositories/clientes_repo.py`). Es UNA sola clave compartida
-por todas las estaciones. Sin clave generada todavía, o con una que no
-coincide, responde 403 sin tocar la base (ver `_ManejadorEstado._autorizado`).
+`Authorization: Bearer <clave>` con la clave de conexión de los Clientes PC
+(ver `control_pcs/repositories/clientes_repo.py`). Es UNA sola clave compartida
+por todas las estaciones, FIJA y permanente (no se genera ni se renueva desde
+ninguna pantalla). Sin cabecera, o con una clave que no coincide, responde 403
+sin tocar la base (ver `_ManejadorEstado._autorizado`).
 
 Endpoints
 ---------
@@ -137,16 +137,15 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
     def _autorizado(self) -> bool:
         """
         Todo pedido de un Cliente PC viaja con `Authorization: Bearer <clave>`
-        (ver `red_kiosko._cabeceras_cliente` en CLIENTE PC). Si en
-        Kiosko todavía no se generó ninguna clave (Control de PCs ->
-        Gestionar Estaciones -> Generar/renovar clave de Clientes PC), no se
-        regala el beneficio de la duda -- mismo criterio fail-safe que
-        `_estado_a_json` con una estación desconocida.
+        (ver `red_kiosko._cabeceras_cliente` en CLIENTE PC) y la clave tiene
+        que ser la fija de los Clientes PC (`clientes_repo.es_clave_de_clientes`).
+        Sin cabecera, sin la palabra "Bearer" o con otra clave, no se regala el
+        beneficio de la duda -- mismo criterio fail-safe que `_estado_a_json`
+        con una estación desconocida.
         """
-        clave_configurada = clientes_repo.obtener_clave_clientes()
-        if not clave_configurada:
-            return False
-        return self.headers.get("Authorization") == "Bearer " + clave_configurada
+        prefijo = "Bearer "
+        cabecera = self.headers.get("Authorization") or ""
+        return cabecera.startswith(prefijo) and clientes_repo.es_clave_de_clientes(cabecera[len(prefijo):])
 
     def do_GET(self):
         try:

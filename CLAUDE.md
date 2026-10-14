@@ -194,6 +194,7 @@ abra no alcanza si los tests no pasan.
 | `database.DATA_DIR` / `DB_PATH` | se resuelve dónde viven los datos (código vs `.exe`) |
 | `database.hash_clave()` / `verificar_clave()` | se maneja una contraseña |
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
+| `clientes_repo.es_clave_de_clientes(clave)` | se decide si un pedido de red viene de un Cliente PC (clave fija, comparada por su huella SHA-256; la usa `servidor_red._autorizado`) |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
 | `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono COMÚN (walk-in) |
@@ -432,6 +433,17 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 - **`data/`, a mano.** Ahí vive la base real del negocio (está en
   `.gitignore` a propósito, no llega a git). No asumas que su contenido es
   descartable ni lo edites por fuera de una migración.
+- **La clave de conexión de los Clientes PC es fija y permanente** (pedido del
+  dueño, 2026-10-14; aceptó expresamente el riesgo de que quede dentro del
+  `.exe`). No hay pantalla para generarla ni renovarla y no se guarda en la
+  base: este repo es PÚBLICO, así que el programa solo conoce su huella SHA-256
+  (`clientes_repo.HUELLA_CLAVE_CLIENTES`); la clave en sí vive en
+  `CLIENTE PC/configuracion.py` (repo privado). Nunca escribir la clave en este
+  repo (ni en un test, ni en un doc). No volver a proponer rotación ni un botón
+  "Generar/renovar": cambiarla dejaría sin conexión a las ~40 PCs hasta
+  reinstalarles el `.exe`; un test lo vigila. Es una cosa distinta de la
+  contraseña de ADMIN de los Clientes PC, que sí se cambia desde "Gestionar
+  Estaciones".
 
 ---
 
@@ -443,8 +455,10 @@ ubicado en la carpeta hermana. Se comunica con el servidor de este repo
 el login de Miembros y cerrar sesiones. `explorer.exe` sigue siendo el
 shell de Windows; el cliente usa pantalla de bloqueo, hook de teclado y
 una tarea programada para volver a arrancar si se cierra. El reemplazo
-del shell no forma parte del diseño actual. El README de `CLIENTE PC/`
-contiene las instrucciones vigentes de instalación y recuperación.
+del shell no forma parte del diseño actual. Todo pedido del cliente lleva la
+clave fija de los Clientes PC (ver "Qué no cambiar sin que el dueño lo pida
+explícitamente"). El README de `CLIENTE PC/` contiene las instrucciones
+vigentes de instalación y recuperación.
 
 ## Roadmap (a futuro, fuera de alcance hoy)
 
@@ -483,4 +497,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-360 pruebas al 2026-10-11.
+362 pruebas al 2026-10-14.

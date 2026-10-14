@@ -1,57 +1,50 @@
 """
 clientes_repo.py
 ================
-Acceso a las dos claves compartidas por todas las PC clientes (carpeta
-hermana "CLIENTE PC"), ambas guardadas en la tabla `configuracion`
--- mismo patrón que `config_repo.py`:
+Las dos claves compartidas por todas las PC clientes (carpeta hermana
+"CLIENTE PC"):
 
-- 'clave_clientes': la que usa el software cliente para autenticarse
-  contra `servidor_red.py` (ver `red_kiosko._cabeceras_cliente`). La
-  genera `generar_clave_clientes()`, al azar, y rota TODAS las PC clientes
-  de una.
-- 'clave_admin_pcs': la contraseña de administrador que destraba el panel
-  admin en la pantalla de bloqueo de cada PC cliente (ver el ícono "A" en
-  `cliente_pc.py`). A diferencia de la anterior, la ELIGE el dueño
-  (no se genera al azar, tiene que poder recordarla) con
-  `establecer_clave_admin_pcs()`. Cada PC cliente la guarda en un
-  archivo local propio y la mantiene al día sola preguntándosela al
-  Servidor en cada `GET /estado` (viaja adentro de esa respuesta, mismo
-  criterio que los comandos remotos) -- así cambiarla implica un solo
-  clic acá, no ir PC por PC.
+- La clave de CONEXIÓN: la que usa el software cliente para autenticarse
+  contra `servidor_red.py` (ver `red_kiosko._cabeceras_cliente`). Es FIJA y
+  permanente (pedido del dueño, 2026-10-14): ya no se genera, no se renueva
+  y no se guarda en la base. Este repositorio es público, así que acá no está
+  la clave sino su huella SHA-256 (`HUELLA_CLAVE_CLIENTES`): alcanza para
+  reconocerla y no sirve para conectarse. La clave en sí vive en
+  `CLIENTE PC/configuracion.py` (repo privado). `es_clave_de_clientes()` es
+  el único lugar que la compara.
+- 'clave_admin_pcs' (tabla `configuracion`, mismo patrón que `config_repo.py`):
+  la contraseña de administrador que destraba el panel admin en la pantalla
+  de bloqueo de cada PC cliente (ver el ícono "A" en `cliente_pc.py`). A
+  diferencia de la anterior, la ELIGE el dueño (no se genera al azar, tiene
+  que poder recordarla) con `establecer_clave_admin_pcs()`. Cada PC cliente
+  la guarda en un archivo local propio y la mantiene al día sola
+  preguntándosela al Servidor en cada `GET /estado` (viaja adentro de esa
+  respuesta, mismo criterio que los comandos remotos) -- así cambiarla
+  implica un solo clic acá, no ir PC por PC.
 """
 
-import secrets
+import hashlib
+import hmac
 
 from database import conexion_db
 
-
-def obtener_clave_clientes() -> str:
-    """Cadena vacía si todavía no se generó ninguna clave (estado inicial,
-    antes de usar "Generar/renovar clave de Clientes PC" por primera vez)."""
-    with conexion_db() as conexion:
-        fila = conexion.execute(
-            "SELECT valor FROM configuracion WHERE clave = 'clave_clientes'"
-        ).fetchone()
-        return fila["valor"] if fila else ""
+# SHA-256 (hexadecimal) de la clave de conexión de los Clientes PC. Para
+# cambiar la clave, que es una decisión de fondo del dueño: poner la nueva en
+# `CLIENTE PC/configuracion.py`, recalcular esta huella con `huella_de_clave()`
+# y reinstalar el .exe en TODAS las PCs (la vieja deja de servir en el acto).
+HUELLA_CLAVE_CLIENTES = "844ae2955fa6791a1ac4b836aca99b27247d72702b8dbea2e8829735fd01cfd8"
 
 
-def generar_clave_clientes() -> str:
-    """
-    Genera una clave nueva al azar (43 caracteres, por encima del mínimo
-    de 32 que exige el asistente de configuración del Cliente PC) y la
-    guarda, reemplazando la anterior si había una. Rota TODOS los
-    Clientes PC de una: la clave vieja deja de servir para cualquier PC
-    apenas se llama esto -- coherente con que es una sola clave
-    compartida, no una por estación.
-    """
-    clave_nueva = secrets.token_urlsafe(32)
-    with conexion_db() as conexion:
-        conexion.execute(
-            "INSERT INTO configuracion (clave, valor) VALUES ('clave_clientes', ?) "
-            "ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
-            (clave_nueva,),
-        )
-    return clave_nueva
+def huella_de_clave(clave: str) -> str:
+    """La huella SHA-256 (hexadecimal) de `clave`."""
+    return hashlib.sha256(clave.encode("utf-8")).hexdigest()
+
+
+def es_clave_de_clientes(clave_recibida: str) -> bool:
+    """¿Es `clave_recibida` la clave de conexión de los Clientes PC? Compara
+    huellas (no la clave) y en tiempo constante, así una clave equivocada no
+    deja pistas de cuánto se parecía a la verdadera."""
+    return hmac.compare_digest(huella_de_clave(clave_recibida), HUELLA_CLAVE_CLIENTES)
 
 
 def obtener_clave_admin_pcs() -> str:

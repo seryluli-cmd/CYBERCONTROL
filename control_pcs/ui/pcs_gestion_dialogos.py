@@ -2,7 +2,7 @@
 pcs_gestion_dialogos.py
 =========================
 Diálogos para ADMINISTRAR los catálogos de Estaciones (las PCs del local, su
-IP y las claves de los Clientes PC) y de Bonos de Tiempo de walk-ins (mismo
+IP y la contraseña de admin de los Clientes PC) y de Bonos de Tiempo de walk-ins (mismo
 espíritu que "Gestionar Rubros" en Artículos), más los de la PlayStation 5. Solo
 se abren desde `ConfiguracionAdminWindow` (ui/main_window.py), exclusiva de
 ADMIN. Los bonos exclusivos de socios se gestionan aparte, en miembros_window.py.
@@ -22,8 +22,10 @@ from ui.utils import (
 
 
 class DialogoGestionEstaciones(QDialog):
-    """Alta, renombre y baja de estaciones, IP de cada una y las dos claves
-    que usan los Clientes PC. Solo se llega desde Configuración ADMIN."""
+    """Alta, renombre y baja de estaciones, IP de cada una y la contraseña de
+    admin que usan los Clientes PC. (La clave de conexión de los Clientes PC es
+    fija: no se gestiona desde ninguna pantalla, ver `clientes_repo`.) Solo se
+    llega desde Configuración ADMIN."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -78,9 +80,6 @@ class DialogoGestionEstaciones(QDialog):
 
         self.lista.itemSelectionChanged.connect(self._al_cambiar_seleccion)
 
-        boton_clave_clientes = QPushButton("Generar/renovar clave de Clientes PC...")
-        boton_clave_clientes.clicked.connect(self._generar_clave_clientes)
-
         boton_clave_admin = QPushButton("Cambiar contraseña de PC clientes...")
         boton_clave_admin.clicked.connect(self._cambiar_clave_admin_pcs)
 
@@ -93,7 +92,6 @@ class DialogoGestionEstaciones(QDialog):
         layout.addLayout(fila_agregar)
         layout.addLayout(fila_acciones)
         layout.addLayout(fila_ip)
-        layout.addWidget(boton_clave_clientes)
         layout.addWidget(boton_clave_admin)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
@@ -179,35 +177,6 @@ class DialogoGestionEstaciones(QDialog):
                 "estación y esperá unos segundos: pregunta solo cada 5s, y "
                 "recién ahí queda la IP guardada acá."
             )
-
-    @manejar_errores
-    def _generar_clave_clientes(self):
-        """
-        Genera (o rota) la clave única que exige `servidor_red.py` en el
-        header `Authorization` de cada Cliente PC (ver CLIENTE PC,
-        `red_kiosko._cabeceras_cliente`). Al rotarla, la clave anterior
-        deja de servir para CUALQUIER PC hasta que se la actualice ahí --
-        por eso pide confirmación explícita si ya había una generada.
-        """
-        clave_actual = clientes_repo.obtener_clave_clientes()
-        if clave_actual:
-            aviso = (
-                "Se va a generar una clave nueva para los Clientes PC.\n\n"
-                "Esto ROTA la clave de las estaciones que ya están conectadas: "
-                "la anterior deja de servir para cualquier PC hasta que se "
-                "actualice ahí con la nueva. ¿Continuar?"
-            )
-        else:
-            aviso = "Se va a generar la clave que necesitan los Clientes PC para conectarse a este servidor. ¿Continuar?"
-        if not confirmar(self, "Generar/renovar clave de Clientes PC", aviso):
-            return
-        clave_nueva = clientes_repo.generar_clave_clientes()
-        QInputDialog.getText(
-            self, "Clave de Clientes PC generada",
-            "Copiá esta clave (Ctrl+A, Ctrl+C) y pegala en el config.json\n"
-            "o en el asistente de configuración de cada PC cliente:",
-            text=clave_nueva,
-        )
 
     @manejar_errores
     def _cambiar_clave_admin_pcs(self):

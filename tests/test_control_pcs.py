@@ -1157,21 +1157,26 @@ class TestMigracionCheckTipoEnComandosPc(BaseConBaseTemporal):
 
 
 class TestClientesRepo(BaseConBaseTemporal):
-    def test_sin_clave_generada_todavia_devuelve_vacio(self):
-        self.assertEqual(clientes_repo.obtener_clave_clientes(), "")
+    def test_la_clave_de_conexion_se_reconoce_por_su_huella(self):
+        huella_de_prueba = clientes_repo.huella_de_clave("clave-de-prueba")
+        with mock.patch.object(clientes_repo, "HUELLA_CLAVE_CLIENTES", huella_de_prueba):
+            self.assertTrue(clientes_repo.es_clave_de_clientes("clave-de-prueba"))
+            self.assertFalse(clientes_repo.es_clave_de_clientes("clave-de-prueba "))
+            self.assertFalse(clientes_repo.es_clave_de_clientes("Clave-de-prueba"))
+            self.assertFalse(clientes_repo.es_clave_de_clientes("otra"))
+            self.assertFalse(clientes_repo.es_clave_de_clientes(""))
 
-    def test_generar_clave_clientes_la_deja_disponible_para_leer(self):
-        clave = clientes_repo.generar_clave_clientes()
+    def test_lo_que_queda_en_el_programa_es_una_huella_sha256_y_no_la_clave(self):
+        # Este repo es público: la clave de verdad vive solo en CLIENTE PC (repo privado).
+        self.assertRegex(clientes_repo.HUELLA_CLAVE_CLIENTES, r"^[0-9a-f]{64}$")
 
-        self.assertGreaterEqual(len(clave), 32)
-        self.assertEqual(clientes_repo.obtener_clave_clientes(), clave)
-
-    def test_generar_clave_clientes_de_nuevo_rota_la_anterior(self):
-        clave_vieja = clientes_repo.generar_clave_clientes()
-        clave_nueva = clientes_repo.generar_clave_clientes()
-
-        self.assertNotEqual(clave_vieja, clave_nueva)
-        self.assertEqual(clientes_repo.obtener_clave_clientes(), clave_nueva)
+    def test_la_clave_de_conexion_es_fija_no_hay_forma_de_generarla_ni_renovarla(self):
+        # Decisión del dueño (2026-10-14, ver CLAUDE.md): la clave de los Clientes PC es
+        # permanente. Si este test falla porque alguien volvió a agregar una de estas
+        # funciones, primero hay que hablarlo con el dueño: rotar la clave deja sin
+        # conexión a las ~40 PCs hasta reinstalarles el .exe.
+        self.assertFalse(hasattr(clientes_repo, "generar_clave_clientes"))
+        self.assertFalse(hasattr(clientes_repo, "obtener_clave_clientes"))
 
     def test_sin_clave_admin_pcs_todavia_devuelve_vacio(self):
         self.assertEqual(clientes_repo.obtener_clave_admin_pcs(), "")
@@ -1235,7 +1240,14 @@ class _ConServidorRed(BaseConBaseTemporal):
 
     def setUp(self):
         super().setUp()
-        self._clave = clientes_repo.generar_clave_clientes()
+        # La clave real es fija y su huella está en clientes_repo: acá se la
+        # reemplaza por la de una clave de prueba.
+        self._clave = "clave-de-prueba-de-los-clientes-pc"
+        parche = mock.patch.object(
+            clientes_repo, "HUELLA_CLAVE_CLIENTES", clientes_repo.huella_de_clave(self._clave)
+        )
+        parche.start()
+        self.addCleanup(parche.stop)
         self._servidor = ThreadingHTTPServer(("127.0.0.1", 0), servidor_red._ManejadorEstado)
         self._puerto = self._servidor.server_address[1]
         self._hilo = threading.Thread(target=self._servidor.serve_forever, daemon=True)
@@ -1596,9 +1608,21 @@ class TestServidorRedRespuestasDeError(_ConServidorRed):
             conexion.close()
 
     def test_sin_clave_o_con_clave_equivocada_responde_403_sin_cuerpo(self):
-        for token in (None, "clave-equivocada"):
+        for token in (None, "", "clave-equivocada"):
             self.assertEqual(self._crudo("GET", "/estado?estacion=PC+1", token=token), (403, ""))
             self.assertEqual(self._crudo("POST", "/login", "{}", token=token), (403, ""))
+
+    def test_la_clave_correcta_pero_sin_la_palabra_bearer_tampoco_sirve(self):
+        for cabecera in (self._clave, "Basic " + self._clave, "bearer " + self._clave):
+            conexion = http.client.HTTPConnection("127.0.0.1", self._puerto, timeout=5)
+            try:
+                conexion.request("GET", "/estado?estacion=PC+1", headers={"Authorization": cabecera})
+                self.assertEqual(conexion.getresponse().status, 403, cabecera)
+            finally:
+                conexion.close()
+
+    def test_la_clave_correcta_se_acepta(self):
+        self.assertEqual(self._crudo("GET", "/estado?estacion=PC+1", token=self._clave)[0], 200)
 
     def test_get_a_una_ruta_desconocida_responde_404_sin_cuerpo(self):
         self.assertEqual(self._crudo("GET", "/otra", token=self._clave), (404, ""))
