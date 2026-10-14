@@ -28,8 +28,13 @@ import hmac
 
 from database import conexion_db
 
-# SHA-256 (hexadecimal) de la clave de conexión de los Clientes PC. Para
-# cambiar la clave, que es una decisión de fondo del dueño: poner la nueva en
+# SHA-256 (hexadecimal) de la clave de conexión de los Clientes PC. Alcanza una
+# huella simple, sin sal ni función lenta, porque la clave NO es una contraseña
+# elegida por una persona sino un valor al azar de 256 bits (43 caracteres, de
+# los que generaba `secrets.token_urlsafe(32)`): no hay diccionario que probar
+# ni forma de volver de la huella a la clave. Publicarla no regala nada (la
+# clave nunca estuvo en este repo). Para cambiar la clave, que es una decisión
+# de fondo del dueño: poner la nueva en
 # `CLIENTE PC/configuracion.py`, recalcular esta huella con `huella_de_clave()`
 # y reinstalar el .exe en TODAS las PCs (la vieja deja de servir en el acto).
 HUELLA_CLAVE_CLIENTES = "844ae2955fa6791a1ac4b836aca99b27247d72702b8dbea2e8829735fd01cfd8"

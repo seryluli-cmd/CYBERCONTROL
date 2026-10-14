@@ -439,7 +439,10 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   base: este repo es PÚBLICO, así que el programa solo conoce su huella SHA-256
   (`clientes_repo.HUELLA_CLAVE_CLIENTES`); la clave en sí vive en
   `CLIENTE PC/configuracion.py` (repo privado). Nunca escribir la clave en este
-  repo (ni en un test, ni en un doc). No volver a proponer rotación ni un botón
+  repo (ni en un test, ni en un doc). Una huella SHA-256 simple alcanza porque la
+  clave es un valor al azar de 256 bits, no una contraseña elegida (una revisión
+  automática lo marcó el 2026-10-14 y se evaluó: no hace falta sal ni KDF, ni
+  "rotar porque la huella está publicada"). No volver a proponer rotación ni un botón
   "Generar/renovar": cambiarla dejaría sin conexión a las ~40 PCs hasta
   reinstalarles el `.exe`; un test lo vigila. Es una cosa distinta de la
   contraseña de ADMIN de los Clientes PC, que sí se cambia desde "Gestionar
