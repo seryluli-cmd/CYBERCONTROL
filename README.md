@@ -45,8 +45,8 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
 | [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos y turnos faltantes, trámites, usuarios y ventas. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
-| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el feed de actividad está en `control_pcs/repositories/actividad_repo.py`. |
-| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`) y registro de fallos compartido con la UI. |
+| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y el fondo de la pantalla de bloqueo de las PCs en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py`. |
+| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo`, el fondo de la pantalla de bloqueo) y registro de fallos compartido con la UI. |
 | [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
@@ -326,6 +326,18 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   También `DialogoCambiarClave` (accesible para cualquier rol desde el
   menú principal, no desde esta pantalla) — cambia la clave propia
   pidiendo la actual como confirmación (`usuarios_repo.cambiar_clave`).
+- **Fondo de pantalla de las PCs** (`control_pcs/ui/pcs_fondo_dialogo.py`,
+  `DialogoFondoPantalla`; botón "Fondo de pantalla de las PCs..." de Gestionar
+  Estaciones, en Configuración ADMIN) — la imagen que se ve detrás del cartel de la
+  pantalla de bloqueo de cada PC cliente. "Elegir imagen..." abre un JPG, PNG, BMP,
+  WEBP o GIF; `preparar_jpeg` respeta la orientación de las fotos de celular, la achica
+  a 1920x1080 sin deformarla (una más chica no se agranda: la PC la ajusta a su
+  pantalla), rellena las transparencias con el azul del bloqueo y la pasa a JPEG,
+  bajando la calidad si hace falta para entrar en 2 MB. `fondo_repo.guardar_jpeg` la
+  deja en `data/fondo_bloqueo.jpg` (fuera de git y de las copias de seguridad de la
+  base). "Quitar fondo" vuelve al azul liso. Cada Cliente PC lo pide al arrancar
+  (`GET /fondo`, ver `servidor_red.py`) y las que están prendidas se enteran solas,
+  porque `GET /estado` trae `fondo_version` (la huella del contenido).
 
 ## Identidad y permisos
 
@@ -389,9 +401,9 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-360 tests al 2026-10-11. Cubren turnos, caja, stock, ventas y anulaciones,
-PCs, Miembros, PlayStation 5, Trámites, servidor de red, migraciones y algunas
-interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
+403 tests al 2026-10-15. Cubren turnos, caja, stock, ventas y anulaciones,
+PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
+de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.
 
 ## Empaquetado (.exe)

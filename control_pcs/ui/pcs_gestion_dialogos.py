@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from control_pcs.repositories import clientes_repo, pcs_repo, playstation_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
+from control_pcs.ui.pcs_fondo_dialogo import DialogoFondoPantalla
 from ui.utils import (
     aplicar_clase, confirmar, encadenar_enter, manejar_errores, mostrar_error,
     mostrar_info, sin_boton_por_defecto, crear_tabla,
@@ -22,15 +23,15 @@ from ui.utils import (
 
 
 class DialogoGestionEstaciones(QDialog):
-    """Alta, renombre y baja de estaciones, IP de cada una y la contraseña de
-    admin que usan los Clientes PC. (La clave de conexión de los Clientes PC es
-    fija: no se gestiona desde ninguna pantalla, ver `clientes_repo`.) Solo se
-    llega desde Configuración ADMIN."""
+    """Alta, renombre y baja de estaciones, IP de cada una, la contraseña de
+    admin que usan los Clientes PC y el fondo de su pantalla de bloqueo. (La
+    clave de conexión de los Clientes PC es fija: no se gestiona desde ninguna
+    pantalla, ver `clientes_repo`.) Solo se llega desde Configuración ADMIN."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Gestionar Estaciones")
-        self.resize(360, 420)
+        self.resize(360, 460)
         self._armar_interfaz()
         self._cargar()
 
@@ -83,6 +84,9 @@ class DialogoGestionEstaciones(QDialog):
         boton_clave_admin = QPushButton("Cambiar contraseña de PC clientes...")
         boton_clave_admin.clicked.connect(self._cambiar_clave_admin_pcs)
 
+        boton_fondo = QPushButton("Fondo de pantalla de las PCs...")
+        boton_fondo.clicked.connect(self._abrir_fondo)
+
         boton_cerrar = QPushButton("Cerrar")
         boton_cerrar.clicked.connect(self.close)
 
@@ -93,6 +97,7 @@ class DialogoGestionEstaciones(QDialog):
         layout.addLayout(fila_acciones)
         layout.addLayout(fila_ip)
         layout.addWidget(boton_clave_admin)
+        layout.addWidget(boton_fondo)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
@@ -177,6 +182,10 @@ class DialogoGestionEstaciones(QDialog):
                 "estación y esperá unos segundos: pregunta solo cada 5s, y "
                 "recién ahí queda la IP guardada acá."
             )
+
+    def _abrir_fondo(self):
+        """El fondo de la pantalla de bloqueo de todas las PCs (ver pcs_fondo_dialogo)."""
+        DialogoFondoPantalla(self).exec()
 
     @manejar_errores
     def _cambiar_clave_admin_pcs(self):

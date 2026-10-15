@@ -430,3 +430,24 @@ dejaba sin conexión a todas las demás, y una vez generada no se podía volver 
   vuelva a agregar el botón de renovar sin hablarlo con el dueño.
 362 tests (3 que probaban generar/renovar se reemplazaron por 3 de la huella y 2 nuevos
 del servidor: clave sin "Bearer" y clave correcta).
+
+**2026-10-15:** **fondo de pantalla para la pantalla de bloqueo de las PCs.** Pedido del dueño:
+que las PCs, al arrancar, le pidan a CYBERCONTROL el wallpaper de bloqueo (y preguntó si eso
+haría el arranque mucho más lento: no, si se pide en segundo plano; ver el README de CLIENTE PC,
+sección "Fondo de la pantalla de bloqueo", con lo medido).
+- **Dónde se elige:** Configuración ADMIN -> Gestionar Estaciones -> "Fondo de pantalla de las
+  PCs..." (`control_pcs/ui/pcs_fondo_dialogo.py`). `preparar_jpeg` (Qt) abre cualquier imagen,
+  respeta la orientación de las fotos de celular, la achica a 1920x1080 sin deformarla, rellena
+  las transparencias con el azul del bloqueo y la guarda como JPEG (bajando la calidad si hace
+  falta para entrar en 2 MB). Las reglas y el archivo son de `control_pcs/repositories/fondo_repo.py`.
+- **Dónde vive:** UN archivo, `data/fondo_bloqueo.jpg` (fuera de git y de las copias de
+  seguridad de la base). Su versión es la huella SHA-256 (16 caracteres) de su contenido: no hay
+  un dato aparte que pueda quedar desparejo.
+- **Servidor:** `GET /fondo` (el JPEG con su versión en `X-Fondo-Version`; 404 si no hay) y
+  `fondo_version` en cada `GET /estado`, para que una PC prendida hace días se entere de un
+  cambio sin bajar la imagen. Compatible en las dos direcciones: un Cliente PC viejo ignora el
+  campo nuevo, y uno nuevo contra un servidor viejo recibe 404 y se queda con el azul.
+- **Es un adorno:** si algo falla acá (disco, archivo roto), `/estado` sigue contestando sin ese
+  dato y `/fondo` da 404 o 500; un archivo que no empieza como JPEG cuenta como "no hay fondo".
+403 tests (41 nuevos en `tests/test_fondo_pantalla.py`: el repositorio, el servidor real, la
+preparación de la imagen y la pantalla).

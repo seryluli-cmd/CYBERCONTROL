@@ -195,6 +195,7 @@ abra no alcanza si los tests no pasan.
 | `database.hash_clave()` / `verificar_clave()` | se maneja una contraseña |
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
 | `clientes_repo.es_clave_de_clientes(clave)` | se decide si un pedido de red viene de un Cliente PC (clave fija, comparada por su huella SHA-256; la usa `servidor_red._autorizado`) |
+| `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
 | `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono COMÚN (walk-in) |
@@ -356,6 +357,17 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   la boleta en sí nunca pasa por la caja, así que no se la modela como una
   entrada y salida de plata de terceros. No tiene stock ni costo: es ganancia
   pura (la hace un empleado). Ver `tramites_repo`.
+- **El fondo de la pantalla de bloqueo de las PCs es un adorno que nunca puede frenar el
+  bloqueo.** Vive en UN archivo, `data/fondo_bloqueo.jpg` (`fondo_repo`): `data/` está fuera
+  de git y de las copias de seguridad de la base, así que si se pierde se vuelve a elegir la
+  imagen. Su versión es la huella de su contenido y viaja en cada `GET /estado`
+  (`fondo_version`; cadena vacía = no hay) y en la cabecera `X-Fondo-Version` de `GET /fondo`;
+  las dos salen del mismo `fondo_repo.obtener()` que los bytes, para que nunca queden
+  desparejas. Cada Cliente PC lo baja en un hilo aparte (`CLIENTE PC/fondo_pantalla.py`): si
+  acá algo falla (disco, imagen rota), `/estado` sigue contestando sin ese dato y `/fondo`
+  da 404 o 500, y la PC se queda con el azul liso. No lo muevas a la base ni lo metas en el
+  camino que decide si una PC está bloqueada. Un archivo que no empieza como JPEG cuenta
+  como "no hay fondo". Abrir y achicar imágenes es de la pantalla (Qt): el repo no usa Qt.
 - **El servidor de red no debe tocar Qt.** Usa conexiones SQLite propias desde
   sus hilos y registra fallos inesperados con `errores.registrar_error`, sin
   incluir claves ni el cuerpo de los pedidos en el contexto del log.
@@ -500,4 +512,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-362 pruebas al 2026-10-14.
+403 pruebas al 2026-10-15.

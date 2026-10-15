@@ -48,6 +48,11 @@ avisa en rojo hasta que un operador confirme que la consola quedó libre.
 Operar la PlayStation y entrar a Miembros requiere el permiso
 "Operar PCs y Miembros" o ser Admin. Los catálogos y las estaciones
 se administran desde Configuración ADMIN.
+El fondo de la pantalla de bloqueo de las PCs (la imagen que se ve
+detrás del nombre de cada PC) se elige en Configuración ADMIN >
+Gestionar Estaciones > "Fondo de pantalla de las PCs...". Las PCs lo
+piden al arrancar; las que ya están prendidas lo toman solas en
+unos segundos. Si no hay fondo, se ve el azul de siempre.
 
 PERMISOS
 --------

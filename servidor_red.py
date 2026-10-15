@@ -30,6 +30,16 @@ GET /estado?estacion=<nombre>
       latido con que el dashboard de Control de PCs sabe si una estación
       sigue prendida y con red, no solo si tiene sesión; la IP rellena el
       botón "Traer IP" de Gestionar Estaciones.
+    - Siempre viaja `fondo_version`: la versión del fondo de la pantalla de
+      bloqueo (cadena vacía si no hay ninguno). Si cambia, el Cliente PC vuelve
+      a pedir GET /fondo.
+
+GET /fondo
+    El fondo de la pantalla de bloqueo que eligió el Admin (ver
+    control_pcs/repositories/fondo_repo.py): el JPEG tal cual, con su versión en
+    la cabecera `X-Fondo-Version`. 404 sin cuerpo si no hay ninguno. Cada Cliente
+    PC lo pide al arrancar, en un hilo aparte (nunca frena el bloqueo), y de
+    nuevo solo cuando `fondo_version` de GET /estado cambia.
 
 POST /login           {"estacion", "usuario", "clave"}
     Un Miembro se loguea directo desde su PC cliente con TODO su saldo
@@ -69,7 +79,7 @@ from urllib.parse import urlparse, parse_qs
 import dominio
 from errores import registrar_error
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, clientes_repo, comandos_pc_repo, miembros_repo, pcs_repo,
+    accesos_admin_pc_repo, clientes_repo, comandos_pc_repo, fondo_repo, miembros_repo, pcs_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -159,6 +169,9 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             return
 
         ruta = urlparse(self.path)
+        if ruta.path == "/fondo":
+            self._manejar_fondo()
+            return
         if ruta.path != "/estado":
             self._responder_vacio(404)
             return
@@ -219,7 +232,42 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         except Exception as error:
             registrar_error(error, "Servidor de red: leer clave admin de PCs")
 
+        try:
+            # También en todo pedido: así una PC prendida hace días se entera de
+            # que el fondo cambió (o se sacó) sin bajar la imagen para compararla.
+            # Si falla, simplemente no viaja y el Cliente PC se queda con el que tiene.
+            cuerpo["fondo_version"] = fondo_repo.version_actual()
+        except Exception as error:
+            registrar_error(error, "Servidor de red: leer la versión del fondo")
+
         self._responder_json(200, cuerpo)
+
+    def _manejar_fondo(self):
+        """
+        GET /fondo: el fondo de la pantalla de bloqueo (ver fondo_repo). La versión
+        sale del mismo `fondo_repo.obtener()` que los bytes: si el Admin lo cambia
+        justo en el medio, la versión que recibe el Cliente PC es la de la imagen
+        que de verdad le llegó. 404 sin cuerpo si no hay fondo.
+        """
+        try:
+            fondo = fondo_repo.obtener()
+        except Exception as error:
+            registrar_error(error, "Servidor de red: leer el fondo de pantalla")
+            self._responder_vacio(500)
+            return
+        if fondo is None:
+            self._responder_vacio(404)
+            return
+        datos, version = fondo
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(datos)))
+        self.send_header("X-Fondo-Version", version)
+        self.end_headers()
+        try:
+            self.wfile.write(datos)
+        except OSError:
+            pass  # la PC cortó a mitad de camino (se apagó, o se cansó de esperar): no hay a quién avisarle
 
     def _leer_cuerpo_json(self) -> dict:
         largo = int(self.headers.get("Content-Length", 0))
