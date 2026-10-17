@@ -423,6 +423,15 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   estación aún no se conectó desde que arrancó el bono, muestra "Esperando al
   cliente"; si se desconecta después de estar enlazada, avisa "SIN CLIENTE".
   `pcs_repo._estado_para_estacion` decide esto para la grilla y para el Cliente PC.
+- **Lo que corre en cada refresco de la pantalla de PCs (cada 5 s) no puede leer
+  todo el historial.** `pcs_repo.estado_estaciones` y el panel "Actividad reciente"
+  (`actividad_repo.actividad_reciente`, con `playstation_repo.eventos_recientes`)
+  piden "lo último" apoyados en los índices de `database_esquema` ("ÍNDICES"); los
+  bonos se ordenan por número de venta, no por `ventas.fecha`, para no recorrer la
+  historia. Sin eso, con un año de uso la pantalla se trababa ~0,4 s cada 5 s
+  (revisión del 2026-10-17). Una consulta nueva en ese camino necesita su índice:
+  `tests/test_velocidad_pantalla_pcs.py` mide que el trabajo no crezca con el
+  historial.
 - **Una PC se reconoce por su nombre y, si no, por su IP asentada** (pedido del
   dueño, 2026-10-17). `estaciones.ip_asentada` es la IP del PRIMER enlace y no se
   pisa sola (`ultima_ip` sí, en cada conexión); solo la borra el Admin desde
@@ -569,4 +578,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-500 pruebas al 2026-10-17.
+502 pruebas al 2026-10-17.

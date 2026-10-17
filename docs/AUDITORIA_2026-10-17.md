@@ -266,6 +266,38 @@ Por tandas, cada una en su rama, con todas las pruebas antes y después:
 3. **Orden:** puntos 4, 7, 12 a 17.
 4. **Fuera de git:** punto 8, borrar los dos `.exe` viejos.
 
+### Tanda 1 — hecha (17/10)
+
+Punto 1 resuelto en la rama `tanda1-velocidad-actividad`, mergeada a `master`:
+
+- Diez índices nuevos en `database_esquema.py` (bloque "ÍNDICES"). Además de los
+  propuestos, se sumaron los de la PlayStation 5 (`sesiones_playstation` por
+  inicio y por fin, y `sesion_playstation_bonos(venta_id)`), que tenían el mismo
+  problema.
+- Los bonos vendidos del panel (PCs, PCSTREAM y PlayStation 5) se ordenan por
+  número de venta en vez de por `ventas.fecha`: los números crecen a medida que
+  se vende. Es más simple que reescribir la consulta partiendo de `ventas` y
+  evita un caso lento: con pocos bonos de PCSTREAM, esa versión habría recorrido
+  todas las ventas buscándolos.
+- `tests/test_velocidad_pantalla_pcs.py` (2 pruebas): el trabajo de la base en
+  cada refresco no crece con 5 veces más historial, y pedir los últimos eventos da
+  lo mismo que pedir todos y cortar. Con el código anterior la primera falla (el
+  trabajo crecía entre 2 y 4 veces); ordenando los bonos al revés falla la segunda.
+
+Medido con un año simulado (146.000 sesiones de PC, 740 bonos de PCSTREAM, 9.125
+sesiones de la PlayStation 5), sin otra cosa corriendo:
+
+| | Antes | Después |
+|---|---|---|
+| Sesiones en curso | 18,5 ms | 1,5 ms |
+| Panel de actividad (con la PlayStation 5) | 347 ms | 5,6 ms |
+| **Refresco completo, cada 5 s** | **367 ms** | **8 ms** |
+
+El panel mostró exactamente los mismos 30 eventos antes y después. El primer
+arranque después de actualizar crea los índices: ~0,4 s una sola vez con un año
+de historial; los arranques siguientes no cambian. Pruebas: 500 antes, 502
+después, todas OK.
+
 Decisiones tuyas antes de la tanda 2:
 - ¿Se borra la fila vieja de la clave en la base (punto 2)?
 - En el punto 12, ¿armar los `CHECK` con las listas o borrar las listas?
