@@ -52,7 +52,7 @@ class PestañaPorOperador(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(self._buscar, solo_hoy=True)
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(self._buscar, solo_hoy=True, dias_del_local=True)
 
         self.tabla_operadores = crear_tabla(
             ["Operador", "Ventas", "Anuladas", "Efectivo", "Digital", "Total"],

@@ -184,6 +184,9 @@ abra no alcanza si los tests no pasan.
 | `turnos.turnos_del_dia(fecha)` | se decide qué turnos existen en un día (3, o 2 el domingo) |
 | `turnos.etiqueta_turno(fecha, turno)` | se arma el nombre legible de un turno |
 | `turnos.dia_en_que_empezo_el_turno(fecha_hora)` | se decide a qué día pertenece el turno de un momento (antes de las 06:00 es la Noche del día anterior): pasarle eso a `etiqueta_turno`, nunca el día calendario de una venta de madrugada |
+| `turnos.limites_de_los_dias(desde, hasta)` · `turnos.sql_dia_del_local(columna)` | se filtra y se agrupa por día en un reporte de ventas: días de 06:00 a 06:00, con la Noche entera en el día en que empezó (pedido del dueño, 2026-10-17) |
+| `turnos.dia_del_turno_que_arranca_tras_un_cierre(momento)` | se decide con qué DÍA queda anotado lo que sigue a un cierre (misma tolerancia que el turno): lo usa `turnos_repo._desde_y_turno_en_curso` |
+| `ui.utils.hoy_del_local()` | se decide qué es "hoy" en los reportes de ventas (hasta las 06:00, el día anterior) |
 | `turnos.turno_vencimiento(dia, turno)` | se decide si un turno ya debería estar cerrado |
 | `turnos.turno_que_arranca_tras_un_cierre(momento)` | se decide con qué turno queda anotado lo que sigue a un cierre (la hora del cierre + `TURNO_GRACIA_MIN`); la usa `turnos_repo._desde_y_turno_en_curso`, que es lo que ven Caja y Cierre de Turno y lo que graba `cerrar_turno` |
 | `turnos_repo._cerrado_pasado_su_vencimiento(dia, turno, cerrado_a)` | se decide si un turno se cerró "tarde" (pasado su vencimiento): lo usan el aviso y el "Cerrado el dd/mm" del Resumen del Día |
@@ -243,7 +246,18 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 
 - **El turno NOCHE cruza la medianoche** (22:00–05:59), así que vence a la
   madrugada del día *siguiente*. Cualquier consulta por rango de fechas
-  que no contemple esto parte los turnos noche al medio.
+  que no contemple esto parte los turnos noche al medio. Por eso **el día del
+  local va de 06:00 a 06:00** (`turnos.HORA_CAMBIO_DE_DIA`, pedido del dueño
+  2026-10-17): el día 1 es Mañana, Tarde y la Noche ENTERA, aunque termine el
+  día 2. Todo reporte de ventas filtra con `turnos.limites_de_los_dias` (nunca
+  `date(?)`/`'+1 day'`), agrupa por día con `turnos.sql_dia_del_local` y toma su
+  "hoy" de `ui.utils.hoy_del_local` (`armar_filtro_por_fechas(...,
+  dias_del_local=True)`): a las 02:00, "Solo Hoy" es todavía el día anterior.
+  Un cierre hecho pasada la medianoche (Noche cerrada dos veces, Tarde cerrada
+  tarde) deja lo que sigue en la Noche del día ANTERIOR
+  (`turnos.dia_del_turno_que_arranca_tras_un_cierre`). Los historiales que no
+  son de ventas (accesos, logins, movimientos de un artículo) siguen por día
+  calendario. Ver `tests/test_noche_del_dia.py` y `tests/test_reportes_fechas.py`.
 - **Los domingos tienen 2 turnos de 12hs, no 3.** `MAÑANA` dura hasta las
   18:00 y no existe `TARDE`. El sábado a la noche sigue siendo el turno
   normal 22–06. Nunca asumas tres turnos por día.
@@ -538,4 +552,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-454 pruebas al 2026-10-17.
+467 pruebas al 2026-10-17.

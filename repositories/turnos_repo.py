@@ -20,11 +20,12 @@ Las fechas se comparan como texto ISO con microsegundos (ver el comentario
 en `cerrar_turno`): la ventana de un turno es (último cierre, ahora].
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 import dominio
 from database import conexion_db
 from turnos import (
-    calcular_turno, etiqueta_turno, turno_que_arranca_tras_un_cierre, turno_vencimiento, turnos_del_dia,
+    calcular_turno, dia_del_turno_que_arranca_tras_un_cierre, dia_en_que_empezo_el_turno, etiqueta_turno,
+    limites_de_los_dias, turno_que_arranca_tras_un_cierre, turno_vencimiento, turnos_del_dia,
 )
 from repositories.config_repo import obtener_fondo_cambio
 from repositories import turnos_faltantes_repo as _faltantes_repo
@@ -94,8 +95,8 @@ def _desde_y_turno_en_curso(ultimo_cierre, ahora_dt):
     """
     Desde cuándo se viene sumando el turno en curso (`fecha_cierre` del
     último cierre, o el principio de los tiempos si todavía no hay
-    ninguno) y a qué turno pertenece esa ventana -- el turno que va a
-    quedar grabado si alguien confirma el cierre ahora mismo.
+    ninguno) y a qué turno y a qué DÍA pertenece esa ventana -- el turno y
+    el día que van a quedar grabados si alguien confirma el cierre ahora mismo.
 
     Único lugar donde se decide esto, para que lo que muestra Caja
     (`resumen_turno_actual`) SIEMPRE coincida con lo que graba
@@ -107,22 +108,30 @@ def _desde_y_turno_en_curso(ultimo_cierre, ahora_dt):
     (turnos.turno_que_arranca_tras_un_cierre): si ese cierre se hizo unos
     minutos ANTES del cambio de turno (13:55), lo que sigue es de la Tarde.
     El primer cierre de todos no tiene cierre anterior: arranca "ahora".
+
+    El día es el del local (de 06:00 a 06:00, ver turnos.HORA_CAMBIO_DE_DIA), no
+    la fecha del cierre anterior: si ese cierre fue pasada la medianoche (la
+    Tarde cerrada a las 00:30, o la Noche cerrada dos veces), lo que sigue sigue
+    siendo la Noche del día anterior y tiene que sumar ahí.
     """
     if ultimo_cierre:
         desde = ultimo_cierre["fecha_cierre"]
         inicio_del_turno = datetime.fromisoformat(desde)
         turno = turno_que_arranca_tras_un_cierre(inicio_del_turno)
+        dia = dia_del_turno_que_arranca_tras_un_cierre(inicio_del_turno)
     else:
         desde = _PRINCIPIO_DE_LOS_TIEMPOS
         inicio_del_turno = ahora_dt
         turno = calcular_turno(inicio_del_turno)
-    return desde, turno, inicio_del_turno
+        dia = dia_en_que_empezo_el_turno(inicio_del_turno)
+    return desde, turno, dia
 
 
 def _ventana_en_curso(conexion, ahora_dt=None) -> dict:
     """
     La ventana del turno que está abierto ahora: {"desde", "hasta", "turno",
-    "inicio"} (`inicio` es un datetime, ver _desde_y_turno_en_curso).
+    "dia"} (`dia` es el date del día del local al que pertenece, ver
+    _desde_y_turno_en_curso).
 
     `ahora_dt` solo se pasa si quien llama ya tomó la hora antes (como
     resumen_del_dia, que la necesita también para otras cosas); si no, se
@@ -139,12 +148,12 @@ def _ventana_en_curso(conexion, ahora_dt=None) -> dict:
     ultimo_cierre = _obtener_ultimo_cierre(conexion)
     if ahora_dt is None:
         ahora_dt = datetime.now()
-    desde, turno, inicio_del_turno = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
+    desde, turno, dia = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
     return {
         "desde": desde,
         "hasta": ahora_dt.isoformat(timespec="microseconds"),
         "turno": turno,
-        "inicio": inicio_del_turno,
+        "dia": dia,
     }
 
 
@@ -216,7 +225,7 @@ def resumen_turno_actual():
 
     return {
         "turno_actual": ventana["turno"],
-        "turno_actual_label": etiqueta_turno(ventana["inicio"].date(), ventana["turno"]),
+        "turno_actual_label": etiqueta_turno(ventana["dia"], ventana["turno"]),
         "fondo_cambio": fondo_cambio,
         **desglose,
         "impresiones": round(aparte["impresiones"], 2),
@@ -251,8 +260,9 @@ def cerrar_turno(usuario_id: int):
         # que "turno", justo arriba) y no el día en que se lo cerró: para
         # un turno Noche cerrado ya pasada la medianoche, esos dos días son
         # distintos, y turnos_faltantes() necesita que coincida con el día
-        # que arma turnos_del_mes_actual() para poder cruzarlos.
-        fecha_turno = ventana["inicio"].date()
+        # que arma turnos_del_mes_actual() para poder cruzarlos. Es el día del
+        # local (06:00 a 06:00): una Noche entra entera en el día en que empezó.
+        fecha_turno = ventana["dia"]
 
         # Los nombres de columna salen de _CAMPOS_PLATA (texto fijo del
         # programa, nunca un dato de la usuaria): sumar un origen nuevo no
@@ -395,10 +405,10 @@ def _cierres_hechos_ese_dia_y_anotados_antes(conexion, dia: date) -> list:
     avisa para que no parezca que esa plata se perdió.
 
     No se avisa la Noche que se cierra a la madrugada siguiente, que es lo normal
-    (ver _cerrado_pasado_su_vencimiento).
+    (ver _cerrado_pasado_su_vencimiento). "Ese día" es el día del local, de
+    06:00 a 06:00 (ver turnos.limites_de_los_dias).
     """
-    desde = dia.isoformat()
-    hasta = (dia + timedelta(days=1)).isoformat()
+    hecho_desde, hecho_hasta = limites_de_los_dias(dia, dia)
     filas = conexion.execute(
         """
         SELECT cierres_turno.fecha, cierres_turno.turno, cierres_turno.fecha_cierre,
@@ -410,7 +420,9 @@ def _cierres_hechos_ese_dia_y_anotados_antes(conexion, dia: date) -> list:
           AND cierres_turno.fecha_cierre < ?
         ORDER BY cierres_turno.id
         """,
-        (desde, desde, hasta),
+        # cierres_turno.fecha es solo el día ("YYYY-MM-DD"): se compara contra el
+        # día, no contra las 06:00 (como texto, "2026-10-01" < "2026-10-01T06:00").
+        (dia.isoformat(), hecho_desde, hecho_hasta),
     ).fetchall()
     return [
         {
@@ -427,13 +439,14 @@ def _cierres_hechos_ese_dia_y_anotados_antes(conexion, dia: date) -> list:
 
 def resumen_del_dia(dia):
     """
-    El reporte de UN día calendario, abierto por turno (Mañana/Tarde/Noche,
+    El reporte de UN día del local, abierto por turno (Mañana/Tarde/Noche,
     o Domingo T1/T2): qué se vendió en cada uno, quién lo cerró y cuánto
     faltó o sobró al contar el sobre.
 
     Un turno pertenece al día en que ARRANCÓ (mismo criterio que
     `cierres_turno.fecha`, ver cerrar_turno): la Noche del lunes incluye lo
-    vendido hasta las 06:00 del martes. Y la plata de cada turno es la de
+    vendido hasta las 06:00 del martes, y entra entera en el lunes (pedido del
+    dueño: el día va de 06:00 a 06:00, ver turnos.HORA_CAMBIO_DE_DIA). Y la plata de cada turno es la de
     su CIERRE, no la que daría mirar el reloj: si quien atiende la Mañana
     se queda hasta las 17, esas ventas son de su turno aunque pasen de las
     14 -- coherente con lo que se ve en Caja y Cierre de Turno.
@@ -493,7 +506,7 @@ def resumen_del_dia(dia):
         # La ventana que está abierta ahora, si pertenece a este día.
         ventana = _ventana_en_curso(conexion, ahora_dt)
         abierta = None
-        if ventana["inicio"].date() == dia:
+        if ventana["dia"] == dia:
             totales = _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
             confirmadas, anuladas = _contar_ventas_entre(conexion, ventana["desde"], ventana["hasta"])
             desglose = _desglose_de_totales(totales)

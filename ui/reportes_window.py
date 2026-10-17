@@ -37,7 +37,7 @@ from ui.reportes_operador import PestañaPorOperador
 from ui.reportes_pcstream import PestañaPcstream
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, manejar_errores, sin_boton_por_defecto,
-    crear_tabla, rango_de_fechas, fecha_iso, crear_selector_de_fecha,
+    crear_tabla, rango_de_fechas, fecha_iso, crear_selector_de_fecha, hoy_del_local,
 )
 
 
@@ -65,8 +65,17 @@ class ReportesWindow(QDialog):
         pestañas.addTab(PestañaPorOperador(), "Por Operador")
         pestañas.addTab(PestañaPcstream(), dominio.NOMBRE_PCSTREAM)
 
+        # Cómo se cuenta un día en TODAS las pestañas (pedido del dueño): sin
+        # esto, ver la madrugada del 2 sumada en el día 1 parecería un error.
+        nota_dias = QLabel(
+            "Cada día va de las 06:00 a las 06:00 del día siguiente: el turno Noche "
+            "(22 a 06) cuenta entero en el día en que empezó."
+        )
+        nota_dias.setStyleSheet("color: #7A869A;")
+
         layout = QVBoxLayout()
         layout.addWidget(pestañas)
+        layout.addWidget(nota_dias)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
@@ -81,7 +90,7 @@ class PestañaResumen(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(self._buscar, solo_hoy=True)
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(self._buscar, solo_hoy=True, dias_del_local=True)
 
         fuente_grande = QFont()
         fuente_grande.setPointSize(20)
@@ -157,14 +166,14 @@ class PestañaResumenDelDia(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha = crear_selector_de_fecha()
+        self.fecha = crear_selector_de_fecha(hoy_del_local())
         self.fecha.dateChanged.connect(self._buscar)
         boton_anterior = QPushButton("◀ Día anterior")
         boton_anterior.clicked.connect(lambda: self._mover_dia(-1))
         boton_siguiente = QPushButton("Día siguiente ▶")
         boton_siguiente.clicked.connect(lambda: self._mover_dia(1))
         boton_hoy = QPushButton("Hoy")
-        boton_hoy.clicked.connect(lambda: self.fecha.setDate(QDate.currentDate()))
+        boton_hoy.clicked.connect(lambda: self.fecha.setDate(hoy_del_local()))
 
         filtros = QHBoxLayout()
         filtros.addWidget(QLabel("Día:"))
@@ -247,7 +256,7 @@ class PestañaResumenDelDia(QWidget):
             self.aviso.hide()
             return
 
-        cuando = "Hoy" if dia == QDate.currentDate() else "Este día"
+        cuando = "Hoy" if dia == hoy_del_local() else "Este día"
         if len(cierres) == 1:
             self.aviso_titulo.setText(f"{cuando} se cerró un turno que quedó anotado en otro día:")
         else:
@@ -376,7 +385,7 @@ class PestañaPorTurno(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(self._buscar, solo_hoy=True)
+        self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(self._buscar, solo_hoy=True, dias_del_local=True)
 
         self.tabla = crear_tabla(["Turno", "Total vendido", "Ventas", "Efectivo", "Digital"], estirar=0)
 
@@ -427,7 +436,7 @@ class PestañaKioskoVsPCs(QWidget):
         self.combo_agrupar.currentIndexChanged.connect(self._buscar)
 
         self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(
-            self._buscar, extras=[("Agrupar:", self.combo_agrupar)], solo_hoy=True
+            self._buscar, extras=[("Agrupar:", self.combo_agrupar)], solo_hoy=True, dias_del_local=True
         )
 
         self.tabla = crear_tabla(
@@ -502,8 +511,8 @@ class PestañaRanking(QWidget):
         self.combo_orden.addItem("Por Monto ($)", "monto")
 
         self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(
-            self._buscar, QDate.currentDate().addMonths(-1),
-            extras=[("Ordenar:", self.combo_orden)], estirar=False,
+            self._buscar, hoy_del_local().addMonths(-1),
+            extras=[("Ordenar:", self.combo_orden)], estirar=False, dias_del_local=True,
         )
 
         self.etiqueta_titulo = QLabel()

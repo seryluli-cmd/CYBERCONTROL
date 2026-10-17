@@ -16,9 +16,16 @@ Los nombres de los turnos ("MAÑANA", "TARDE", "NOCHE") están en
 dominio.py; acá está la lógica que los usa.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 import dominio
+
+# A qué hora empieza el día del local (pedido del dueño, 2026-10-17): el día 1
+# es Mañana (06-14), Tarde (14-22) y Noche (22 a 06 del día 2). La Noche se
+# factura desde el día 1 a las 22, así que cuenta ENTERA en el día 1: un día va
+# de las 06:00 a las 06:00 del día siguiente, no de medianoche a medianoche. Los
+# domingos también, aunque tengan 2 turnos de 12 hs (ver calcular_turno).
+HORA_CAMBIO_DE_DIA = 6
 
 
 def calcular_turno(fecha_hora: datetime) -> str:
@@ -42,7 +49,7 @@ def calcular_turno(fecha_hora: datetime) -> str:
     domingo = fecha_hora.weekday() == 6  # Monday=0 ... Sunday=6
     hora = fecha_hora.hour
     fin_manana = 18 if domingo else 14
-    if 6 <= hora < fin_manana:
+    if HORA_CAMBIO_DE_DIA <= hora < fin_manana:
         return dominio.TURNO_MANANA
     elif not domingo and 14 <= hora < 22:
         return dominio.TURNO_TARDE
@@ -82,10 +89,53 @@ def dia_en_que_empezo_el_turno(fecha_hora: datetime) -> date:
     lunes a la 01:00 (Noche del domingo, "Domingo T2") se mostraría como
     "Noche", y una del domingo a las 03:00 (Noche del sábado) como "Domingo T2".
     Se usa para pasarle el día correcto a etiqueta_turno.
+
+    Es también "a qué día del local pertenece este momento" (ver
+    HORA_CAMBIO_DE_DIA): el día del turno y el día del local son lo mismo.
     """
-    if fecha_hora.hour < 6:
+    if fecha_hora.hour < HORA_CAMBIO_DE_DIA:
         return (fecha_hora - timedelta(days=1)).date()
     return fecha_hora.date()
+
+
+def _como_date(fecha) -> date:
+    """Un date a partir de un date, un datetime o un string "YYYY-MM-DD..."."""
+    if isinstance(fecha, datetime):
+        return fecha.date()
+    if isinstance(fecha, str):
+        return date.fromisoformat(fecha[:10])
+    return fecha
+
+
+def limites_de_los_dias(desde, hasta) -> tuple:
+    """
+    Las dos puntas, como texto ISO, de los días `desde` a `hasta` (incluidos los
+    dos; date, datetime o "YYYY-MM-DD") contados como los cuenta el local: del
+    `desde` a las 06:00 hasta el día SIGUIENTE a `hasta` a las 06:00 (ver
+    HORA_CAMBIO_DE_DIA). Así la Noche del último día entra entera, y la madrugada
+    del primero (que es la Noche del día anterior) queda afuera.
+
+    Se usan como `fecha >= inicio AND fecha < fin`: comparan bien como texto
+    contra las fechas que graba el programa (ISO, con "T"), y una venta de las
+    06:00:00 en punto ya es del día siguiente.
+    """
+    inicio = datetime.combine(_como_date(desde), time(HORA_CAMBIO_DE_DIA))
+    fin = datetime.combine(_como_date(hasta) + timedelta(days=1), time(HORA_CAMBIO_DE_DIA))
+    return inicio.isoformat(), fin.isoformat()
+
+
+def sql_dia_del_local(columna: str) -> str:
+    """
+    La misma regla que dia_en_que_empezo_el_turno, escrita en SQL, para agrupar
+    por día en una consulta: el día del local al que pertenece la fecha ISO de
+    `columna` (un nombre de columna fijo del programa, nunca un dato de la
+    usuaria). Una venta del día 2 a la 01:00 da el día 1.
+
+    Se cortan los microsegundos antes de calcular (substr hasta los segundos):
+    SQLite redondea al milisegundo, y una venta de las 05:59:59.9999 pasaba a
+    las 06:00 y caía en el día siguiente, en desacuerdo con limites_de_los_dias.
+    """
+    return f"date(substr({columna}, 1, 19), '-{HORA_CAMBIO_DE_DIA} hours')"
 
 
 def etiqueta_turno(fecha, turno: str) -> str:
@@ -126,6 +176,21 @@ def turno_que_arranca_tras_un_cierre(momento_del_cierre: datetime) -> str:
     turno_vencimiento da a los cierres tardíos, pero en el otro sentido.
     """
     return calcular_turno(momento_del_cierre + timedelta(minutes=TURNO_GRACIA_MIN))
+
+
+def dia_del_turno_que_arranca_tras_un_cierre(momento_del_cierre: datetime) -> date:
+    """
+    El día al que pertenece el turno que arranca tras un cierre (el de
+    turno_que_arranca_tras_un_cierre, con la misma tolerancia): es el día con el
+    que va a quedar anotado el cierre siguiente.
+
+    No alcanza con la fecha del cierre anterior: si ese cierre se hizo pasada la
+    medianoche (la Tarde que se cerró a las 00:30, o una Noche cerrada dos veces
+    porque cambió quien atendía), lo que sigue es todavía la Noche del día
+    ANTERIOR, y tiene que sumar ahí. Con la tolerancia, un cierre de las 05:30
+    deja lo que sigue en la Mañana del mismo día, como corresponde.
+    """
+    return dia_en_que_empezo_el_turno(momento_del_cierre + timedelta(minutes=TURNO_GRACIA_MIN))
 
 
 def turno_vencimiento(dia_base, turno: str) -> datetime:

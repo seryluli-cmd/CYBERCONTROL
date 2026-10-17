@@ -30,6 +30,7 @@ from datetime import datetime
 
 import dominio
 from database import conexion_db
+from turnos import dia_en_que_empezo_el_turno, limites_de_los_dias, sql_dia_del_local
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 
 # Mismo mecanismo que los otros tres catálogos, otra tabla. Un bono dado de baja
@@ -61,6 +62,9 @@ def uso_por_dia(desde: str, hasta: str) -> dict:
       reintegra, pero acá se ve. Cada sesión cuenta entera en el día en que
       arrancó, aunque termine pasada la medianoche.
 
+    Los días son los del local, de 06:00 a 06:00 (ver turnos.limites_de_los_dias):
+    lo vendido el martes a la 01:00 es de la Noche del lunes y suma en el lunes.
+
     Las sesiones de PCSTREAM se reconocen por tener un bono de PCSTREAM
     (sesion_pcstream_bonos), no por el nombre actual de la estación: renombrarla
     después no borra su historial de este reporte.
@@ -69,25 +73,26 @@ def uso_por_dia(desde: str, hasta: str) -> dict:
     -- el total con las mismas claves, sin "dia".
     """
     ahora = datetime.now()
+    limites = limites_de_los_dias(desde, hasta)
     with conexion_db() as conexion:
         ventas = conexion.execute(
-            """
-            SELECT date(ventas.fecha) AS dia, COUNT(*) AS bonos,
+            f"""
+            SELECT {sql_dia_del_local("ventas.fecha")} AS dia, COUNT(*) AS bonos,
                    SUM(spb.minutos) AS minutos, SUM(spb.precio) AS recaudado
             FROM sesion_pcstream_bonos spb
             JOIN ventas ON ventas.id = spb.venta_id
-            WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
+            WHERE ventas.estado = ? AND ventas.fecha >= ? AND ventas.fecha < ?
             GROUP BY dia
             """,
-            (dominio.VENTA_CONFIRMADA, desde, hasta),
+            (dominio.VENTA_CONFIRMADA, *limites),
         ).fetchall()
         sesiones = conexion.execute(
             """
             SELECT fecha_inicio, fecha_fin_prevista, fecha_fin_real FROM sesiones_pc
             WHERE id IN (SELECT sesion_id FROM sesion_pcstream_bonos)
-              AND fecha_inicio >= date(?) AND fecha_inicio < date(?, '+1 day')
+              AND fecha_inicio >= ? AND fecha_inicio < ?
             """,
-            (desde, hasta),
+            limites,
         ).fetchall()
 
     dias = {}
@@ -106,7 +111,8 @@ def uso_por_dia(desde: str, hasta: str) -> dict:
         # abrirlo, pero la PC ya se había bloqueado sola a la hora.
         fin = ahora if sesion["fecha_fin_real"] is None else datetime.fromisoformat(sesion["fecha_fin_real"])
         segundos = max(0, int((min(fin, fin_previsto) - inicio).total_seconds()))
-        dia = dias.setdefault(inicio.date().isoformat(), _dia_vacio(inicio.date().isoformat()))
+        clave = dia_en_que_empezo_el_turno(inicio).isoformat()
+        dia = dias.setdefault(clave, _dia_vacio(clave))
         dia["sesiones"] += 1
         dia["segundos_de_uso"] += segundos
 

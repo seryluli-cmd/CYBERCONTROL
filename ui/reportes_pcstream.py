@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, QDate
 import dominio
 from control_pcs.repositories import pcstream_repo
 from ui.utils import (
-    armar_filtro_por_fechas, formato_pesos, formato_tiempo, manejar_errores,
+    armar_filtro_por_fechas, formato_pesos, formato_tiempo, hoy_del_local, manejar_errores,
     sin_boton_por_defecto, crear_tabla, rango_de_fechas,
 )
 
@@ -41,9 +41,9 @@ class PestañaPcstream(QWidget):
         self._buscar()
 
     def _armar_interfaz(self):
-        hoy = QDate.currentDate()
+        hoy = hoy_del_local()
         self.fecha_desde, self.fecha_hasta, filtros = armar_filtro_por_fechas(
-            self._buscar, QDate(hoy.year(), hoy.month(), 1), solo_hoy=True
+            self._buscar, QDate(hoy.year(), hoy.month(), 1), solo_hoy=True, dias_del_local=True
         )
 
         self.etiqueta_recaudado = QLabel()

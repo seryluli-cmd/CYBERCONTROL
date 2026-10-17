@@ -93,13 +93,16 @@ class TestResumenPorOperador(_ConVentas):
         self.assertEqual(toby["efectivo"], 1000.0)
 
     def test_solo_cuenta_las_ventas_del_rango(self):
-        self._vender(self.toby_id, 1, [{"metodo": _EFECTIVO, "monto": 1000.0}], datetime(2026, 10, 15, 23, 59))
-        self._vender(self.toby_id, 2, [{"metodo": _EFECTIVO, "monto": 2000.0}], datetime(2026, 10, 16, 0, 0))
-        self._vender(self.nair_id, 1, [{"metodo": _EFECTIVO, "monto": 1000.0}], datetime(2026, 10, 17, 0, 0))
+        # El día 16 va del 16 a las 06:00 al 17 a las 06:00 (días del local): la
+        # madrugada del 16 es la Noche del 15, y la del 17 es la Noche del 16.
+        self._vender(self.toby_id, 1, [{"metodo": _EFECTIVO, "monto": 1000.0}], datetime(2026, 10, 16, 5, 59))
+        self._vender(self.toby_id, 2, [{"metodo": _EFECTIVO, "monto": 2000.0}], datetime(2026, 10, 16, 6, 0))
+        self._vender(self.nair_id, 1, [{"metodo": _EFECTIVO, "monto": 1000.0}], datetime(2026, 10, 17, 1, 0))
+        self._vender(self.nair_id, 1, [{"metodo": _EFECTIVO, "monto": 1000.0}], datetime(2026, 10, 17, 6, 0))
 
         filas = reportes_repo.resumen_por_operador("2026-10-16", "2026-10-16")
 
-        self.assertEqual([(f["nombre"], f["total"]) for f in filas], [("TOBY", 2000.0)])
+        self.assertEqual([(f["nombre"], f["total"]) for f in filas], [("TOBY", 2000.0), ("Nair", 1000.0)])
 
 
 class TestVentasDeOperador(_ConVentas):

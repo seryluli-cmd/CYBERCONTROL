@@ -285,6 +285,21 @@ class TestUsoDePcstream(_ConPcstream):
             "sesiones": 0, "bonos": 0, "minutos_vendidos": 0, "segundos_de_uso": 0, "recaudado": 0.0,
         })
 
+    def test_lo_de_la_madrugada_suma_en_el_dia_en_que_empezo_la_noche(self):
+        # Día del local: de 06:00 a 06:00. Una sesión de las 23:00 del 7 que se
+        # extiende a la 01:00 del 8 es toda de la Noche del 7. (Antes se cierra la
+        # sesión que dejó abierta el setUp, para que esta sea una sesión nueva.)
+        self._finalizar(self.pcstream_id, datetime(2026, 1, 6, 10, 0))
+        self._vender(self.pcstream_id, self.bono_stream_corto_id, datetime(2026, 1, 7, 23, 0))
+        self._vender(self.pcstream_id, self.bono_stream_corto_id, datetime(2026, 1, 8, 1, 0))
+
+        uso_7 = self._uso("2026-01-07", "2026-01-07", ahora=datetime(2026, 1, 8, 2, 0))
+        uso_8 = self._uso("2026-01-08", "2026-01-08", ahora=datetime(2026, 1, 8, 2, 0))
+
+        self.assertEqual((uso_7["total"]["bonos"], uso_7["total"]["sesiones"]), (2, 1))
+        self.assertEqual(uso_7["total"]["recaudado"], 16000.0)
+        self.assertEqual(uso_8["dias"], [])
+
     def test_renombrarla_despues_no_le_borra_el_historial(self):
         pcs_repo.renombrar_estacion(self.pcstream_id, "PC STREAM VIEJA")
 

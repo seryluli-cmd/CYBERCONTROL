@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from errores import registrar_error
+from turnos import dia_en_que_empezo_el_turno
 
 
 def manejar_errores(func):
@@ -286,6 +287,17 @@ def crear_tabla(titulos, estirar=None, por_filas=False, una_sola=False) -> QTabl
     return tabla
 
 
+def hoy_del_local() -> QDate:
+    """
+    El día del local en curso (de 06:00 a 06:00, ver turnos.HORA_CAMBIO_DE_DIA):
+    hasta las 06:00 sigue siendo AYER, porque se está en la Noche que empezó ayer.
+    Es el "hoy" de los reportes de ventas: a las 02:00, "Solo Hoy" tiene que
+    mostrar la Noche en curso, no un día que todavía no empezó.
+    """
+    dia = dia_en_que_empezo_el_turno(datetime.now())
+    return QDate(dia.year, dia.month, dia.day)
+
+
 def crear_selector_de_fecha(fecha_inicial: QDate = None) -> QDateEdit:
     """
     Un campo de fecha con calendario desplegable, que arranca en
@@ -302,7 +314,8 @@ def crear_selector_de_fecha(fecha_inicial: QDate = None) -> QDateEdit:
     return campo
 
 
-def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=False, estirar=True):
+def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=False, estirar=True,
+                            dias_del_local=False):
     """
     Arma la fila de filtros de las pantallas que consultan un rango de
     fechas: "Desde", "Hasta", lo que cada pantalla agregue (`extras`), el
@@ -321,9 +334,13 @@ def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=Fals
       Enter, en ese orden.
     - `solo_hoy`: agrega "Solo Hoy", que pone las dos fechas en hoy y busca.
     - `estirar`: deja los botones pegados a la izquierda.
+    - `dias_del_local`: "hoy" es el día del local (hoy_del_local), no el del
+      calendario. Lo usan los reportes de ventas, que cuentan los días de 06:00 a
+      06:00; el resto (historiales de accesos, de artículos) sigue con el calendario.
     """
-    fecha_desde = crear_selector_de_fecha(desde_inicial)
-    fecha_hasta = crear_selector_de_fecha()
+    hoy = hoy_del_local() if dias_del_local else QDate.currentDate()
+    fecha_desde = crear_selector_de_fecha(desde_inicial if desde_inicial is not None else hoy)
+    fecha_hasta = crear_selector_de_fecha(hoy)
 
     filtros = QHBoxLayout()
     filtros.addWidget(QLabel("Desde:"))
@@ -336,8 +353,11 @@ def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=Fals
 
     if solo_hoy:
         def poner_solo_hoy():
-            fecha_desde.setDate(QDate.currentDate())
-            fecha_hasta.setDate(QDate.currentDate())
+            # Se recalcula al apretar: la ventana puede haber quedado abierta
+            # desde antes de las 06:00, o desde el día anterior.
+            hoy_ahora = hoy_del_local() if dias_del_local else QDate.currentDate()
+            fecha_desde.setDate(hoy_ahora)
+            fecha_hasta.setDate(hoy_ahora)
             buscar()
 
         boton_hoy = QPushButton("Solo Hoy")
