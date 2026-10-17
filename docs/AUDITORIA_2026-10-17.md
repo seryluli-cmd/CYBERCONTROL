@@ -251,7 +251,7 @@ está en el escritorio, con sus respaldos.
   de `GET /fondo`. La única fragilidad es la del punto 3.
 - **Pendiente de la revisión anterior** (el costo de que cada PC consulte cada 5
   segundos): ahora está medido. Cada consulta de una PC tarda ~5 ms; con 40 PCs es
-  ~4% de un núcleo, aun con un año de historial. No hace falta tocarlo. Lo lento
+  un 4-5% de un núcleo, aun con un año de historial. No hace falta tocarlo. Lo lento
   era el panel de actividad (punto 1).
 
 ---
