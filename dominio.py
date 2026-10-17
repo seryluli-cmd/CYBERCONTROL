@@ -100,7 +100,7 @@ def nombre_metodo(metodo: str) -> str:
 # comparten la misma caja: "ventas" y "cierres_turno" necesitan saber de
 # cuál vino cada peso para que el cierre de turno pueda mostrar el desglose
 # exacto (ver ventas_repo.registrar_venta_sin_detalle y
-# turnos_repo._sumar_ventas_por_origen_y_metodo).
+# turnos_ventas_repo._sumar_ventas_por_origen_y_metodo).
 # ORIGEN_ALQUILER_PCS describe una categoría de reporte ("Kiosko vs.
 # Alquiler de PCs", con las palabras del dueño) y a propósito no
 # coincide con el nombre del módulo de código (control_pcs).
