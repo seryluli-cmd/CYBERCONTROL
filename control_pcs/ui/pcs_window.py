@@ -270,7 +270,7 @@ class PanelControlPcs(QWidget):
             # El operador habilitó la PC antes de que el cliente la
             # prendiera -- el tiempo ya corre, pero no es una alerta.
             icono, texto_estado, color = "⏳", "Esperando al cliente", COLOR_ESPERANDO_CLIENTE
-            aviso = "Esperando al cliente"
+            aviso = "Esperando"  # corto: el casillero es angosto (el texto completo va en el cartelito)
         elif sesion is not None and not item["enlazada"]:
             # Hay tiempo pago corriendo pero el Cliente PC de esa PC dejó
             # de responder -- ver COLOR_ALERTA_SESION_SIN_CLIENTE. Esto

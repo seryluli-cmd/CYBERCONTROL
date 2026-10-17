@@ -31,9 +31,18 @@ DIBUJO_SOCIO = "socio"                   # sesión abierta por un Miembro
 DIBUJO_ALERTA = "alerta"                 # hay que mirarla ya (sin Cliente PC, tiempo agotado)
 DIBUJO_CANDADO_ABIERTO = "candado"       # Cliente PC cerrado por un admin: está sin bloqueo
 
-# Tamaño de cada casillero del mosaico (monitor + tiempo + nombre + aviso).
-ANCHO_CASILLERO = 132
-ALTO_CASILLERO = 142
+# Tamaño del dibujo del monitor: se dibuja siempre con las mismas medidas
+# (marco de 92x64, ver _DibujanteDeEquipo.paint) y se achica o agranda con esta
+# escala. El dueño lo pidió un 25% más chico (2026-10-16) para que entren más
+# PCs a la vista; los textos de abajo NO se escalan, para que se sigan leyendo.
+ESCALA_MONITOR = 0.75
+# Alto del monitor sin escalar: margen de arriba + marco + pie.
+_ALTO_MONITOR = 12 + 64 + 12
+
+# Tamaño de cada casillero del mosaico (monitor + tiempo + nombre + aviso). El
+# ancho tiene que alcanzar para "PLAYSTATION 5" sin cortarse.
+ANCHO_CASILLERO = 108
+ALTO_CASILLERO = int(_ALTO_MONITOR * ESCALA_MONITOR) + 54
 
 # Rol de Qt donde cada casillero guarda su Ficha y el color con que se pinta
 # AHORA (que no siempre es el de la ficha: el parpadeo lo alterna).
@@ -171,8 +180,12 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
 
         self._pintar_fondo_del_casillero(pintor, caja, opcion)
 
-        cx = caja.center().x()
-        marco = QRectF(cx - 46, caja.top() + 12, 92, 64)
+        # El monitor se dibuja con medidas fijas alrededor de x=0 y se escala
+        # con ESCALA_MONITOR; los textos van después, sin escalar.
+        pintor.save()
+        pintor.translate(caja.center().x(), caja.top())
+        pintor.scale(ESCALA_MONITOR, ESCALA_MONITOR)
+        marco = QRectF(-46, 12, 92, 64)
         pantalla = marco.adjusted(4, 4, -4, -4)
         _pintar_monitor(pintor, marco, pantalla, color)
 
@@ -190,8 +203,9 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
             _pintar_monedas(pintor, QPointF(marco.right() - 2, marco.top() + 2))
         if ficha.es_consola:
             _pintar_joystick(pintor, QPointF(marco.left() + 2, marco.top() + 2))
+        pintor.restore()
 
-        self._pintar_textos(pintor, caja, marco.bottom() + 12, ficha)
+        self._pintar_textos(pintor, caja, caja.top() + _ALTO_MONITOR * ESCALA_MONITOR, ficha)
         pintor.restore()
 
     @staticmethod
