@@ -97,6 +97,14 @@ class _ListaDeBonos:
         return next((bono for bono in self.bonos if bono["id"] == bono_id), None)
 
 
+def es_playstation(item) -> bool:
+    """True si un equipo de Control de PCs (un elemento de
+    pcs_repo.estado_estaciones o de playstation_repo.estado) es la PlayStation 5
+    y no una PC; None (nada elegido) da False. La usan este panel y el mosaico
+    (pcs_window)."""
+    return item is not None and item["dispositivo"] == dominio.DISPOSITIVO_PLAYSTATION
+
+
 class PanelDetalleEstacion(QFrame):
     """
     Panel lateral de "Control de PCs": todas las acciones sobre lo seleccionado
@@ -203,17 +211,13 @@ class PanelDetalleEstacion(QFrame):
         sin_boton_por_defecto(self)
 
     @staticmethod
-    def _es_playstation(item) -> bool:
-        return item is not None and item["dispositivo"] == dominio.DISPOSITIVO_PLAYSTATION
-
-    @staticmethod
     def _es_pcstream(item) -> bool:
         return item is not None and item["dispositivo"] == dominio.DISPOSITIVO_PC and item["es_pcstream"]
 
     def _lista_del_equipo(self, item):
         """La lista de bonos que le corresponde a `item`: la única de la que se
         puede vender para ese equipo."""
-        if self._es_playstation(item):
+        if es_playstation(item):
             return self.lista_playstation
         if self._es_pcstream(item):
             return self.lista_pcstream
@@ -224,11 +228,11 @@ class PanelDetalleEstacion(QFrame):
         playstation_repo.estado() (la consola), o None si no hay nada
         seleccionado en la grilla."""
         self.item = item
-        es_playstation = self._es_playstation(item)
+        es_consola = es_playstation(item)
         es_pcstream = self._es_pcstream(item)
-        es_pc = item is not None and not es_playstation
+        es_pc = item is not None and not es_consola
         # La consola solo se opera con el permiso operativo (o siendo Admin).
-        puede_operar_consola = es_playstation and playstation_repo.puede_operar(self.usuario)
+        puede_operar_consola = es_consola and playstation_repo.puede_operar(self.usuario)
 
         self.etiqueta_estado.setVisible(item is not None)
         self.lista_pc.cargar(pcs_repo.listar_bonos(), habilitada=es_pc and not es_pcstream)
@@ -240,7 +244,7 @@ class PanelDetalleEstacion(QFrame):
         # nuevo con cada refresco de la grilla (cada 5s) y no puede devolver el
         # scroll adonde estaba mientras alguien lo está moviendo a mano.
         equipo = None if item is None else (
-            item["dispositivo"], None if es_playstation else item["estacion"]["id"]
+            item["dispositivo"], None if es_consola else item["estacion"]["id"]
         )
         if equipo is not None and equipo != self._equipo_mostrado:
             lista_activa = self._lista_del_equipo(item)
@@ -254,7 +258,7 @@ class PanelDetalleEstacion(QFrame):
             return
 
         sesion = item["sesion"]
-        if es_playstation:
+        if es_consola:
             self.etiqueta_titulo.setText(item["nombre"])
             self.mostrar_estado_playstation(item, puede_operar_consola)
             lista, puede = self.lista_playstation, puede_operar_consola
@@ -272,7 +276,7 @@ class PanelDetalleEstacion(QFrame):
 
         self.boton_iniciar.setText("Iniciar Sesión" if sesion is None else "Agregar Bono")
         self.boton_finalizar.setText(
-            "Ya avisé: liberar la consola" if es_playstation and item["tiempo_agotado"] else "Finalizar Sesión"
+            "Ya avisé: liberar la consola" if es_consola and item["tiempo_agotado"] else "Finalizar Sesión"
         )
         self.combo_metodo.setEnabled(puede)
         self.boton_iniciar.setEnabled(puede and bool(lista.bonos))
@@ -317,7 +321,7 @@ class PanelDetalleEstacion(QFrame):
         if item is None:
             return
         lista = self._lista_del_equipo(item)
-        if self._es_playstation(item):
+        if es_playstation(item):
             sin_bonos = (
                 "Todavía no hay ningún bono de PlayStation 5 — el Admin lo crea desde "
                 "'Configuración ADMIN' -> 'Gestionar Bonos de PlayStation 5'."
@@ -340,7 +344,7 @@ class PanelDetalleEstacion(QFrame):
         pagos = resolver_pagos(self, metodo, bono["precio"])
         if pagos is None:
             return
-        if self._es_playstation(item):
+        if es_playstation(item):
             playstation_repo.vender_bono(self.usuario["id"], bono["id"], pagos)
         else:
             # PCSTREAM también: pcs_repo.asignar_bono busca el bono en SU catálogo.
@@ -348,7 +352,7 @@ class PanelDetalleEstacion(QFrame):
         self._avisar_cambio()
 
     def _abrir_con_miembro(self):
-        if self.item is None or self._es_playstation(self.item) or self._es_pcstream(self.item):
+        if self.item is None or es_playstation(self.item) or self._es_pcstream(self.item):
             return
         dialogo = DialogoLoginMiembro(self.item["estacion"], self)
         if dialogo.exec():
@@ -361,7 +365,7 @@ class PanelDetalleEstacion(QFrame):
             return
         segundos_restantes = item["segundos_restantes"]
 
-        if self._es_playstation(item):
+        if es_playstation(item):
             if segundos_restantes:
                 aviso = (
                     f"Todavía le quedan {formato_tiempo(segundos_restantes)} disponibles a la "

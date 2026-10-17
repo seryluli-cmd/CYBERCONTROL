@@ -50,7 +50,7 @@ from control_pcs.ui.pcs_comandos_dialogos import (
     DialogoCambiarRed, DialogoCaptura, DialogoTrasladarSesion, DialogoVolumen,
 )
 from control_pcs.ui.pcs_actividad import PanelActividad
-from control_pcs.ui.pcs_detalle import PanelDetalleEstacion
+from control_pcs.ui.pcs_detalle import PanelDetalleEstacion, es_playstation
 from control_pcs.ui.pcs_mosaico import (
     MosaicoDeEquipos, LeyendaDeColores, Ficha,
     DIBUJO_NINGUNO, DIBUJO_RELOJ, DIBUJO_SOCIO, DIBUJO_ALERTA, DIBUJO_CANDADO_ABIERTO,
@@ -127,14 +127,9 @@ INTERVALO_CUENTA_REGRESIVA_MS = 1000
 _CLAVE_PLAYSTATION = (dominio.DISPOSITIVO_PLAYSTATION, None)
 
 
-def _es_playstation(item) -> bool:
-    """True si un equipo del mosaico es la PlayStation 5 (y no una PC)."""
-    return item["dispositivo"] == dominio.DISPOSITIVO_PLAYSTATION
-
-
 def _clave_de_item(item):
     """La identidad de un equipo del mosaico (ver _CLAVE_PLAYSTATION)."""
-    if _es_playstation(item):
+    if es_playstation(item):
         return _CLAVE_PLAYSTATION
     return (dominio.DISPOSITIVO_PC, item["estacion"]["id"])
 
@@ -345,7 +340,7 @@ class PanelControlPcs(QWidget):
             [self._item_playstation] if self._item_playstation is not None else []
         ) + list(self._estados)
         fichas = [
-            self._ficha_de_playstation(item) if _es_playstation(item) else self._ficha_de_pc(item)
+            self._ficha_de_playstation(item) if es_playstation(item) else self._ficha_de_pc(item)
             for item in self._items_en_grilla
         ]
         self._filas_en_alerta = [fila for fila, ficha in enumerate(fichas) if ficha.en_alerta]
@@ -446,7 +441,7 @@ class PanelControlPcs(QWidget):
             return
         self.mosaico.elegir(fila)
         item = self._items_en_grilla[fila]
-        if _es_playstation(item):
+        if es_playstation(item):
             # La consola no se controla a distancia: no tiene Cliente PC, así
             # que nada de este menú (cerrar y reiniciar, apagar, mensaje,
             # captura, red, volumen) tiene sentido. Se opera desde el panel.
