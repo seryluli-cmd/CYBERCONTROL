@@ -298,6 +298,39 @@ arranque después de actualizar crea los índices: ~0,4 s una sola vez con un a�
 de historial; los arranques siguientes no cambian. Pruebas: 500 antes, 502
 después, todas OK.
 
-Decisiones tuyas antes de la tanda 2:
-- ¿Se borra la fila vieja de la clave en la base (punto 2)?
-- En el punto 12, ¿armar los `CHECK` con las listas o borrar las listas?
+### Tanda 2 — hecha (17/10)
+
+Puntos 2, 3, 5, 6, 9, 10 y 11, más el 12 (adelantado, porque el dueño lo decidió
+junto con el 2), en la rama `tanda2-claridad`, mergeada a `master`:
+
+- **2:** el dueño decidió borrar la fila. La migración vieja se reemplazó por
+  `_migrar_borrar_clave_vieja_de_clientes_pc`, que borra `clave_clientes` y
+  `clave_agentes` de `configuracion` en cada arranque. Si no están, no hace nada.
+  Prueba nueva: el resto de la configuración queda intacto. Sin la migración, la
+  prueba falla.
+- **3:** la prueba de "estación desconocida" ahora exige la palabra
+  "desconocida", con un comentario junto al mensaje en `servidor_red.py`.
+  Cambiando el texto por "Esa PC no existe." la prueba falla.
+- **5:** `dominio.ESTADO_COMANDO_PENDIENTE` / `ESTADO_COMANDO_ENTREGADO` /
+  `ESTADOS_COMANDO_PC`, pasados como parámetro en `comandos_pc_repo`.
+- **12:** el dueño eligió usar las listas. Los `CHECK` de rol, estado y turno de
+  las ventas, turno de los cierres, avisos de admin y estado de los comandos se
+  arman con las listas de `dominio.py` mediante `database._valores_sql`, que
+  también reemplaza las tres copias que había de esa misma cuenta. **El esquema
+  de una base nueva salió idéntico, línea por línea, antes y después.**
+- **6:** `LEEME.txt` suma PCSTREAM, el día de 06:00 a 06:00, la carga mínima de
+  socios, la IP asentada con "Borrar IP" y "Limpiar base de datos".
+- **9 y 10:** comentarios y documentación al día ("cuatro catálogos", "mosaico"
+  en vez de "fila de la grilla", referencias a
+  `turnos_faltantes_repo._responsables_del_mes`, sin el import sobrante de
+  `turnos_repo`). La regla 5 de CLAUDE.md explica cómo se arman ahora los `CHECK`.
+- **11:** ya se había hecho en la tanda 1.
+
+Pruebas: 502 antes, 503 después. En cuatro corridas completas, una tuvo 1 error
+que no se repitió en las tres siguientes (todas OK). No quedó registrado cuál
+fue; se presume la prueba de red que ya fallaba de vez en cuando por una
+conexión cortada (`ConnectionAbortedError`).
+
+Decisiones tuyas antes de la tanda 2 (ya tomadas):
+- ¿Se borra la fila vieja de la clave en la base (punto 2)? **Sí.**
+- En el punto 12, ¿armar los `CHECK` con las listas o borrar las listas? **Armarlos con las listas.**

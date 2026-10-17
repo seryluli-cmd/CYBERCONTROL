@@ -128,12 +128,12 @@ _CLAVE_PLAYSTATION = (dominio.DISPOSITIVO_PLAYSTATION, None)
 
 
 def _es_playstation(item) -> bool:
-    """True si una fila de la grilla es la PlayStation 5 (y no una PC)."""
+    """True si un equipo del mosaico es la PlayStation 5 (y no una PC)."""
     return item["dispositivo"] == dominio.DISPOSITIVO_PLAYSTATION
 
 
 def _clave_de_item(item):
-    """La identidad de una fila de la grilla (ver _CLAVE_PLAYSTATION)."""
+    """La identidad de un equipo del mosaico (ver _CLAVE_PLAYSTATION)."""
     if _es_playstation(item):
         return _CLAVE_PLAYSTATION
     return (dominio.DISPOSITIVO_PC, item["estacion"]["id"])

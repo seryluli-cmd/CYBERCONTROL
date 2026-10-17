@@ -29,7 +29,6 @@ from turnos import (
 )
 from repositories.config_repo import obtener_fondo_cambio
 from repositories import turnos_faltantes_repo as _faltantes_repo
-from repositories.turnos_faltantes_repo import _responsables_del_mes
 
 
 # Desde cuándo cuenta la ventana del primer turno de la historia (todavía no
