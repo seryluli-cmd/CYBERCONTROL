@@ -14,10 +14,12 @@ Este módulo NO importa nada del programa a propósito: lo pueden usar
 tanto `ui/` como `repositories/` como `database.py` sin romper la
 dirección de las capas (ver CLAUDE.md, regla 1).
 
-IMPORTANTE: estos valores tienen que coincidir con los CHECK del esquema
-en `database.py` (`CHECK (rol IN ('ADMIN', 'EMPLEADA'))`, etc.). Si
-alguna vez se agrega un valor nuevo, va en los dos lados: acá y en una
-migración que actualice el CHECK.
+IMPORTANTE: los CHECK del esquema (`CHECK (rol IN (...))`, etc.) se arman
+con las listas de acá (`ROLES`, `ESTADOS_VENTA`, `TURNOS`, `ORIGENES_VENTA`...,
+ver `database._valores_sql`), así una base NUEVA nunca queda desfasada. Pero
+SQLite no deja cambiar un CHECK ya grabado: si se agrega un valor, una base
+que ya existe necesita además una migración que reconstruya esa tabla (como
+`_migrar_check_tipo_en_comandos_pc`, que lo hace sola para los comandos).
 """
 
 import re
@@ -135,10 +137,10 @@ CODIGO_ARTICULO_IMPRESIONES = "1"
 # Comandos remotos a una PC cliente
 # --------------------------------------------------------------------
 # Lo que el mostrador le puede pedir a una estación desde el menú contextual
-# de Control de PCs. Tienen que coincidir con el CHECK
-# de `comandos_pc.tipo` en database.py: si se suma uno nuevo, va acá y en una
-# migración que actualice ese CHECK (regla 5 de CLAUDE.md). Sin eso, el INSERT
-# falla recién cuando alguien usa el comando.
+# de Control de PCs. El CHECK de `comandos_pc.tipo` sale de TIPOS_COMANDO_PC y
+# una base vieja se reconstruye sola al arrancar
+# (database_migraciones._migrar_check_tipo_en_comandos_pc): alcanza con sumar
+# el comando a la lista.
 COMANDO_REINICIAR = "REINICIAR"
 COMANDO_APAGAR = "APAGAR"
 COMANDO_MENSAJE = "MENSAJE"
@@ -149,6 +151,13 @@ TIPOS_COMANDO_PC = (
     COMANDO_REINICIAR, COMANDO_APAGAR, COMANDO_MENSAJE,
     COMANDO_SCREENSHOT, COMANDO_CAMBIAR_RED, COMANDO_VOLUMEN,
 )
+
+# En qué está cada comando de la cola (`comandos_pc.estado`): PENDIENTE hasta
+# que viaja en la respuesta de `GET /estado` de su PC, ENTREGADO después (ver
+# comandos_pc_repo). Un typo acá dejaría a los comandos sin llegar nunca.
+ESTADO_COMANDO_PENDIENTE = "PENDIENTE"
+ESTADO_COMANDO_ENTREGADO = "ENTREGADO"
+ESTADOS_COMANDO_PC = (ESTADO_COMANDO_PENDIENTE, ESTADO_COMANDO_ENTREGADO)
 
 
 # --------------------------------------------------------------------
@@ -289,7 +298,7 @@ def fin_al_sumar_minutos(fin_actual, minutos: int, ahora: datetime) -> datetime:
 
 
 # --------------------------------------------------------------------
-# Bonos de tiempo (reglas compartidas por los tres catálogos)
+# Bonos de tiempo (reglas compartidas por los cuatro catálogos)
 # --------------------------------------------------------------------
 # Hay cuatro catálogos de bonos -- pcs_repo.bonos_tiempo (walk-ins),
 # bonos_miembro_repo (exclusivo de socios), playstation_repo.bonos_playstation

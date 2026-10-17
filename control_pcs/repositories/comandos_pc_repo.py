@@ -58,9 +58,10 @@ def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
         cursor = conexion.execute(
             """
             INSERT INTO comandos_pc (estacion_id, tipo, payload, fecha_creacion, estado)
-            VALUES (?, ?, ?, ?, 'PENDIENTE')
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (estacion_id, tipo, payload, datetime.now().isoformat(timespec="seconds")),
+            (estacion_id, tipo, payload, datetime.now().isoformat(timespec="seconds"),
+             dominio.ESTADO_COMANDO_PENDIENTE),
         )
         comando_id = cursor.lastrowid
     if tipo == TIPO_APAGAR:
@@ -74,10 +75,10 @@ def proximo_comando_pendiente(estacion_id: int):
     with conexion_db() as conexion:
         return conexion.execute(
             """
-            SELECT * FROM comandos_pc WHERE estacion_id = ? AND estado = 'PENDIENTE'
+            SELECT * FROM comandos_pc WHERE estacion_id = ? AND estado = ?
             ORDER BY fecha_creacion LIMIT 1
             """,
-            (estacion_id,),
+            (estacion_id, dominio.ESTADO_COMANDO_PENDIENTE),
         ).fetchone()
 
 
@@ -89,7 +90,9 @@ def marcar_entregado(comando_id: int):
     simplemente vuelve a mandar la acción, no hay nada crítico en juego
     como para justificar un mecanismo de reintento más elaborado)."""
     with conexion_db() as conexion:
-        conexion.execute("UPDATE comandos_pc SET estado = 'ENTREGADO' WHERE id = ?", (comando_id,))
+        conexion.execute(
+            "UPDATE comandos_pc SET estado = ? WHERE id = ?", (dominio.ESTADO_COMANDO_ENTREGADO, comando_id)
+        )
 
 
 def obtener_comando(comando_id: int):

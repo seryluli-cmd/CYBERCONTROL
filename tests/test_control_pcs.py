@@ -1193,6 +1193,27 @@ class TestClientesRepo(BaseConBaseTemporal):
         self.assertFalse(hasattr(clientes_repo, "generar_clave_clientes"))
         self.assertFalse(hasattr(clientes_repo, "obtener_clave_clientes"))
 
+    def test_la_copia_vieja_de_la_clave_se_borra_sola_al_arrancar(self):
+        # Hasta el 2026-10-14 la clave se guardaba en `configuracion`; desde que es
+        # fija nada la lee, y el dueño pidió borrarla (revisión del 2026-10-17).
+        clientes_repo.establecer_clave_admin_pcs("1234")
+        with database.conexion_db() as conexion:
+            conexion.executemany(
+                "INSERT INTO configuracion (clave, valor) VALUES (?, ?)",
+                [("clave_clientes", "vieja-1"), ("clave_agentes", "vieja-2")],
+            )
+
+        database.inicializar_base_de_datos()
+        database.inicializar_base_de_datos()  # segura de correr en cada arranque
+
+        with database.conexion_db() as conexion:
+            claves = {fila["clave"] for fila in conexion.execute("SELECT clave FROM configuracion")}
+        self.assertNotIn("clave_clientes", claves)
+        self.assertNotIn("clave_agentes", claves)
+        # El resto de la configuración queda como estaba.
+        self.assertEqual(clientes_repo.obtener_clave_admin_pcs(), "1234")
+        self.assertIn("fondo_cambio", claves)
+
     def test_sin_clave_admin_pcs_todavia_devuelve_vacio(self):
         self.assertEqual(clientes_repo.obtener_clave_admin_pcs(), "")
 
@@ -1572,8 +1593,12 @@ class TestServidorRedEventoAdmin(_ConServidorRed):
         self.assertEqual(self._eventos(), [])
 
     def test_estacion_desconocida_da_404_y_no_anota_nada(self):
-        status, _ = self._post("/evento_admin", {"estacion": "PC 99", "tipo": "ACCESO"})
+        status, datos = self._post("/evento_admin", {"estacion": "PC 99", "tipo": "ACCESO"})
         self.assertEqual(status, 404)
+        # El Cliente PC busca esta palabra para descartar el aviso en vez de
+        # reintentarlo para siempre (CLIENTE PC/red_kiosko.py): el mensaje se
+        # puede redactar distinto, pero tiene que seguir diciéndola.
+        self.assertIn("desconocida", datos["error"])
         self.assertEqual(self._eventos(), [])
 
     def test_sin_la_clave_de_clientes_pc_no_se_acepta(self):

@@ -5,7 +5,7 @@ import sqlite3
 import dominio
 import database
 from database import (
-    _sql_tabla_ventas, _origenes_venta_sql,
+    _sql_tabla_ventas, _origenes_venta_sql, _valores_sql,
     _respaldar_antes_de_migrar,
 )
 
@@ -132,7 +132,7 @@ def _sql_tabla_movimientos_saldo_miembro(tipos: tuple, referencia_bono: str, si_
     apunta `referencia_bono`: "bonos_miembro(id)" hoy, "bonos_tiempo(id)" en
     las bases anteriores a que existiera bonos_miembro.
     """
-    tipos_sql = ", ".join(f"'{tipo}'" for tipo in tipos)
+    tipos_sql = _valores_sql(tipos)
     existe = "IF NOT EXISTS " if si_no_existe else ""
     return f"""
         CREATE TABLE {existe}movimientos_saldo_miembro (
@@ -303,7 +303,7 @@ def _sql_tabla_comandos_pc(tipos: tuple, si_no_existe: bool = False) -> str:
     tiempo es qué `tipos` admite el CHECK (los tests usan los originales para
     simular una base vieja).
     """
-    tipos_sql = ", ".join(f"'{tipo}'" for tipo in tipos)
+    tipos_sql = _valores_sql(tipos)
     existe = "IF NOT EXISTS " if si_no_existe else ""
     return f"""
         CREATE TABLE {existe}comandos_pc (
@@ -312,7 +312,7 @@ def _sql_tabla_comandos_pc(tipos: tuple, si_no_existe: bool = False) -> str:
             tipo            TEXT NOT NULL CHECK (tipo IN ({tipos_sql})),
             payload         TEXT,
             fecha_creacion  TEXT NOT NULL,
-            estado          TEXT NOT NULL DEFAULT 'PENDIENTE' CHECK (estado IN ('PENDIENTE', 'ENTREGADO')),
+            estado          TEXT NOT NULL DEFAULT '{dominio.ESTADO_COMANDO_PENDIENTE}' CHECK (estado IN ({_valores_sql(dominio.ESTADOS_COMANDO_PC)})),
             resultado       TEXT
         )
     """
@@ -343,21 +343,20 @@ def _migrar_check_tipo_en_comandos_pc(conexion: sqlite3.Connection):
 
 # --- el resto de las migraciones ---
 
-def _migrar_clave_clientes_pc(conexion: sqlite3.Connection):
+def _migrar_borrar_clave_vieja_de_clientes_pc(conexion: sqlite3.Connection):
     """
-    El proyecto hermano "AGENTE PC KIOSKO" pasó a llamarse "CLIENTE PC"
-    (2026-09-30) -- la clave compartida que usan las estaciones para
-    autenticarse contra `servidor_red.py` vivía en `configuracion` bajo
-    la clave vieja 'clave_agentes' (ver `clientes_repo.py`, antes
-    `agentes_repo.py`), y el código de acá en más busca 'clave_clientes'.
-    Para una base donde esa clave ya se había generado de verdad (Etapa 1
-    probada en una PC real, ver CLAUDE.md), renombrar la fila en vez de
-    perderla -- si no, quedaría invisible para el código nuevo y habría
-    que regenerarla y volver a distribuir config.json a esa PC sin
-    necesidad.
+    Hasta el 2026-10-14 la clave con la que los Clientes PC se identifican ante
+    `servidor_red.py` se generaba desde el programa y se guardaba en
+    `configuracion` ('clave_clientes'; antes de que el proyecto hermano se
+    llamara CLIENTE PC, 'clave_agentes'). Desde entonces es FIJA: vive solo en
+    CLIENTE PC y acá se compara su huella (`clientes_repo.es_clave_de_clientes`),
+    así que nada lee más esa fila. El dueño pidió borrarla (revisión del
+    2026-10-17): una copia de una clave guardada donde nadie la usa no suma
+    nada. Las copias de seguridad viejas la conservan, pero tampoco se leen.
+    Segura de correr en cada arranque: si no está, no hace nada.
     """
     conexion.execute(
-        "UPDATE configuracion SET clave = 'clave_clientes' WHERE clave = 'clave_agentes'"
+        "DELETE FROM configuracion WHERE clave IN ('clave_clientes', 'clave_agentes')"
     )
     conexion.commit()
 
