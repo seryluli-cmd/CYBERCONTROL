@@ -34,8 +34,10 @@ DIBUJO_CANDADO_ABIERTO = "candado"       # Cliente PC cerrado por un admin: est�
 # Tamaño del dibujo del monitor: se dibuja siempre con las mismas medidas
 # (marco de 92x64, ver _DibujanteDeEquipo.paint) y se achica o agranda con esta
 # escala. El dueño lo pidió un 25% más chico (2026-10-16) para que entren más
-# PCs a la vista; los textos de abajo NO se escalan, para que se sigan leyendo.
-ESCALA_MONITOR = 0.75
+# PCs a la vista, y con 8 por fila (ver EQUIPOS_POR_FILA) un 15% más grande que
+# eso (2026-10-17): 0,75 × 1,15. Los textos de abajo NO se escalan, para que se
+# sigan leyendo.
+ESCALA_MONITOR = 0.75 * 1.15
 # Alto del monitor sin escalar: margen de arriba + marco + pie.
 _ALTO_MONITOR = 12 + 64 + 12
 
