@@ -18,6 +18,12 @@ No borres ni reemplaces esa carpeta al actualizar el ejecutable.
 Se guarda una copia automática diaria en data/backups (hasta 30 copias).
 El Admin puede hacer una copia adicional desde Usuarios > Copia de
 Seguridad, por ejemplo a un pendrive.
+Configuración ADMIN > Limpiar base de datos es solo para la etapa de
+pruebas: borra todas las ventas, los cierres de turno, las sesiones de PCs
+y de la PlayStation 5 y el saldo de los socios, y deja todo lo cargado
+(usuarios, artículos, compras, bonos, estaciones, socios, trámites y
+configuración). Hay que escribir LIMPIAR para confirmar, y antes de borrar
+guarda una copia completa en data/backups.
 
 VENTAS Y CAJA
 -------------
@@ -41,6 +47,9 @@ VENTAS Y CAJA
   tocando su nombre, cada una de sus ventas con el día y la hora, qué se
   vendió y cómo se cobró. Ojo: la venta queda a nombre de quien tenía la
   sesión abierta; por eso cada uno tiene que entrar con su propio usuario.
+- En los reportes, el día del local va de 06:00 a 06:00: la Noche entra
+  entera en el día en que empezó, aunque termine a la madrugada siguiente.
+  Por eso, a las 2 de la mañana "Solo Hoy" todavía muestra el día anterior.
 
 PCs, SOCIOS Y PLAYSTATION 5
 ----------------------------
@@ -53,13 +62,31 @@ El reloj y las monedas indican que corre con un bono; las dos personitas,
 que la abrió un socio (su nombre aparece abajo). Debajo de cada monitor va
 el tiempo que le queda. Clic para elegirla, clic derecho para el control
 remoto (reiniciar, apagar, mensaje, etc.).
-Los bonos de PC, de socios y de PlayStation son catálogos separados.
+Los bonos de PC, de PCSTREAM, de socios y de PlayStation son catálogos
+separados.
 Las PCs comunes se pueden operar con cualquier usuario logueado.
 Al vencer el tiempo de una PC, el Cliente PC la bloquea. La PlayStation
 avisa en rojo hasta que un operador confirme que la consola quedó libre.
 Operar la PlayStation y entrar a Miembros requiere el permiso
 "Operar PCs y Miembros" o ser Admin. Los catálogos y las estaciones
 se administran desde Configuración ADMIN.
+PCSTREAM es la PC de streaming: va al lado de la PlayStation 5 y se la
+reconoce por el nombre (la estación tiene que llamarse PCSTREAM; con otro
+nombre es una PC común). Tiene sus propios bonos (Configuración ADMIN >
+Gestionar Bonos de PCSTREAM). Los socios no la pueden abrir con su saldo y
+no entra en "Intercambiar de máquina". Lo que se cobra suma en Alquiler de
+PCs; cuánto se usó y se vendió se ve en Reportes > PCSTREAM.
+Al cargarle saldo a un socio con un monto libre, el mínimo es el monto del
+tramo más bajo de la Tarifa por Hora de Socios (Configuración ADMIN). Si
+ese tramo arranca en $0, se puede cargar cualquier monto.
+Cada PC deja anotada su IP la primera vez que se conecta (columna "IP
+asentada" en Configuración ADMIN > Gestionar Estaciones). Si el nombre que
+manda la PC no coincide con ninguna estación (por ejemplo, porque la
+renombraste acá), el programa la reconoce por esa IP. Si cambiás una PC o
+su IP, tocá "Borrar IP": la nueva se anota sola la próxima vez que esa PC
+se conecte con su nombre.
+Una IP repetida en dos estaciones sale en rojo y, mientras siga así,
+ninguna de las dos se reconoce por IP (por el nombre siguen andando).
 El fondo de la pantalla de bloqueo de las PCs (la imagen que se ve
 detrás del nombre de cada PC) se elige en Configuración ADMIN >
 Gestionar Estaciones > "Fondo de pantalla de las PCs...". Las PCs lo

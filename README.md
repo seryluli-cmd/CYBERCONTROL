@@ -66,7 +66,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   migración de hash legacy). No hay horario asignado por empleada en el
   sistema, así que esto (junto con las ventas) es la única pista para
   saber quién podría ser responsable de un turno sin cerrar — ver
-  `turnos_repo._responsables_del_mes` más abajo.
+  `turnos_faltantes_repo._responsables_del_mes` más abajo.
 - **`marcas`** / **`rubros`** — catálogos simples `id` + `nombre` (único).
   Las marcas se crean al vuelo escribiendo un nombre nuevo en el combo del
   artículo; los **rubros son un catálogo cerrado**, se gestionan aparte
@@ -122,8 +122,10 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   cambio, el indicador de rubros iniciales, tarifas y la contraseña de admin de
   los Clientes PC. Las claves exactas están centralizadas en los repositorios
   que las usan. La clave de CONEXIÓN de los Clientes PC ya no se guarda acá: es
-  fija y el programa conserva solo su huella (`clientes_repo.py`); una fila
-  `clave_clientes` que haya quedado en una base anterior no se usa.
+  fija y el programa conserva solo su huella (`clientes_repo.py`); la fila
+  `clave_clientes` (o `clave_agentes`) que haya quedado en una base anterior se
+  borra sola al arrancar (`_migrar_borrar_clave_vieja_de_clientes_pc`, pedido del
+  dueño 2026-10-17).
 - **`calcular_turno(fecha_hora)`** (`turnos.py`) — Mañana 06-14, Tarde
   14-22, Noche 22-06 (cruza medianoche). Se usa al registrar una venta.
   ⚠️ **Excepción: los domingos son distintos** — ese día solo hay 2
@@ -160,7 +162,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   la cruza contra `cierres_turno` para devolver los que ya vencieron y
   todavía no se cerraron, agregándole a cada uno `"usuarios"`: quién
   vendió algo o **inició sesión** en esa ventana, según
-  `turnos_repo._responsables_del_mes` (combina `ventas` y la tabla
+  `turnos_faltantes_repo._responsables_del_mes` (combina `ventas` y la tabla
   `sesiones` — sirve incluso para un turno sin ninguna venta, por
   ejemplo alguien logueado que todavía no facturó nada; no hay horarios
   asignados por empleada en el sistema, así que sigue siendo una pista
@@ -234,14 +236,14 @@ pasa antes a la fila de abajo en vez de achicarlos.
   Desactivar), que también está en Configuración ADMIN. En Consulta de
   Ventas el trámite se ve como una fila "Trámite: <nombre>".
 - **PlayStation 5** (`control_pcs/ui/pcs_window.py` + `pcs_detalle.py`) — es
-  la primera fila de la grilla de Control de PCs, arriba de las PCs, con el
+  el primer monitor del mosaico de Control de PCs, antes de las PCs, con el
   nombre fijo "PLAYSTATION 5" (no se edita, no se da de baja, no tiene menú de
   PC). Al elegirla, el panel lateral habilita **solo** sus bonos (que van
   debajo de los de PC, que quedan deshabilitados); al elegir una PC pasa lo
   inverso, y un bono nunca puede cobrarse al equipo equivocado
   (`PanelDetalleEstacion` toma la lista del equipo elegido, y los repos
   validan cada uno su catálogo). Muestra una cuenta regresiva que se redibuja
-  cada segundo; al llegar a cero la fila **titila en rojo** hasta que el
+  cada segundo; al llegar a cero su monitor **titila en rojo** hasta que el
   operador avise a los clientes y la libere ("Ya avisé: liberar la consola")
   o venda otro bono — no se da de baja sola como una PC. Vender un bono y
   liberarla pide ser Admin o tener `permiso_control_pcs` ("Operar PCs y
@@ -453,7 +455,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-528 tests al 2026-10-17. Cubren turnos, caja, stock, ventas y anulaciones,
+529 tests al 2026-10-17. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
 y el filtro de palabras de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

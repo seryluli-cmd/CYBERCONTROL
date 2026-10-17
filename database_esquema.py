@@ -19,7 +19,8 @@ def inicializar_base_de_datos():
         _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_check_tipo_en_comandos_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
-        _migrar_check_origen_en_ventas, _migrar_clave_clientes_pc, _cargar_datos_iniciales,
+        _migrar_check_origen_en_ventas, _migrar_borrar_clave_vieja_de_clientes_pc, _cargar_datos_iniciales,
+        _valores_sql,
     )
     conexion = get_connection()
     cursor = conexion.cursor()
@@ -38,12 +39,12 @@ def inicializar_base_de_datos():
     #     usuarios_repo.py) para que también pueda entrar a Artículos,
     #     Compras, Consulta de Ventas (sin poder anular), Reportes o
     #     Control de Cierres, sin tener que hacerla Admin del todo.
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS usuarios (
             id                       INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre                   TEXT NOT NULL,
             clave_hash               TEXT NOT NULL,
-            rol                      TEXT NOT NULL CHECK (rol IN ('ADMIN', 'EMPLEADA')),
+            rol                      TEXT NOT NULL CHECK (rol IN ({_valores_sql(dominio.ROLES)})),
             activo                   INTEGER NOT NULL DEFAULT 1,
             fecha_creacion           TEXT NOT NULL,
             permiso_articulos        INTEGER NOT NULL DEFAULT 0,
@@ -220,11 +221,11 @@ def inicializar_base_de_datos():
     # cuánto por la PlayStation 5, no solo el total mezclado. Quedan guardados
     # en el cierre (no solo calculados al vuelo) para que el historial sea
     # auditable después, no solo "ahora".
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS cierres_turno (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             fecha               TEXT NOT NULL,
-            turno               TEXT NOT NULL CHECK (turno IN ('MAÑANA', 'TARDE', 'NOCHE')),
+            turno               TEXT NOT NULL CHECK (turno IN ({_valores_sql(dominio.TURNOS)})),
             usuario_id          INTEGER NOT NULL REFERENCES usuarios(id),
             fecha_cierre        TEXT NOT NULL,
             fondo_cambio        REAL NOT NULL,
@@ -253,7 +254,7 @@ def inicializar_base_de_datos():
     # estaba usando el sistema en un momento dado — en particular, para
     # saber quién podría ser responsable de un turno que quedó sin
     # cerrar aunque no haya vendido nada en esa ventana (ver
-    # turnos_repo._responsables_del_mes).
+    # turnos_faltantes_repo._responsables_del_mes).
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sesiones (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -332,13 +333,12 @@ def inicializar_base_de_datos():
     # dueño quería enterarse cuándo pasa y cuánto dura. Nada se borra
     # (regla 7 de CLAUDE.md). "segundos_sin_cliente" solo se llena en
     # CLIENTE_REANUDADO: cuánto estuvo la PC sin Cliente PC.
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS eventos_admin_pc (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
             estacion_id          INTEGER NOT NULL REFERENCES estaciones(id),
             fecha_hora           TEXT NOT NULL,
-            tipo                 TEXT NOT NULL CHECK (tipo IN
-                                     ('ACCESO', 'CIERRE_CLIENTE', 'RECONFIGURAR', 'CLIENTE_REANUDADO')),
+            tipo                 TEXT NOT NULL CHECK (tipo IN ({_valores_sql(dominio.EVENTOS_ADMIN_PC)})),
             segundos_sin_cliente INTEGER
         )
     """)
@@ -558,7 +558,7 @@ def inicializar_base_de_datos():
             valor  TEXT NOT NULL
         )
     """)
-    _migrar_clave_clientes_pc(conexion)
+    _migrar_borrar_clave_vieja_de_clientes_pc(conexion)
 
     # -------------------------------------------------------------------
     # INDICES

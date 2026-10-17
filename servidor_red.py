@@ -328,6 +328,11 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         if item is None:
             # Mismo criterio fail-safe que _estado_a_json: un nombre de
             # estación que no existe en Kiosko nunca deja pasar nada.
+            # OJO con el texto: el Cliente PC busca la palabra "desconocida"
+            # para descartar un aviso de POST /evento_admin en vez de
+            # reintentarlo para siempre (CLIENTE PC/red_kiosko.py,
+            # _enviar_evento_admin). Si se cambia, que la siga diciendo; lo
+            # vigila test_control_pcs.TestServidorRedEventoAdmin.
             self._responder_error(404, "Estación desconocida.")
             return None
         return item

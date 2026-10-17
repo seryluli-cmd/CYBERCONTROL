@@ -469,5 +469,5 @@ completa en 6-10 microsegundos, menos de una milésima de un núcleo cada 0,7 s.
   ventana de adelante; con una palabra de la lista (entera, sin mayúsculas ni acentos) cierra la
   pestaña con Ctrl+W, muestra el mensaje y avisa; si la página sigue ahí 2 s después, cierra la
   ventana. Como mucho un aviso cada 30 s por PC.
-528 tests (26 nuevos en `tests/test_filtro_palabras.py`: el repositorio, el servidor real, la
-actividad y la pantalla).
+529 tests al juntarse con la revisión del mismo día (26 nuevos en `tests/test_filtro_palabras.py`:
+el repositorio, el servidor real, la actividad y la pantalla).

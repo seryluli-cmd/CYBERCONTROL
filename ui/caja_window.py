@@ -385,7 +385,7 @@ class ControlCierresWindow(QDialog):
             # "usuarios": quién vendió algo o inició sesión en esa
             # ventana (no hay horarios asignados en el sistema, así que
             # es una inferencia, no una certeza — ver
-            # turnos_repo._responsables_del_mes).
+            # turnos_faltantes_repo._responsables_del_mes).
             quien = ", ".join(slot["usuarios"]) if slot["usuarios"] else "sin actividad registrada"
             texto = f"{etiqueta_turno(slot['fecha'], slot['turno'])} — {slot['fecha'].strftime('%d/%m')} — {quien}"
             self.lista_faltantes.addItem(texto)

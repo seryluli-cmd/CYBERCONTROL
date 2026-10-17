@@ -80,12 +80,14 @@ desde ahí, nunca escritos a mano:
 
 | Concepto | Constantes |
 |---|---|
-| Rol | `ROL_ADMIN`, `ROL_EMPLEADA` — y `dominio.es_admin(usuario)` |
-| Estado de venta | `VENTA_CONFIRMADA`, `VENTA_ANULADA` |
+| Rol | `ROL_ADMIN`, `ROL_EMPLEADA`, `ROLES` — y `dominio.es_admin(usuario)` |
+| Estado de venta | `VENTA_CONFIRMADA`, `VENTA_ANULADA`, `ESTADOS_VENTA` |
 | Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` — y `PAGO_MIXTO`, que NUNCA se guarda (ver más abajo) |
 | Turno | `TURNO_MANANA`, `TURNO_TARDE`, `TURNO_NOCHE`, `TURNOS` |
 | Origen de una venta | `ORIGEN_KIOSKO`, `ORIGEN_ALQUILER_PCS`, `ORIGEN_PLAYSTATION`, `ORIGENES_VENTA` |
 | Equipo que se alquila por tiempo / estado de su sesión | `DISPOSITIVO_PC`, `DISPOSITIVO_PLAYSTATION`, `NOMBRE_PLAYSTATION`, `NOMBRE_PCSTREAM`, `SESION_ACTIVA`, `SESION_FINALIZADA` |
+| Comando a una PC / su estado en la cola | `TIPOS_COMANDO_PC`, `ESTADO_COMANDO_PENDIENTE`, `ESTADO_COMANDO_ENTREGADO` |
+| Aviso de admin de una PC | `EVENTOS_ADMIN_PC` (los que manda el Cliente PC + `CLIENTE_REANUDADO`) |
 
 Un typo en uno de esos strings **no falla ruidosamente**: la consulta
 devuelve cero filas y nadie se entera hasta que falta plata en un cierre.
@@ -93,15 +95,15 @@ Nombrándolos, un typo es un error de Python que salta al instante.
 
 Esto vale también dentro del SQL: el estado va como parámetro
 (`WHERE estado = ?` con `dominio.VENTA_CONFIRMADA`), no como literal
-pegado en la consulta. La excepción son los `CHECK (... IN (...))` del
-esquema en `database_esquema.py` o `database_migraciones.py`: ahí el literal
-*es* la definición. Si algún día
-se agrega un valor nuevo, va en los dos lados — `dominio.py` y una
-migración que actualice el CHECK. (Para `comandos_pc.tipo` y
-`movimientos_saldo_miembro.tipo` ya está resuelto: el CHECK sale de la lista
-única — `dominio.TIPOS_COMANDO_PC`, `database._TIPOS_MOVIMIENTO_SALDO` — y la
-migración reconstruye la tabla sola si falta algún tipo; alcanza con sumar
-el valor a la lista.)
+pegado en la consulta. Y los `CHECK (... IN (...))` del esquema también salen
+de las listas de `dominio.py` (`ROLES`, `ESTADOS_VENTA`, `TURNOS`,
+`ORIGENES_VENTA`, `EVENTOS_ADMIN_PC`, `ESTADOS_COMANDO_PC`...) con
+`database._valores_sql` (revisión del 2026-10-17): una base NUEVA nunca queda
+desfasada. Pero SQLite no deja cambiar un CHECK ya grabado: si se agrega un
+valor, las bases que ya existen necesitan una migración que reconstruya la
+tabla. Para `comandos_pc.tipo`, `movimientos_saldo_miembro.tipo` y
+`ventas.origen` esa migración ya existe y se dispara sola si falta algún valor
+(alcanza con sumarlo a la lista); para los demás, hay que escribirla.
 
 ### Cómo se tratan los datos
 
@@ -339,15 +341,15 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 - **La PlayStation 5 NO es una "estación" y no se debe volver una.** Es una
   sola consola, nombre fijo `dominio.NOMBRE_PLAYSTATION`, con sus propias tablas
   (`bonos_playstation`, `sesiones_playstation`, `sesion_playstation_bonos`) y su
-  propio repo (`playstation_repo`), aunque se vea como la primera fila de la
-  grilla de Control de PCs. Una estación es una PC con Cliente PC (bloqueo,
+  propio repo (`playstation_repo`), aunque se vea como el primer monitor del
+  mosaico de Control de PCs. Una estación es una PC con Cliente PC (bloqueo,
   reinicio, apagado, IP, renombrar, baja): si la consola viviera en `estaciones`
   todo eso la alcanzaría, y a la consola no le corresponde nada. Por lo mismo,
   `playstation_repo` no tiene ningún `estacion_id` y `pcs_repo.asignar_bono` solo
   acepta una fila activa de `estaciones`: **un bono de PC no puede ir a la
   consola ni uno de la consola a una PC**, aunque dos ids coincidan (cada camino
   lee SOLO su catálogo; `PanelDetalleEstacion` además toma la lista de bonos del
-  equipo elegido y deshabilita la otra). Cada fila de la grilla trae su tipo en
+  equipo elegido y deshabilita la otra). Cada equipo del mosaico trae su tipo en
   `item["dispositivo"]`.
 - **PCSTREAM SÍ es una estación, con precios propios** (la PC de streaming, pedido
   del dueño 2026-10-17). Es una fila de `estaciones` con su Cliente PC y se bloquea
@@ -367,7 +369,7 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   sus sesiones por `sesion_pcstream_bonos` y no por el nombre actual.
 - **La sesión de la PlayStation 5 NO se da de baja sola al llegar a cero.** A
   diferencia de una PC (que se bloquea y `PanelControlPcs._refrescar` la libera),
-  acá el aviso es para una persona: queda `ACTIVA` con `tiempo_agotado`, su fila
+  acá el aviso es para una persona: queda `ACTIVA` con `tiempo_agotado`, su monitor
   titila en rojo (mismo parpadeo que "SIN CLIENTE") y sigue así —también si se
   cierra y reabre el programa, el vencimiento es una fecha absoluta— hasta que el
   operador la libera ("Ya avisé: liberar la consola") o le vende otro bono (que
@@ -586,4 +588,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-528 pruebas al 2026-10-17.
+529 pruebas al 2026-10-17.

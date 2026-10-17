@@ -125,7 +125,7 @@ class AdministradorDeBonos:
     El catálogo de bonos de la consola ya atado a quién lo administra.
 
     Las pantallas de alta/edición de bonos (control_pcs/ui/bonos_dialogos.py) se
-    escribieron una vez para los tres catálogos y esperan un "repo" con
+    escribieron una vez para todos los catálogos y esperan un "repo" con
     `listar_bonos`, `crear_bono`, `modificar_bono` y `desactivar_bono` SIN
     usuario. Acá el usuario es parte de la regla (solo ADMIN), así que este
     objeto tiene esa misma forma pero lleva el `usuario_id` por dentro y se lo

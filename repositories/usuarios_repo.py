@@ -54,7 +54,7 @@ def _validar_credenciales_y_registrar_sesion(conexion, fila, clave: str):
     falta) y, si es correcta, registra la sesión exitosa en `sesiones`
     — es la pista que usa Control de Cierres de Turno para saber quién
     podría ser responsable de un turno sin cerrar, incluso si no
-    vendió nada en esa ventana (ver turnos_repo._responsables_del_mes).
+    vendió nada en esa ventana (ver turnos_faltantes_repo._responsables_del_mes).
     Devuelve la fila del usuario si todo coincide, o None si no.
     """
     if fila is None:

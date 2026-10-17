@@ -199,11 +199,19 @@ _COLUMNAS_VENTAS = (
 )
 
 
+def _valores_sql(valores) -> str:
+    """Una lista de dominio.py (ROLES, ESTADOS_VENTA, TURNOS...) como va dentro
+    de un CHECK (columna IN (...)): "'ADMIN', 'EMPLEADA'". Así los valores
+    admitidos se escriben una sola vez, en dominio.py, y el esquema de una base
+    nueva nunca queda desfasado (los valores son nombres fijos nuestros, sin
+    comillas adentro)."""
+    return ", ".join(f"'{valor}'" for valor in valores)
+
+
 def _origenes_venta_sql() -> str:
     """Los orígenes de venta (dominio.ORIGENES_VENTA) como van dentro de un
-    CHECK (origen IN (...)): una sola fuente, así el esquema nunca queda
-    desfasado de dominio.py."""
-    return ", ".join(f"'{origen}'" for origen in dominio.ORIGENES_VENTA)
+    CHECK (origen IN (...))."""
+    return _valores_sql(dominio.ORIGENES_VENTA)
 
 
 def _sql_tabla_ventas(nombre: str = "ventas", si_no_existe: bool = False) -> str:
@@ -221,13 +229,13 @@ def _sql_tabla_ventas(nombre: str = "ventas", si_no_existe: bool = False) -> str
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             fecha             TEXT NOT NULL,
             usuario_id        INTEGER NOT NULL REFERENCES usuarios(id),
-            turno             TEXT NOT NULL CHECK (turno IN ('MAÑANA', 'TARDE', 'NOCHE')),
+            turno             TEXT NOT NULL CHECK (turno IN ({_valores_sql(dominio.TURNOS)})),
             total              REAL NOT NULL,
-            estado            TEXT NOT NULL DEFAULT 'CONFIRMADA' CHECK (estado IN ('CONFIRMADA', 'ANULADA')),
+            estado            TEXT NOT NULL DEFAULT '{dominio.VENTA_CONFIRMADA}' CHECK (estado IN ({_valores_sql(dominio.ESTADOS_VENTA)})),
             anulada_por        INTEGER REFERENCES usuarios(id),
             anulada_fecha      TEXT,
             anulada_motivo     TEXT,
-            origen             TEXT NOT NULL DEFAULT 'KIOSKO' CHECK (origen IN ({_origenes_venta_sql()}))
+            origen             TEXT NOT NULL DEFAULT '{dominio.ORIGEN_KIOSKO}' CHECK (origen IN ({_origenes_venta_sql()}))
         )
     """
 
@@ -346,7 +354,7 @@ from database_migraciones import (
     _migrar_check_tipo_en_movimientos_saldo_miembro,
     _sql_tabla_comandos_pc,
     _migrar_check_tipo_en_comandos_pc,
-    _migrar_clave_clientes_pc,
+    _migrar_borrar_clave_vieja_de_clientes_pc,
     _migrar_columna_origen_en_ventas,
     _migrar_columnas_origen_en_cierres,
     _migrar_check_origen_en_ventas,

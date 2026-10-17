@@ -224,7 +224,7 @@ def estado_estaciones():
     vuelo contra datetime.now() — mismo enfoque que
     turnos.turno_vencimiento, no se guarda un contador que haya que ir
     actualizando aparte. Si la sesión es de un Miembro, también trae su
-    nombre (para mostrarlo en la tabla en vez de un simple "Activa").
+    nombre (para mostrarlo en el mosaico en vez de un simple "Bono").
 
     También trae "enlazada": si el Cliente PC de esa PC preguntó su estado
     (ver registrar_conexion, actualizado desde servidor_red.py) hace
