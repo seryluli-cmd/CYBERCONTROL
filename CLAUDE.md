@@ -115,6 +115,12 @@ dos veces, siguiendo el patrón de `_migrar_columnas_permisos()`. Nunca
 Una venta anulada cambia de estado y guarda quién, cuándo y por qué —
 nunca desaparece de la tabla. Un usuario que se va se desactiva. Esto es
 lo que permite auditar un faltante tres meses después.
+> Única excepción: "Limpiar base de datos" (Configuración ADMIN,
+> `limpieza_repo.limpiar_base`), pedida por el dueño el 2026-10-17 para la
+> etapa de pruebas. Borra la plata y el historial de ventas y deja los
+> catálogos; solo Admin, con copia completa en `data/backups/antes_de_limpiar_base_*`
+> antes de borrar (sin copia no borra) y todo en una transacción. No sumes
+> otros borrados "porque ya hay uno": si el dueño deja de necesitarlo, se saca.
 
 **8. Una operación de negocio = una transacción.**
 Cabecera, detalle, pagos y descuento de stock se graban juntos o no se
@@ -222,6 +228,7 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `ui.utils.formato_fecha_hora(fecha)` | una fecha con hora de la base se convierte en `"16/10/2026 22:13"` |
 | `reportes_repo.resumen_por_operador(...)` · `.ventas_de_operador(...)` | se calcula cuánto vendió cada usuario y se listan sus ventas con fecha y hora (Reportes > Por Operador) |
+| `limpieza_repo.limpiar_base(usuario_id)` | se borra la plata y el historial de ventas para volver a probar (qué tablas, en `_TABLAS_A_VACIAR`; devuelve el stock de las ventas confirmadas y deja a los socios con saldo 0). Una tabla nueva que guarde plata o ventas tiene que sumarse ahí |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
 | `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter |
@@ -552,4 +559,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-467 pruebas al 2026-10-17.
+479 pruebas al 2026-10-17.

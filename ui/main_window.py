@@ -28,8 +28,9 @@ del rol y los permisos:
   Estaciones (agregar/quitar/renombrar PC), Gestionar Bonos (catálogo de
   walk-ins), Gestionar Bonos de PlayStation 5, Gestionar Bonos de PCSTREAM (la
   PC de streaming), Tarifa por Hora de Socios,
-  Gestionar Bonos de Socios, Gestionar Trámites y Accesos de Admin (registro
-  de logins de administradores).
+  Gestionar Bonos de Socios, Gestionar Trámites, Accesos de Admin (registro
+  de logins de administradores) y Limpiar base de datos (borra la plata y el
+  historial de ventas para volver a probar; ver limpieza_repo).
   Pedido explícito del dueño: editar estos catálogos es tarea de super
   admin; usarlos (asignar un bono, cobrar con la tarifa ya fijada) sigue
   delegable con `permiso_control_pcs`.
@@ -50,6 +51,7 @@ from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
 from ui.ventas_window import VentasWindow
 from ui.consulta_ventas_window import ConsultaVentasWindow
+from ui.limpieza_dialogo import DialogoLimpiarBase
 from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
 from ui.tramites_window import DialogoTramites, DialogoGestionTramites
@@ -210,7 +212,8 @@ class _VentanaDeBotones(QDialog):
         self.resize(360, alto)
 
     def _armar_botones(self, botones: list):
-        """`botones`: lista de (texto, función), en el orden en que se ven."""
+        """`botones`: lista de (texto, función) o (texto, función, clase), en el
+        orden en que se ven. La clase ("peligro", "primario") le da el color."""
         layout = QVBoxLayout()
         layout.setContentsMargins(24, 24, 24, 24)
 
@@ -220,8 +223,8 @@ class _VentanaDeBotones(QDialog):
         layout.addWidget(titulo)
         layout.addSpacing(16)
 
-        for texto, funcion in botones:
-            self._agregar_boton(layout, texto, funcion)
+        for texto, funcion, *clase in botones:
+            self._agregar_boton(layout, texto, funcion, *clase)
 
         layout.addStretch()
         self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
@@ -309,7 +312,7 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
 
     def __init__(self, usuario, parent=None):
-        super().__init__("Configuración ADMIN", 640, parent)
+        super().__init__("Configuración ADMIN", 700, parent)
         self.usuario = usuario
         self._armar_botones([
             ("🖥️  Gestionar Estaciones", self._abrir_estaciones),
@@ -320,6 +323,9 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
             ("🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro),
             ("📄  Gestionar Trámites", self._abrir_tramites),
             ("🔐  Accesos de Admin", self._abrir_accesos_admin),
+            # Para la etapa de pruebas (pedido del dueño, 2026-10-17): borra la
+            # plata y el historial de ventas, deja los catálogos. Ver limpieza_repo.
+            ("🧹  Limpiar base de datos", self._limpiar_base, "peligro"),
         ])
 
     def _abrir_estaciones(self):
@@ -345,3 +351,6 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
 
     def _abrir_accesos_admin(self):
         AccesosAdminWindow(self).exec()
+
+    def _limpiar_base(self):
+        DialogoLimpiarBase(self.usuario, self).exec()
