@@ -44,6 +44,12 @@ _ALTO_MONITOR = 12 + 64 + 12
 ANCHO_CASILLERO = 108
 ALTO_CASILLERO = int(_ALTO_MONITOR * ESCALA_MONITOR) + 54
 
+# Cuántos equipos van en cada fila del mosaico: siempre los mismos, repartidos a
+# lo ancho, en vez de "los que entren" (pedido del dueño, 2026-10-17: 8 arriba,
+# 8 abajo, y así). Solo si la ventana es tan angosta que no entran 8 casilleros
+# enteros, se pasa a la fila de abajo antes (para no cortar los nombres).
+EQUIPOS_POR_FILA = 8
+
 # Rol de Qt donde cada casillero guarda su Ficha y el color con que se pinta
 # AHORA (que no siempre es el de la ficha: el parpadeo lo alterna).
 _ROL_FICHA = Qt.UserRole
@@ -103,6 +109,27 @@ class MosaicoDeEquipos(QListWidget):
         self.setFrameShape(QListWidget.NoFrame)
         self.setMouseTracking(True)
         self.setItemDelegate(_DibujanteDeEquipo(self))
+
+    # --- acomodo en filas ------------------------------------------------
+
+    def resizeEvent(self, evento):
+        self._repartir_columnas()
+        super().resizeEvent(evento)
+
+    def _repartir_columnas(self):
+        """Divide el ancho en EQUIPOS_POR_FILA columnas iguales: Qt pone en cada
+        fila los casilleros que entran, así que con esta medida entran justo
+        esos. El monitor se dibuja centrado en su columna."""
+        # Qt acomoda las filas en el ancho SIN la barra de desplazamiento
+        # vertical, aunque no esté a la vista (así no se rearma todo cuando
+        # aparece), y cuenta como ocupado el último píxel de la derecha: si se
+        # reparte el ancho entero, en algunos anchos entra uno menos por fila.
+        barra = 0 if self.style().pixelMetric(QStyle.PM_ScrollView_ScrollBarOverlap, None, self) \
+            else self.style().pixelMetric(QStyle.PM_ScrollBarExtent, None, self.verticalScrollBar())
+        ancho_util = self.maximumViewportSize().width() - barra - 1
+        ancho_columna = max(ANCHO_CASILLERO, ancho_util // EQUIPOS_POR_FILA)
+        if self.gridSize().width() != ancho_columna:
+            self.setGridSize(QSize(ancho_columna, ALTO_CASILLERO))
 
     # --- contenido -------------------------------------------------------
 

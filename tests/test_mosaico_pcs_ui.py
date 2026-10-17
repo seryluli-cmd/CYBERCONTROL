@@ -5,8 +5,8 @@ El mosaico de monitores de Control de PCs (control_pcs/ui/pcs_mosaico.py, armado
 por pcs_window.PanelControlPcs): que las PCs salgan en orden natural (PC2 antes
 que PC10), que cada estado lleve su color y su dibujito, que el refresco de cada
 5 segundos no rearme los casilleros (así no parpadea todo ni se pierde la
-selección) y que una sesión sin Cliente PC titile. Con Qt "offscreen", sin abrir
-ventanas.
+selección), que una sesión sin Cliente PC titile y que vayan 8 equipos por fila.
+Con Qt "offscreen", sin abrir ventanas.
 
 Se ejecutan con:
 
@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtGui import QColor  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import dominio  # noqa: E402
@@ -175,6 +176,49 @@ class TestMosaicoDePcs(BaseConBaseTemporal):
         imagen = grilla.grab()
 
         self.assertFalse(imagen.isNull())
+
+
+class TestOchoEquiposPorFila(unittest.TestCase):
+    """Pedido del dueño (2026-10-17): 8 equipos por fila, no "los que entren"."""
+
+    def _mosaico(self, cantidad, ancho, alto):
+        mosaico = pcs_mosaico.MosaicoDeEquipos()
+        self.addCleanup(mosaico.deleteLater)
+        mosaico.mostrar([
+            pcs_mosaico.Ficha(clave=(n,), nombre=f"PC{n}", estado="", restante="—", quien="—", color=QColor("red"))
+            for n in range(cantidad)
+        ])
+        mosaico.resize(ancho, alto)
+        mosaico.show()
+        _app.processEvents()
+        return mosaico
+
+    @staticmethod
+    def _equipos_por_fila(mosaico):
+        por_altura = {}
+        for fila in range(mosaico.count()):
+            altura = mosaico.visualItemRect(mosaico.item(fila)).y()
+            por_altura[altura] = por_altura.get(altura, 0) + 1
+        return [por_altura[altura] for altura in sorted(por_altura)]
+
+    def test_van_8_por_fila_en_cualquier_ancho_en_que_entran(self):
+        # Varios anchos seguidos: con algunos, repartir sin restar la barra de
+        # desplazamiento o el último píxel dejaba 7 en vez de 8.
+        for ancho in (900, 1300, 1301, 1303, 1307, 1600, 1901, 1907):
+            with self.subTest(ancho=ancho):
+                self.assertEqual(self._equipos_por_fila(self._mosaico(21, ancho, 500)), [8, 8, 5])
+
+    def test_tambien_con_la_barra_de_desplazamiento_a_la_vista(self):
+        mosaico = self._mosaico(40, 1300, 300)
+
+        self.assertTrue(mosaico.verticalScrollBar().isVisible())
+        self.assertEqual(self._equipos_por_fila(mosaico), [8, 8, 8, 8, 8])
+
+    def test_si_no_entran_8_enteros_no_se_achican_los_casilleros(self):
+        mosaico = self._mosaico(21, 600, 500)
+
+        self.assertLess(self._equipos_por_fila(mosaico)[0], 8)
+        self.assertEqual(mosaico.gridSize().width(), pcs_mosaico.ANCHO_CASILLERO)
 
 
 if __name__ == "__main__":

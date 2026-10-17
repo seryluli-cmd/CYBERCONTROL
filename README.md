@@ -203,7 +203,12 @@ abajo el tiempo, el nombre y un aviso corto. `PanelControlPcs` arma una
 `pcs_mosaico.Ficha` por equipo (`_ficha_de_pc` / `_ficha_de_playstation`); el
 refresco de 5s actualiza los casilleros en su lugar si siguen siendo los mismos
 equipos (no parpadea ni pierde la selección). Las estaciones salen en **orden
-natural** (PC2 antes que PC10, `pcs_repo._orden_natural`).
+natural** (PC2 antes que PC10, `pcs_repo._orden_natural`). Van **8 equipos por
+fila** (`pcs_mosaico.EQUIPOS_POR_FILA`, pedido del dueño 2026-10-17), repartidos
+a lo ancho: `MosaicoDeEquipos._repartir_columnas` ensancha cada columna al
+cambiar el tamaño, descontando la barra de desplazamiento (Qt la reserva aunque
+no se vea). Si la ventana es tan angosta que no entran 8 casilleros enteros,
+pasa antes a la fila de abajo en vez de achicarlos.
 
 **Para cualquier usuario (Admin o Empleada):**
 - **Ventas** (`ventas_window.py`, `VentasWindow` + `DialogoPago`) —
