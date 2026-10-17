@@ -30,7 +30,7 @@ from repositories import config_repo, ventas_repo
 from control_pcs.repositories import pcs_repo, bonos_miembro_repo
 
 # El saldo se carga y se gasta siempre en bloques de 30 minutos. Mismo valor
-# que pcs_repo.MINUTOS_POR_FRACCION (ver ahí por qué no se importa).
+# que reintegros_repo.MINUTOS_POR_FRACCION (ver ahí por qué no se importa).
 MINUTOS_POR_FRACCION = 30
 
 
@@ -326,13 +326,18 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> di
     un socio con 60 minutos terminaba con 120 asignados entre dos
     sesiones. Con el lock, el segundo pedido espera al primero, lee el
     saldo ya en 0 y se rechaza en vez de duplicarle el tiempo.
+
+    PCSTREAM (la PC de streaming) no se abre con saldo de socio: tiene sus
+    propios precios y se cobra solo con sus bonos (pedido del dueño,
+    2026-10-17). Se rechaza antes de pedir la clave, con un mensaje que el
+    Cliente PC le muestra tal cual al socio.
     """
     ahora = datetime.now()
     # Microsegundos, no segundos: esta "fecha" es la que
-    # pcs_repo._contribuciones_de_sesion usa para ordenar cronológicamente
+    # reintegros_repo.contribuciones_de_sesion usa para ordenar cronológicamente
     # los aportes de una sesión (bonos y consumos de saldo mezclados) y
     # saber, al cortarla antes de tiempo, a quién devolverle el tramo sin
-    # usar (ver pcs_repo._reintegros_por_miembro). El aporte de un bono se
+    # usar (ver reintegros_repo.reintegros_por_miembro). El aporte de un bono se
     # graba con microsegundos (ventas.fecha); si este consumo quedara
     # truncado a segundos, "10:00:00" ordenaría ANTES que "10:00:00.900000"
     # aunque haya pasado después, y el tramo del socio se atribuiría al
@@ -341,6 +346,15 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> di
 
     with conexion_db() as conexion:
         conexion.execute("BEGIN IMMEDIATE")
+
+        estacion = conexion.execute(
+            "SELECT nombre FROM estaciones WHERE id = ?", (estacion_id,)
+        ).fetchone()
+        if estacion is not None and dominio.es_pcstream(estacion["nombre"]):
+            raise ValueError(
+                f"{estacion['nombre']} no se puede usar con saldo de socio: "
+                "se paga con sus propios bonos en el mostrador."
+            )
 
         miembro = _buscar_miembro_autenticado(conexion, usuario, clave)
         if miembro is None:

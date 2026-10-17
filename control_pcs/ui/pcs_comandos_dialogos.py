@@ -287,7 +287,8 @@ class DialogoTrasladarSesion(QDialog):
         self.combo_destino = QComboBox()
         for item in estados:
             otra = item["estacion"]
-            if otra["id"] == estacion["id"]:
+            # PCSTREAM no se ofrece: tiene sus propios precios (ver pcs_repo.trasladar_sesion).
+            if otra["id"] == estacion["id"] or item["es_pcstream"]:
                 continue
             sesion = item["sesion"]
             segundos = item["segundos_restantes"]

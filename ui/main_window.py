@@ -26,7 +26,8 @@ del rol y los permisos:
   Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos).
 - Solo ADMIN, sin excepción: "Configuración ADMIN" — Gestionar
   Estaciones (agregar/quitar/renombrar PC), Gestionar Bonos (catálogo de
-  walk-ins), Gestionar Bonos de PlayStation 5, Tarifa por Hora de Socios,
+  walk-ins), Gestionar Bonos de PlayStation 5, Gestionar Bonos de PCSTREAM (la
+  PC de streaming), Tarifa por Hora de Socios,
   Gestionar Bonos de Socios, Gestionar Trámites y Accesos de Admin (registro
   de logins de administradores).
   Pedido explícito del dueño: editar estos catálogos es tarea de super
@@ -56,6 +57,7 @@ from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs
 from control_pcs.ui.pcs_gestion_dialogos import (
     DialogoGestionEstaciones, DialogoGestionBonos, DialogoGestionBonosPlaystation,
+    DialogoGestionBonosPcstream,
 )
 from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
 from ui.utils import aplicar_clase, sin_boton_por_defecto
@@ -292,8 +294,8 @@ class AdministrarKioskoWindow(_VentanaDeBotones):
 class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
     Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
-    Tiempo (walk-in), Bonos de PlayStation 5, Tarifa por Hora de Socios, Bonos
-    de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
+    Tiempo (walk-in), Bonos de PlayStation 5, Bonos de PCSTREAM, Tarifa por Hora
+    de Socios, Bonos de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
     de administrador, ver ui/accesos_admin_window.py). Exclusiva de ADMIN, sin
     excepción: no hay permiso delegable para esto (ver
     MainWindow._armar_interfaz). Recibe el `usuario` porque el catálogo de la
@@ -307,12 +309,13 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
 
     def __init__(self, usuario, parent=None):
-        super().__init__("Configuración ADMIN", 580, parent)
+        super().__init__("Configuración ADMIN", 640, parent)
         self.usuario = usuario
         self._armar_botones([
             ("🖥️  Gestionar Estaciones", self._abrir_estaciones),
             ("🎟️  Gestionar Bonos", self._abrir_bonos),
             ("🎮  Gestionar Bonos de PlayStation 5", self._abrir_bonos_playstation),
+            (f"🎥  Gestionar Bonos de {dominio.NOMBRE_PCSTREAM}", self._abrir_bonos_pcstream),
             ("💲  Tarifa por Hora de Socios", self._configurar_tarifa),
             ("🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro),
             ("📄  Gestionar Trámites", self._abrir_tramites),
@@ -327,6 +330,9 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
 
     def _abrir_bonos_playstation(self):
         DialogoGestionBonosPlaystation(self.usuario, self).exec()
+
+    def _abrir_bonos_pcstream(self):
+        DialogoGestionBonosPcstream(self).exec()
 
     def _configurar_tarifa(self):
         DialogoTramosTarifaMiembro(self).exec()

@@ -234,10 +234,11 @@ def _sql_tabla_ventas(nombre: str = "ventas", si_no_existe: bool = False) -> str
 
 def _sql_tabla_de_bonos(tabla: str) -> str:
     """
-    El CREATE TABLE de un catálogo de bonos de tiempo. Hay tres con el mismo
+    El CREATE TABLE de un catálogo de bonos de tiempo. Hay cuatro con el mismo
     esquema -- "bonos_tiempo" (walk-ins), "bonos_miembro" (exclusivo de
-    socios) y "bonos_playstation" (exclusivo de la consola) -- a propósito en
-    tablas separadas: ver CLAUDE.md, "Hay TRES catálogos de bonos".
+    socios), "bonos_playstation" (exclusivo de la consola) y "bonos_pcstream"
+    (exclusivo de la PC de streaming) -- a propósito en tablas separadas: ver
+    CLAUDE.md, "Hay CUATRO catálogos de bonos".
     """
     return f"""
         CREATE TABLE IF NOT EXISTS {tabla} (

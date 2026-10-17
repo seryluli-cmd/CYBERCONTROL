@@ -8,7 +8,7 @@ def actividad_reciente(limite: int = 30):
     """
     Feed de eventos recientes para el panel de actividad de "Control de
     PCs". No existe una tabla de log aparte: esto relee
-    sesiones_pc/sesion_bonos/movimientos_saldo_miembro, que ya guardan
+    sesiones_pc/sesion_bonos/sesion_pcstream_bonos/movimientos_saldo_miembro, que ya guardan
     todo esto por otras razones (facturación, auditoría de saldo de
     socios) — acá solo se junta todo, se ordena por fecha y se corta a
     `limite`. Devuelve datos crudos; el texto para mostrar se arma en la
@@ -34,19 +34,23 @@ def actividad_reciente(limite: int = 30):
             eventos.append({"fecha": fila["fecha"], "tipo": "FIN",
                              "estacion_nombre": fila["estacion_nombre"]})
 
-        for fila in conexion.execute("""
-            SELECT v.fecha AS fecha, e.nombre AS estacion_nombre,
-                   b.nombre AS bono_nombre, sb.precio AS precio
-            FROM sesion_bonos sb
-            JOIN ventas v ON v.id = sb.venta_id
-            JOIN bonos_tiempo b ON b.id = sb.bono_id
-            JOIN sesiones_pc s ON s.id = sb.sesion_id
-            JOIN estaciones e ON e.id = s.estacion_id
-            ORDER BY v.fecha DESC LIMIT ?
-        """, (limite,)).fetchall():
-            eventos.append({"fecha": fila["fecha"], "tipo": "BONO",
-                             "estacion_nombre": fila["estacion_nombre"],
-                             "bono_nombre": fila["bono_nombre"], "precio": fila["precio"]})
+        # Los bonos comunes y los de PCSTREAM viven en tablas distintas (ver
+        # pcstream_repo), pero en el panel son el mismo evento: "se vendió un bono".
+        for tabla_vinculo, tabla_bonos in (("sesion_bonos", "bonos_tiempo"),
+                                           ("sesion_pcstream_bonos", "bonos_pcstream")):
+            for fila in conexion.execute(f"""
+                SELECT v.fecha AS fecha, e.nombre AS estacion_nombre,
+                       b.nombre AS bono_nombre, sb.precio AS precio
+                FROM {tabla_vinculo} sb
+                JOIN ventas v ON v.id = sb.venta_id
+                JOIN {tabla_bonos} b ON b.id = sb.bono_id
+                JOIN sesiones_pc s ON s.id = sb.sesion_id
+                JOIN estaciones e ON e.id = s.estacion_id
+                ORDER BY v.fecha DESC LIMIT ?
+            """, (limite,)).fetchall():
+                eventos.append({"fecha": fila["fecha"], "tipo": "BONO",
+                                 "estacion_nombre": fila["estacion_nombre"],
+                                 "bono_nombre": fila["bono_nombre"], "precio": fila["precio"]})
 
         for fila in conexion.execute("""
             SELECT m.fecha AS fecha, m.tipo AS tipo, m.minutos AS minutos,

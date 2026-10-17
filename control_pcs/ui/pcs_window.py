@@ -19,6 +19,9 @@ Primera en el mosaico, antes de las PCs, está la PlayStation 5 (ver
 con bonos propios. Mientras corre muestra su cuenta regresiva (se redibuja cada
 segundo) y al llegar a cero su monitor titila en rojo hasta que el operador avise
 a los clientes y la libere -- a diferencia de una PC, no se da de baja sola.
+Justo después va PCSTREAM, la PC de streaming (pedido del dueño): una PC más,
+con bloqueo, pero con sus propios bonos (ver pcstream_repo). El orden lo decide
+pcs_repo._orden_natural, que la pone antes que las demás PCs.
 
 Este archivo decide qué estado, color y dibujito le toca a cada equipo, el
 menú contextual (clic derecho) y el refresco automático. El resto del módulo
@@ -456,7 +459,9 @@ class PanelControlPcs(QWidget):
         accion_cerrar_sesion = menu.addAction("🔒 Cerrar sesión y reiniciar")
         accion_cerrar_sesion.setEnabled(sesion is not None)
         accion_trasladar = menu.addAction("🔀 Intercambiar de máquina...")
-        accion_trasladar.setEnabled(sesion is not None)
+        # PCSTREAM tiene sus propios precios: no entra en un traslado (ver
+        # pcs_repo.trasladar_sesion, que también lo rechaza).
+        accion_trasladar.setEnabled(sesion is not None and not item["es_pcstream"])
         menu.addSeparator()
         accion_reiniciar = menu.addAction("🔄 Reiniciar PC")
         accion_apagar = menu.addAction("⏻ Apagar PC")

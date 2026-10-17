@@ -25,7 +25,10 @@ dónde sale el tiempo.
 
 El archivo se lee de arriba hacia abajo así: estaciones, catálogo de
 bonos, estado en vivo y abrir/extender/trasladar/finalizar una sesión.
-El feed de actividad vive en actividad_repo.py y se reexporta desde acá.
+El feed de actividad vive en actividad_repo.py y se reexporta desde acá; la
+cuenta de cuánto se le devuelve a cada socio al cortar una sesión, en
+reintegros_repo.py. PCSTREAM (la PC de streaming) es una estación más, con su
+propio catálogo de bonos en pcstream_repo.py.
 """
 
 import re
@@ -34,8 +37,10 @@ from datetime import datetime
 import dominio
 from database import conexion_db
 from repositories import ventas_repo
+from control_pcs.repositories import pcstream_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 from control_pcs.repositories.actividad_repo import actividad_reciente
+from control_pcs.repositories.reintegros_repo import reintegros_por_miembro
 
 # Más que el intervalo de consulta del Cliente PC (5s, ver
 # control_pcs/ui/pcs_window.py) para darle margen de red antes de
@@ -43,12 +48,6 @@ from control_pcs.repositories.actividad_repo import actividad_reciente
 # prendida -- se resetea a "enlazada" en su próxima consulta, sin
 # necesitar que nadie la reinicie a mano.
 UMBRAL_ENLACE_SEGUNDOS = 15
-
-# Mismo valor que miembros_repo.MINUTOS_POR_FRACCION (no se importa de
-# ahí a propósito: miembros_repo ya importa este módulo, e importar en
-# el otro sentido crearía un ciclo -- son dos constantes que hoy
-# coinciden en valor pero describen granularidades de negocio distintas).
-MINUTOS_POR_FRACCION = 30
 
 
 # ---------------------------------------------------------------------
@@ -60,10 +59,14 @@ def _orden_natural(estacion):
     Clave para ordenar estaciones por nombre como lo haría una persona: "PC2"
     antes que "PC10" (el ORDER BY de SQLite compara letra por letra y pondría
     PC1, PC10, PC11... PC2). Los números del nombre se comparan como números;
-    el resto, sin distinguir mayúsculas.
+    el resto, sin distinguir mayúsculas. PCSTREAM va antes que todas: en el
+    mosaico queda al lado de la PlayStation 5 (pedido del dueño, 2026-10-17).
     """
     partes = re.split(r"(\d+)", estacion["nombre"].strip().lower())
-    return [(0, int(parte), "") if parte.isdigit() else (1, 0, parte) for parte in partes]
+    return (
+        not dominio.es_pcstream(estacion["nombre"]),
+        [(0, int(parte), "") if parte.isdigit() else (1, 0, parte) for parte in partes],
+    )
 
 
 def listar_estaciones(solo_activas: bool = True):
@@ -251,6 +254,8 @@ def _estado_para_estacion(estacion, sesion, ahora):
 
     return {
         "dispositivo": dominio.DISPOSITIVO_PC,
+        # La PC de streaming: se le venden los bonos de pcstream_repo, no los comunes.
+        "es_pcstream": dominio.es_pcstream(estacion["nombre"]),
         "estacion": estacion,
         "sesion": sesion,
         "segundos_restantes": segundos_restantes,
@@ -342,22 +347,34 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
     o Digital, dos filas (Efectivo + Digital) para un cobro Mixto, ver
     control_pcs/ui/pcs_detalle.PanelDetalleEstacion._confirmar_bono.
 
-    Solo sirve para una PC (una fila activa de `estaciones`) con un bono de
-    ESTE catálogo (bonos_tiempo). La PlayStation 5 tiene su propio camino y su
-    propio catálogo (ver playstation_repo.vender_bono) y no es una estación:
-    no hay forma de que un bono de PC termine en la consola ni al revés.
-    """
-    bono = obtener_bono(bono_id)
-    if bono is None or not bono["activo"]:
-        raise ValueError("Ese bono ya no está disponible.")
+    Solo sirve para una PC (una fila activa de `estaciones`). El bono se busca
+    en el catálogo que le toca a ESA PC: el de PCSTREAM (pcstream_repo) si es la
+    PC de streaming, el común (bonos_tiempo) si no -- así a PCSTREAM nunca se le
+    cobra un bono común ni a otra PC uno de PCSTREAM (la pantalla, además, toma
+    el bono de la lista del equipo elegido). La PlayStation 5 tiene su propio
+    camino y su propio catálogo (ver playstation_repo.vender_bono) y no es una
+    estación: no hay forma de que un bono de PC termine en la consola ni al revés.
 
+    Lo cobrado entra como Alquiler de PCs, también el de PCSTREAM (es una PC);
+    cuánto vendió PCSTREAM se ve en Reportes (pcstream_repo.uso_por_dia).
+    """
     ahora = datetime.now()
 
     with conexion_db() as conexion:
-        if conexion.execute(
-            "SELECT 1 FROM estaciones WHERE id = ? AND activa = 1", (estacion_id,)
-        ).fetchone() is None:
+        estacion = conexion.execute(
+            "SELECT nombre FROM estaciones WHERE id = ? AND activa = 1", (estacion_id,)
+        ).fetchone()
+        if estacion is None:
             raise ValueError("Esa PC ya no está disponible. Actualizá la pantalla e intentá de nuevo.")
+
+        # Cada catálogo tiene su tabla de vínculo con la sesión (ver
+        # database_esquema, "PCSTREAM"): sesion_bonos solo admite bonos comunes.
+        if dominio.es_pcstream(estacion["nombre"]):
+            bono, tabla_vinculo = pcstream_repo.obtener_bono(bono_id), "sesion_pcstream_bonos"
+        else:
+            bono, tabla_vinculo = obtener_bono(bono_id), "sesion_bonos"
+        if bono is None or not bono["activo"]:
+            raise ValueError("Ese bono ya no está disponible.")
 
         sesion_id = _abrir_o_extender_sesion(conexion, estacion_id, bono["minutos"], ahora)
 
@@ -365,8 +382,8 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
             conexion, usuario_id, bono["precio"], pagos, dominio.ORIGEN_ALQUILER_PCS, ahora
         )
         conexion.execute(
-            """
-            INSERT INTO sesion_bonos (sesion_id, bono_id, minutos, precio, venta_id)
+            f"""
+            INSERT INTO {tabla_vinculo} (sesion_id, bono_id, minutos, precio, venta_id)
             VALUES (?, ?, ?, ?, ?)
             """,
             (sesion_id, bono_id, bono["minutos"], round(bono["precio"], 2), venta_id),
@@ -391,6 +408,9 @@ def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_
       se reinicia.
     - Destino con una sesión que ya venció pero que el refresco automático
       todavía no dio de baja: se la da de baja acá y cuenta como libre.
+    - PCSTREAM no entra, ni como origen ni como destino: tiene sus propios
+      precios y no la pueden usar los socios, y pasarle una sesión (o sacarle la
+      suya) le daría a una PC el tiempo cobrado con la tarifa de la otra.
 
     Todo corre con "BEGIN IMMEDIATE", mismo motivo que `finalizar_sesion`:
     comprobar el estado de las dos PCs y moverlas es un solo paso, para que
@@ -418,6 +438,11 @@ def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_
         ).fetchone()
         if origen is None or destino is None:
             raise ValueError("Esa PC ya no está disponible. Actualizá la pantalla e intentá de nuevo.")
+        if dominio.es_pcstream(origen["nombre"]) or dominio.es_pcstream(destino["nombre"]):
+            raise ValueError(
+                f"{dominio.NOMBRE_PCSTREAM} tiene sus propios precios: no se le puede pasar "
+                "la sesión de otra PC ni pasar la suya a otra."
+            )
 
         sesion_origen = conexion.execute(
             "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = ?",
@@ -461,76 +486,6 @@ def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_
     }
 
 
-def _contribuciones_de_sesion(conexion, sesion_id: int):
-    """
-    Reconstruye, en orden cronológico, de dónde salió cada tramo de
-    minutos que se le fue sumando a una sesión (bono del mostrador o
-    saldo de un socio) -- no hace falta una tabla nueva para esto:
-    sesion_bonos y movimientos_saldo_miembro (tipo CONSUMO) ya guardan
-    cada aporte por otras razones (facturación, ledger de saldo). El
-    orden de aparición coincide con el orden en que se fueron sumando a
-    la sesión porque asignar_bono() y abrir_estacion_por_miembro() usan
-    el mismo `ahora` tanto para extender la sesión (_abrir_o_extender_sesion)
-    como para grabar su propio registro -- ver _reintegros_por_miembro,
-    el único que usa esto.
-    """
-    return conexion.execute(
-        """
-        SELECT 'BONO' AS tipo, NULL AS miembro_id, sb.minutos AS minutos, v.fecha AS fecha
-        FROM sesion_bonos sb
-        JOIN ventas v ON v.id = sb.venta_id
-        WHERE sb.sesion_id = ?
-        UNION ALL
-        SELECT 'SOCIO' AS tipo, m.miembro_id AS miembro_id, m.minutos AS minutos, m.fecha AS fecha
-        FROM movimientos_saldo_miembro m
-        WHERE m.sesion_id = ? AND m.tipo = ?
-        ORDER BY fecha
-        """,
-        (sesion_id, sesion_id, dominio.MOVIMIENTO_CONSUMO),
-    ).fetchall()
-
-
-def _reintegros_por_miembro(conexion, sesion_id: int, minutos_restantes: int) -> dict:
-    """
-    De los minutos que le quedaban a una sesión al cortarla, calcula
-    cuántos hay que devolverle a CADA socio que la financió -- nunca a un
-    socio distinto del que puso ese tramo, y nunca a costa de un bono
-    (ver finalizar_sesion).
-
-    No alcanza con mirar `sesiones_pc.miembro_id`: se graba solo al CREAR
-    la sesión (ver _abrir_o_extender_sesion), y una sesión puede haberse
-    extendido después con un bono del mostrador o con el saldo de OTRO
-    socio. Por eso se reconstruye el aporte de cada uno.
-
-    El tiempo restante es siempre el TRAMO MÁS NUEVO de la sesión (el
-    reloj cuenta para atrás desde fecha_fin_prevista, y cada aporte nuevo
-    -- bono o saldo -- estira ese final más lejos en el tiempo): por eso
-    se recorren las contribuciones de atrás para adelante, "gastando"
-    minutos_restantes contra cada una hasta agotarlo. El tramo de cada
-    aporte de un socio que cae, total o parcialmente, dentro de esa cola
-    se le suma a lo que hay que devolverle a ESE socio puntual --
-    redondeado hacia abajo a bloques de 30 al final, cada socio por
-    separado (mismo criterio que el resto del sistema). El tramo que cae
-    en un aporte de tipo BONO simplemente se descarta: un bono no
-    reintegra, se pierda o no dentro del tiempo restante.
-    """
-    contribuciones = _contribuciones_de_sesion(conexion, sesion_id)
-    restantes = minutos_restantes
-    por_miembro = {}
-    for fila in reversed(contribuciones):
-        if restantes <= 0:
-            break
-        tramo = min(fila["minutos"], restantes)
-        if fila["tipo"] == "SOCIO":
-            por_miembro[fila["miembro_id"]] = por_miembro.get(fila["miembro_id"], 0) + tramo
-        restantes -= tramo
-    return {
-        miembro_id: (minutos // MINUTOS_POR_FRACCION) * MINUTOS_POR_FRACCION
-        for miembro_id, minutos in por_miembro.items()
-        if minutos >= MINUTOS_POR_FRACCION
-    }
-
-
 def finalizar_sesion(sesion_id: int):
     """
     Cierra una sesión en curso: la usa tanto "Finalizar antes de tiempo"
@@ -539,7 +494,7 @@ def finalizar_sesion(sesion_id: int):
 
     Si a la sesión, en algún momento, la financió (total o parcialmente)
     el saldo de un socio y todavía quedaba tiempo sin usar, ESE tramo --
-    y ningún otro, ver _reintegros_por_miembro -- se le devuelve a su
+    y ningún otro, ver reintegros_repo.reintegros_por_miembro -- se le devuelve a su
     saldo en bloques de 30 minutos, aunque la sesión se haya reutilizado
     mezclando un bono del mostrador de por medio. A diferencia de un bono
     (consumible de una sola vez, sin reintegro), el saldo de un socio es
@@ -578,7 +533,7 @@ def finalizar_sesion(sesion_id: int):
         if minutos_restantes <= 0:
             return
 
-        reintegros = _reintegros_por_miembro(conexion, sesion_id, minutos_restantes)
+        reintegros = reintegros_por_miembro(conexion, sesion_id, minutos_restantes)
         for miembro_id, minutos_a_reintegrar in reintegros.items():
             conexion.execute(
                 "UPDATE miembros SET saldo_minutos = saldo_minutos + ? WHERE id = ?",

@@ -85,7 +85,7 @@ desde ahí, nunca escritos a mano:
 | Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` — y `PAGO_MIXTO`, que NUNCA se guarda (ver más abajo) |
 | Turno | `TURNO_MANANA`, `TURNO_TARDE`, `TURNO_NOCHE`, `TURNOS` |
 | Origen de una venta | `ORIGEN_KIOSKO`, `ORIGEN_ALQUILER_PCS`, `ORIGEN_PLAYSTATION`, `ORIGENES_VENTA` |
-| Equipo que se alquila por tiempo / estado de su sesión | `DISPOSITIVO_PC`, `DISPOSITIVO_PLAYSTATION`, `NOMBRE_PLAYSTATION`, `SESION_ACTIVA`, `SESION_FINALIZADA` |
+| Equipo que se alquila por tiempo / estado de su sesión | `DISPOSITIVO_PC`, `DISPOSITIVO_PLAYSTATION`, `NOMBRE_PLAYSTATION`, `NOMBRE_PCSTREAM`, `SESION_ACTIVA`, `SESION_FINALIZADA` |
 
 Un typo en uno de esos strings **no falla ruidosamente**: la consulta
 devuelve cero filas y nadie se entera hasta que falta plata en un cierre.
@@ -158,7 +158,7 @@ sobra; uno que explica por qué esa línea es así vale oro.
 ### Cómo se verifica
 
 **14. Regla de negocio nueva, test nuevo.**
-`tests/` cubre turnos, stock, cierres, PCs, Miembros, PlayStation y totales.
+`tests/` cubre turnos, stock, cierres, PCs, PCSTREAM, Miembros, PlayStation y totales.
 Todo lo que se calcule con plata, fechas o
 turnos entra ahí antes de darse por terminado. La UI se prueba a mano;
 la lógica, no.
@@ -199,9 +199,12 @@ abra no alcanza si los tests no pasan.
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
-| `pcs_repo._orden_natural(estacion)` | se ordenan las estaciones como lo haría una persona ("PC2" antes que "PC10"); lo usan `listar_estaciones` y `estado_estaciones` |
+| `pcs_repo._orden_natural(estacion)` | se ordenan las estaciones como lo haría una persona ("PC2" antes que "PC10"), con PCSTREAM antes que todas (en el mosaico queda al lado de la PlayStation 5); lo usan `listar_estaciones` y `estado_estaciones` |
+| `dominio.es_pcstream(nombre)` | se decide si una estación es PCSTREAM, la PC de streaming (solo por el nombre, sin espacios/guiones/mayúsculas; pedido del dueño, 2026-10-17). `estado_estaciones` lo trae en `item["es_pcstream"]` para la pantalla |
+| `pcstream_repo.uso_por_dia(desde, hasta)` | se calcula cuánto se usó PCSTREAM, en tiempo (vendido y de uso real) y en plata (Reportes > PCSTREAM) |
+| `reintegros_repo.reintegros_por_miembro(...)` | se decide cuánto se le devuelve a cada socio al cortar una sesión de PC (lo usa `pcs_repo.finalizar_sesion`) |
 | `pcs_window.PanelControlPcs._ficha_de_pc(...)` · `._ficha_de_playstation(...)` | se decide con qué color, dibujito y aviso se ve cada equipo en el mosaico; `control_pcs/ui/pcs_mosaico.py` solo dibuja la `Ficha` que recibe |
-| `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono COMÚN (walk-in) |
+| `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono del mostrador: el COMÚN (walk-in) o, si la PC es PCSTREAM, uno de SU catálogo (`pcstream_repo`) |
 | `dominio.segundos_restantes(fin, ahora)` · `dominio.fin_al_sumar_minutos(fin_actual, minutos, ahora)` | se calcula cuánto le queda a una sesión de tiempo y cuándo vence al sumarle un bono (PCs Y PlayStation 5: una sola cuenta) |
 | `playstation_repo.estado()` · `.vender_bono(...)` · `.finalizar_sesion(...)` | se sabe cómo está la PlayStation 5, se le vende un bono (origen PLAYSTATION) y se la libera; ahí mismo se exige el permiso (`puede_operar`) o ser Admin (catálogo) |
 | `turnos_repo._desglose_de_totales(...)` · `_PREFIJO_COLUMNAS_POR_ORIGEN` | se reparte lo cobrado de un turno por origen (kiosko/pcs/playstation × efectivo/digital) y se suma el efectivo del cajón sobre TODOS los `ORIGENES_VENTA` |
@@ -228,7 +231,7 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.fila_agregar_quitar(tabla, ...)` | se arman los botones Agregar/Quitar de una tabla que se edita a mano |
 | `ui.buscar_articulo.armar_botones_de_busqueda(ventana, ...)` | se arman los botones F5/F6/F7 y sus atajos (Ventas y Compras) |
 | `ui.detalle_venta.VentanaConDetalleDeVenta` | lista de ventas + artículos de la elegida (Consulta de Ventas y Detalle de un cierre) |
-| `control_pcs.repositories.catalogo_bonos.CatalogoDeBonos(tabla)` | se hace el alta/edición/baja de un catálogo de bonos (`pcs_repo` para walk-ins, `bonos_miembro_repo` para socios, `playstation_repo` para la consola: tres tablas distintas, un solo código) |
+| `control_pcs.repositories.catalogo_bonos.CatalogoDeBonos(tabla)` | se hace el alta/edición/baja de un catálogo de bonos (`pcs_repo` para walk-ins, `bonos_miembro_repo` para socios, `playstation_repo` para la consola, `pcstream_repo` para la PC de streaming: cuatro tablas distintas, un solo código) |
 | `database._reconstruir_tabla(...)` · `_admite_todos_los_tipos(lista)` | se reconstruye una tabla para cambiar un CHECK/REFERENCES, y se decide si un CHECK de tipos ya está al día |
 | `database._sql_tabla_ventas(...)` · `_migrar_check_origen_en_ventas(...)` | se escribe el CREATE de `ventas` (el CHECK de `origen` sale de `dominio.ORIGENES_VENTA`) y se reconstruye una base vieja SIN romper las tablas que la referencian (ver "Trampas conocidas") |
 
@@ -294,8 +297,9 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   porque un pago en Efectivo puede superar el total si hay vuelto de por
   medio (mismo criterio que `confirmar_venta`, que calcula el total desde
   el carrito y no desde los pagos).
-- **Hay TRES catálogos de bonos, nunca la misma tabla** (los dos de abajo más
-  `bonos_playstation`, ver la trampa de la PlayStation 5). `bonos_tiempo`
+- **Hay CUATRO catálogos de bonos, nunca la misma tabla** (los dos de abajo más
+  `bonos_playstation`, ver la trampa de la PlayStation 5, y `bonos_pcstream`, ver
+  la de PCSTREAM). `bonos_tiempo`
   (`pcs_repo`) es para cualquiera que entra al local sin ser socio
   (walk-in, `pcs_repo.asignar_bono`). `bonos_miembro` (`bonos_miembro_repo`)
   es exclusivo de Miembros, usado solo desde "Cargar Saldo" -> "Bono fijo"
@@ -322,6 +326,22 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   lee SOLO su catálogo; `PanelDetalleEstacion` además toma la lista de bonos del
   equipo elegido y deshabilita la otra). Cada fila de la grilla trae su tipo en
   `item["dispositivo"]`.
+- **PCSTREAM SÍ es una estación, con precios propios** (la PC de streaming, pedido
+  del dueño 2026-10-17). Es una fila de `estaciones` con su Cliente PC y se bloquea
+  como cualquier PC; se la reconoce SOLO por el nombre (`dominio.es_pcstream`: si
+  el Admin la renombra, vuelve a ser una PC común). Lo propio: su catálogo
+  `bonos_pcstream` (`pcstream_repo`, se edita desde Configuración ADMIN) y su tabla
+  de vínculo `sesion_pcstream_bonos` — `sesion_bonos.bono_id` apunta a
+  `bonos_tiempo`, así que un bono de PCSTREAM no puede ir ahí. `pcs_repo.asignar_bono`
+  elige el catálogo por el nombre de la estación, así que a PCSTREAM no se le vende
+  un bono común ni uno suyo a otra PC aunque los ids coincidan. Además: los socios
+  no la pueden abrir (`miembros_repo.abrir_estacion_por_miembro` lo rechaza, también
+  desde el Cliente PC), no entra en "Intercambiar de máquina" (`trasladar_sesion`
+  lo rechaza: le daría a una PC el tiempo cobrado con la tarifa de la otra) y va al
+  lado de la PlayStation 5 en el mosaico. Su plata entra como Alquiler de PCs (no
+  hay origen de venta aparte, a propósito: sumar uno toca la caja); cuánto vendió y
+  se usó se ve en Reportes > PCSTREAM (`pcstream_repo.uso_por_dia`), que reconoce
+  sus sesiones por `sesion_pcstream_bonos` y no por el nombre actual.
 - **La sesión de la PlayStation 5 NO se da de baja sola al llegar a cero.** A
   diferencia de una PC (que se bloquea y `PanelControlPcs._refrescar` la libera),
   acá el aviso es para una persona: queda `ACTIVA` con `tiempo_agotado`, su fila
@@ -514,8 +534,8 @@ Estos puntos todavía no están construidos:
 
 ## Estado actual
 
-El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
+El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-428 pruebas al 2026-10-17.
+454 pruebas al 2026-10-17.

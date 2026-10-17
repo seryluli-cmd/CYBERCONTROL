@@ -20,6 +20,7 @@ alguna vez se agrega un valor nuevo, va en los dos lados: acá y en una
 migración que actualice el CHECK.
 """
 
+import re
 from datetime import datetime, timedelta
 
 
@@ -228,6 +229,23 @@ DISPOSITIVO_PLAYSTATION = "PLAYSTATION"
 # es una fila de "estaciones" que el Admin renombra o da de baja).
 NOMBRE_PLAYSTATION = "PLAYSTATION 5"
 
+# La PC de streaming SÍ es una PC (una fila de "estaciones", con su Cliente PC y
+# su bloqueo), pero se cobra con su propio catálogo de bonos (ver
+# pcstream_repo), no la pueden abrir los socios y no entra en "Intercambiar de
+# máquina". Se la reconoce solo por el nombre (pedido del dueño, 2026-10-17):
+# si el Admin la renombra a otra cosa, vuelve a ser una PC común.
+NOMBRE_PCSTREAM = "PCSTREAM"
+
+
+def es_pcstream(nombre_estacion: str) -> bool:
+    """
+    Único lugar donde se decide si una estación es la PC de streaming. Compara
+    sin espacios, guiones ni mayúsculas: "PCSTREAM", "PC STREAM" y "Pc-Stream"
+    son la misma PC (escrita a mano en "Gestionar Estaciones", un espacio de más
+    no puede cambiarle los precios).
+    """
+    return re.sub(r"[\s_-]", "", nombre_estacion or "").upper() == NOMBRE_PCSTREAM
+
 # Estado de una sesión de tiempo. Tienen que coincidir con el CHECK de
 # "sesiones_playstation.estado" en database.py (las sesiones de PC todavía los
 # escriben a mano, ver CLAUDE.md "Estado").
@@ -273,12 +291,12 @@ def fin_al_sumar_minutos(fin_actual, minutos: int, ahora: datetime) -> datetime:
 # --------------------------------------------------------------------
 # Bonos de tiempo (reglas compartidas por los tres catálogos)
 # --------------------------------------------------------------------
-# Hay tres catálogos de bonos -- pcs_repo.bonos_tiempo (walk-ins),
-# bonos_miembro_repo (exclusivo de socios) y playstation_repo.bonos_playstation
-# (exclusivo de la consola) -- deliberadamente separados (distinta tabla,
-# distinto permiso para administrarlos), pero un bono es un bono: mismas
-# tres reglas en los tres. Vive acá para no repetirla en cada repo (ver
-# CLAUDE.md, regla 2).
+# Hay cuatro catálogos de bonos -- pcs_repo.bonos_tiempo (walk-ins),
+# bonos_miembro_repo (exclusivo de socios), playstation_repo.bonos_playstation
+# (exclusivo de la consola) y pcstream_repo.bonos_pcstream (exclusivo de la PC
+# de streaming) -- deliberadamente separados (distinta tabla, distinto permiso
+# para administrarlos), pero un bono es un bono: mismas tres reglas en los
+# cuatro. Vive acá para no repetirla en cada repo (ver CLAUDE.md, regla 2).
 def validar_datos_bono(nombre: str, minutos: int, precio: float):
     """Levanta ValueError (mensaje listo para mostrar) si el bono no es válido."""
     if not nombre.strip():

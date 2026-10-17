@@ -3,9 +3,10 @@ pcs_gestion_dialogos.py
 =========================
 Diálogos para ADMINISTRAR los catálogos de Estaciones (las PCs del local, su
 IP y la contraseña de admin de los Clientes PC) y de Bonos de Tiempo de walk-ins (mismo
-espíritu que "Gestionar Rubros" en Artículos), más los de la PlayStation 5. Solo
-se abren desde `ConfiguracionAdminWindow` (ui/main_window.py), exclusiva de
-ADMIN. Los bonos exclusivos de socios se gestionan aparte, en miembros_window.py.
+espíritu que "Gestionar Rubros" en Artículos), más los de la PlayStation 5 y los
+de PCSTREAM. Solo se abren desde `ConfiguracionAdminWindow` (ui/main_window.py),
+exclusiva de ADMIN. Los bonos exclusivos de socios se gestionan aparte, en
+miembros_window.py.
 """
 
 from PySide6.QtWidgets import (
@@ -13,7 +14,8 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout,
 )
 
-from control_pcs.repositories import clientes_repo, pcs_repo, playstation_repo
+import dominio
+from control_pcs.repositories import clientes_repo, pcs_repo, pcstream_repo, playstation_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from control_pcs.ui.pcs_fondo_dialogo import DialogoFondoPantalla
 from ui.utils import (
@@ -277,3 +279,30 @@ class DialogoGestionBonosPlaystation(DialogoGestionBonosBase):
 
     def __init__(self, usuario, parent=None):
         super().__init__(parent, repo=playstation_repo.AdministradorDeBonos(usuario["id"]))
+
+
+class DialogoBonoPcstream(DialogoBonoBase):
+    """Alta/edición de un bono de PCSTREAM (pcstream_repo). Mismo formulario
+    que los otros catálogos."""
+
+    repo = pcstream_repo
+    TITULO_NUEVO = f"Nuevo Bono de {dominio.NOMBRE_PCSTREAM}"
+    TITULO_EDICION = f"Modificar Bono de {dominio.NOMBRE_PCSTREAM}"
+    EJEMPLO_NOMBRE = "Ej: 2 horas de stream"
+
+
+class DialogoGestionBonosPcstream(DialogoGestionBonosBase):
+    """
+    Catálogo de bonos EXCLUSIVO de PCSTREAM, la PC de streaming (pcstream_repo):
+    lo que se le ofrece en el panel de Control de PCs cuando se la elige, en vez
+    de los bonos comunes. Solo se llega desde Configuración ADMIN, igual que el
+    catálogo de las demás PCs.
+    """
+
+    repo = pcstream_repo
+    CLASE_FORMULARIO = DialogoBonoPcstream
+    TITULO = f"Gestionar Bonos de {dominio.NOMBRE_PCSTREAM}"
+    CONFIRMAR_DESACTIVAR = (
+        "¿Desactivar el bono '{nombre}'? Deja de poder venderse, pero "
+        "las sesiones que ya lo usaron conservan su historial."
+    )

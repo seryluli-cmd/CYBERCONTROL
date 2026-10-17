@@ -28,6 +28,7 @@ CATEGORIA_BONO_SOCIO = "Bono de Socio"
 CATEGORIA_CARGA_TARIFA_SOCIO = "Carga de saldo de Socio (tarifa por hora)"
 CATEGORIA_TRAMITE = "Trámite"
 CATEGORIA_BONO_PLAYSTATION = "Bono de PlayStation 5"
+CATEGORIA_BONO_PCSTREAM = f"Bono de {dominio.NOMBRE_PCSTREAM}"
 
 
 def resumen_ventas(desde: str, hasta: str):
@@ -262,8 +263,9 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
     (bono de socio o carga por tarifa, distinguidos por si el movimiento
     de tipo 'CARGA' trae bono_id o no -- ver
     miembros_repo.cargar_saldo_por_monto/_por_bono), tramites_venta
-    (trámite, agrupado por el nombre que tenía al cobrarse) o
-    sesion_playstation_bonos (bono de la consola). Las seis fuentes se
+    (trámite, agrupado por el nombre que tenía al cobrarse),
+    sesion_playstation_bonos (bono de la consola) o sesion_pcstream_bonos
+    (bono de la PC de streaming). Las siete fuentes se
     traen con UNION ALL y se ordenan juntas al final, para que el dueño
     vea en un solo ranking qué es lo que más funciona de cualquiera de los
     rubros.
@@ -356,6 +358,20 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 JOIN ventas ON ventas.id = sesion_playstation_bonos.venta_id
                 WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
                 GROUP BY bonos_playstation.id, bonos_playstation.nombre
+
+                UNION ALL
+
+                SELECT
+                    ? AS categoria,
+                    '' AS codigo,
+                    bonos_pcstream.nombre AS descripcion,
+                    COUNT(*) AS cantidad,
+                    SUM(sesion_pcstream_bonos.precio) AS importe
+                FROM sesion_pcstream_bonos
+                JOIN bonos_pcstream ON bonos_pcstream.id = sesion_pcstream_bonos.bono_id
+                JOIN ventas ON ventas.id = sesion_pcstream_bonos.venta_id
+                WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
+                GROUP BY bonos_pcstream.id, bonos_pcstream.nombre
             )
             ORDER BY {columna_orden} DESC
             """,
@@ -367,6 +383,7 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 dominio.MOVIMIENTO_CARGA, *rango,
                 CATEGORIA_TRAMITE, *rango,
                 CATEGORIA_BONO_PLAYSTATION, *rango,
+                CATEGORIA_BONO_PCSTREAM, *rango,
             ),
         ).fetchall()
 

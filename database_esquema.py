@@ -354,6 +354,29 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # PCSTREAM (la PC de streaming: una estación más, con precios propios)
+    # -------------------------------------------------------------------
+    # A diferencia de la PlayStation 5, PCSTREAM SÍ es una fila de "estaciones"
+    # (tiene Cliente PC y se bloquea como cualquier PC) y sus sesiones son de
+    # "sesiones_pc". Lo único propio es el catálogo de bonos: "bonos_pcstream",
+    # otra tabla con el mismo esquema, para que un bono común nunca se le pueda
+    # vender a PCSTREAM ni uno de PCSTREAM a otra PC (ver pcstream_repo y
+    # pcs_repo.asignar_bono). Por eso el vínculo bono-sesión también es otra
+    # tabla: sesion_bonos.bono_id apunta a bonos_tiempo, y con las claves
+    # foráneas prendidas un bono de PCSTREAM no puede ir ahí.
+    cursor.execute(_sql_tabla_de_bonos("bonos_pcstream"))
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sesion_pcstream_bonos (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            sesion_id  INTEGER NOT NULL REFERENCES sesiones_pc(id),
+            bono_id    INTEGER NOT NULL REFERENCES bonos_pcstream(id),
+            minutos    INTEGER NOT NULL,
+            precio     REAL NOT NULL,
+            venta_id   INTEGER NOT NULL REFERENCES ventas(id)
+        )
+    """)
+
+    # -------------------------------------------------------------------
     # PLAYSTATION 5 (una única consola, se alquila por tiempo como una PC)
     # -------------------------------------------------------------------
     # La consola NO es una fila de "estaciones": una estación es una PC con su
@@ -363,8 +386,9 @@ def inicializar_base_de_datos():
     # bono de PC) puede alcanzarla por error. Ver playstation_repo.py.
     #
     # "bonos_playstation" es su catálogo de bonos, aparte del de las PCs
-    # (bonos_tiempo) y del de socios (bonos_miembro): mismo esquema, tablas
-    # distintas, para que un bono de una nunca se pueda vender en la otra.
+    # (bonos_tiempo, bonos_pcstream) y del de socios (bonos_miembro): mismo
+    # esquema, tablas distintas, para que un bono de una nunca se pueda vender
+    # en la otra.
     cursor.execute(_sql_tabla_de_bonos("bonos_playstation"))
     # Misma idea que "sesiones_pc"/"sesion_bonos": una sesión por cada uso
     # continuo de la consola, que se extiende (fecha_fin_prevista) si se vende
