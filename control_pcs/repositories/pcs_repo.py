@@ -28,6 +28,7 @@ bonos, estado en vivo y abrir/extender/trasladar/finalizar una sesión.
 El feed de actividad vive en actividad_repo.py y se reexporta desde acá.
 """
 
+import re
 import sqlite3
 from datetime import datetime
 import dominio
@@ -54,14 +55,26 @@ MINUTOS_POR_FRACCION = 30
 # Estaciones (catálogo de PCs físicas)
 # ---------------------------------------------------------------------
 
+def _orden_natural(estacion):
+    """
+    Clave para ordenar estaciones por nombre como lo haría una persona: "PC2"
+    antes que "PC10" (el ORDER BY de SQLite compara letra por letra y pondría
+    PC1, PC10, PC11... PC2). Los números del nombre se comparan como números;
+    el resto, sin distinguir mayúsculas.
+    """
+    partes = re.split(r"(\d+)", estacion["nombre"].strip().lower())
+    return [(0, int(parte), "") if parte.isdigit() else (1, 0, parte) for parte in partes]
+
+
 def listar_estaciones(solo_activas: bool = True):
-    """Las estaciones ordenadas por nombre; por defecto solo las activas."""
+    """Las estaciones ordenadas por nombre (orden natural, ver _orden_natural);
+    por defecto solo las activas."""
     with conexion_db() as conexion:
         if solo_activas:
-            return conexion.execute(
-                "SELECT * FROM estaciones WHERE activa = 1 ORDER BY nombre"
-            ).fetchall()
-        return conexion.execute("SELECT * FROM estaciones ORDER BY nombre").fetchall()
+            filas = conexion.execute("SELECT * FROM estaciones WHERE activa = 1").fetchall()
+        else:
+            filas = conexion.execute("SELECT * FROM estaciones").fetchall()
+    return sorted(filas, key=_orden_natural)
 
 
 def crear_estacion(nombre: str) -> int:
@@ -190,9 +203,10 @@ def estado_estaciones():
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
-        estaciones = conexion.execute(
-            "SELECT * FROM estaciones WHERE activa = 1 ORDER BY nombre"
-        ).fetchall()
+        estaciones = sorted(
+            conexion.execute("SELECT * FROM estaciones WHERE activa = 1").fetchall(),
+            key=_orden_natural,
+        )
         sesiones = conexion.execute("""
             SELECT sesiones_pc.*, miembros.nombre AS miembro_nombre
             FROM sesiones_pc

@@ -318,6 +318,32 @@ HOJA_DE_ESTILOS = """
         border-radius: 12px;
     }
 
+    /* Mosaico de PCs (control_pcs/ui/pcs_mosaico.py): fondo oscuro para que
+       resalten los colores de las pantallas, como en los programas de cyber. */
+    QFrame#marcoMosaico {
+        background-color: #181B21;
+        border: 1px solid #0C0E12;
+        border-radius: 12px;
+    }
+    QListWidget#mosaicoPcs {
+        background-color: transparent;
+        border: none;
+        outline: none;
+    }
+    QLabel#textoLeyendaMosaico {
+        color: #C9CED8;
+        font-size: 12px;
+    }
+    QListWidget#mosaicoPcs QScrollBar:vertical {
+        background: #181B21;
+    }
+    QListWidget#mosaicoPcs QScrollBar::handle:vertical {
+        background: #3A404C;
+    }
+    QListWidget#mosaicoPcs QScrollBar::handle:vertical:hover {
+        background: #4A5160;
+    }
+
     /* --- Pulido visual (2026-10-10) --- */
 
     /* Botones de la barra de arriba: sin borde hasta que se les pasa el mouse, así

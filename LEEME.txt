@@ -40,7 +40,15 @@ VENTAS Y CAJA
 
 PCs, SOCIOS Y PLAYSTATION 5
 ----------------------------
-La grilla principal muestra el estado de cada PC y de la PlayStation 5.
+La pantalla principal muestra un monitor por cada PC (y uno para la
+PlayStation 5, la del joystick). El color de la pantalla dice cómo está:
+verde disponible, amarillo en uso, naranja por vencer, azul esperando
+que el cliente prenda la PC, rojo sin conexión, lila sin bloqueo, y rojo
+que titila = hay que mirarla ya. Arriba está la leyenda con los colores.
+El reloj y las monedas indican que corre con un bono; las dos personitas,
+que la abrió un socio (su nombre aparece abajo). Debajo de cada monitor va
+el tiempo que le queda. Clic para elegirla, clic derecho para el control
+remoto (reiniciar, apagar, mensaje, etc.).
 Los bonos de PC, de socios y de PlayStation son catálogos separados.
 Las PCs comunes se pueden operar con cualquier usuario logueado.
 Al vencer el tiempo de una PC, el Cliente PC la bloquea. La PlayStation

@@ -45,7 +45,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
 | [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos y turnos faltantes, trámites, usuarios y ventas. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
-| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y el fondo de la pantalla de bloqueo de las PCs en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py`. |
+| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el mosaico de monitores de la pantalla principal se dibuja en `control_pcs/ui/pcs_mosaico.py` (solo dibuja: qué estado/color le toca a cada equipo lo decide `pcs_window.py`); el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y el fondo de la pantalla de bloqueo de las PCs en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py`. |
 | [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo`, el fondo de la pantalla de bloqueo) y registro de fallos compartido con la UI. |
 | [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
@@ -190,6 +190,20 @@ carpeta desde Usuarios → "Copia de Seguridad" (`database.copiar_backup_a`).
 
 `MainWindow` muestra la grilla de PCs y la PlayStation 5 como panel principal;
 el resto se abre en diálogos. Arma los accesos según rol y permisos.
+
+La "grilla" es un **mosaico de monitores** sobre fondo oscuro (desde el
+2026-10-16, pedido del dueño con el aspecto de los programas de cyber):
+`pcs_mosaico.MosaicoDeEquipos` (un `QListWidget` en modo íconos, así la
+selección, el teclado y el acomodo según el ancho los resuelve Qt) con un
+delegado que pinta con QPainter cada monitor: la pantalla con el color del
+estado (`COLOR_*` de `pcs_window.py`, con su leyenda arriba), un dibujito
+(reloj = sesión con bono, personitas = socio, triángulo = alerta, candado
+abierto = sin bloqueo), monedas si corre con bono, joystick en la consola, y
+abajo el tiempo, el nombre y un aviso corto. `PanelControlPcs` arma una
+`pcs_mosaico.Ficha` por equipo (`_ficha_de_pc` / `_ficha_de_playstation`); el
+refresco de 5s actualiza los casilleros en su lugar si siguen siendo los mismos
+equipos (no parpadea ni pierde la selección). Las estaciones salen en **orden
+natural** (PC2 antes que PC10, `pcs_repo._orden_natural`).
 
 **Para cualquier usuario (Admin o Empleada):**
 - **Ventas** (`ventas_window.py`, `VentasWindow` + `DialogoPago`) —
@@ -401,7 +415,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-403 tests al 2026-10-15. Cubren turnos, caja, stock, ventas y anulaciones,
+410 tests al 2026-10-16. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
 de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

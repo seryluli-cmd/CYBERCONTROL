@@ -281,7 +281,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
             playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
 
     def _nombres(self, grilla):
-        return [grilla.tabla.item(fila, 0).text() for fila in range(grilla.tabla.rowCount())]
+        return [grilla.mosaico.ficha(fila).nombre for fila in range(grilla.mosaico.count())]
 
     def test_la_consola_es_la_primera_fila_con_su_nombre_fijo_y_las_pcs_van_despues(self):
         pcs_repo.crear_estacion("PC 2")
@@ -289,27 +289,27 @@ class TestGrillaConLaPlaystation(_ConPantalla):
         grilla = self._grilla()
 
         self.assertEqual(self._nombres(grilla), ["PLAYSTATION 5", "PC 1", "PC 2"])
-        self.assertEqual(grilla.tabla.item(0, 1).text(), "✓ Disponible")
+        self.assertEqual(grilla.mosaico.ficha(0).estado, "✓ Disponible")
 
     def test_elegir_la_consola_o_una_pc_cambia_el_panel(self):
         grilla = self._grilla()
 
-        grilla.tabla.selectRow(0)
+        grilla.mosaico.elegir(0)
         self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PLAYSTATION 5")
         self.assertTrue(all(self._habilitados(grilla.panel_detalle.lista_playstation)))
 
-        grilla.tabla.selectRow(1)
+        grilla.mosaico.elegir(1)
         self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PC 1")
         self.assertTrue(all(self._habilitados(grilla.panel_detalle.lista_pc)))
         self.assertFalse(any(self._habilitados(grilla.panel_detalle.lista_playstation)))
 
     def test_la_seleccion_se_mantiene_cuando_la_grilla_se_refresca(self):
         grilla = self._grilla()
-        grilla.tabla.selectRow(0)
+        grilla.mosaico.elegir(0)
 
         grilla._refrescar()
 
-        self.assertEqual(grilla.tabla.currentRow(), 0)
+        self.assertEqual(grilla.mosaico.fila_elegida(), 0)
         self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PLAYSTATION 5")
 
     def test_la_consola_en_uso_muestra_la_cuenta_regresiva(self):
@@ -319,9 +319,9 @@ class TestGrillaConLaPlaystation(_ConPantalla):
 
         grilla = self._grilla()
 
-        self.assertEqual(grilla.tabla.item(0, 1).text(), "▶ En uso")
+        self.assertEqual(grilla.mosaico.ficha(0).estado, "▶ En uso")
         # Recién vendida (con el reloj real): 1 hora justa, o apenas menos.
-        self.assertRegex(grilla.tabla.item(0, pcs_window.COLUMNA_TIEMPO_RESTANTE).text(), r"^(59m \d\ds|1h 00m 00s)$")
+        self.assertRegex(grilla.mosaico.ficha(0).restante, r"^(59m \d\ds|1h 00m 00s)$")
         self.assertEqual(grilla._filas_en_alerta, [])
 
     def test_la_cuenta_regresiva_se_redibuja_cada_segundo_sin_reconstruir_la_grilla(self):
@@ -329,17 +329,17 @@ class TestGrillaConLaPlaystation(_ConPantalla):
         with _reloj_de_la_pantalla(ahora):
             playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
         grilla = self._grilla()
-        celda = grilla.tabla.item(0, pcs_window.COLUMNA_TIEMPO_RESTANTE)
+        casillero = grilla.mosaico.item(0)
 
         with _reloj_de_la_pantalla(ahora + timedelta(minutes=30, seconds=15)):
             grilla._actualizar_cuenta_regresiva()
-        self.assertEqual(celda.text(), "29m 45s")
+        self.assertEqual(grilla.mosaico.ficha(0).restante, "29m 45s")
         with _reloj_de_la_pantalla(ahora + timedelta(minutes=30, seconds=16)):
             grilla._actualizar_cuenta_regresiva()
-        self.assertEqual(celda.text(), "29m 44s")
+        self.assertEqual(grilla.mosaico.ficha(0).restante, "29m 44s")
 
-        # Es la MISMA celda: no se reconstruyó la tabla ni se perdió la selección.
-        self.assertIs(grilla.tabla.item(0, pcs_window.COLUMNA_TIEMPO_RESTANTE), celda)
+        # Es el MISMO casillero: no se rearmó el mosaico ni se perdió la selección.
+        self.assertIs(grilla.mosaico.item(0), casillero)
 
     def test_al_llegar_a_cero_la_fila_empieza_a_titilar_en_rojo(self):
         ahora = datetime.now().replace(microsecond=0)
@@ -352,13 +352,13 @@ class TestGrillaConLaPlaystation(_ConPantalla):
             grilla._actualizar_cuenta_regresiva()  # el segundo en que llega a cero
 
         self.assertEqual(grilla._filas_en_alerta, [0])
-        self.assertIn("TIEMPO AGOTADO", grilla.tabla.item(0, 1).text())
-        self.assertEqual(grilla.tabla.item(0, pcs_window.COLUMNA_TIEMPO_RESTANTE).text(), "0m 00s")
+        self.assertIn("TIEMPO AGOTADO", grilla.mosaico.ficha(0).estado)
+        self.assertEqual(grilla.mosaico.ficha(0).restante, "0m 00s")
         rojo = pcs_window.COLOR_ALERTA_SESION_SIN_CLIENTE
         blanco = pcs_window.COLOR_ALERTA_SESION_SIN_CLIENTE_APAGADA
         colores = []
         for _ in range(4):
-            colores.append(grilla.tabla.item(0, 0).background().color())
+            colores.append(grilla.mosaico.color(0))
             grilla._alternar_parpadeo()
         # Titila: alterna entre el rojo y el blanco, y sigue haciéndolo.
         self.assertEqual({c.name() for c in colores}, {rojo.name(), blanco.name()})
@@ -371,7 +371,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
         grilla = self._grilla()  # el programa "arranca de nuevo" con la sesión ya vencida
 
         self.assertEqual(grilla._filas_en_alerta, [0])
-        self.assertIn("TIEMPO AGOTADO", grilla.tabla.item(0, 1).text())
+        self.assertIn("TIEMPO AGOTADO", grilla.mosaico.ficha(0).estado)
 
     def test_una_pc_vencida_se_libera_sola_pero_la_consola_no(self):
         # La PC también se acabó, pero se da de baja en el refresco; la consola
@@ -397,7 +397,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
         grilla._refrescar()
 
         self.assertEqual(grilla._filas_en_alerta, [])
-        self.assertEqual(grilla.tabla.item(0, 1).text(), "✓ Disponible")
+        self.assertEqual(grilla.mosaico.ficha(0).estado, "✓ Disponible")
 
         # Y vendiendo otro bono con el tiempo agotado (sin liberar) también se apaga.
         self._vencida()

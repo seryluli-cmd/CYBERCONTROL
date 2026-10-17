@@ -198,6 +198,8 @@ abra no alcanza si los tests no pasan.
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
+| `pcs_repo._orden_natural(estacion)` | se ordenan las estaciones como lo haría una persona ("PC2" antes que "PC10"); lo usan `listar_estaciones` y `estado_estaciones` |
+| `pcs_window.PanelControlPcs._ficha_de_pc(...)` · `._ficha_de_playstation(...)` | se decide con qué color, dibujito y aviso se ve cada equipo en el mosaico; `control_pcs/ui/pcs_mosaico.py` solo dibuja la `Ficha` que recibe |
 | `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono COMÚN (walk-in) |
 | `dominio.segundos_restantes(fin, ahora)` · `dominio.fin_al_sumar_minutos(fin_actual, minutos, ahora)` | se calcula cuánto le queda a una sesión de tiempo y cuándo vence al sumarle un bono (PCs Y PlayStation 5: una sola cuenta) |
 | `playstation_repo.estado()` · `.vender_bono(...)` · `.finalizar_sesion(...)` | se sabe cómo está la PlayStation 5, se le vende un bono (origen PLAYSTATION) y se la libera; ahí mismo se exige el permiso (`puede_operar`) o ser Admin (catálogo) |
@@ -512,4 +514,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-403 pruebas al 2026-10-15.
+410 pruebas al 2026-10-16.
