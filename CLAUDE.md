@@ -571,7 +571,8 @@ Estos puntos todavía no están construidos:
   cambios en términos del kiosko, no de la implementación.
 - **Stack:** Python 3.10+, PySide6, SQLite. Sin ORM, sin frameworks.
 - **Git:** rama por cambio, después mergear a `master`.
-- **Empaquetado:** `pyinstaller Kiosko.spec` genera `dist/Kiosko.exe`.
+- **Empaquetado:** `pyinstaller Kiosko.spec` genera `dist/CyberBios.exe` (el
+  nombre con que lo usa el dueño; la receta conserva su nombre de archivo).
   Ojo: `dist/data/` es la base de datos *real* de la copia empaquetada.
 
 ---

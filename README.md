@@ -451,7 +451,7 @@ interfaz con Qt fuera de pantalla.
 ## Empaquetado (.exe)
 
 Instalá PyInstaller para armar el ejecutable (`pip install pyinstaller`) y
-ejecutá `pyinstaller Kiosko.spec`. El archivo está versionado: empaqueta
+ejecutá `pyinstaller Kiosko.spec`: genera `dist/CyberBios.exe`. El archivo está versionado: empaqueta
 `main.py` + `assets/` como app sin
 consola (`console=False`), ícono `assets/icono.ico`. La carpeta `data/`
 (base + backups) **no** se empaqueta — queda al lado del `.exe` instalado,

@@ -22,7 +22,9 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Kiosko',
+    # Con el nombre con que lo usa el dueño (antes salía Kiosko.exe y había que
+    # renombrarlo a mano en cada armado; revisión del 2026-10-17).
+    name='CyberBios',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
