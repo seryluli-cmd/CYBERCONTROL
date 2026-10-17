@@ -25,9 +25,10 @@ cada artículo se le devuelve el stock que se llevaron las ventas confirmadas
 
 Qué queda: usuarios, artículos (con marcas y rubros), compras, los cuatro
 catálogos de bonos, estaciones, socios (sus datos, no el saldo), trámites (el
-catálogo), configuración (fondo de cambio, tarifa de socios...), y los
-historiales que no son plata: inicios de sesión, accesos de admin de las PCs y
-comandos enviados a las PCs.
+catálogo), configuración (fondo de cambio, tarifa de socios, filtro de
+palabras...), y los historiales que no son plata: inicios de sesión, accesos de
+admin de las PCs, comandos enviados a las PCs y páginas que cerró el filtro de
+palabras.
 """
 
 import os

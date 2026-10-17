@@ -206,6 +206,7 @@ abra no alcanza si los tests no pasan.
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
 | `clientes_repo.es_clave_de_clientes(clave)` | se decide si un pedido de red viene de un Cliente PC (clave fija, comparada por su huella SHA-256; la usa `servidor_red._autorizado`) |
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
+| `filtro_palabras_repo.obtener()` · `.guardar(...)` · `.registrar_bloqueo(...)` | se lee y se cambia el filtro de palabras de las PCs ("protección antiporno", pedido del dueño 2026-10-17: prendido, lista y mensaje, como JSON en `configuracion`; su versión viaja en `GET /estado` como `filtro_version`) y se anota cada página que cerró una PC (`bloqueos_filtro_pc`). Buscar las palabras en los títulos es tarea de cada Cliente PC (`CLIENTE PC/filtro_palabras.py`), no de este repo |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
 | `pcs_repo.estado_de_estacion(nombre, ip)` | se decide qué estación es una PC que se conecta: por el nombre que manda su Cliente PC y, si ninguna activa se llama así, por la IP asentada en su primer enlace (`registrar_conexion`); con una IP asentada en dos estaciones activas no adivina. La usan TODOS los endpoints de `servidor_red.py` |
@@ -416,6 +417,13 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   da 404 o 500, y la PC se queda con el azul liso. No lo muevas a la base ni lo metas en el
   camino que decide si una PC está bloqueada. Un archivo que no empieza como JPEG cuenta
   como "no hay fondo". Abrir y achicar imágenes es de la pantalla (Qt): el repo no usa Qt.
+- **El filtro de palabras tampoco puede tocar el bloqueo.** Viaja por el mismo camino que el
+  fondo (`filtro_version` en cada `GET /estado`, cada uno en su propio try/except; `GET /filtro`
+  con la lista). La lista es chica a propósito (tope de 1000 palabras): cada PC la recibe
+  entera cuando cambia y la revisa cada 0,7 s. Las PCs buscan PALABRAS ENTERAS sin mayúsculas
+  ni acentos ("anal" no salta con "análisis"); por eso el repo rechaza palabras de una letra.
+  Si se cambia cómo se guarda la lista, la versión tiene que seguir saliendo del mismo
+  `obtener()` que la lista: si no, las PCs la piden en cada consulta o no se enteran del cambio.
 - **El servidor de red no debe tocar Qt.** Usa conexiones SQLite propias desde
   sus hilos y registra fallos inesperados con `errores.registrar_error`, sin
   incluir claves ni el cuerpo de los pedidos en el contexto del log.
@@ -578,4 +586,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-502 pruebas al 2026-10-17.
+528 pruebas al 2026-10-17.

@@ -35,6 +35,14 @@ GET /estado?estacion=<nombre>
     - Siempre viaja `fondo_version`: la versión del fondo de la pantalla de
       bloqueo (cadena vacía si no hay ninguno). Si cambia, el Cliente PC vuelve
       a pedir GET /fondo.
+    - Y `filtro_version`: la versión del filtro de palabras. Si cambia, el
+      Cliente PC vuelve a pedir GET /filtro.
+
+GET /filtro
+    El filtro de palabras de las PCs (ver
+    control_pcs/repositories/filtro_palabras_repo.py), como JSON:
+    {"activo", "palabras", "mensaje", "version"}. Es chico, así que el Cliente PC
+    lo pide en su mismo ciclo de 5 s, después de decidir el bloqueo.
 
 GET /fondo
     El fondo de la pantalla de bloqueo que eligió el Admin (ver
@@ -63,6 +71,11 @@ POST /evento_admin    {"estacion", "tipo", "segundos_atras"}
     es para los avisos que no se pudieron mandar en el momento (servidor
     apagado) y se mandan al volver la conexión.
 
+POST /filtro_bloqueo  {"estacion", "palabra", "titulo", "segundos_atras"}
+    El filtro de palabras de esa PC cerró una página (ver
+    filtro_palabras_repo.registrar_bloqueo). `segundos_atras`, igual que en
+    /evento_admin.
+
 POST /comando_resultado   {"comando_id", "imagen_base64"} o {"comando_id", "texto"}
     El Cliente PC lo llama después de ejecutar un comando que tiene algo
     para devolver: SCREENSHOT (sube la imagen) o CAMBIAR_RED (avisa si pudo
@@ -81,7 +94,8 @@ from urllib.parse import urlparse, parse_qs
 import dominio
 from errores import registrar_error
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, clientes_repo, comandos_pc_repo, fondo_repo, miembros_repo, pcs_repo,
+    accesos_admin_pc_repo, clientes_repo, comandos_pc_repo, filtro_palabras_repo, fondo_repo, miembros_repo,
+    pcs_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -174,6 +188,9 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         if ruta.path == "/fondo":
             self._manejar_fondo()
             return
+        if ruta.path == "/filtro":
+            self._manejar_filtro()
+            return
         if ruta.path != "/estado":
             self._responder_vacio(404)
             return
@@ -242,7 +259,26 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         except Exception as error:
             registrar_error(error, "Servidor de red: leer la versión del fondo")
 
+        try:
+            # Igual que el fondo: así cada PC se entera sola de que el Admin cambió la
+            # lista. Si falla, no viaja y la PC sigue con la lista que tiene.
+            cuerpo["filtro_version"] = filtro_palabras_repo.version_actual()
+        except Exception as error:
+            registrar_error(error, "Servidor de red: leer la versión del filtro de palabras")
+
         self._responder_json(200, cuerpo)
+
+    def _manejar_filtro(self):
+        """GET /filtro: el filtro de palabras completo (ver filtro_palabras_repo).
+        La versión sale del mismo `obtener()` que la lista, para que nunca queden
+        desparejas si el Admin la cambia justo en el medio."""
+        try:
+            filtro = filtro_palabras_repo.obtener()
+        except Exception as error:
+            registrar_error(error, "Servidor de red: leer el filtro de palabras")
+            self._responder_vacio(500)
+            return
+        self._responder_json(200, filtro)
 
     def _manejar_fondo(self):
         """
@@ -314,6 +350,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self._manejar_logout()
         elif ruta.path == "/evento_admin":
             self._manejar_evento_admin()
+        elif ruta.path == "/filtro_bloqueo":
+            self._manejar_filtro_bloqueo()
         elif ruta.path == "/comando_resultado":
             self._manejar_comando_resultado()
         else:
@@ -423,6 +461,39 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             return
         except Exception as error:
             registrar_error(error, "Servidor de red: evento admin de PC")
+            self._responder_error(500, _ERROR_INTERNO)
+            return
+
+        self._responder_json(200, {"ok": True})
+
+    def _manejar_filtro_bloqueo(self):
+        """
+        Anota una página que cerró el filtro de palabras de un Cliente PC (ver
+        filtro_palabras_repo.registrar_bloqueo). Mismas respuestas que
+        /evento_admin: 400 si el pedido no sirve (la PC no lo reintenta), 404 si la
+        estación no existe.
+        """
+        try:
+            cuerpo = self._leer_cuerpo_json()
+            nombre_estacion = str(cuerpo["estacion"])
+            palabra = str(cuerpo["palabra"])
+            titulo = str(cuerpo.get("titulo") or "")
+            segundos_atras = float(cuerpo.get("segundos_atras") or 0)
+        except Exception:
+            self._responder_error(400, _PEDIDO_INVALIDO)
+            return
+
+        item = self._resolver_estacion(nombre_estacion)
+        if item is None:
+            return  # _resolver_estacion ya respondió 404/500
+
+        try:
+            filtro_palabras_repo.registrar_bloqueo(item["estacion"]["id"], palabra, titulo, segundos_atras)
+        except ValueError:
+            self._responder_error(400, _PEDIDO_INVALIDO)
+            return
+        except Exception as error:
+            registrar_error(error, "Servidor de red: aviso del filtro de palabras")
             self._responder_error(500, _ERROR_INTERNO)
             return
 
