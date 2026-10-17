@@ -201,6 +201,22 @@ class TestTarifaHoraParaMonto(unittest.TestCase):
         self.assertEqual(dominio.tarifa_hora_para_monto(tramos, 7000), 800)
 
 
+class TestCargaMinimaDeSaldo(unittest.TestCase):
+    """dominio.carga_minima_de_saldo: el monto del tramo más bajo es lo mínimo
+    que se puede cargar (pedido del dueño, 2026-10-17)."""
+
+    def test_es_el_monto_del_tramo_mas_bajo_sin_importar_el_orden(self):
+        tramos = [
+            {"monto_minimo": 20000, "tarifa_hora": 900},
+            {"monto_minimo": 13000, "tarifa_hora": 1000},
+        ]
+        self.assertEqual(dominio.carga_minima_de_saldo(tramos), 13000)
+
+    def test_un_tramo_desde_cero_no_pone_minimo(self):
+        tramos = [{"monto_minimo": 0, "tarifa_hora": 1000}, {"monto_minimo": 5000, "tarifa_hora": 800}]
+        self.assertEqual(dominio.carga_minima_de_saldo(tramos), 0)
+
+
 class TestValidarTramosTarifaHoraMiembro(unittest.TestCase):
     def test_lista_vacia_no_es_valida(self):
         with self.assertRaises(ValueError):

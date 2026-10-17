@@ -294,13 +294,20 @@ class DialogoCargarSaldo(QDialog):
         # Es la misma cuenta que hace cargar_saldo_por_monto al cobrar.
         tarifa_hora, minutos = miembros_repo.minutos_por_monto(self.tramos_tarifa, monto)
         self.etiqueta_tarifa_aplicada.setText(f"Tarifa a esta carga: {formato_pesos(tarifa_hora)} / hora")
-        self.etiqueta_preview_monto.setText(f"Equivale a {formato_tiempo(minutos * 60)} de saldo.")
+        minima = dominio.carga_minima_de_saldo(self.tramos_tarifa)
+        if monto < minima:
+            self.etiqueta_preview_monto.setText(f"La carga mínima es de {formato_pesos(minima)}.")
+            self.etiqueta_preview_monto.setStyleSheet("color: #C62828; font-weight: bold;")
+        else:
+            self.etiqueta_preview_monto.setText(f"Equivale a {formato_tiempo(minutos * 60)} de saldo.")
+            self.etiqueta_preview_monto.setStyleSheet("")
 
     @manejar_errores
     def _confirmar(self):
         metodo = self.combo_metodo.currentData()
         if self.combo_modo.currentData() == "MONTO":
             monto = self.spin_monto.value()
+            miembros_repo.validar_monto_de_carga(self.tramos_tarifa, monto)
             pagos = resolver_pagos(self, metodo, monto)
             if pagos is None:
                 return
@@ -354,9 +361,9 @@ class DialogoTramosTarifaMiembro(QDialog):
 
         layout = QVBoxLayout()
         layout.addWidget(QLabel(
-            "Tramos según cuánta plata carga el socio (ej. $0 en adelante = $1.000/h,\n"
-            "$5.000 en adelante = $1.500/h). Se usa el tramo más alto que no supere el monto\n"
-            "cargado; un monto menor al tramo más bajo igual usa la tarifa de ese tramo."
+            "Tramos según cuánta plata carga el socio (ej. $13.000 en adelante = $1.000/h,\n"
+            "$20.000 en adelante = $900/h). Se usa el tramo más alto que no supere el monto\n"
+            "cargado. El monto del tramo más bajo es la carga mínima: no se puede cargar menos."
         ))
         layout.addWidget(self.tabla)
         layout.addLayout(fila_botones)

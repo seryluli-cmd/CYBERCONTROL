@@ -315,14 +315,26 @@ def validar_tramos_tarifa_hora_miembro(tramos: list):
         montos_vistos.add(tramo["monto_minimo"])
 
 
+def carga_minima_de_saldo(tramos: list) -> float:
+    """
+    Único lugar donde se decide cuánto es lo mínimo que puede cargar un
+    socio con un monto libre: el monto_minimo del tramo más bajo (pedido del
+    dueño, 2026-10-17: con un único tramo "desde $13.000 a $1.000/h" no se
+    tiene que poder cargar $2.000). Un tramo "desde $0" deja cargar cualquier
+    monto. Hasta ese día un monto menor se aceptaba igual con la tarifa del
+    tramo más bajo. Lo hace cumplir miembros_repo.cargar_saldo_por_monto.
+    """
+    return min(tramo["monto_minimo"] for tramo in tramos)
+
+
 def tarifa_hora_para_monto(tramos: list, monto: float) -> float:
     """
     Único lugar donde se decide qué tarifa $/hora le corresponde a un
     monto cargado, según la tabla de tramos (no hace falta que venga
     ordenada). Se usa el tramo con el monto_minimo más alto que no
-    supere `monto`; si `monto` es menor que el tramo más bajo, se usa
-    igual la tarifa de ese tramo más bajo -- nunca se rechaza una carga
-    chica por no entrar en ningún tramo (pedido explícito del dueño).
+    supere `monto`. Un monto menor que el tramo más bajo devuelve la
+    tarifa de ese tramo (para la vista previa mientras se tipea), pero
+    esa carga no se acepta: ver carga_minima_de_saldo.
     """
     tramos_ordenados = sorted(tramos, key=lambda tramo: tramo["monto_minimo"])
     tarifa = tramos_ordenados[0]["tarifa_hora"]

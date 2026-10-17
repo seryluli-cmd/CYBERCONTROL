@@ -459,19 +459,34 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         miembro = miembros_repo.obtener_miembro(miembro_id)
         self.assertEqual(miembro["saldo_minutos"], 240 + 600)
 
-    def test_cargar_saldo_por_monto_debajo_del_tramo_mas_bajo_usa_igual_esa_tarifa(self):
+    def test_cargar_saldo_por_monto_debajo_del_tramo_mas_bajo_se_rechaza(self):
+        # Pedido del dueño (2026-10-17): con un único tramo "desde $13.000 a
+        # $1.000/h", cargar $2.000 no se puede. Antes se aceptaba con la tarifa
+        # del tramo más bajo.
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
-        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 5000, "tarifa_hora": 800}])
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 13000, "tarifa_hora": 1000}])
 
-        # No hay ningún tramo que empiece en $0 -- un monto chico no se
-        # rechaza, usa igual la tarifa del único tramo que hay.
-        miembros_repo.cargar_saldo_por_monto(
-            miembro_id, 800, [{"metodo": "EFECTIVO", "monto": 800}], operador_id
-        )
+        with self.assertRaisesRegex(ValueError, r"\$13\.000"):
+            miembros_repo.cargar_saldo_por_monto(
+                miembro_id, 2000, [{"metodo": "EFECTIVO", "monto": 2000}], operador_id
+            )
 
-        miembro = miembros_repo.obtener_miembro(miembro_id)
-        self.assertEqual(miembro["saldo_minutos"], 60)  # 800/800*60 = 60 min
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 0)
+        self.assertEqual(ventas_repo.listar_ventas_recientes(10), [])  # no quedó ninguna venta cobrada
+
+    def test_cargar_saldo_por_monto_desde_la_carga_minima_da_el_tiempo_justo(self):
+        # El ejemplo del dueño: tramo desde $13.000 a $1.000/h; $13.500 son 13 h 30 min.
+        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 13000, "tarifa_hora": 1000}])
+
+        for monto in (13000, 13500):
+            miembros_repo.cargar_saldo_por_monto(
+                miembro_id, monto, [{"metodo": "EFECTIVO", "monto": monto}], operador_id
+            )
+
+        self.assertEqual(miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"], 13 * 60 + 13 * 60 + 30)
 
     def test_cargar_saldo_por_bono(self):
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")

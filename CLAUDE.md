@@ -207,6 +207,7 @@ abra no alcanza si los tests no pasan.
 | `turnos_repo._desglose_de_totales(...)` · `_PREFIJO_COLUMNAS_POR_ORIGEN` | se reparte lo cobrado de un turno por origen (kiosko/pcs/playstation × efectivo/digital) y se suma el efectivo del cajón sobre TODOS los `ORIGENES_VENTA` |
 | `bonos_miembro_repo.listar_bonos()` / `.obtener_bono(id)` | catálogo de bonos EXCLUSIVO de socios (no confundir con `pcs_repo`) |
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
+| `dominio.carga_minima_de_saldo(tramos)` · `miembros_repo.validar_monto_de_carga(...)` | se decide cuánto es lo mínimo que un socio puede cargar con un monto libre (el monto del tramo más bajo de la Tarifa por Hora para Socios; pedido del dueño, 2026-10-17) y se rechaza una carga menor: la pantalla la valida antes de pedir el medio de pago, el repo de nuevo al cobrar |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
 | `turnos_repo._vendido_aparte_entre(...)` | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día (y las impresiones, como renglón informativo, en Cierre de Turno vía `resumen_turno_actual()["impresiones"]`) |
@@ -517,4 +518,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-425 pruebas al 2026-10-17.
+428 pruebas al 2026-10-17.

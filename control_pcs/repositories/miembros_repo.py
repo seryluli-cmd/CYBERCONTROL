@@ -207,15 +207,33 @@ def minutos_por_monto(tramos: list, monto: float):
     return tarifa_hora, minutos
 
 
-def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int) -> int:
+def validar_monto_de_carga(tramos: list, monto: float):
     """
-    Convierte un pago en pesos a minutos de saldo (ver minutos_por_monto) y
-    se los suma al socio. Levanta ValueError si el monto es cero o no
-    alcanza ni para un bloque.
+    Levanta ValueError (mensaje listo para mostrar) si `monto` no se puede
+    cargar: cero, o menos que la carga mínima (dominio.carga_minima_de_saldo).
+    La usa cargar_saldo_por_monto y también la pantalla de Cargar Saldo ANTES
+    de pedir el medio de pago, para no preguntar cómo paga algo que después
+    se va a rechazar.
     """
     if monto <= 0:
         raise ValueError("El monto tiene que ser mayor a 0.")
+    minima = dominio.carga_minima_de_saldo(tramos)
+    if monto < minima:
+        raise ValueError(
+            f"La carga mínima es de ${minima:,.0f}.".replace(",", ".")
+            + " Se configura en Configuración ADMIN > Tarifa por Hora para Socios."
+        )
+
+
+def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int) -> int:
+    """
+    Convierte un pago en pesos a minutos de saldo (ver minutos_por_monto) y
+    se los suma al socio. Levanta ValueError si el monto es cero, no llega
+    a la carga mínima (ver validar_monto_de_carga) o no alcanza ni para un
+    bloque.
+    """
     tramos = config_repo.obtener_tramos_tarifa_hora_miembro()
+    validar_monto_de_carga(tramos, monto)
     tarifa_hora, minutos = minutos_por_monto(tramos, monto)
     if minutos <= 0:
         raise ValueError(
