@@ -96,7 +96,11 @@ class MainWindow(QMainWindow):
         layout_barra.setContentsMargins(20, 12, 20, 12)
         layout_barra.setSpacing(10)
 
-        titulo = QLabel(f"Hola, {self.usuario['nombre']} · {self.usuario['rol']}")
+        # Pedido del dueño (2026-10-16): el nombre de quien está en el mostrador
+        # como "Operador: TOBY", sin saludo y sin la palabra "EMPLEADA" (el rol
+        # por dentro sigue siendo EMPLEADA). El Admin se sigue distinguiendo.
+        cargo = "Administrador" if self.es_admin else "Operador"
+        titulo = QLabel(f"{cargo}: {self.usuario['nombre']}")
         titulo.setStyleSheet("font-size: 15px; font-weight: 700; color: #1B2233;")
         layout_barra.addWidget(titulo)
         layout_barra.addStretch()

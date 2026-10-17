@@ -85,6 +85,29 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         otros = [clase for texto, clase in clases.items() if texto not in ("Cerrar sesión", "🛒  Vender")]
         self.assertTrue(otros and all(clase == "barra" for clase in otros), clases)
 
+    def test_la_barra_de_arriba_dice_operador_y_el_nombre_sin_saludo_ni_rol(self):
+        # Pedido del dueño (2026-10-16): "Operador: TOBY", no "Hola, TOBY · EMPLEADA".
+        empleada = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("TOBY", "1234", dominio.ROL_EMPLEADA))
+        ventana = MainWindow(empleada, lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+
+        barra = ventana.findChild(QFrame, "encabezadoInicio")
+        textos = [etiqueta.text() for etiqueta in barra.findChildren(QLabel)]
+
+        self.assertIn("Operador: TOBY", textos)
+        self.assertFalse(any("Hola" in texto or dominio.ROL_EMPLEADA in texto for texto in textos), textos)
+
+    def test_el_admin_figura_como_administrador(self):
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN))
+        ventana = MainWindow(admin, lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+
+        barra = ventana.findChild(QFrame, "encabezadoInicio")
+
+        self.assertIn("Administrador: Sergio", [etiqueta.text() for etiqueta in barra.findChildren(QLabel)])
+
 
 if __name__ == "__main__":
     unittest.main()
