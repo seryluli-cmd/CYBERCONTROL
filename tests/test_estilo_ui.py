@@ -27,6 +27,7 @@ from repositories import usuarios_repo  # noqa: E402
 from ui.login_window import LoginWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from ui.utils import crear_tabla  # noqa: E402
+from control_pcs.ui.miembros_window import DialogoTramosTarifaMiembro  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
@@ -107,6 +108,24 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         barra = ventana.findChild(QFrame, "encabezadoInicio")
 
         self.assertIn("Administrador: Sergio", [etiqueta.text() for etiqueta in barra.findChildren(QLabel)])
+
+    def test_los_montos_de_la_tarifa_de_socios_entran_en_su_fila(self):
+        # Reportado por el dueño (2026-10-17): en "Tarifa por Hora para Socios" los
+        # campos de monto quedaban cortados por la fila y no se podía leer ni cargar nada.
+        # El relleno de los campos sale de la hoja de estilos, que en el programa se le
+        # pone a toda la aplicación al arrancar (antes de abrir cualquier diálogo).
+        self.addCleanup(_app.setStyleSheet, _app.styleSheet())
+        _app.setStyleSheet(programa.HOJA_DE_ESTILOS)
+        dialogo = DialogoTramosTarifaMiembro()
+        self.addCleanup(dialogo.deleteLater)
+        dialogo._agregar_fila(5000, 1500)
+
+        tabla = dialogo.tabla
+        for fila in range(tabla.rowCount()):
+            for columna in range(tabla.columnCount()):
+                campo = tabla.cellWidget(fila, columna)
+                self.assertGreaterEqual(tabla.rowHeight(fila), campo.sizeHint().height(), (fila, columna))
+        self.assertFalse(tabla.verticalHeader().isVisible())
 
 
 if __name__ == "__main__":

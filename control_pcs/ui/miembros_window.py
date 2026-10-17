@@ -338,12 +338,13 @@ class DialogoTramosTarifaMiembro(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Tarifa por Hora para Socios")
-        self.resize(420, 340)
+        self.resize(480, 420)
 
         self.tabla = QTableWidget(0, 2)
         self.tabla.setHorizontalHeaderLabels(["Monto mínimo", "Tarifa por hora"])
         self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.tabla.verticalHeader().setVisible(False)  # como todas las tablas (ui.utils.crear_tabla)
         for tramo in config_repo.obtener_tramos_tarifa_hora_miembro():
             self._agregar_fila(tramo["monto_minimo"], tramo["tarifa_hora"])
 
@@ -378,8 +379,13 @@ class DialogoTramosTarifaMiembro(QDialog):
     def _agregar_fila(self, monto_minimo, tarifa_hora):
         fila = self.tabla.rowCount()
         self.tabla.insertRow(fila)
-        self.tabla.setCellWidget(fila, 0, self._spin_monto(monto_minimo))
+        spin_minimo = self._spin_monto(monto_minimo)
+        self.tabla.setCellWidget(fila, 0, spin_minimo)
         self.tabla.setCellWidget(fila, 1, self._spin_monto(tarifa_hora))
+        # La fila tiene que ser tan alta como el campo: con el alto por defecto de
+        # la tabla, el relleno que la hoja de estilos le da a los QDoubleSpinBox
+        # dejaba los números cortados por la mitad e imposibles de leer.
+        self.tabla.setRowHeight(fila, spin_minimo.sizeHint().height() + 6)
 
     @manejar_errores
     def _guardar(self):
