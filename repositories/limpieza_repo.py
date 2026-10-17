@@ -56,12 +56,6 @@ _TABLAS_A_VACIAR = (
 )
 
 
-def _exigir_admin(usuario_id: int):
-    usuario = usuarios_repo.obtener_usuario(usuario_id)
-    if usuario is None or not usuario["activo"] or not dominio.es_admin(usuario):
-        raise PermissionError("Solo un Administrador puede limpiar la base de datos.")
-
-
 def contar_lo_que_se_borraria() -> dict:
     """{tabla: cantidad de filas} de lo que borraría limpiar_base(), para que la
     pantalla muestre cuánto hay antes de confirmar. Solo lee."""
@@ -84,7 +78,7 @@ def limpiar_base(usuario_id: int) -> dict:
     Las sesiones en curso también se borran: las PCs que estaban habilitadas
     vuelven a bloquearse y la PlayStation 5 queda libre.
     """
-    _exigir_admin(usuario_id)
+    usuarios_repo.exigir_admin(usuario_id, "limpiar la base de datos")
 
     # La copia va ANTES de la transacción y sin atrapar errores: si falla, se
     # corta acá y no se borra nada.

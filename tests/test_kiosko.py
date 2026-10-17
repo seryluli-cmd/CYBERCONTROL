@@ -514,7 +514,30 @@ class TestMigracionColumnasPermisos(BaseConBaseTemporal):
                 self.assertEqual(fila[columna], 0)
 
 
-class TestGestionDeUsuarios(BaseConBaseTemporal):
+class TestExigirAdmin(BaseConBaseTemporal):
+    """usuarios_repo.exigir_admin: la única forma de pedir "solo un Admin" en un
+    repo (la usan Limpiar base de datos y los bonos de la PlayStation 5)."""
+
+    def test_un_admin_activo_pasa_y_devuelve_su_fila(self):
+        admin = usuarios_repo.crear_usuario("Jefa", "1234", dominio.ROL_ADMIN)
+        self.assertEqual(usuarios_repo.exigir_admin(admin, "hacer algo")["nombre"], "Jefa")
+
+    def test_una_empleada_no_pasa(self):
+        empleada = usuarios_repo.crear_usuario("Ana", "1234", dominio.ROL_EMPLEADA)
+        with self.assertRaisesRegex(PermissionError, "Solo un Administrador puede hacer algo."):
+            usuarios_repo.exigir_admin(empleada, "hacer algo")
+
+    def test_un_admin_dado_de_baja_no_pasa(self):
+        # Se relee de la base: una sesión que quedó abierta no sirve.
+        admin = usuarios_repo.crear_usuario("Jefa", "1234", dominio.ROL_ADMIN)
+        usuarios_repo.desactivar_usuario(admin)
+        with self.assertRaisesRegex(PermissionError, "ya no está habilitado"):
+            usuarios_repo.exigir_admin(admin, "hacer algo")
+        with self.assertRaises(PermissionError):
+            usuarios_repo.exigir_admin(9999, "hacer algo")
+
+
+class TestGestionDeUsuarios(BaseConBaseTemporal):
     def test_crear_usuario_asigna_numeros_correlativos(self):
         # El id 1 ya lo tiene el Administrador que se siembra solo.
         id_a = usuarios_repo.crear_usuario("A", "1234", "EMPLEADA")

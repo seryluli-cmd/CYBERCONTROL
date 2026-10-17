@@ -65,17 +65,8 @@ def puede_operar(usuario) -> bool:
     return usuarios_repo.tiene_permiso(usuario, PERMISO_OPERAR)
 
 
-def _usuario_habilitado(usuario_id: int):
-    """La fila ACTUAL del usuario, o PermissionError si ya no existe o fue
-    desactivado (no puede seguir operando con una sesión que quedó abierta)."""
-    usuario = usuarios_repo.obtener_usuario(usuario_id)
-    if usuario is None or not usuario["activo"]:
-        raise PermissionError("Ese usuario ya no está habilitado para operar.")
-    return usuario
-
-
 def _exigir_operador(usuario_id: int):
-    if not puede_operar(_usuario_habilitado(usuario_id)):
+    if not puede_operar(usuarios_repo.usuario_habilitado(usuario_id)):
         raise PermissionError(
             "No tenés permiso para operar la PlayStation 5. "
             "Pedile al Admin el permiso \"Operar PCs y Miembros\"."
@@ -83,8 +74,7 @@ def _exigir_operador(usuario_id: int):
 
 
 def _exigir_admin(usuario_id: int):
-    if not dominio.es_admin(_usuario_habilitado(usuario_id)):
-        raise PermissionError("Solo un Administrador puede administrar los bonos de la PlayStation 5.")
+    usuarios_repo.exigir_admin(usuario_id, "administrar los bonos de la PlayStation 5")
 
 
 # ---------------------------------------------------------------------

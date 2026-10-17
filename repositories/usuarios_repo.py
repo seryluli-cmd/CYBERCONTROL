@@ -187,6 +187,33 @@ def obtener_usuario(usuario_id: int):
         ).fetchone()
 
 
+def usuario_habilitado(usuario_id: int):
+    """
+    La fila ACTUAL del usuario, leída de nuevo de la base, o PermissionError
+    si ya no existe o fue desactivado: quien quedó con una sesión abierta no
+    puede seguir operando. Es para las operaciones que se controlan en el repo
+    y no solo escondiendo el botón, así un permiso quitado o un usuario dado de
+    baja corta el acceso en el acto (PlayStation 5, Limpiar base de datos).
+    """
+    usuario = obtener_usuario(usuario_id)
+    if usuario is None or not usuario["activo"]:
+        raise PermissionError("Ese usuario ya no está habilitado para operar.")
+    return usuario
+
+
+def exigir_admin(usuario_id: int, para: str):
+    """
+    Como usuario_habilitado(), y además tiene que ser Administrador; si no,
+    PermissionError con un mensaje listo para mostrar: "Solo un Administrador
+    puede {para}." (`para`, por ejemplo, "limpiar la base de datos").
+    Devuelve la fila del usuario.
+    """
+    usuario = usuario_habilitado(usuario_id)
+    if not dominio.es_admin(usuario):
+        raise PermissionError(f"Solo un Administrador puede {para}.")
+    return usuario
+
+
 def _proximo_numero_disponible(conexion) -> int:
     """
     Menor "Usuario Nº" que todavía no está ocupado — a propósito NO es
