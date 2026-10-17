@@ -57,8 +57,9 @@ class TestLaPantallaDePcsNoSeVuelveLentaConElHistorial(BaseConBaseTemporal):
 
     def _sumar_historial(self, sesiones):
         """`sesiones` sesiones ya terminadas, cada una con su bono vendido (una de
-        cada cinco en PCSTREAM), más movimientos de socio, traslados y sesiones
-        de la PlayStation 5: lo que se va acumulando día a día."""
+        cada cinco en PCSTREAM), más movimientos de socio, traslados, accesos de
+        admin, bloqueos del filtro de palabras y sesiones de la PlayStation 5: lo
+        que se va acumulando día a día."""
         with database.conexion_db() as conexion:
             for n in range(sesiones):
                 inicio = self._siguiente_momento()
@@ -93,6 +94,17 @@ class TestLaPantallaDePcsNoSeVuelveLentaConElHistorial(BaseConBaseTemporal):
                         "VALUES (?, ?, ?, ?, ?)",
                         (sesion, self.estaciones[0], self.estaciones[1],
                          (inicio + timedelta(seconds=3)).isoformat(timespec="seconds"), self.admin),
+                    )
+                if n % 2 == 0:
+                    conexion.execute(
+                        "INSERT INTO eventos_admin_pc (estacion_id, fecha_hora, tipo) VALUES (?, ?, ?)",
+                        (estacion, (inicio + timedelta(seconds=4)).isoformat(timespec="seconds"),
+                         dominio.EVENTO_ADMIN_ACCESO),
+                    )
+                if n % 2 == 1:
+                    conexion.execute(
+                        "INSERT INTO bloqueos_filtro_pc (estacion_id, fecha_hora, palabra, titulo) VALUES (?, ?, ?, ?)",
+                        (estacion, (inicio + timedelta(seconds=5)).isoformat(timespec="seconds"), "palabra", "Una página"),
                     )
                 if n % 3 == 0:
                     inicio_consola = inicio + timedelta(seconds=30)

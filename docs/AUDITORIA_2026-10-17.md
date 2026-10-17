@@ -331,6 +331,48 @@ que no se repitió en las tres siguientes (todas OK). No quedó registrado cuál
 fue; se presume la prueba de red que ya fallaba de vez en cuando por una
 conexión cortada (`ConnectionAbortedError`).
 
+### Tanda 3 — hecha (17/10)
+
+Puntos 4, 7, 13 a 17 (el 12 ya estaba hecho en la tanda 2), en la rama
+`tanda3-orden`, mergeada a `master`:
+
+- **4, hecho distinto de lo propuesto:** no se mudó el Resumen del Día. 20 pruebas
+  congelan la hora parcheando `repositories.turnos_repo.datetime`, y en otro
+  archivo el reporte habría quedado con la hora real. Se mudaron en cambio las
+  cuatro consultas de "qué se vendió en la ventana de un turno" a
+  `repositories/turnos_ventas_repo.py`: no miran la hora, ninguna prueba las
+  intercepta y `turnos_repo` las sigue usando con los mismos nombres.
+  `turnos_repo.py`: 676 → 581 líneas.
+- **7, solo el comentario:** `database.py` explica por qué el bloque de
+  migraciones va al final y por qué no se puede sacar (una migración lee
+  `database._TIPOS_MOVIMIENTO_SALDO` a propósito, para que las pruebas lo
+  reemplacen). Se descartó cambiar de dónde importa `database_esquema`: no saca
+  el ciclo, y si alguien mueve el bloque fallan todas las pruebas al instante.
+- **13:** `usuarios_repo.exigir_admin` y `usuarios_repo.usuario_habilitado`, que
+  usan Limpiar base de datos y la PlayStation 5. Cambio visible: un Admin dado de
+  baja que intenta limpiar la base ve "ya no está habilitado" en vez de "Solo un
+  Administrador...". Tres pruebas nuevas.
+- **14:** una sola `es_playstation` (en `pcs_detalle`, que `pcs_window` ya
+  importaba). Al unificarla, una variable local con el mismo nombre rompía el
+  panel. Se corrigió, y se confirmó que las pruebas lo atrapan: con el error
+  vuelto a poner, fallan 25.
+- **15:** imports sin usar fuera; la clase de `test_playstation` pasa a
+  `TestMigracionCheckOrigenEnVentas`.
+- **16:** `Kiosko.spec` arma `CyberBios.exe`. Se va a ver en el próximo armado.
+- **17:** sin cambios. `main.py` sigue en 598 líneas; la hoja de estilos se muda
+  cuando algo lo haga pasar de 600.
+
+**Junto con el filtro de palabras.** Mientras tanto, otra sesión subió a `master`
+el filtro de palabras de las PCs (`108b931`, `f7b2db7`), y se juntó antes de
+mergear, sin conflictos. Suma una consulta al panel de actividad
+(`filtro_palabras_repo.listar_recientes`). Se comprobó que usa su índice por
+fecha, y `tests/test_velocidad_pantalla_pcs.py` ahora simula también bloqueos
+del filtro y accesos de admin: quitando cualquiera de esos dos índices, el
+trabajo pasa de ~110 a ~200 y la prueba falla.
+
+Pruebas: 506 OK antes de juntar; 532 OK después (las 529 de `master` más las 3
+nuevas).
+
 Decisiones tuyas antes de la tanda 2 (ya tomadas):
 - ¿Se borra la fila vieja de la clave en la base (punto 2)? **Sí.**
 - En el punto 12, ¿armar los `CHECK` con las listas o borrar las listas? **Armarlos con las listas.**
