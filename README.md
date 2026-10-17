@@ -282,11 +282,12 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   Confirmar llama a `compras_repo.registrar_compra` con todo el lote junto.
 - **Consulta de Ventas** (`consulta_ventas_window.py`,
   `ConsultaVentasWindow`) — últimas 100 ventas
-  (`ventas_repo.listar_ventas_recientes`), resalta ANULADA. Botón "Anular
+  (`ventas_repo.listar_ventas_recientes`), con la fecha como "16/10/2026 22:13"
+  (`ui.utils.formato_fecha_hora`), resalta ANULADA. Botón "Anular
   venta" (solo si `self.es_admin`) pide motivo obligatorio y llama a
   `ventas_repo.anular_venta`, que **repone el stock** de cada línea y
   marca `estado='ANULADA'` con auditoría (quién/cuándo/por qué).
-- **Reportes** (`reportes_window.py`, `ReportesWindow`) — 5 tabs. Cuatro
+- **Reportes** (`reportes_window.py`, `ReportesWindow`) — 6 tabs. Cuatro
   con filtro Desde/Hasta y atajo "Solo Hoy": **Resumen de Ventas**
   (`reportes_repo.resumen_ventas`: total + desglose efectivo/digital),
   **Por Turno** (`reportes_repo.resumen_por_turno`: mismo desglose pero
@@ -318,7 +319,18 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   `resumen_del_dia()["cierres_de_otro_dia"]`, y en el día donde quedó anotado
   el estado dice "Cerrado el dd/mm" (`"cerrado_otro_dia"`). La Noche que se
   cierra a la madrugada (lo normal) no dispara nada
-  (`turnos_repo._cerrado_pasado_su_vencimiento`).
+  (`turnos_repo._cerrado_pasado_su_vencimiento`). La sexta, **Por Operador**
+  (`ui/reportes_operador.py`, archivo aparte por la regla 12; pedido del dueño
+  2026-10-17), con Desde/Hasta y "Solo Hoy": arriba
+  `reportes_repo.resumen_por_operador` (por usuario: ventas confirmadas,
+  anuladas, efectivo, digital y total, de mayor a menor) y abajo, del operador
+  elegido, `reportes_repo.ventas_de_operador` (cada venta con fecha y hora,
+  turno, origen, concepto —"2 x Coca 500" o "Trámite: ..."—, efectivo, digital,
+  total y estado; las anuladas en rojo, sin sumar). No hizo falta tocar la base:
+  `ventas.fecha` (con la hora) y `ventas.usuario_id` se graban desde siempre. La
+  venta queda a nombre de quien tenía la SESIÓN abierta. El turno se rotula con
+  `turnos.dia_en_que_empezo_el_turno` (una venta del lunes a la 01:00 es
+  "Domingo T2", no "Noche").
 - **Control de Cierres de Turno** (`caja_window.py`,
   `ControlCierresWindow`) — lista `turnos_repo.listar_cierres()` (columna
   Turno con la etiqueta de `etiqueta_turno`, incluye "Domingo T1"/"T2"),
@@ -415,7 +427,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-412 tests al 2026-10-16. Cubren turnos, caja, stock, ventas y anulaciones,
+424 tests al 2026-10-17. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
 de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

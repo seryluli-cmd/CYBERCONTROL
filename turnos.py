@@ -74,6 +74,20 @@ def turnos_del_dia(fecha) -> tuple:
     return dominio.TURNOS_DOMINGO if es_domingo(fecha) else dominio.TURNOS
 
 
+def dia_en_que_empezo_el_turno(fecha_hora: datetime) -> date:
+    """
+    El día calendario en que EMPEZÓ el turno al que pertenece un momento (ver
+    calcular_turno). Es el mismo día, salvo de madrugada (antes de las 06:00):
+    eso es el turno Noche que arrancó el día anterior. Sin esto, una venta del
+    lunes a la 01:00 (Noche del domingo, "Domingo T2") se mostraría como
+    "Noche", y una del domingo a las 03:00 (Noche del sábado) como "Domingo T2".
+    Se usa para pasarle el día correcto a etiqueta_turno.
+    """
+    if fecha_hora.hour < 6:
+        return (fecha_hora - timedelta(days=1)).date()
+    return fecha_hora.date()
+
+
 def etiqueta_turno(fecha, turno: str) -> str:
     """
     Nombre legible de un turno según el día calendario al que

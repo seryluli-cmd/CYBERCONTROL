@@ -369,3 +369,101 @@ def ranking_ventas(desde: str, hasta: str, ordenar_por: str = "cantidad"):
                 CATEGORIA_BONO_PLAYSTATION, *rango,
             ),
         ).fetchall()
+
+
+# ---------------------------------------------------------------------
+# Por Operador: quién vendió qué y a qué hora
+# ---------------------------------------------------------------------
+# La venta queda a nombre de quien tenía la sesión abierta en el mostrador
+# (ventas.usuario_id), que no siempre es quien atendió: si alguien vende con
+# la sesión de otro, sale a nombre del otro. Es el mismo dato que usa el
+# detalle de un cierre (turnos_repo.detalle_cierre).
+
+def resumen_por_operador(desde: str, hasta: str):
+    """
+    Una fila por cada usuario que registró al menos una venta entre dos
+    fechas (incluidas ambas puntas, "YYYY-MM-DD"): cuántas ventas confirmadas
+    hizo, cuántas se anularon después, y cuánto cobró en efectivo, en digital y
+    en total -- solo de las confirmadas, mismo criterio que resumen_ventas(). El
+    efectivo de venta_pagos ya viene sin el vuelto, así que efectivo + digital
+    da el total. Ordenado de mayor a menor total.
+    """
+    rango = (desde, hasta)
+    with conexion_db() as conexion:
+        filas = conexion.execute(
+            """
+            SELECT usuarios.id AS usuario_id, usuarios.nombre AS nombre,
+                   SUM(CASE WHEN ventas.estado = ? THEN 1 ELSE 0 END) AS cantidad_ventas,
+                   SUM(CASE WHEN ventas.estado = ? THEN 1 ELSE 0 END) AS cantidad_anuladas,
+                   COALESCE(SUM(CASE WHEN ventas.estado = ? THEN ventas.total END), 0) AS total
+            FROM ventas
+            JOIN usuarios ON usuarios.id = ventas.usuario_id
+            WHERE ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
+            GROUP BY usuarios.id
+            """,
+            (dominio.VENTA_CONFIRMADA, dominio.VENTA_ANULADA, dominio.VENTA_CONFIRMADA, *rango),
+        ).fetchall()
+
+        pagos = conexion.execute(
+            """
+            SELECT ventas.usuario_id AS usuario_id, venta_pagos.metodo AS metodo,
+                   SUM(venta_pagos.monto) AS total
+            FROM venta_pagos
+            JOIN ventas ON ventas.id = venta_pagos.venta_id
+            WHERE ventas.estado = ? AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
+            GROUP BY ventas.usuario_id, venta_pagos.metodo
+            """,
+            (dominio.VENTA_CONFIRMADA, *rango),
+        ).fetchall()
+
+    por_metodo = {}
+    for fila in pagos:
+        por_metodo[(fila["usuario_id"], fila["metodo"])] = fila["total"] or 0.0
+
+    resultado = [
+        {
+            "usuario_id": fila["usuario_id"],
+            "nombre": fila["nombre"],
+            "cantidad_ventas": fila["cantidad_ventas"],
+            "cantidad_anuladas": fila["cantidad_anuladas"],
+            "efectivo": round(por_metodo.get((fila["usuario_id"], dominio.PAGO_EFECTIVO), 0.0), 2),
+            "digital": round(por_metodo.get((fila["usuario_id"], dominio.PAGO_DIGITAL), 0.0), 2),
+            "total": round(fila["total"], 2),
+        }
+        for fila in filas
+    ]
+    resultado.sort(key=lambda fila: (-fila["total"], fila["nombre"].lower()))
+    return resultado
+
+
+def ventas_de_operador(usuario_id: int, desde: str, hasta: str):
+    """
+    Las ventas de un usuario entre dos fechas, una por una y en orden de hora
+    (las anuladas también, con su estado, para que se vea que existieron). Cada
+    fila trae "id", "fecha" (con la hora, tal como se grabó), "turno", "origen",
+    "estado", "total", "efectivo", "digital" y "concepto": qué se vendió, en
+    corto -- los artículos de kiosko ("2 x Coca 500"), el nombre del trámite, o
+    nada para un bono (la pantalla muestra el origen).
+    """
+    with conexion_db() as conexion:
+        return [dict(fila) for fila in conexion.execute(
+            """
+            SELECT ventas.id, ventas.fecha, ventas.turno, ventas.origen, ventas.estado,
+                   ventas.total,
+                   COALESCE((SELECT SUM(monto) FROM venta_pagos
+                             WHERE venta_id = ventas.id AND metodo = ?), 0) AS efectivo,
+                   COALESCE((SELECT SUM(monto) FROM venta_pagos
+                             WHERE venta_id = ventas.id AND metodo = ?), 0) AS digital,
+                   COALESCE(
+                       (SELECT 'Trámite: ' || descripcion FROM tramites_venta WHERE venta_id = ventas.id),
+                       (SELECT GROUP_CONCAT(cantidad || ' x ' || descripcion, ', ')
+                        FROM venta_detalle WHERE venta_id = ventas.id),
+                       ''
+                   ) AS concepto
+            FROM ventas
+            WHERE ventas.usuario_id = ?
+              AND ventas.fecha >= date(?) AND ventas.fecha < date(?, '+1 day')
+            ORDER BY ventas.fecha, ventas.id
+            """,
+            (dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL, usuario_id, desde, hasta),
+        )]

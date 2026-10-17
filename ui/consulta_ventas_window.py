@@ -19,8 +19,8 @@ from repositories import ventas_repo
 from control_pcs.repositories import miembros_repo
 from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta
 from ui.utils import (
-    formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
-    sin_boton_por_defecto, crear_tabla,
+    formato_pesos, formato_fecha_hora, mostrar_error, mostrar_info, confirmar, manejar_errores,
+    aplicar_clase, sin_boton_por_defecto, crear_tabla,
 )
 
 
@@ -78,7 +78,7 @@ class ConsultaVentasWindow(VentanaConDetalleDeVenta):
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
             self.tabla.setItem(fila, 0, QTableWidgetItem(str(venta["id"])))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(venta["fecha"]))
+            self.tabla.setItem(fila, 1, QTableWidgetItem(formato_fecha_hora(venta["fecha"])))
             self.tabla.setItem(fila, 2, QTableWidgetItem(venta["turno"]))
             self.tabla.setItem(fila, 3, QTableWidgetItem(dominio.NOMBRE_ORIGEN_VENTA[venta["origen"]]))
             self.tabla.setItem(fila, 4, QTableWidgetItem(venta["vendedor"]))

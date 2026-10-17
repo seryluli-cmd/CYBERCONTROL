@@ -95,6 +95,18 @@ def formato_pesos(monto) -> str:
     return f"$ {texto}"
 
 
+def formato_fecha_hora(fecha) -> str:
+    """
+    Una fecha con hora como se graba en la base ("2026-10-16T22:13:28.123456")
+    convertida en "16/10/2026 22:13", para mostrar. Si no se puede leer, la
+    devuelve tal cual (mejor ver el dato crudo que un cartel de error).
+    """
+    try:
+        return datetime.fromisoformat(fecha).strftime("%d/%m/%Y %H:%M")
+    except (TypeError, ValueError):
+        return str(fecha)
+
+
 def formato_tiempo(segundos: int, con_segundos: bool = False) -> str:
     """
     Convierte segundos en un texto legible ("2h 05m" o "45m 12s"). Con

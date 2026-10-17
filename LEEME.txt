@@ -37,6 +37,10 @@ VENTAS Y CAJA
   cuenta como cerrar ese turno. Si pasaron días sin cerrar, el cierre de hoy
   queda anotado en el día viejo: Reportes > Resumen del Día lo avisa y tiene
   un botón para ir a verlo.
+- Reportes > Por Operador: cuánto vendió cada persona entre dos fechas y,
+  tocando su nombre, cada una de sus ventas con el día y la hora, qué se
+  vendió y cómo se cobró. Ojo: la venta queda a nombre de quien tenía la
+  sesión abierta; por eso cada uno tiene que entrar con su propio usuario.
 
 PCs, SOCIOS Y PLAYSTATION 5
 ----------------------------

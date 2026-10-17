@@ -183,6 +183,7 @@ abra no alcanza si los tests no pasan.
 | `turnos.es_domingo(fecha)` | se pregunta si un día es domingo (acepta date, datetime o string) |
 | `turnos.turnos_del_dia(fecha)` | se decide qué turnos existen en un día (3, o 2 el domingo) |
 | `turnos.etiqueta_turno(fecha, turno)` | se arma el nombre legible de un turno |
+| `turnos.dia_en_que_empezo_el_turno(fecha_hora)` | se decide a qué día pertenece el turno de un momento (antes de las 06:00 es la Noche del día anterior): pasarle eso a `etiqueta_turno`, nunca el día calendario de una venta de madrugada |
 | `turnos.turno_vencimiento(dia, turno)` | se decide si un turno ya debería estar cerrado |
 | `turnos.turno_que_arranca_tras_un_cierre(momento)` | se decide con qué turno queda anotado lo que sigue a un cierre (la hora del cierre + `TURNO_GRACIA_MIN`); la usa `turnos_repo._desde_y_turno_en_curso`, que es lo que ven Caja y Cierre de Turno y lo que graba `cerrar_turno` |
 | `turnos_repo._cerrado_pasado_su_vencimiento(dia, turno, cerrado_a)` | se decide si un turno se cerró "tarde" (pasado su vencimiento): lo usan el aviso y el "Cerrado el dd/mm" del Resumen del Día |
@@ -212,6 +213,8 @@ abra no alcanza si los tests no pasan.
 | `tramites_repo.registrar_tramite(...)` | se cobra un trámite de mostrador (monto libre): venta KIOSKO sin detalle + vínculo en `tramites_venta` |
 | `main.aplicar_estilo(app)` | se fija el aspecto de TODO el programa: estilo Fusion, esquema de color CLARO y la hoja de estilos (`HOJA_DE_ESTILOS`) |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
+| `ui.utils.formato_fecha_hora(fecha)` | una fecha con hora de la base se convierte en `"16/10/2026 22:13"` |
+| `reportes_repo.resumen_por_operador(...)` · `.ventas_de_operador(...)` | se calcula cuánto vendió cada usuario y se listan sus ventas con fecha y hora (Reportes > Por Operador) |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
 | `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter |
@@ -514,4 +517,4 @@ El programa integra kiosko, Control de PCs, Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-412 pruebas al 2026-10-16.
+424 pruebas al 2026-10-17.

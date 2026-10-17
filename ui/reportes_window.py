@@ -14,6 +14,8 @@ Reportes, una pestaña por cada pregunta que se le hace a las ventas:
   bonos de socios, cargas de saldo por tarifa, trámites y bonos de la
   PlayStation 5, todo junto, con una columna Categoría para distinguir de qué
   rubro vino cada fila (ver reportes_repo.ranking_ventas).
+- Por Operador: quién vendió cuánto y, de cada uno, sus ventas con fecha y
+  hora (en su propio archivo, ui/reportes_operador.py).
 
 Las usa el Admin o una Empleada con `permiso_reportes`.
 """
@@ -28,6 +30,7 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QFont
 
 from repositories import reportes_repo, turnos_repo
+from ui.reportes_operador import PestañaPorOperador
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, manejar_errores, sin_boton_por_defecto,
     crear_tabla, rango_de_fechas, fecha_iso, crear_selector_de_fecha,
@@ -55,6 +58,7 @@ class ReportesWindow(QDialog):
         pestañas.addTab(PestañaPorTurno(), "Por Turno")
         pestañas.addTab(PestañaKioskoVsPCs(), "Totales")
         pestañas.addTab(PestañaRanking(), "Ranking de Ventas")
+        pestañas.addTab(PestañaPorOperador(), "Por Operador")
 
         layout = QVBoxLayout()
         layout.addWidget(pestañas)
