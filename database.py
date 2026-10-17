@@ -338,7 +338,17 @@ def _cargar_datos_iniciales(conexion: sqlite3.Connection):
         conexion.commit()
 
 
-# API histórica: los tests y módulos existentes importan estas funciones desde database.
+# API histórica: los tests y los docs nombran estas funciones como database.X, y
+# database_esquema las toma de acá.
+#
+# ESTE BLOQUE TIENE QUE QUEDAR AL FINAL DEL ARCHIVO. database_migraciones hace
+# `from database import _sql_tabla_ventas, ...` al cargarse: si este import
+# subiera al principio (como se ordenan normalmente), database_migraciones se
+# cargaría antes de que existan esas funciones y el programa no arrancaría
+# (ImportError; se comprobó en la revisión del 2026-10-17). Tampoco se puede
+# sacar: _migrar_check_tipo_en_movimientos_saldo_miembro lee
+# `database._TIPOS_MOVIMIENTO_SALDO` a propósito, para que las pruebas puedan
+# reemplazarlo acá.
 from database_migraciones import (
     _agregar_columna_si_falta,
     _migrar_columnas_permisos,
