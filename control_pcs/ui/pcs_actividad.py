@@ -3,7 +3,8 @@ pcs_actividad.py
 ==================
 El panel de "Actividad reciente" de la parte de abajo de Control de PCs
 (`PanelActividad`): el log de los últimos movimientos -- sesiones y bonos de las
-PCs y de la PlayStation 5, saldo de socios, traslados, accesos de admin. Vive
+PCs y de la PlayStation 5, saldo de socios, traslados, accesos de admin y páginas
+que cerró el filtro de palabras. Vive
 aparte de la grilla (pcs_window.py) para que ese archivo no pase de largo.
 """
 
@@ -46,7 +47,16 @@ def _texto_evento(evento) -> str:
         if evento["segundos_sin_cliente"] is not None:
             texto += f" (estuvo {formato_tiempo(evento['segundos_sin_cliente'])} sin bloqueo)"
         return texto + "."
+    if tipo == "FILTRO":
+        return (f"{hora} — {evento['estacion_nombre']}: el filtro cerró una página con "
+                f"\"{evento['palabra']}\" ({titulo_corto(evento['titulo'])}).")
     return hora
+
+
+def titulo_corto(titulo: str, largo: int = 60) -> str:
+    """El título de la página que cerró el filtro, cortado para que entre en un
+    renglón (el completo se ve en la pantalla del filtro)."""
+    return titulo if len(titulo) <= largo else titulo[:largo - 1] + "…"
 
 
 class PanelActividad(QTextEdit):

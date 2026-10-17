@@ -343,6 +343,20 @@ def inicializar_base_de_datos():
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_eventos_admin_pc_fecha ON eventos_admin_pc(fecha_hora)")
+    # Cada página que cerró el filtro de palabras de una PC cliente (ver
+    # control_pcs/repositories/filtro_palabras_repo.py): qué palabra encontró y en
+    # qué título. Nada se borra (regla 7). El índice por fecha es porque
+    # "Actividad reciente" pide los últimos en cada refresco de 5 s.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bloqueos_filtro_pc (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id          INTEGER NOT NULL REFERENCES estaciones(id),
+            fecha_hora           TEXT NOT NULL,
+            palabra              TEXT NOT NULL,
+            titulo               TEXT NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bloqueos_filtro_pc_fecha ON bloqueos_filtro_pc(fecha_hora)")
     # Detalle de qué bono(s) se cargaron a cada sesión, con el venta_id de
     # la venta que generó ese cobro (se factura igual que cualquier venta
     # de kiosko, ver pcs_repo.asignar_bono) — trazabilidad completa entre

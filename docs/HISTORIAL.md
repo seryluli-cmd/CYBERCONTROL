@@ -451,3 +451,23 @@ sección "Fondo de la pantalla de bloqueo", con lo medido).
   dato y `/fondo` da 404 o 500; un archivo que no empieza como JPEG cuenta como "no hay fondo".
 403 tests (41 nuevos en `tests/test_fondo_pantalla.py`: el repositorio, el servidor real, la
 preparación de la imagen y la pantalla).
+
+**2026-10-17:** **filtro de palabras de las PCs ("protección antiporno").** Pedido del dueño, con
+una captura del "Filtrador de palabras" del programa de cyber que usaba antes, y la pregunta de si
+consumiría muchos recursos en las PCs (16 GB, Ryzen 5 3500, Windows 10): no, se midió una revisión
+completa en 6-10 microsegundos, menos de una milésima de un núcleo cada 0,7 s.
+- **Dónde se configura:** Configuración ADMIN -> Gestionar Estaciones -> "Filtro de palabras de las
+  PCs..." (`control_pcs/ui/pcs_filtro_dialogo.py`): prendido/apagado, la lista y el mensaje, más las
+  últimas páginas cerradas. Viene prendido con la lista del programa viejo, sin "DP".
+- **Dónde vive:** la lista, como JSON en `configuracion` (`filtro_palabras_repo`); cada página
+  cerrada, en la tabla nueva `bloqueos_filtro_pc` (con índice por fecha: la lee "Actividad
+  reciente" en cada refresco).
+- **Servidor:** `filtro_version` en cada `GET /estado`, `GET /filtro` con la lista y
+  `POST /filtro_bloqueo` para los avisos. Compatible en las dos direcciones: un Cliente PC viejo
+  ignora el campo nuevo y uno nuevo contra un servidor viejo no recibe versión y no filtra nada.
+- **En cada PC** (`CLIENTE PC/filtro_palabras.py`): con una sesión en curso mira el título de la
+  ventana de adelante; con una palabra de la lista (entera, sin mayúsculas ni acentos) cierra la
+  pestaña con Ctrl+W, muestra el mensaje y avisa; si la página sigue ahí 2 s después, cierra la
+  ventana. Como mucho un aviso cada 30 s por PC.
+529 tests al juntarse con la revisión del mismo día (26 nuevos en `tests/test_filtro_palabras.py`:
+el repositorio, el servidor real, la actividad y la pantalla).

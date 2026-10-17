@@ -45,8 +45,8 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
 | [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos (con turnos faltantes y lo vendido en la ventana de un turno, `turnos_ventas_repo.py`), trámites, usuarios y ventas. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
-| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el mosaico de monitores de la pantalla principal se dibuja en `control_pcs/ui/pcs_mosaico.py` (solo dibuja: qué estado/color le toca a cada equipo lo decide `pcs_window.py`); el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y el fondo de la pantalla de bloqueo de las PCs en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py`. |
-| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo`, el fondo de la pantalla de bloqueo) y registro de fallos compartido con la UI. |
+| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el mosaico de monitores de la pantalla principal se dibuja en `control_pcs/ui/pcs_mosaico.py` (solo dibuja: qué estado/color le toca a cada equipo lo decide `pcs_window.py`); el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y el fondo de la pantalla de bloqueo de las PCs en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py`, y el filtro de palabras en `control_pcs/repositories/filtro_palabras_repo.py` + `control_pcs/ui/pcs_filtro_dialogo.py`. |
+| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo`, el fondo de la pantalla de bloqueo, y `GET /filtro` + `POST /filtro_bloqueo`, el filtro de palabras) y registro de fallos compartido con la UI. |
 | [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
@@ -371,6 +371,18 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   base). "Quitar fondo" vuelve al azul liso. Cada Cliente PC lo pide al arrancar
   (`GET /fondo`, ver `servidor_red.py`) y las que están prendidas se enteran solas,
   porque `GET /estado` trae `fondo_version` (la huella del contenido).
+- **Filtro de palabras de las PCs** (`control_pcs/ui/pcs_filtro_dialogo.py`,
+  `DialogoFiltroPalabras`; botón "Filtro de palabras de las PCs..." de Gestionar
+  Estaciones; pedido del dueño, 2026-10-17: "protección antiporno") — prender/apagar,
+  la lista (una palabra o frase por renglón) y el mensaje que ve el cliente, más las
+  últimas páginas cerradas. Con una sesión en curso, cada Cliente PC mira el título de
+  la ventana de adelante y, si tiene una palabra de la lista (entera, sin mayúsculas
+  ni acentos), cierra la pestaña, muestra el mensaje y avisa (`POST /filtro_bloqueo`):
+  queda en `bloqueos_filtro_pc` y en "Actividad reciente". La lista vive en
+  `configuracion` (`filtro_palabras_repo`); viene prendida con la que el dueño usaba en
+  su programa anterior. Llega a las PCs como el fondo: `filtro_version` en cada
+  `GET /estado` y `GET /filtro` si cambió. Cómo busca y lo medido (menos de una
+  milésima de un núcleo): README de CLIENTE PC, "Filtro de palabras".
 - **IP asentada de cada estación** (Gestionar Estaciones, columna "IP asentada";
   pedido del dueño, 2026-10-17) — la primera vez que el Cliente PC de una PC se
   conecta, `pcs_repo.registrar_conexion` asienta la IP real del pedido
@@ -443,9 +455,9 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-503 tests al 2026-10-17. Cubren turnos, caja, stock, ventas y anulaciones,
+529 tests al 2026-10-17. Cubren turnos, caja, stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
-de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
+y el filtro de palabras de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.
 
 ## Empaquetado (.exe)

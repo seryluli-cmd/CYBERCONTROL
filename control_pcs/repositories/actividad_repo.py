@@ -1,7 +1,7 @@
 """Feed de actividad de PCs y PlayStation para el panel del mostrador."""
 
 from database import conexion_db
-from control_pcs.repositories import accesos_admin_pc_repo, playstation_repo
+from control_pcs.repositories import accesos_admin_pc_repo, filtro_palabras_repo, playstation_repo
 
 
 def actividad_reciente(limite: int = 30):
@@ -91,6 +91,11 @@ def actividad_reciente(limite: int = 30):
                              "evento_admin": fila["tipo"],
                              "estacion_nombre": fila["estacion_nombre"],
                              "segundos_sin_cliente": fila["segundos_sin_cliente"]})
+
+        for fila in filtro_palabras_repo.listar_recientes(limite):
+            eventos.append({"fecha": fila["fecha_hora"], "tipo": "FILTRO",
+                             "estacion_nombre": fila["estacion_nombre"],
+                             "palabra": fila["palabra"], "titulo": fila["titulo"]})
 
     # La PlayStation 5 comparte el panel con las PCs: sus sesiones y bonos
     # llegan con la misma forma (ver playstation_repo.eventos_recientes).
