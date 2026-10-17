@@ -141,16 +141,21 @@ def registrar_conexion(estacion_id: int, ip: str = None):
 
     `ip` es la IP LAN desde la que llegó ese pedido (self.client_address
     en servidor_red.py, no un dato que mande el Cliente PC) -- se guarda en
-    estaciones.ultima_ip, que es lo que lee el botón "Traer IP" de
-    Gestionar Estaciones. Puede venir None (por ejemplo desde un test que
-    no simula una conexión real); en ese caso no se pisa la IP ya
-    guardada.
+    estaciones.ultima_ip, y si la estación todavía no tenía IP asentada (es
+    su primer enlace, o el Admin la borró) también queda como ip_asentada,
+    que después ya no se pisa sola (ver estado_de_estacion). Puede venir None
+    (por ejemplo desde un test que no simula una conexión real); en ese caso
+    no se toca ninguna IP.
     """
     with conexion_db() as conexion:
         if ip:
             conexion.execute(
-                "UPDATE estaciones SET ultima_conexion = ?, ultima_ip = ? WHERE id = ?",
-                (datetime.now().isoformat(timespec="seconds"), ip, estacion_id),
+                """
+                UPDATE estaciones SET ultima_conexion = ?, ultima_ip = ?,
+                                      ip_asentada = COALESCE(ip_asentada, ?)
+                WHERE id = ?
+                """,
+                (datetime.now().isoformat(timespec="seconds"), ip, ip, estacion_id),
             )
         else:
             conexion.execute(
@@ -160,13 +165,36 @@ def registrar_conexion(estacion_id: int, ip: str = None):
 
 
 def obtener_estacion(estacion_id: int):
-    """Fila cruda de una estación por id, incluida ultima_ip -- usada por
+    """Fila cruda de una estación por id, incluidas sus IPs -- usada por
     el botón "Traer IP" de Gestionar Estaciones para releer el dato más
     fresco sin recargar toda la lista."""
     with conexion_db() as conexion:
         return conexion.execute(
             "SELECT * FROM estaciones WHERE id = ?", (estacion_id,)
         ).fetchone()
+
+
+def borrar_ip_asentada(estacion_id: int):
+    """Olvida la IP asentada de una estación (botón de Gestionar Estaciones,
+    por ejemplo si se cambió la PC o su IP). La próxima vez que esa PC se
+    conecte por su nombre, registrar_conexion asienta la IP nueva."""
+    with conexion_db() as conexion:
+        conexion.execute("UPDATE estaciones SET ip_asentada = NULL WHERE id = ?", (estacion_id,))
+
+
+def ips_asentadas_repetidas() -> set:
+    """Las IPs asentadas en más de una estación activa. Con esas IPs no se
+    reconoce a ninguna PC (estado_de_estacion no adivina) y Gestionar
+    Estaciones lo avisa para que el Admin borre la que no corresponde."""
+    with conexion_db() as conexion:
+        filas = conexion.execute(
+            """
+            SELECT ip_asentada FROM estaciones
+            WHERE activa = 1 AND ip_asentada IS NOT NULL
+            GROUP BY ip_asentada HAVING COUNT(*) > 1
+            """
+        ).fetchall()
+    return {fila["ip_asentada"] for fila in filas}
 
 
 # ---------------------------------------------------------------------
@@ -265,18 +293,30 @@ def _estado_para_estacion(estacion, sesion, ahora):
     }
 
 
-def estado_de_estacion(nombre: str):
+def estado_de_estacion(nombre: str, ip: str = None):
     """
-    Como estado_estaciones(), pero para una sola estación por nombre --
-    es lo que consulta el Cliente PC de cada estación (ver
-    servidor_red.py y la carpeta hermana "CLIENTE PC") para
-    decidir si debe mostrarse bloqueada o no. Devuelve None si no existe
-    una estación activa con ese nombre.
+    Como estado_estaciones(), pero para una sola estación -- es lo que
+    consulta el Cliente PC de cada estación (ver servidor_red.py y la carpeta
+    hermana "CLIENTE PC") para decidir si debe mostrarse bloqueada o no.
+
+    Es el ÚNICO lugar que decide qué estación es una PC que se conecta
+    (pedido del dueño, 2026-10-17): primero por el nombre que manda su Cliente
+    PC; si ninguna estación activa se llama así, por la IP desde la que llegó
+    el pedido (`ip`, la del socket), comparada con la IP asentada en su primer
+    enlace. Así sigue andando una PC cuyo nombre se cambió acá o se tipeó
+    distinto allá. Si esa IP está asentada en más de una estación activa no se
+    adivina (ver ips_asentadas_repetidas). Devuelve None si no se la reconoce.
     """
     with conexion_db() as conexion:
         estacion = conexion.execute(
             "SELECT * FROM estaciones WHERE nombre = ? AND activa = 1", (nombre,)
         ).fetchone()
+        if estacion is None and ip:
+            por_ip = conexion.execute(
+                "SELECT * FROM estaciones WHERE ip_asentada = ? AND activa = 1 LIMIT 2", (ip,)
+            ).fetchall()
+            if len(por_ip) == 1:
+                estacion = por_ip[0]
         if estacion is None:
             return None
         sesion = conexion.execute(

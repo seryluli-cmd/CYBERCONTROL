@@ -28,8 +28,10 @@ GET /estado?estacion=<nombre>
       de origen (`pcs_repo.registrar_conexion`; la IP sale de
       `self.client_address`, no de un dato que mande el Cliente PC). Es el
       latido con que el dashboard de Control de PCs sabe si una estación
-      sigue prendida y con red, no solo si tiene sesión; la IP rellena el
-      botón "Traer IP" de Gestionar Estaciones.
+      sigue prendida y con red, no solo si tiene sesión. La IP del PRIMER
+      pedido de cada estación queda además asentada (no se pisa sola).
+    - La estación se reconoce por el nombre y, si ninguna se llama así, por
+      la IP asentada (`pcs_repo.estado_de_estacion`); lo mismo en los POST.
     - Siempre viaja `fondo_version`: la versión del fondo de la pantalla de
       bloqueo (cadena vacía si no hay ninguno). Si cambia, el Cliente PC vuelve
       a pedir GET /fondo.
@@ -98,8 +100,8 @@ def _estado_a_json(item):
     """
     if item is None:
         # Estación desconocida (nombre mal escrito en el config.json del
-        # cliente, o borrada de Kiosko): bloqueada, nunca se regala el
-        # beneficio de la duda.
+        # cliente, o borrada de Kiosko, y tampoco reconocida por su IP
+        # asentada): bloqueada, nunca se regala el beneficio de la duda.
         return {"existe": False, "bloqueada": True, "segundos_restantes": None, "quien": None, "comando": None}
     sesion = item["sesion"]
     segundos = item["segundos_restantes"]
@@ -182,7 +184,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             return
 
         try:
-            item = pcs_repo.estado_de_estacion(nombre_estacion)
+            item = pcs_repo.estado_de_estacion(nombre_estacion, self.client_address[0])
         except Exception as error:
             # Un problema leyendo la base no puede tirar abajo el hilo
             # del servidor -- se responde 500 y sigue escuchando.
@@ -199,8 +201,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 # PCs para distinguir "disponible" de "sin conexión". De
                 # paso, self.client_address (IP real del socket, no un
                 # dato que mande el Cliente PC) queda guardada como
-                # estaciones.ultima_ip -- lo que lee el botón "Traer IP"
-                # de Gestionar Estaciones.
+                # estaciones.ultima_ip, y como ip_asentada si es el primer
+                # enlace de esa estación.
                 pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0])
             except Exception as error:
                 registrar_error(error, "Servidor de red: registrar conexión de PC")
@@ -275,13 +277,14 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
     def _resolver_estacion(self, nombre_estacion: str):
         """
-        Busca la estación por nombre y ya manda la respuesta 404/500 ella
-        misma si no la encuentra -- así `_manejar_login`/`_manejar_logout`
-        solo siguen de largo cuando esto devuelve un item real, sin
-        repetir el mismo chequeo en los dos.
+        Busca la estación (por nombre o, si no, por la IP asentada: misma regla
+        que GET /estado) y ya manda la respuesta 404/500 ella misma si no la
+        encuentra -- así `_manejar_login`/`_manejar_logout` solo siguen de
+        largo cuando esto devuelve un item real, sin repetir el mismo chequeo
+        en los dos.
         """
         try:
-            item = pcs_repo.estado_de_estacion(nombre_estacion)
+            item = pcs_repo.estado_de_estacion(nombre_estacion, self.client_address[0])
         except Exception as error:
             registrar_error(error, "Servidor de red: resolver estación")
             self._responder_error(500, _ERROR_INTERNO)

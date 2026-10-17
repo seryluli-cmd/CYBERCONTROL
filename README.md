@@ -364,6 +364,15 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   base). "Quitar fondo" vuelve al azul liso. Cada Cliente PC lo pide al arrancar
   (`GET /fondo`, ver `servidor_red.py`) y las que están prendidas se enteran solas,
   porque `GET /estado` trae `fondo_version` (la huella del contenido).
+- **IP asentada de cada estación** (Gestionar Estaciones, columna "IP asentada";
+  pedido del dueño, 2026-10-17) — la primera vez que el Cliente PC de una PC se
+  conecta, `pcs_repo.registrar_conexion` asienta la IP real del pedido
+  (`estaciones.ip_asentada`) y después no la pisa (`ultima_ip` sí cambia en cada
+  conexión). `pcs_repo.estado_de_estacion` reconoce a cada PC por el nombre que manda
+  y, si ninguna estación activa se llama así (se renombró acá, o se tipeó distinto
+  allá), por esa IP; si la IP está asentada en dos estaciones activas no adivina y la
+  pantalla lo marca en rojo con un aviso. "Traer IP" relee la base; "Borrar IP" la
+  olvida para que se asiente la nueva. No hizo falta tocar el Cliente PC.
 
 ## Identidad y permisos
 

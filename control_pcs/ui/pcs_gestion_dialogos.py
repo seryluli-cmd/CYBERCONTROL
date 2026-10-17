@@ -9,6 +9,7 @@ exclusiva de ADMIN. Los bonos exclusivos de socios se gestionan aparte, en
 miembros_window.py.
 """
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QPushButton,
     QTableWidgetItem, QVBoxLayout,
@@ -33,13 +34,12 @@ class DialogoGestionEstaciones(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Gestionar Estaciones")
-        self.resize(360, 460)
+        self.resize(440, 580)
         self._armar_interfaz()
         self._cargar()
 
     def _armar_interfaz(self):
-        self.lista = crear_tabla(["Estación"], estirar=0, por_filas=True, una_sola=True)
-        self.lista.horizontalHeader().setVisible(False)
+        self.lista = crear_tabla(["Estación", "IP asentada"], estirar=0, por_filas=True, una_sola=True)
 
         self.campo_nuevo = QLineEdit()
         self.campo_nuevo.setPlaceholderText("Nombre de la estación nueva (ej. PC 5)...")
@@ -62,24 +62,34 @@ class DialogoGestionEstaciones(QDialog):
         fila_acciones.addWidget(boton_renombrar)
         fila_acciones.addWidget(boton_desactivar)
 
-        # IP de la estación seleccionada: la guarda sola servidor_red.py
-        # (self.client_address de cada GET /estado, ver
-        # pcs_repo.registrar_conexion) en cuanto el Cliente PC de esa PC hace
-        # su primer pedido DESPUÉS de que la estación ya existe acá -- una
-        # estación recién creada, o cuyo Cliente PC todavía no conectó, no
-        # tiene nada que mostrar. "Traer IP" relee el dato fresco desde la
-        # base por si el Cliente PC conectó recién, sin tener que cerrar y
-        # volver a abrir todo el diálogo.
+        # IP asentada de la estación seleccionada: la asienta sola
+        # pcs_repo.registrar_conexion la PRIMERA vez que el Cliente PC de esa PC
+        # se conecta (la IP real del pedido, no un dato que mande el cliente) y
+        # después no se pisa: con ella se reconoce a la PC si el nombre que
+        # manda no coincide con ninguna estación (pcs_repo.estado_de_estacion).
+        # Una estación cuyo Cliente PC todavía no conectó no tiene nada que
+        # mostrar. "Traer IP" relee la base por si la PC conectó recién, sin
+        # cerrar el diálogo; "Borrar IP" la olvida para que se asiente de nuevo.
         self.campo_ip = QLineEdit()
         self.campo_ip.setReadOnly(True)
-        self.campo_ip.setPlaceholderText("Todavía no se conoce")
+        self.campo_ip.setPlaceholderText("Se asienta sola al conectarse")
         boton_traer_ip = QPushButton("Traer IP")
         boton_traer_ip.clicked.connect(self._traer_ip)
+        boton_borrar_ip = QPushButton("Borrar IP")
+        boton_borrar_ip.clicked.connect(self._borrar_ip)
 
         fila_ip = QHBoxLayout()
-        fila_ip.addWidget(QLabel("IP de la seleccionada:"))
+        fila_ip.addWidget(QLabel("IP asentada:"))
         fila_ip.addWidget(self.campo_ip)
         fila_ip.addWidget(boton_traer_ip)
+        fila_ip.addWidget(boton_borrar_ip)
+
+        # Lo que conviene saber de esa IP (repetida en otra estación, o la PC se
+        # conecta desde otra); oculto si está todo bien.
+        self.aviso_ip = QLabel()
+        self.aviso_ip.setWordWrap(True)
+        self.aviso_ip.setStyleSheet("color: #C62828;")
+        self.aviso_ip.hide()
 
         self.lista.itemSelectionChanged.connect(self._al_cambiar_seleccion)
 
@@ -98,6 +108,7 @@ class DialogoGestionEstaciones(QDialog):
         layout.addLayout(fila_agregar)
         layout.addLayout(fila_acciones)
         layout.addLayout(fila_ip)
+        layout.addWidget(self.aviso_ip)
         layout.addWidget(boton_clave_admin)
         layout.addWidget(boton_fondo)
         layout.addWidget(boton_cerrar)
@@ -106,13 +117,23 @@ class DialogoGestionEstaciones(QDialog):
         self.campo_nuevo.setFocus()
 
     @manejar_errores
-    def _cargar(self):
+    def _cargar(self, seleccionar_id: int = None):
+        """Recarga la lista (con la IP asentada de cada una; en rojo si está
+        repetida) y, si se pide, vuelve a dejar elegida esa estación."""
         self.estaciones = pcs_repo.listar_estaciones()
+        self.ips_repetidas = pcs_repo.ips_asentadas_repetidas()
         self.lista.setRowCount(0)
         for estacion in self.estaciones:
             fila = self.lista.rowCount()
             self.lista.insertRow(fila)
             self.lista.setItem(fila, 0, QTableWidgetItem(estacion["nombre"]))
+            item_ip = QTableWidgetItem(estacion["ip_asentada"] or "")
+            if estacion["ip_asentada"] in self.ips_repetidas:
+                item_ip.setForeground(Qt.red)
+            self.lista.setItem(fila, 1, item_ip)
+            if estacion["id"] == seleccionar_id:
+                self.lista.setCurrentCell(fila, 0)
+        self._al_cambiar_seleccion()
 
     def _seleccionada(self):
         fila = self.lista.currentRow()
@@ -157,33 +178,65 @@ class DialogoGestionEstaciones(QDialog):
             self._cargar()
 
     def _al_cambiar_seleccion(self):
-        """Al cambiar de fila, muestra la IP ya cargada en memoria (la que
-        trajo el último `_cargar()`) sin ir a la base -- `_traer_ip` es la
-        que relee fresco si hace falta."""
+        """Al cambiar de fila, muestra la IP asentada ya cargada en memoria (la
+        que trajo el último `_cargar()`) sin ir a la base -- `_traer_ip` es la
+        que relee fresco si hace falta -- y, si corresponde, un aviso sobre ella."""
         fila = self.lista.currentRow()
         if fila < 0 or fila >= len(self.estaciones):
             self.campo_ip.clear()
+            self.aviso_ip.hide()
             return
-        self.campo_ip.setText(self.estaciones[fila]["ultima_ip"] or "")
+        estacion = self.estaciones[fila]
+        self.campo_ip.setText(estacion["ip_asentada"] or "")
+        aviso = self._aviso_de_ip(estacion)
+        self.aviso_ip.setText(aviso)
+        self.aviso_ip.setVisible(bool(aviso))
+
+    def _aviso_de_ip(self, estacion) -> str:
+        ip = estacion["ip_asentada"]
+        if ip in self.ips_repetidas:
+            otras = ", ".join(
+                otra["nombre"] for otra in self.estaciones
+                if otra["ip_asentada"] == ip and otra["id"] != estacion["id"]
+            )
+            return (
+                f"⚠ Esta IP también está asentada en {otras}. Mientras esté repetida, "
+                "ninguna de esas PCs se reconoce por su IP: borrá la que no corresponde."
+            )
+        if ip and estacion["ultima_ip"] and estacion["ultima_ip"] != ip:
+            return (
+                f"La última conexión llegó desde {estacion['ultima_ip']}, no desde la IP "
+                "asentada. Si le cambiaste la IP a esta PC, borrá la asentada: se asienta "
+                "la nueva sola."
+            )
+        return ""
 
     @manejar_errores
     def _traer_ip(self):
         estacion = self._seleccionada()
         if estacion is None:
             return
-        fresca = pcs_repo.obtener_estacion(estacion["id"])
-        ip = fresca["ultima_ip"] if fresca is not None else None
-        if ip:
-            self.campo_ip.setText(ip)
-        else:
-            self.campo_ip.clear()
+        self._cargar(seleccionar_id=estacion["id"])
+        if not self.campo_ip.text():
             mostrar_error(
                 self, "Todavía no hay IP",
-                f"'{estacion['nombre']}' todavía no registró ninguna conexión con IP.\n\n"
+                f"'{estacion['nombre']}' todavía no se conectó nunca.\n\n"
                 "Configurá el Cliente PC en esa PC con este mismo nombre de "
                 "estación y esperá unos segundos: pregunta solo cada 5s, y "
-                "recién ahí queda la IP guardada acá."
+                "recién ahí queda la IP asentada acá."
             )
+
+    @manejar_errores
+    def _borrar_ip(self):
+        estacion = self._seleccionada()
+        if estacion is None or not estacion["ip_asentada"]:
+            return
+        if confirmar(self, "Borrar IP asentada",
+                     f"¿Borrar la IP asentada de '{estacion['nombre']}' ({estacion['ip_asentada']})?\n\n"
+                     "La próxima vez que esa PC se conecte con su nombre, se asienta sola "
+                     "la IP que tenga en ese momento."):
+            pcs_repo.borrar_ip_asentada(estacion["id"])
+            self._cargar(seleccionar_id=estacion["id"])
 
     def _abrir_fondo(self):
         """El fondo de la pantalla de bloqueo de todas las PCs (ver pcs_fondo_dialogo)."""

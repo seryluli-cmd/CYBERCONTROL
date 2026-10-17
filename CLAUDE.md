@@ -208,6 +208,7 @@ abra no alcanza si los tests no pasan.
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
+| `pcs_repo.estado_de_estacion(nombre, ip)` | se decide qué estación es una PC que se conecta: por el nombre que manda su Cliente PC y, si ninguna activa se llama así, por la IP asentada en su primer enlace (`registrar_conexion`); con una IP asentada en dos estaciones activas no adivina. La usan TODOS los endpoints de `servidor_red.py` |
 | `pcs_repo._orden_natural(estacion)` | se ordenan las estaciones como lo haría una persona ("PC2" antes que "PC10"), con PCSTREAM antes que todas (en el mosaico queda al lado de la PlayStation 5); lo usan `listar_estaciones` y `estado_estaciones` |
 | `dominio.es_pcstream(nombre)` | se decide si una estación es PCSTREAM, la PC de streaming (solo por el nombre, sin espacios/guiones/mayúsculas; pedido del dueño, 2026-10-17). `estado_estaciones` lo trae en `item["es_pcstream"]` para la pantalla |
 | `pcstream_repo.uso_por_dia(desde, hasta)` | se calcula cuánto se usó PCSTREAM, en tiempo (vendido y de uso real) y en plata (Reportes > PCSTREAM) |
@@ -422,6 +423,15 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   estación aún no se conectó desde que arrancó el bono, muestra "Esperando al
   cliente"; si se desconecta después de estar enlazada, avisa "SIN CLIENTE".
   `pcs_repo._estado_para_estacion` decide esto para la grilla y para el Cliente PC.
+- **Una PC se reconoce por su nombre y, si no, por su IP asentada** (pedido del
+  dueño, 2026-10-17). `estaciones.ip_asentada` es la IP del PRIMER enlace y no se
+  pisa sola (`ultima_ip` sí, en cada conexión); solo la borra el Admin desde
+  Gestionar Estaciones y se vuelve a asentar en la próxima conexión por nombre. La IP
+  sale del socket (`self.client_address`), nunca de un dato que mande el Cliente PC,
+  y se mira DESPUÉS de la clave de Clientes PC. El nombre siempre gana; una IP
+  asentada en dos estaciones activas no reconoce a ninguna (no adivinar: daría el
+  tiempo de una PC a otra). Las PCs del local tienen IP fija; si alguna pasara a
+  DHCP, la IP asentada podría quedar en otra máquina. Ver `tests/test_ip_asentada.py`.
 - **Un traslado de PC conserva la sesión y su saldo.** `pcs_repo.trasladar_sesion`
   mueve o intercambia la misma sesión bajo `BEGIN IMMEDIATE`; el historial de
   qué PC ocupó está en `traslados_sesion`, no en el nombre actual de la estación.
@@ -559,4 +569,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-479 pruebas al 2026-10-17.
+497 pruebas al 2026-10-17.

@@ -15,6 +15,7 @@ def inicializar_base_de_datos():
         _TIPOS_MOVIMIENTO_SALDO,
         _migrar_columnas_permisos, _migrar_columnas_origen_en_cierres,
         _migrar_columna_ultima_conexion_estaciones, _migrar_columna_ultima_ip_estaciones,
+        _migrar_columna_ip_asentada_estaciones,
         _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_check_tipo_en_comandos_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
@@ -275,6 +276,9 @@ def inicializar_base_de_datos():
     # que recibe de esa estación (el Cliente PC pregunta cada 5s mientras está
     # prendido y con red) -- es lo que usa pcs_repo.estado_estaciones()
     # para decidir si una estación está "enlazada" sin sesión de por medio.
+    # "ultima_ip" es la IP de esa última consulta; "ip_asentada", la de la
+    # PRIMERA, que no se pisa sola: con ella se reconoce a una PC cuyo nombre no
+    # coincide con ninguna estación (pcs_repo.estado_de_estacion).
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS estaciones (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -285,6 +289,7 @@ def inicializar_base_de_datos():
     """)
     _migrar_columna_ultima_conexion_estaciones(conexion)
     _migrar_columna_ultima_ip_estaciones(conexion)
+    _migrar_columna_ip_asentada_estaciones(conexion)
     _migrar_columna_cliente_cerrado_desde_estaciones(conexion)
     cursor.execute(_sql_tabla_de_bonos("bonos_tiempo"))
 

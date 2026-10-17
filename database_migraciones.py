@@ -71,6 +71,20 @@ def _migrar_columna_ultima_ip_estaciones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columna_ip_asentada_estaciones(conexion: sqlite3.Connection):
+    """
+    Agrega estaciones.ip_asentada: la IP desde la que esa PC se enlazó POR
+    PRIMERA VEZ (pedido del dueño, 2026-10-17). A diferencia de ultima_ip no se
+    pisa en cada conexión: queda fija hasta que el Admin la borra en Gestionar
+    Estaciones. Sirve para reconocer a la PC por su IP cuando el nombre que
+    manda su Cliente PC no coincide con ninguna estación (ver
+    pcs_repo.estado_de_estacion). Arranca vacía: cada PC la asienta sola en su
+    próxima consulta.
+    """
+    _agregar_columna_si_falta(conexion, "estaciones", "ip_asentada", "TEXT")
+    conexion.commit()
+
+
 def _migrar_columna_cliente_cerrado_desde_estaciones(conexion: sqlite3.Connection):
     """
     Agrega estaciones.cliente_cerrado_desde: desde cuándo la PC está sin
