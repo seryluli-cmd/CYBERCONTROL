@@ -36,6 +36,10 @@ def actividad_reciente(limite: int = 30):
 
         # Los bonos comunes y los de PCSTREAM viven en tablas distintas (ver
         # pcstream_repo), pero en el panel son el mismo evento: "se vendió un bono".
+        # Los últimos bonos son los de número de venta más alto (se numeran a
+        # medida que se venden): ordenar por `venta_id`, con su índice, lee solo
+        # esos. Ordenar por `ventas.fecha` obligaba a recorrer y ordenar todos los
+        # bonos de la historia en cada refresco (ver database_esquema, ÍNDICES).
         for tabla_vinculo, tabla_bonos in (("sesion_bonos", "bonos_tiempo"),
                                            ("sesion_pcstream_bonos", "bonos_pcstream")):
             for fila in conexion.execute(f"""
@@ -46,7 +50,7 @@ def actividad_reciente(limite: int = 30):
                 JOIN {tabla_bonos} b ON b.id = sb.bono_id
                 JOIN sesiones_pc s ON s.id = sb.sesion_id
                 JOIN estaciones e ON e.id = s.estacion_id
-                ORDER BY v.fecha DESC LIMIT ?
+                ORDER BY sb.venta_id DESC LIMIT ?
             """, (limite,)).fetchall():
                 eventos.append({"fecha": fila["fecha"], "tipo": "BONO",
                                  "estacion_nombre": fila["estacion_nombre"],

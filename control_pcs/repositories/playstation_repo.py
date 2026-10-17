@@ -298,13 +298,15 @@ def eventos_recientes(limite: int = 30) -> list:
         ):
             eventos.append({"fecha": fila["fecha"], "tipo": "FIN", "estacion_nombre": nombre})
 
+        # Por número de venta y no por fecha, igual que los bonos de las PCs
+        # (ver actividad_repo): así lee solo los últimos y no toda la historia.
         for fila in conexion.execute(
             """
             SELECT v.fecha AS fecha, b.nombre AS bono_nombre, spb.precio AS precio
             FROM sesion_playstation_bonos spb
             JOIN ventas v ON v.id = spb.venta_id
             JOIN bonos_playstation b ON b.id = spb.bono_id
-            ORDER BY v.fecha DESC LIMIT ?
+            ORDER BY spb.venta_id DESC LIMIT ?
             """,
             (limite,),
         ):

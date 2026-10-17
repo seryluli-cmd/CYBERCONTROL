@@ -563,6 +563,27 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_estacion ON sesiones_pc(estacion_id, estado)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_saldo_miembro ON movimientos_saldo_miembro(miembro_id)")
 
+    # La pantalla de PCs se refresca cada 5 segundos y en cada refresco pide
+    # las sesiones en curso y "lo último que pasó" para el panel de
+    # actividad (pcs_repo.estado_estaciones, actividad_repo.actividad_reciente).
+    # Sin estos índices la base leía TODO el historial cada vez: medido con
+    # un año simulado de 40 PCs, la pantalla se trababa ~0,4 s cada 5 s, y
+    # cada día de uso lo empeoraba (revisión del 2026-10-17, ver
+    # docs/AUDITORIA_2026-10-17.md). Con ellos lee solo lo que muestra
+    # (~8 ms con ese mismo año). Crearlos es instantáneo con la base vacía y
+    # tarda ~0,4 s, una sola vez, con un año de historial. Lo vigila
+    # tests/test_velocidad_pantalla_pcs.py.
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_estado ON sesiones_pc(estado)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_inicio ON sesiones_pc(fecha_inicio)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_fin_real ON sesiones_pc(fecha_fin_real)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesion_bonos_venta ON sesion_bonos(venta_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesion_pcstream_bonos_venta ON sesion_pcstream_bonos(venta_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_saldo_miembro_fecha ON movimientos_saldo_miembro(fecha)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_traslados_sesion_fecha ON traslados_sesion(fecha)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_playstation_inicio ON sesiones_playstation(fecha_inicio)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_playstation_fin_real ON sesiones_playstation(fecha_fin_real)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesion_playstation_bonos_venta ON sesion_playstation_bonos(venta_id)")
+
     conexion.commit()
 
     _cargar_datos_iniciales(conexion)
