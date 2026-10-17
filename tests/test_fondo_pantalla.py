@@ -17,7 +17,6 @@ Se ejecutan con:
 """
 
 import http.client
-import json
 import os
 import tempfile
 import unittest

@@ -23,7 +23,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-import database  # noqa: E402
 import dominio  # noqa: E402
 from repositories import usuarios_repo, ventas_repo  # noqa: E402
 from control_pcs.repositories import pcs_repo, playstation_repo  # noqa: E402

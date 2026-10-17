@@ -614,7 +614,7 @@ class TestCadaOrigenSumaEnLaCaja(BaseConBaseTemporal):
                 ventas_repo.registrar_venta_sin_detalle(conexion, usuario_id, 10.0, [], "INVENTADO", datetime(2026, 1, 5, 10, 0))
 
 
-class TestMigracionOrigenEnVentas(BaseConBaseTemporal):
+class TestMigracionCheckOrigenEnVentas(BaseConBaseTemporal):
     """database._migrar_check_origen_en_ventas: una base creada antes de la
     PlayStation 5 tiene el CHECK viejo en `ventas` y no deja grabar el origen nuevo."""
 

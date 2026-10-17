@@ -402,7 +402,7 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   no existe. Para una tabla MADRE el orden es otro: crear `<tabla>_nueva`, copiar,
   borrar la vieja y recién ahí renombrar, con las claves foráneas apagadas y todo
   en UNA transacción — ver `_migrar_check_origen_en_ventas` y
-  `TestMigracionOrigenEnVentas`.
+  `TestMigracionCheckOrigenEnVentas` (en tests/test_playstation.py).
 - **Un trámite es un servicio que se cobra, no el pago de una boleta.** Lo que
   se tipea en "Trámites" es lo que el local cobra por hacerle el trámite al
   cliente (imprimir la boleta de luz, un trámite online, sacar un turno...);
