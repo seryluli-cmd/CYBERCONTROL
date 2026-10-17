@@ -373,6 +373,16 @@ trabajo pasa de ~110 a ~200 y la prueba falla.
 Pruebas: 506 OK antes de juntar; 532 OK después (las 529 de `master` más las 3
 nuevas).
 
+### Tanda 4 — hecha (17/10)
+
+Punto 8: `CYBERCONTROL\CyberBios.exe` (16/10) y `dist\CyberBios_anterior.exe` (14/10)
+se mandaron a la Papelera de Windows, no se borraron del todo: se pueden recuperar
+desde ahí. Antes se comprobó que ninguno estuviera abierto. No se tocó ninguna
+carpeta `data`, ni `dist\CyberBios.exe`, ni el programa del escritorio. Están fuera
+de git, así que no hay commit de código.
+
+Con esto quedan hechos todos los puntos de la revisión.
+
 Decisiones tuyas antes de la tanda 2 (ya tomadas):
 - ¿Se borra la fila vieja de la clave en la base (punto 2)? **Sí.**
 - En el punto 12, ¿armar los `CHECK` con las listas o borrar las listas? **Armarlos con las listas.**
