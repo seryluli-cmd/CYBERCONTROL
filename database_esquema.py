@@ -570,6 +570,13 @@ def inicializar_base_de_datos():
     _migrar_borrar_clave_vieja_de_clientes_pc(conexion)
 
     # -------------------------------------------------------------------
+    # CAJAS (con número, apertura, relevos y conteos del sobre)
+    # -------------------------------------------------------------------
+    # En su propio archivo: ver database_esquema_cajas.py.
+    from database_esquema_cajas import crear_tablas_de_cajas
+    crear_tablas_de_cajas(cursor, _valores_sql)
+
+    # -------------------------------------------------------------------
     # INDICES
     # -------------------------------------------------------------------
     # Estos índices son la razón por la que los reportes van a ser rápidos

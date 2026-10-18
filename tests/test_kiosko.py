@@ -252,17 +252,44 @@ class TestEsAdmin(unittest.TestCase):
 
 
 class TestTurnoVencimiento(unittest.TestCase):
-    def test_manana_vence_a_las_14_40_entre_semana(self):
-        lunes = date(2026, 1, 5)
-        self.assertEqual(turnos.turno_vencimiento(lunes, "MAÑANA"), datetime(2026, 1, 5, 14, 40))
+    """El turno vence (y la caja se cierra sola) 15 minutos después de su fin
+    (pedido del dueño, 2026-10-18; antes eran 40)."""
 
-    def test_manana_vence_a_las_18_40_el_domingo(self):
+    def test_manana_vence_a_las_14_15_entre_semana(self):
+        lunes = date(2026, 1, 5)
+        self.assertEqual(turnos.turno_vencimiento(lunes, "MAÑANA"), datetime(2026, 1, 5, 14, 15))
+
+    def test_manana_vence_a_las_18_15_el_domingo(self):
         domingo = date(2026, 1, 4)
-        self.assertEqual(turnos.turno_vencimiento(domingo, "MAÑANA"), datetime(2026, 1, 4, 18, 40))
+        self.assertEqual(turnos.turno_vencimiento(domingo, "MAÑANA"), datetime(2026, 1, 4, 18, 15))
 
     def test_noche_vence_a_la_madrugada_del_dia_siguiente(self):
         lunes = date(2026, 1, 5)
-        self.assertEqual(turnos.turno_vencimiento(lunes, "NOCHE"), datetime(2026, 1, 6, 6, 40))
+        self.assertEqual(turnos.turno_vencimiento(lunes, "NOCHE"), datetime(2026, 1, 6, 6, 15))
+
+    def test_la_tarde_vence_a_las_22_15(self):
+        lunes = date(2026, 1, 5)
+        self.assertEqual(turnos.turno_vencimiento(lunes, "TARDE"), datetime(2026, 1, 5, 22, 15))
+
+
+class TestAvisoDeCierre(unittest.TestCase):
+    """El botón Cierre de Turno titila desde 5 minutos antes del fin del turno."""
+
+    def test_la_manana_avisa_desde_las_13_55(self):
+        self.assertEqual(turnos.inicio_del_aviso_de_cierre(date(2026, 1, 5), "MAÑANA"), datetime(2026, 1, 5, 13, 55))
+
+    def test_el_domingo_la_manana_avisa_desde_las_17_55(self):
+        self.assertEqual(turnos.inicio_del_aviso_de_cierre(date(2026, 1, 4), "MAÑANA"), datetime(2026, 1, 4, 17, 55))
+
+    def test_la_noche_avisa_a_las_05_55_del_dia_siguiente(self):
+        self.assertEqual(turnos.inicio_del_aviso_de_cierre(date(2026, 1, 4), "NOCHE"), datetime(2026, 1, 5, 5, 55))
+
+    def test_el_fin_del_turno_es_el_horario_del_local(self):
+        lunes = date(2026, 1, 5)
+        self.assertEqual(turnos.fin_del_turno(lunes, "MAÑANA"), datetime(2026, 1, 5, 14, 0))
+        self.assertEqual(turnos.fin_del_turno(lunes, "TARDE"), datetime(2026, 1, 5, 22, 0))
+        self.assertEqual(turnos.fin_del_turno(lunes, "NOCHE"), datetime(2026, 1, 6, 6, 0))
+        self.assertEqual(turnos.fin_del_turno("2026-01-04", "MAÑANA"), datetime(2026, 1, 4, 18, 0))
 
 
 class TestTurnoQueArrancaTrasUnCierre(unittest.TestCase):
@@ -1380,7 +1407,7 @@ class TestResumenDelDia(BaseConBaseTemporal):
 
     def test_la_noche_cerrada_a_la_madrugada_y_un_turno_cerrado_tarde_el_mismo_dia_no_se_avisan(self):
         self._cerrar(datetime(2026, 1, 5, 22, 5))                       # arranca la Noche del lunes 5
-        self._cerrar(datetime(2026, 1, 6, 6, 30), self.pedro_id)        # la cierra a la madrugada: lo normal
+        self._cerrar(datetime(2026, 1, 6, 6, 10), self.pedro_id)        # la cierra a la madrugada: lo normal
         self._cerrar(datetime(2026, 1, 6, 23, 0), self.pedro_id)        # la Mañana del 6, cerrada tardísimo pero el mismo día
 
         ahora = datetime(2026, 1, 7, 8, 0)
@@ -1392,7 +1419,7 @@ class TestResumenDelDia(BaseConBaseTemporal):
 
     def test_un_turno_cerrado_pasado_su_vencimiento_al_dia_siguiente_si_se_avisa(self):
         self._cerrar(datetime(2026, 1, 5, 22, 5))
-        self._cerrar(datetime(2026, 1, 6, 10, 0), self.pedro_id)         # la Noche del 5, cerrada a las 10 (vence 06:40)
+        self._cerrar(datetime(2026, 1, 6, 10, 0), self.pedro_id)         # la Noche del 5, cerrada a las 10 (vence 06:15)
 
         avisos = self._resumen(date(2026, 1, 6), datetime(2026, 1, 6, 11, 0))["cierres_de_otro_dia"]
 

@@ -41,10 +41,10 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | Archivo | Contenido |
 |---|---|
 | [main.py](main.py) | Entry point. Clase `Aplicacion` alterna `LoginWindow` ↔ `MainWindow` (para poder "cerrar sesión" sin cerrar el programa). Define la hoja de estilos Qt global (botones `primario`/`peligro`/`barra` vía `setProperty("clase", ...)`) y `aplicar_estilo(app)`, que además fija el esquema de color CLARO (con Windows en modo oscuro, los cuadros sin estilo salían negros). `sys.excepthook` propio: cualquier excepción no capturada se loguea en `data/errores.log` y muestra un cartel, en vez de cerrar la app en silencio. |
-| [database.py](database.py) · [database_esquema.py](database_esquema.py) · [database_migraciones.py](database_migraciones.py) | Conexiones, claves y copias; creación de tablas e índices; migraciones de bases existentes. Ver modelo de datos abajo. |
+| [database.py](database.py) · [database_esquema.py](database_esquema.py) · [database_esquema_cajas.py](database_esquema_cajas.py) · [database_migraciones.py](database_migraciones.py) | Conexiones, claves y copias; creación de tablas e índices (las de las cajas con número, en su propio archivo); migraciones de bases existentes. Ver modelo de datos abajo. |
 | [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
-| [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos (con turnos faltantes y lo vendido en la ventana de un turno, `turnos_ventas_repo.py`), trámites, usuarios y ventas. |
-| [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
+| [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos (con turnos faltantes y lo vendido en la ventana de un turno, `turnos_ventas_repo.py`), cajas con número (`cajas_repo.py` los datos, `relevo_repo.py` las reglas al entrar y el cierre forzoso, `control_cierres_repo.py` lo que se controla después), trámites, usuarios y ventas. |
+| [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo (`ui/ingreso_caja.py`: lo que pasa con la caja entre el login y la ventana principal). `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
 | [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el mosaico de monitores de la pantalla principal se dibuja en `control_pcs/ui/pcs_mosaico.py` (solo dibuja: qué estado/color le toca a cada equipo lo decide `pcs_window.py`); el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y el fondo de la pantalla de bloqueo de las PCs en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py`, y el filtro de palabras en `control_pcs/repositories/filtro_palabras_repo.py` + `control_pcs/ui/pcs_filtro_dialogo.py`. |
 | [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo`, el fondo de la pantalla de bloqueo, y `GET /filtro` + `POST /filtro_bloqueo`, el filtro de palabras) y registro de fallos compartido con la UI. |
 | [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
@@ -118,6 +118,22 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   `fecha_verificacion` (nullable, los completa el Admin después desde
   Control de Cierres) y el desglose por origen (`kiosko_*`, `pcs_*`,
   `playstation_*`, cada uno en efectivo y digital).
+- **Cajas con número** (`database_esquema_cajas.py`, pedido del dueño
+  2026-10-18; reglas en `repositories/relevo_repo.py`). **`cajas`**: una fila
+  por caja (su `id` es el número que se ve), con `fecha`/`turno` decididos al
+  ABRIRLA (con la tolerancia de `turnos.turno_que_arranca_tras_un_cierre`),
+  `abierta_por`/`abierta_en`, `cambio_esperado` (lo que dejó la caja anterior, o
+  el Cambio Fijo) y `cambio_contado` (NULL = no contó: la abrió la misma persona
+  que acababa de cerrar la anterior), `responsable_id` (cambia en un relevo),
+  `cierre_id` (NULL = abierta; nunca hay dos abiertas) y `cierre_forzoso`.
+  **`relevos_caja`**: cada vez que la caja pasa de mano sin cerrarse (quien llega
+  cuenta TODO el cajón: lo esperado, lo contado y la diferencia).
+  **`ventas_caja`**: en qué caja quedó cada venta y `cargada_por` (el Admin que la
+  cobró a nombre de la responsable) — tabla aparte y no columnas de `ventas` para
+  no tocar la reconstrucción de la tabla madre. **`verificaciones_cierre`**: cada
+  conteo del sobre (el último sigue también en `cierres_turno`). La plata de un
+  cierre sigue saliendo de la ventana entre cierres; la caja aporta el turno, el
+  responsable y lo que se contó.
 - **`configuracion`** — tabla genérica clave/valor. Incluye el fondo de
   cambio, el indicador de rubros iniciales, tarifas y la contraseña de admin de
   los Clientes PC. Las claves exactas están centralizadas en los repositorios
@@ -153,10 +169,16 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   como "Mañana") y el reporte mostraba "SIN CERRAR" un turno que sí se cerró
   (`TestCierreHechoUnPocoAntesDelCambioDeTurno`). El primer cierre de todos
   no tiene cierre anterior: usa la hora en que se hace.
+  ⚠️ **Con una caja abierta, el turno y el día del cierre son los de la caja**
+  (decididos al abrirla, ver "Cajas con número"): quien abre a las 07:00 después
+  de una noche sin uso abre la Mañana, aunque el cierre anterior haya sido a las
+  22:05 (`TestCerrarCaja` en `tests/test_cajas.py`).
 - **`turnos.turno_vencimiento(dia, turno)`** — momento en que un turno
-  de un día dado queda vencido: fin de su ventana nominal +
-  `TURNO_GRACIA_MIN` (40 min) de gracia, para darle tiempo a quien cierra
-  el turno anterior antes de avisar. **`turnos_repo.turnos_del_mes_actual()`**
+  de un día dado queda vencido: su fin (`turnos.fin_del_turno`) +
+  `MINUTOS_PARA_CIERRE_FORZOSO` (15 min, pedido del dueño 2026-10-18; antes
+  40). A esa hora la caja se cierra sola (cierre forzoso) y el turno pasa a
+  contar como sin cerrar. El botón Cierre de Turno titila desde
+  `turnos.inicio_del_aviso_de_cierre` (5 min antes del fin). **`turnos_repo.turnos_del_mes_actual()`**
   arma la grilla de turnos esperados del mes en curso (día 1 a hoy,
   domingo con 2, el resto con 3) y **`turnos_repo.turnos_faltantes()`**
   la cruza contra `cierres_turno` para devolver los que ya vencieron y
@@ -219,6 +241,29 @@ en curso): abre la misma ventana de cobro que Ventas (`dialogo_pago.cobrar` →
 justo, un Enter cobra. Pedido del dueño, 2026-10-18: antes el panel tenía un
 combo "Método de pago" e "Iniciar Sesión".
 
+**Ingreso con caja** (`ui/ingreso_caja.py`, entre el login y la ventana
+principal; reglas en `relevo_repo.situacion_al_entrar`; pedido del dueño
+2026-10-18). Una empleada no entra sin caja: si no hay ninguna abierta, abre una
+contando el Cambio Fijo (si la abre la misma persona que acaba de cerrar la
+anterior, no cuenta); si la caja abierta es de otra y su turno sigue, la
+**recibe** contando todo el cajón (el reemplazo que llegó tarde: lo vendido por
+quien cubrió va en su sobre); si el turno de esa caja ya terminó (desde 5 minutos
+antes del fin), la **cierra en ausencia** de la otra y después abre la suya; si
+quedaron ventas sin caja, las cierra aparte primero. El conteo es **a ciegas**
+(`DialogoContarPlata`: primero se escribe lo contado, después se ve cuánto tenía
+que haber). El Admin entra directo, sin caja: lo que cobra queda a nombre de la
+responsable de la caja abierta, con `ventas_caja.cargada_por` (pedido del dueño:
+"que lo asiente como la empleada que estaba antes de que yo entrara").
+
+**En la ventana principal**, al lado del nombre se ve la caja ("Caja Nº 12 ·
+Mañana"). Cada 10 s `MainWindow._revisar_la_caja` mira `relevo_repo.estado_de_la_caja`:
+desde 5 minutos antes del fin del turno el botón **Cierre de Turno titila en
+rojo** (clase `alerta` de la hoja de estilos) y a los 15 minutos del fin hace el
+**cierre forzoso** (`relevo_repo.cierre_forzoso_si_corresponde`) y vuelve al
+ingreso (el Admin se queda). Si hay un cobro a medias (una pantalla abierta
+encima), espera; Ventas con el carrito vacío y Caja se cierran solas
+(`se_puede_cerrar_sola`).
+
 **Para cualquier usuario (Admin o Empleada):**
 - **Ventas** (`ventas_window.py`, `VentasWindow` + `DialogoPago`) —
   pantalla de facturación. Escaneo por código de barras (Enter en el campo
@@ -258,15 +303,17 @@ combo "Método de pago" e "Iniciar Sesión".
   Configuración ADMIN → "Gestionar Bonos de PlayStation 5". Ver
   `playstation_repo.vender_bono`.
 - **Caja** (`caja_window.py`, `CajaWindow`) — solo lectura, resumen del
-  turno en curso vía `turnos_repo.resumen_turno_actual()` (fondo, caja
-  actual = fondo + efectivo, ventas efectivo/digital, y el desglose Kiosko /
+  turno en curso vía `turnos_repo.resumen_turno_actual()` (número de caja y
+  responsable, caja inicial = el cambio con que arrancó la caja, caja actual =
+  caja inicial + efectivo, ventas efectivo/digital, y el desglose Kiosko /
   Alquiler de PCs / PlayStation 5). La caja actual
   excluye a propósito lo cobrado en digital.
 - **Cierre de Turno** (`caja_window.py`, `CierreTurnoWindow`) — cualquiera
   cierra su propio turno. Muestra preview y, al confirmar, llama a
   `turnos_repo.cerrar_turno(usuario['id'])`: `monto_a_retirar` = lo
-  vendido en efectivo (el fondo de cambio se queda en la caja para el
-  turno siguiente). Esta pantalla es el resumen que las empleadas le
+  vendido en efectivo (el cambio con que arrancó la caja se queda en el cajón
+  para el turno siguiente; `cambio_que_queda`). Si quien cierra no es la
+  responsable de la caja (el Admin), queda anotado como cerrada en su ausencia. Esta pantalla es el resumen que las empleadas le
   mandan al dueño. En pantalla el fondo de cambio se llama **"Cambio Fijo"**
   en todos lados (pedido del dueño; por dentro sigue siendo `fondo_cambio`).
   Muestra Efectivo, Digital y **TOTAL** (`resumen["ventas_total"]`: todo lo
@@ -342,14 +389,23 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   turno, origen, concepto —"2 x Coca 500" o "Trámite: ..."—, efectivo, digital,
   total y estado; las anuladas en rojo, sin sumar). No hizo falta tocar la base:
   `ventas.fecha` (con la hora) y `ventas.usuario_id` se graban desde siempre. La
-  venta queda a nombre de quien tenía la SESIÓN abierta. El turno se rotula con
+  venta queda a nombre de quien tenía la SESIÓN abierta, salvo lo que cobra el
+  Admin con la caja de una empleada abierta: queda a nombre de ella
+  (`cajas_repo._quien_vende`). El turno se rotula con
   `turnos.dia_en_que_empezo_el_turno` (una venta del lunes a la 01:00 es
   "Domingo T2", no "Noche").
-- **Control de Cierres de Turno** (`caja_window.py`,
-  `ControlCierresWindow`) — lista `turnos_repo.listar_cierres()` (columna
-  Turno con la etiqueta de `etiqueta_turno`, incluye "Domingo T1"/"T2"),
-  resalta en rojo si `|diferencia| > 0.01`. "Cargar monto contado" abre
-  `QInputDialog` y llama a `turnos_repo.verificar_cierre`. Arriba de la
+- **Control de Cierres de Turno** (`control_cierres_window.py`,
+  `ControlCierresWindow`; se reexporta desde `caja_window.py`) — lista
+  `turnos_repo.listar_cierres()` (que vive en `control_cierres_repo.py`):
+  columna Turno con la etiqueta de `etiqueta_turno` (incluye "Domingo T1"/"T2"),
+  Caja ("Nº 12" o "sin caja"), Responsable (quien la abrió → quien la recibió),
+  Apertura ("05:55 · contó $ 50.000,00 (coincide)") y Cierre ("A horario 14:00",
+  "Forzoso 14:15" o "Gaby, en ausencia de Lucía", estos dos en rojo); resalta en
+  rojo si `|diferencia| > 0.01`. "Cargar monto contado" (visible solo para el
+  Admin; el repo también lo exige) abre `QInputDialog` y llama a
+  `turnos_repo.verificar_cierre`, que guarda cada conteo en
+  `verificaciones_cierre`. El detalle de un cierre muestra la caja, los relevos,
+  los conteos del sobre y, en cada venta, quién la cargó si fue el Admin. Arriba de la
   tabla, un aviso rojo (oculto si no hay nada que avisar) lista los
   turnos del mes en curso ya vencidos sin cerrar, vía
   `turnos_repo.turnos_faltantes()`.
@@ -462,7 +518,8 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-532 tests al 2026-10-17. Cubren turnos, caja, stock, ventas y anulaciones,
+667 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+(`tests/test_cajas.py`, `tests/test_cajas_ui.py`), stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
 y el filtro de palabras de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

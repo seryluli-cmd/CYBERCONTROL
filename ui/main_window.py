@@ -37,15 +37,21 @@ del rol y los permisos:
 
 Cada módulo se abre como un diálogo modal (QDialog.exec) encima de esta
 ventana.
+
+La caja (pedido del dueño, 2026-10-18; reglas en repositories/relevo_repo.py):
+al lado del nombre se ve la caja abierta. Desde 5 minutos antes del fin del
+turno el botón Cierre de Turno titila en rojo, y a los 15 minutos del fin el
+programa cierra la caja solo (cierre forzoso, ver _revisar_la_caja).
 """
 
 from PySide6.QtWidgets import (
-    QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
+    QApplication, QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 import dominio
-from repositories import usuarios_repo
+from errores import registrar_error
+from repositories import relevo_repo, usuarios_repo
 from ui.accesos_admin_window import AccesosAdminWindow
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
@@ -62,7 +68,14 @@ from control_pcs.ui.pcs_gestion_dialogos import (
     DialogoGestionBonosPcstream,
 )
 from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
-from ui.utils import aplicar_clase, sin_boton_por_defecto
+from ui.ingreso_caja import mensaje_del_sobre
+from ui.utils import aplicar_clase, mostrar_info, sin_boton_por_defecto
+
+# Cada cuánto se mira cómo está la caja (si tiene que titilar el botón, o si ya
+# toca el cierre forzoso). Es una consulta chica, con su índice.
+INTERVALO_REVISION_CAJA_MS = 10_000
+# Cada cuánto cambia de color el botón Cierre de Turno mientras titila.
+INTERVALO_PARPADEO_MS = 600
 
 
 class MainWindow(QMainWindow):
@@ -86,7 +99,19 @@ class MainWindow(QMainWindow):
             for clave_permiso, _ in usuarios_repo.PERMISOS_EMPLEADA
         )
         self._al_cerrar_sesion = al_cerrar_sesion
+        self._titilar = False
+        self._encendido = False
         self._armar_interfaz()
+        self._actualizar_estado_de_la_caja()
+
+        self._timer_caja = QTimer(self)
+        self._timer_caja.setInterval(INTERVALO_REVISION_CAJA_MS)
+        self._timer_caja.timeout.connect(self._revisar_la_caja)
+        self._timer_caja.start()
+        self._timer_parpadeo = QTimer(self)
+        self._timer_parpadeo.setInterval(INTERVALO_PARPADEO_MS)
+        self._timer_parpadeo.timeout.connect(self._parpadear)
+        self._timer_parpadeo.start()
 
     def _armar_interfaz(self):
         self.setWindowTitle(f"CyberBIOS - {self.usuario['nombre']} ({self.usuario['rol']})")
@@ -107,6 +132,10 @@ class MainWindow(QMainWindow):
         titulo = QLabel(f"{cargo}: {self.usuario['nombre']}")
         titulo.setStyleSheet("font-size: 15px; font-weight: 700; color: #1B2233;")
         layout_barra.addWidget(titulo)
+        # La caja abierta: "Caja Nº 12 · Mañana" (ver _actualizar_estado_de_la_caja).
+        self.etiqueta_caja = QLabel()
+        self.etiqueta_caja.setStyleSheet("font-size: 13px; color: #4A5568;")
+        layout_barra.addWidget(self.etiqueta_caja)
         layout_barra.addStretch()
 
         self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
@@ -118,7 +147,7 @@ class MainWindow(QMainWindow):
         if self.es_admin:
             self._agregar_boton_barra(layout_barra, "⚙️  Configuración ADMIN", self._abrir_configuracion_admin)
         self._agregar_boton_barra(layout_barra, "💵  Caja", self._abrir_caja)
-        self._agregar_boton_barra(layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno)
+        self.boton_cierre_turno = self._agregar_boton_barra(layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno)
         self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
         self._agregar_boton_barra(layout_barra, "Cerrar sesión", self._cerrar_sesion, clase="peligro")
         barra.setLayout(layout_barra)
@@ -150,7 +179,91 @@ class MainWindow(QMainWindow):
         # QMainWindow no tiene la señal `finished` de los QDialog, así que
         # el refresco automático de la grilla de PCs se frena acá, al cerrar.
         self.panel_pcs.detener_actualizacion()
+        self._timer_caja.stop()
+        self._timer_parpadeo.stop()
         super().closeEvent(evento)
+
+    # -----------------------------------------------------------------
+    # La caja: número arriba, botón que titila y cierre forzoso
+    # -----------------------------------------------------------------
+
+    def _actualizar_estado_de_la_caja(self):
+        """Lee cómo está la caja, la muestra al lado del nombre y decide si el
+        botón Cierre de Turno titila. Devuelve el estado (ver
+        relevo_repo.estado_de_la_caja) o None si no hay caja abierta."""
+        estado = relevo_repo.estado_de_la_caja()
+        if estado is None:
+            self.etiqueta_caja.setText("·  Sin caja abierta" if self.es_admin else "")
+        elif self.es_admin or estado["responsable_id"] != self.usuario["id"]:
+            self.etiqueta_caja.setText(
+                f"·  Caja Nº {estado['caja_numero']} de {estado['responsable']} · {estado['turno_label']}"
+            )
+        else:
+            self.etiqueta_caja.setText(f"·  Caja Nº {estado['caja_numero']} · {estado['turno_label']}")
+        self._titilar = bool(estado and estado["titilar"])
+        return estado
+
+    def _parpadear(self):
+        """Titila en rojo (alterna con su color de siempre) mientras toca
+        cerrar; si no, se queda con su color de siempre. El rojo es la clase
+        "alerta" de la hoja de estilos (main.py)."""
+        self._encendido = self._titilar and not self._encendido
+        clase = "alerta" if self._encendido else "barra"
+        if self.boton_cierre_turno.property("clase") != clase:
+            aplicar_clase(self.boton_cierre_turno, clase)
+
+    def _hay_un_cobro_a_medias(self) -> bool:
+        """
+        Si hay una pantalla abierta encima que no se puede cerrar sin perder
+        algo (un carrito con artículos, el cobro, un formulario): el cierre
+        forzoso espera a que termine, como esperaría una persona para apretar
+        el botón. Una pantalla que avisa que se puede cerrar sola (Ventas con el
+        carrito vacío, Caja) se cierra y se sigue en la próxima revisión.
+        """
+        encima = QApplication.activeModalWidget()
+        if encima is None:
+            return False
+        se_puede_cerrar_sola = getattr(encima, "se_puede_cerrar_sola", None)
+        if se_puede_cerrar_sola is not None and se_puede_cerrar_sola():
+            encima.reject()
+        return True
+
+    def _revisar_la_caja(self):
+        """
+        Cada INTERVALO_REVISION_CAJA_MS: actualiza el número de caja y el
+        titileo, y si pasaron los 15 minutos de gracia hace el cierre forzoso
+        (pedido del dueño: "el programa aprieta solo Cierre de Turno"). Después,
+        quien atiende vuelve a la pantalla de ingreso como con un cierre normal;
+        el Admin se queda donde estaba (no estaba atendiendo esa caja).
+        """
+        try:
+            estado = self._actualizar_estado_de_la_caja()
+            if estado is None or not estado["vencida"] or self._hay_un_cobro_a_medias():
+                return
+            resultado = relevo_repo.cierre_forzoso_si_corresponde()
+        except Exception as error:  # un fallo de la base no puede tirar abajo el mostrador
+            registrar_error(error, "Revisar la caja (cierre forzoso)")
+            return
+        if resultado is None:
+            return
+        self._actualizar_estado_de_la_caja()
+        if self.es_admin:
+            mostrar_info(
+                self, "Cierre forzoso",
+                f"La caja Nº {resultado['caja_numero']} de {resultado['responsable']} "
+                f"({resultado['turno_label']}) se cerró sola: pasaron 15 minutos del fin del turno.\n\n"
+                f"{resultado['responsable']} tiene que armar el sobre. {mensaje_del_sobre(resultado)}",
+            )
+            return
+        mostrar_info(
+            self, "Cierre forzoso",
+            f"Tu caja Nº {resultado['caja_numero']} ({resultado['turno_label']}) se cerró sola: pasaron "
+            "15 minutos del fin del turno.\n\n"
+            f"{mensaje_del_sobre(resultado)}\n\n"
+            "Ahora volvés a la pantalla de ingreso. Si tu reemplazo no llegó, volvé a entrar con tu "
+            "usuario y seguí vendiendo: no hace falta contar el Cambio Fijo.",
+        )
+        self._cerrar_sesion()
 
     # -----------------------------------------------------------------
     # Abrir cada módulo (diálogos modales)

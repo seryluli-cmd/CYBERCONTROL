@@ -17,6 +17,7 @@ from datetime import datetime
 
 import dominio
 from database import conexion_db
+from repositories import cajas_repo
 from turnos import calcular_turno
 
 
@@ -51,15 +52,22 @@ def _insertar_cabecera_venta(conexion, ahora: datetime, usuario_id: int, total: 
     cierre en el mismo segundo empataban en el string de fecha y la venta
     quedaba afuera de los DOS turnos. turnos_repo.cerrar_turno graba la
     fecha de cierre con la misma precisión, por la misma razón.
+
+    Con una caja abierta, la venta queda anotada en esa caja; si la cobra el
+    Admin, queda a nombre de la responsable de la caja (ver
+    cajas_repo._quien_vende). Por eso el usuario que se graba puede no ser
+    `usuario_id`.
     """
+    vendedor_id, caja_id, cargada_por = cajas_repo._quien_vende(conexion, usuario_id)
     cursor = conexion.execute(
         """
         INSERT INTO ventas (fecha, usuario_id, turno, total, estado, origen)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (ahora.isoformat(timespec="microseconds"), usuario_id, calcular_turno(ahora),
+        (ahora.isoformat(timespec="microseconds"), vendedor_id, calcular_turno(ahora),
          round(total, 2), dominio.VENTA_CONFIRMADA, origen),
     )
+    cajas_repo._anotar_venta_en_caja(conexion, cursor.lastrowid, caja_id, cargada_por)
     return cursor.lastrowid
 
 

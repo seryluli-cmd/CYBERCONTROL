@@ -3,9 +3,11 @@ turnos_repo.py
 ===============
 Todo lo que gira alrededor del turno y su cierre:
 - Caja (consulta en vivo del turno en curso) y Cierre de Turno.
-- Control de Cierres: historial, detalle venta por venta y verificación
-  del sobre por el Admin.
 - Resumen del Día (un día abierto por turno).
+Control de Cierres (historial, detalle venta por venta y verificación del
+sobre) vive en control_cierres_repo.py y se reexporta acá con los mismos
+nombres. Las cajas con número (quién tiene la caja, relevos) están en
+cajas_repo.py y relevo_repo.py: acá solo se las une a su cierre.
 Los turnos vencidos sin cierre viven en turnos_faltantes_repo.py y se
 reexportan acá para conservar la API de las pantallas.
 Las consultas de "qué se vendió en una ventana (desde, hasta]" (por origen y
@@ -32,15 +34,16 @@ from turnos import (
     limites_de_los_dias, turno_que_arranca_tras_un_cierre, turno_vencimiento, turnos_del_dia,
 )
 from repositories.config_repo import obtener_fondo_cambio
+from repositories import cajas_repo
 from repositories import turnos_faltantes_repo as _faltantes_repo
+from repositories.control_cierres_repo import (  # noqa: F401 (API de las pantallas y las pruebas)
+    _PRINCIPIO_DE_LOS_TIEMPOS, _cierre_o_error, _desde_del_cierre, detalle_cierre, listar_cierres,
+    verificar_cierre,
+)
 from repositories.turnos_ventas_repo import (
     _LINEAS_APARTE, _contar_ventas_entre, _sumar_ventas_por_origen_y_metodo, _vendido_aparte_entre,
 )
 
-
-# Desde cuándo cuenta la ventana del primer turno de la historia (todavía no
-# hay un cierre anterior).
-_PRINCIPIO_DE_LOS_TIEMPOS = "0000-01-01T00:00:00"
 
 # Con qué prefijo se llaman, en el desglose de un turno y en las columnas de
 # "cierres_turno", los importes de cada origen de venta (kiosko_efectivo,
@@ -108,8 +111,15 @@ def _desde_y_turno_en_curso(ultimo_cierre, ahora_dt):
 def _ventana_en_curso(conexion, ahora_dt=None) -> dict:
     """
     La ventana del turno que está abierto ahora: {"desde", "hasta", "turno",
-    "dia"} (`dia` es el date del día del local al que pertenece, ver
+    "dia", "caja"} (`dia` es el date del día del local al que pertenece, ver
     _desde_y_turno_en_curso).
+
+    Con una caja abierta (cajas_repo), el turno y el día son los de la caja,
+    decididos al abrirla: quien abre a las 05:55 abre la Mañana, aunque el
+    cierre anterior haya sido de madrugada o de hace horas. "desde" sigue siendo
+    el último cierre: entre ese cierre y la apertura no se puede vender sin caja
+    (relevo_repo pide cerrar antes lo que haya quedado). "caja" es la fila de la
+    caja abierta, o None.
 
     `ahora_dt` solo se pasa si quien llama ya tomó la hora antes (como
     resumen_del_dia, que la necesita también para otras cosas); si no, se
@@ -127,11 +137,15 @@ def _ventana_en_curso(conexion, ahora_dt=None) -> dict:
     if ahora_dt is None:
         ahora_dt = datetime.now()
     desde, turno, dia = _desde_y_turno_en_curso(ultimo_cierre, ahora_dt)
+    caja = cajas_repo._caja_abierta(conexion)
+    if caja is not None:
+        turno, dia = caja["turno"], date.fromisoformat(caja["fecha"])
     return {
         "desde": desde,
         "hasta": ahora_dt.isoformat(timespec="microseconds"),
         "turno": turno,
         "dia": dia,
+        "caja": caja,
     }
 
 
@@ -155,30 +169,6 @@ def _desglose_de_totales(totales: dict) -> dict:
     return desglose
 
 
-def _desde_del_cierre(conexion, cierre_id: int) -> str:
-    """
-    Desde cuándo cuenta lo vendido en el cierre `cierre_id`: la
-    `fecha_cierre` del cierre anterior (por id), o el principio de los
-    tiempos si es el primero que existe. Mismo criterio de ventana que
-    usa cerrar_turno() para el turno en curso.
-    """
-    anterior = conexion.execute(
-        "SELECT fecha_cierre FROM cierres_turno WHERE id < ? ORDER BY id DESC LIMIT 1",
-        (cierre_id,),
-    ).fetchone()
-    return anterior["fecha_cierre"] if anterior else _PRINCIPIO_DE_LOS_TIEMPOS
-
-
-def _cierre_o_error(conexion, cierre_id: int):
-    """La fila del cierre `cierre_id`; ValueError si ese cierre no existe."""
-    cierre = conexion.execute(
-        "SELECT * FROM cierres_turno WHERE id = ?", (cierre_id,)
-    ).fetchone()
-    if cierre is None:
-        raise ValueError("El cierre no existe.")
-    return cierre
-
-
 def resumen_turno_actual():
     """
     Para la pantalla "Caja" y la vista previa de "Cierre de Turno": muestra
@@ -191,15 +181,30 @@ def resumen_turno_actual():
     Turno: YA están sumados dentro de kiosko_efectivo/kiosko_digital, no se les
     resta, porque esos dos importes llevan el desglose por medio de pago y estas
     dos líneas se cuentan por renglón de venta, no por medio de pago.
+
+    Con una caja abierta trae también "caja_numero" y "responsable" (si no,
+    None), y "cambio_inicial" es el cambio con que arrancó esa caja (lo que se
+    contó al abrirla); sin caja, el Cambio Fijo. "caja_actual" (lo que tendría
+    que haber en el cajón) sale de ahí: es lo que cuenta quien recibe la caja en
+    un relevo (relevo_repo.recibir_caja).
     """
     with conexion_db() as conexion:
-        ventana = _ventana_en_curso(conexion)
-        desglose = _desglose_de_totales(
-            _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
-        )
-        aparte = _vendido_aparte_entre(conexion, ventana["desde"], ventana["hasta"])
+        return _resumen_en_curso(conexion)
+
+
+def _resumen_en_curso(conexion, ahora_dt=None) -> dict:
+    """resumen_turno_actual() sobre una conexión ya abierta (y, si se pasa,
+    a la hora `ahora_dt`): relevo_repo lo usa dentro de su propia transacción
+    para saber cuánto tiene que haber en el cajón al recibir una caja."""
+    ventana = _ventana_en_curso(conexion, ahora_dt)
+    desglose = _desglose_de_totales(
+        _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
+    )
+    aparte = _vendido_aparte_entre(conexion, ventana["desde"], ventana["hasta"])
 
     fondo_cambio = obtener_fondo_cambio()
+    caja = ventana["caja"]
+    cambio_inicial = cajas_repo.cambio_inicial(caja) if caja is not None else fondo_cambio
 
     return {
         "turno_actual": ventana["turno"],
@@ -211,23 +216,38 @@ def resumen_turno_actual():
         # Todo lo cobrado en el turno (efectivo + digital de todos los negocios).
         # Las impresiones y los trámites no se suman: ya están dentro de Kiosko.
         "ventas_total": round(desglose["ventas_efectivo"] + desglose["ventas_digital"], 2),
-        "caja_actual": fondo_cambio + desglose["ventas_efectivo"],
+        "cambio_inicial": cambio_inicial,
+        "caja_actual": round(cambio_inicial + desglose["ventas_efectivo"], 2),
+        "caja_numero": caja["id"] if caja is not None else None,
+        "responsable": caja["responsable"] if caja is not None else None,
         "desde": ventana["desde"],
         "hasta": ventana["hasta"],
     }
 
 
-def cerrar_turno(usuario_id: int):
+def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):
     """
     Cierra el turno en curso: calcula lo mismo que `resumen_turno_actual`
     y lo deja grabado en `cierres_turno`, listo para que la empleada
     sepa cuánto retirar (dejando el fondo de cambio en el cajón para el
     próximo turno). Devuelve el resumen guardado.
+
+    Si hay una caja abierta, queda unida a este cierre (deja de estar abierta).
+    `usuario_id` es quien cierra: si no es la responsable de la caja, queda
+    como cerrada en su ausencia (ver control_cierres_repo._datos_de_la_caja).
+    `forzoso` es el cierre que hace el programa solo a los 15 minutos del fin
+    del turno (ver MainWindow y relevo_repo). `ahora_dt` es la hora del cierre
+    si quien llama ya la tomó (relevo_repo); si no, ahora.
+
+    Lo que queda en el cajón ("cambio_que_queda") es el cambio con que arrancó
+    la caja: lo que contó quien la abrió. Así un faltante del cambio se ve una
+    sola vez, en la caja donde apareció, y no en todas las que siguen.
     """
     fondo_cambio = obtener_fondo_cambio()
 
     with conexion_db() as conexion:
-        ventana = _ventana_en_curso(conexion)
+        ventana = _ventana_en_curso(conexion, ahora_dt)
+        caja = ventana["caja"]
         desglose = _desglose_de_totales(
             _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
         )
@@ -266,6 +286,8 @@ def cerrar_turno(usuario_id: int):
             ),
         )
         cierre_id = cursor.lastrowid
+        if caja is not None:
+            cajas_repo._marcar_cerrada(conexion, caja["id"], cierre_id, forzoso)
 
     return {
         "id": cierre_id,
@@ -274,6 +296,10 @@ def cerrar_turno(usuario_id: int):
         "fondo_cambio": fondo_cambio,
         **desglose,
         "monto_a_retirar": monto_a_retirar,
+        "caja_numero": caja["id"] if caja is not None else None,
+        "responsable": caja["responsable"] if caja is not None else None,
+        "cambio_que_queda": cajas_repo.cambio_inicial(caja) if caja is not None else fondo_cambio,
+        "forzoso": forzoso,
     }
 
 
@@ -382,11 +408,16 @@ def resumen_del_dia(dia):
     ahora_dt = datetime.now()
 
     with conexion_db() as conexion:
+        # "empleada" es quien tenía la caja (cajas_repo), no quien la cerró: la
+        # caja que cierra la que llega, en ausencia de la otra, sigue siendo de la
+        # otra. Un cierre sin caja (de antes de las cajas) muestra quién cerró.
         cierres = conexion.execute(
             """
-            SELECT cierres_turno.*, usuarios.nombre AS empleada
+            SELECT cierres_turno.*, COALESCE(responsables.nombre, usuarios.nombre) AS empleada
             FROM cierres_turno
             JOIN usuarios ON usuarios.id = cierres_turno.usuario_id
+            LEFT JOIN cajas ON cajas.cierre_id = cierres_turno.id
+            LEFT JOIN usuarios AS responsables ON responsables.id = cajas.responsable_id
             WHERE cierres_turno.fecha = ?
             ORDER BY cierres_turno.id
             """,
@@ -493,84 +524,6 @@ def resumen_del_dia(dia):
                       "cantidad_ventas", "cantidad_anuladas")
     }
     return {"fecha": dia, "turnos": resultado, "total": total, "cierres_de_otro_dia": cierres_de_otro_dia}
-
-
-def listar_cierres(limite: int = 100):
-    """Historial de cierres, para que el Admin controle turno por turno
-    (y cargue el monto que contó en cada sobre)."""
-    with conexion_db() as conexion:
-        return conexion.execute(
-            """
-            SELECT cierres_turno.*, usuarios.nombre AS empleada,
-                   verificadores.nombre AS verificado_por_nombre
-            FROM cierres_turno
-            JOIN usuarios ON usuarios.id = cierres_turno.usuario_id
-            LEFT JOIN usuarios AS verificadores ON verificadores.id = cierres_turno.verificado_por
-            ORDER BY cierres_turno.id DESC
-            LIMIT ?
-            """,
-            (limite,),
-        ).fetchall()
-
-
-def detalle_cierre(cierre_id: int):
-    """
-    Las ventas que componen un cierre puntual -- las que cayeron entre el
-    cierre anterior y este (mismo criterio de rango que cerrar_turno() /
-    resumen_turno_actual(): "desde" es el fecha_cierre del cierre previo
-    por id, o el principio de los tiempos si es el primer cierre que
-    existe). Es lo que le permite al Admin, desde "Control de Cierres de
-    Turno", ver venta por venta cómo se llegó al total de un sobre en vez
-    de confiar solo en el número agregado.
-
-    Incluye ventas ANULADAS que hayan caído en la ventana (no se
-    filtran): no suman al total ya grabado en el cierre (ese total se
-    calculó en su momento solo con CONFIRMADAS, ver
-    _sumar_ventas_por_origen_y_metodo), pero conviene poder verlas acá
-    para entender un cierre que no cuadra. La pantalla las remarca aparte
-    (mismo criterio que Consulta de Ventas), nunca se ocultan.
-    """
-    with conexion_db() as conexion:
-        cierre = _cierre_o_error(conexion, cierre_id)
-        desde = _desde_del_cierre(conexion, cierre_id)
-
-        ventas = conexion.execute(
-            """
-            SELECT ventas.*, usuarios.nombre AS vendedor,
-                   GROUP_CONCAT(DISTINCT venta_pagos.metodo) AS metodos
-            FROM ventas
-            JOIN usuarios ON usuarios.id = ventas.usuario_id
-            LEFT JOIN venta_pagos ON venta_pagos.venta_id = ventas.id
-            WHERE ventas.fecha > ? AND ventas.fecha <= ?
-            GROUP BY ventas.id
-            ORDER BY ventas.fecha
-            """,
-            (desde, cierre["fecha_cierre"]),
-        ).fetchall()
-
-    return {"cierre": cierre, "desde": desde, "ventas": ventas}
-
-
-def verificar_cierre(cierre_id: int, monto_contado: float, usuario_admin_id: int):
-    """
-    El Admin carga cuánta plata contó realmente en el sobre de un cierre
-    puntual. Se calcula la diferencia contra lo esperado (monto_a_retirar)
-    para detectar faltantes o sobrantes por empleada/turno.
-    """
-    with conexion_db() as conexion:
-        cierre = _cierre_o_error(conexion, cierre_id)
-
-        monto_contado = round(monto_contado, 2)
-        diferencia = round(monto_contado - cierre["monto_a_retirar"], 2)
-        ahora = datetime.now().isoformat(timespec="seconds")
-        conexion.execute(
-            """
-            UPDATE cierres_turno
-            SET monto_contado = ?, diferencia = ?, verificado_por = ?, fecha_verificacion = ?
-            WHERE id = ?
-            """,
-            (monto_contado, diferencia, usuario_admin_id, ahora, cierre_id),
-        )
 
 
 def turnos_del_mes_actual():

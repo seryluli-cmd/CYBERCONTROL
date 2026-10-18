@@ -52,6 +52,12 @@ _TABLAS_A_VACIAR = (
     "traslados_sesion",
     "sesiones_pc",
     "sesiones_playstation",
+    # Las cajas con número (database_esquema_cajas.py): apuntan a ventas y a
+    # cierres_turno, así que van antes que las dos.
+    "ventas_caja",
+    "relevos_caja",
+    "verificaciones_cierre",
+    "cajas",
     "cierres_turno",
     "ventas",
 )

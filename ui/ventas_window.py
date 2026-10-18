@@ -49,6 +49,12 @@ class VentasWindow(QDialog):
         self.resize(780, 520)
         self._armar_interfaz()
 
+    def se_puede_cerrar_sola(self) -> bool:
+        """Para el cierre forzoso de la caja (MainWindow._hay_un_cobro_a_medias):
+        con el carrito vacío no se pierde nada si esta ventana se cierra sola; con
+        artículos cargados, el cierre espera a que se cobre o se cancele."""
+        return not self.carrito
+
     def _armar_interfaz(self):
         encabezado = QHBoxLayout()
         etiqueta_usuario = QLabel(f"Usuario: {self.usuario['nombre']}")
