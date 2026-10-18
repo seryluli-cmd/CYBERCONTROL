@@ -13,6 +13,11 @@ Punto de entrada del programa. Al ejecutar este archivo:
 6. Al cerrar sesión desde la ventana principal, se vuelve al Login
    (sin tener que reabrir todo el programa).
 
+Si el programa se abrió desde la carpeta compartida del mostrador (otra PC del
+local, ver admin_remoto/modo.py), es una copia para ADMINISTRAR desde ahí: no
+toca ninguna base ni levanta el servidor de las PCs, se conecta al CyberBIOS
+del mostrador y le pide todo a él (pasos 2 y 3 los hace el mostrador).
+
 Para arrancar el sistema, se ejecuta:  python main.py
 """
 
@@ -25,6 +30,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
+from admin_remoto import cliente as cliente_remoto, modo as modo_remoto
 from database import inicializar_base_de_datos, hacer_backup_automatico
 from servidor_red import iniciar_servidor
 from ui.ingreso_caja import resolver_caja_al_entrar
@@ -522,20 +528,34 @@ class Aplicacion:
     loguearse sin cerrar todo el programa.
     """
 
-    def __init__(self):
+    def __init__(self, conexion_remota=None):
+        # La conexión con el mostrador si esta es una copia para administrar
+        # desde otra PC (ver main y admin_remoto/); None en el mostrador.
+        self.conexion_remota = conexion_remota
         self.ventana_principal = None
         self.ventana_login = None
         self._mostrar_login()
 
     def _mostrar_login(self):
-        self.ventana_login = LoginWindow(al_loguearse=self._al_loguearse)
+        if self.conexion_remota is not None:
+            # Cerrar sesión en la otra PC también la cierra en el mostrador.
+            self.conexion_remota.salir()
+            try:
+                self.ventana_login = LoginWindow(al_loguearse=self._al_loguearse)
+            except (ValueError, PermissionError) as error:  # sin red, o la entrada se apagó
+                QMessageBox.warning(None, "Administrar desde otra PC", str(error))
+                QApplication.quit()
+                return
+        else:
+            self.ventana_login = LoginWindow(al_loguearse=self._al_loguearse)
         self.ventana_login.show()
 
     def _al_loguearse(self, usuario):
         # Antes de entrar, la caja tiene que quedar lista: abrirla contando el
         # cambio, recibirla de quien cubrió el turno o cerrar la de quien se fue
-        # (ver ui/ingreso_caja.py). Si se cancela, se queda en el ingreso.
-        if not resolver_caja_al_entrar(self.ventana_login, usuario):
+        # (ver ui/ingreso_caja.py). Si se cancela, se queda en el ingreso. Desde
+        # otra PC no: ahí no hay cajón (y solo entra el Administrador).
+        if self.conexion_remota is None and not resolver_caja_al_entrar(self.ventana_login, usuario):
             return
         self.ventana_login.close()
         self.ventana_principal = MainWindow(usuario, al_cerrar_sesion=self._mostrar_login)
@@ -596,20 +616,46 @@ def main():
             "puede pisar cambios entre ellas."
         )
         sys.exit(0)
-    inicializar_base_de_datos()
-    hacer_backup_automatico()
-    # Corre todo el tiempo que Kiosko esté abierto, sin importar quién
-    # esté logueado -- es lo que consultan las PCs bloqueadas del local
-    # (ver servidor_red.py y la carpeta hermana "CLIENTE PC").
-    iniciar_servidor()
     aplicar_estilo(app)
     # Ícono de la caja registradora: al ponerlo en la aplicación (y no en
     # cada ventana por separado), TODAS las ventanas y cuadros de diálogo
     # lo heredan automáticamente en la esquina superior izquierda, en vez
     # del ícono genérico de Qt.
     app.setWindowIcon(QIcon(str(RUTA_ICONO)))
+
+    mostrador = modo_remoto.direccion_del_mostrador()
+    if mostrador is not None:
+        conexion_remota = _conectar_con_el_mostrador(mostrador)
+        if conexion_remota is None:
+            sys.exit(0)
+        Aplicacion(conexion_remota)
+        sys.exit(app.exec())
+
+    inicializar_base_de_datos()
+    hacer_backup_automatico()
+    # Corre todo el tiempo que Kiosko esté abierto, sin importar quién
+    # esté logueado -- es lo que consultan las PCs bloqueadas del local
+    # (ver servidor_red.py y la carpeta hermana "CLIENTE PC").
+    iniciar_servidor()
     Aplicacion()
     sys.exit(app.exec())
+
+
+def _conectar_con_el_mostrador(mostrador: str):
+    """
+    Esta copia se abrió desde otra PC (ver admin_remoto/modo.py): se presenta al
+    CyberBIOS del mostrador y, si está y deja entrar, hace que todas las
+    pantallas le pidan los datos a él. Devuelve la conexión, o None después de
+    avisar por qué no se puede (el mostrador cerrado, la entrada apagada, otro
+    .exe).
+    """
+    try:
+        conexion = cliente_remoto.conectar(mostrador)
+    except (ValueError, PermissionError) as error:
+        QMessageBox.warning(None, "Administrar desde otra PC", str(error))
+        return None
+    cliente_remoto.instalar(conexion)
+    return conexion
 
 
 if __name__ == "__main__":

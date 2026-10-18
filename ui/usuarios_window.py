@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 import dominio
 import database
+from admin_remoto import modo as modo_remoto
 from repositories import usuarios_repo, config_repo
 from ui.utils import (
     mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase,
@@ -57,7 +58,13 @@ class UsuariosWindow(QDialog):
         boton_salir.clicked.connect(self.close)
         aplicar_clase(boton_nuevo, "primario")
         aplicar_clase(boton_borrar, "peligro")
-        for boton in (boton_nuevo, boton_modificar, boton_borrar, boton_fondo, boton_backup, boton_salir):
+        botones = [boton_nuevo, boton_modificar, boton_borrar, boton_fondo, boton_backup, boton_salir]
+        # La copia de seguridad copia el archivo de la base de ESTA PC: desde otra
+        # PC (admin_remoto/) no hay ninguno, se hace en el mostrador.
+        if modo_remoto.es_copia_remota():
+            botones.remove(boton_backup)
+            boton_backup.deleteLater()
+        for boton in botones:
             barra_botones.addWidget(boton)
         barra_botones.addStretch()
 

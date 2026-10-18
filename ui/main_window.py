@@ -42,6 +42,12 @@ La caja (pedido del dueño, 2026-10-18; reglas en repositories/relevo_repo.py):
 al lado del nombre se ve la caja abierta. Desde 5 minutos antes del fin del
 turno el botón Cierre de Turno titila en rojo, y a los 15 minutos del fin el
 programa cierra la caja solo (cierre forzoso, ver _revisar_la_caja).
+
+Desde otra PC del local (la copia para administrar, ver admin_remoto/): solo
+Administrar Kiosko, Configuración ADMIN, Caja (para mirar) y Clave. Vender,
+cobrar, cerrar el turno y la grilla de PCs siguen en el mostrador, y el cierre
+forzoso de la caja también lo hace el mostrador (si lo hicieran las dos, la
+misma caja se intentaría cerrar dos veces).
 """
 
 from PySide6.QtWidgets import (
@@ -50,9 +56,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
+from admin_remoto import modo as modo_remoto
 from errores import registrar_error
 from repositories import relevo_repo, usuarios_repo
 from ui.accesos_admin_window import AccesosAdminWindow
+from ui.admin_remoto_dialogo import DialogoEntrarDesdeOtraPC
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
 from ui.ventas_window import VentasWindow
@@ -99,10 +107,14 @@ class MainWindow(QMainWindow):
             for clave_permiso, _ in usuarios_repo.PERMISOS_EMPLEADA
         )
         self._al_cerrar_sesion = al_cerrar_sesion
+        self._remota = modo_remoto.es_copia_remota()
         self._titilar = False
         self._encendido = False
         self._armar_interfaz()
-        self._actualizar_estado_de_la_caja()
+        if self._remota:
+            self._mostrar_la_caja_del_mostrador()
+        else:
+            self._actualizar_estado_de_la_caja()
 
         self._timer_caja = QTimer(self)
         self._timer_caja.setInterval(INTERVALO_REVISION_CAJA_MS)
@@ -114,7 +126,12 @@ class MainWindow(QMainWindow):
         self._timer_parpadeo.start()
 
     def _armar_interfaz(self):
-        self.setWindowTitle(f"CyberBIOS - {self.usuario['nombre']} ({self.usuario['rol']})")
+        if self._remota:
+            self.setWindowTitle(
+                f"CyberBIOS - {self.usuario['nombre']} - desde otra PC (mostrador: {modo_remoto.mostrador_en_uso()})"
+            )
+        else:
+            self.setWindowTitle(f"CyberBIOS - {self.usuario['nombre']} ({self.usuario['rol']})")
         self.resize(980, 680)
 
         # Tarjeta blanca "#encabezadoInicio" (estilo en la hoja de estilos
@@ -138,28 +155,35 @@ class MainWindow(QMainWindow):
         layout_barra.addWidget(self.etiqueta_caja)
         layout_barra.addStretch()
 
-        self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
-        self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
-        if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"):
-            self._agregar_boton_barra(layout_barra, "🧑‍🤝‍🧑  Miembros", self._abrir_miembros)
+        if not self._remota:
+            self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
+            self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
+            if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"):
+                self._agregar_boton_barra(layout_barra, "🧑‍🤝‍🧑  Miembros", self._abrir_miembros)
         if self._es_encargado:
             self._agregar_boton_barra(layout_barra, "🛠️  Administrar Kiosko", self._abrir_administrar_kiosko)
         if self.es_admin:
             self._agregar_boton_barra(layout_barra, "⚙️  Configuración ADMIN", self._abrir_configuracion_admin)
         self._agregar_boton_barra(layout_barra, "💵  Caja", self._abrir_caja)
-        self.boton_cierre_turno = self._agregar_boton_barra(layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno)
+        self.boton_cierre_turno = None
+        if not self._remota:
+            self.boton_cierre_turno = self._agregar_boton_barra(
+                layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno
+            )
         self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
         self._agregar_boton_barra(layout_barra, "Cerrar sesión", self._cerrar_sesion, clase="peligro")
         barra.setLayout(layout_barra)
 
-        self.panel_pcs = PanelControlPcs(self.usuario, self)
+        # Desde otra PC no va la grilla de PCs (eso se atiende en el mostrador):
+        # un cartel que dice dónde se está trabajando.
+        self.panel_pcs = None if self._remota else PanelControlPcs(self.usuario, self)
 
         contenedor = QWidget()
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
         layout.addWidget(barra)
-        layout.addWidget(self.panel_pcs, 1)
+        layout.addWidget(self.panel_pcs if self.panel_pcs is not None else _cartel_de_otra_pc(), 1)
         contenedor.setLayout(layout)
         self.setCentralWidget(contenedor)
 
@@ -178,7 +202,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, evento):
         # QMainWindow no tiene la señal `finished` de los QDialog, así que
         # el refresco automático de la grilla de PCs se frena acá, al cerrar.
-        self.panel_pcs.detener_actualizacion()
+        if self.panel_pcs is not None:
+            self.panel_pcs.detener_actualizacion()
         self._timer_caja.stop()
         self._timer_parpadeo.stop()
         super().closeEvent(evento)
@@ -203,10 +228,20 @@ class MainWindow(QMainWindow):
         self._titilar = bool(estado and estado["titilar"])
         return estado
 
+    def _mostrar_la_caja_del_mostrador(self):
+        """Desde otra PC: el número de caja que ve el mostrador, o que no hay
+        conexión (sin carteles: se vuelve a probar en la próxima revisión)."""
+        try:
+            self._actualizar_estado_de_la_caja()
+        except (ValueError, PermissionError):  # sin red, o se cerró la sesión en el mostrador
+            self.etiqueta_caja.setText("·  Sin conexión con el mostrador")
+
     def _parpadear(self):
         """Titila en rojo (alterna con su color de siempre) mientras toca
         cerrar; si no, se queda con su color de siempre. El rojo es la clase
         "alerta" de la hoja de estilos (main.py)."""
+        if self.boton_cierre_turno is None:  # desde otra PC no hay Cierre de Turno
+            return
         self._encendido = self._titilar and not self._encendido
         clase = "alerta" if self._encendido else "barra"
         if self.boton_cierre_turno.property("clase") != clase:
@@ -235,7 +270,13 @@ class MainWindow(QMainWindow):
         (pedido del dueño: "el programa aprieta solo Cierre de Turno"). Después,
         quien atiende vuelve a la pantalla de ingreso como con un cierre normal;
         el Admin se queda donde estaba (no estaba atendiendo esa caja).
+
+        Desde otra PC solo se actualiza el número de caja: el cierre forzoso lo
+        hace el mostrador.
         """
+        if self._remota:
+            self._mostrar_la_caja_del_mostrador()
+            return
         try:
             estado = self._actualizar_estado_de_la_caja()
             if estado is None or not estado["vencida"] or self._hay_un_cobro_a_medias():
@@ -305,6 +346,20 @@ class MainWindow(QMainWindow):
     def _cerrar_sesion(self):
         self.close()
         self._al_cerrar_sesion()
+
+
+def _cartel_de_otra_pc() -> QLabel:
+    """Lo que se ve en lugar de la grilla de PCs en la copia para administrar
+    desde otra PC."""
+    cartel = QLabel(
+        f"Estás administrando desde otra PC, con los datos del mostrador ({modo_remoto.mostrador_en_uso()}).\n\n"
+        "Lo que guardes acá queda guardado en el mostrador al instante. Vender, cobrar, cerrar el turno "
+        "y atender las PCs se hace en el mostrador: la operadora sigue trabajando normal."
+    )
+    cartel.setAlignment(Qt.AlignCenter)
+    cartel.setWordWrap(True)
+    cartel.setStyleSheet("font-size: 15px; color: #4A5568; padding: 40px;")
+    return cartel
 
 
 class _VentanaDeBotones(QDialog):
@@ -412,7 +467,8 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
     Tiempo (walk-in), Bonos de PlayStation 5, Bonos de PCSTREAM, Tarifa por Hora
     de Socios, Bonos de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
-    de administrador, ver ui/accesos_admin_window.py). Exclusiva de ADMIN, sin
+    de administrador, ver ui/accesos_admin_window.py) y, en el mostrador, "Entrar desde
+    otra PC" (ui/admin_remoto_dialogo.py) y "Limpiar base de datos". Exclusiva de ADMIN, sin
     excepción: no hay permiso delegable para esto (ver
     MainWindow._armar_interfaz). Recibe el `usuario` porque el catálogo de la
     PlayStation 5 vuelve a exigir en el repo que quien lo edita sea Admin.
@@ -425,9 +481,9 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
 
     def __init__(self, usuario, parent=None):
-        super().__init__("Configuración ADMIN", 700, parent)
+        super().__init__("Configuración ADMIN", 740, parent)
         self.usuario = usuario
-        self._armar_botones([
+        botones = [
             ("🖥️  Gestionar Estaciones", self._abrir_estaciones),
             ("🎟️  Gestionar Bonos", self._abrir_bonos),
             ("🎮  Gestionar Bonos de PlayStation 5", self._abrir_bonos_playstation),
@@ -436,10 +492,17 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
             ("🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro),
             ("📄  Gestionar Trámites", self._abrir_tramites),
             ("🔐  Accesos de Admin", self._abrir_accesos_admin),
-            # Para la etapa de pruebas (pedido del dueño, 2026-10-17): borra la
-            # plata y el historial de ventas, deja los catálogos. Ver limpieza_repo.
-            ("🧹  Limpiar base de datos", self._limpiar_base, "peligro"),
-        ])
+        ]
+        # Desde otra PC no se prende ni apaga la entrada desde otra PC (se apagaría
+        # a sí misma) ni se limpia la base: las dos cosas, solo en el mostrador.
+        if not modo_remoto.es_copia_remota():
+            botones += [
+                ("🌐  Entrar desde otra PC", self._abrir_entrar_desde_otra_pc),
+                # Para la etapa de pruebas (pedido del dueño, 2026-10-17): borra la
+                # plata y el historial de ventas, deja los catálogos. Ver limpieza_repo.
+                ("🧹  Limpiar base de datos", self._limpiar_base, "peligro"),
+            ]
+        self._armar_botones(botones)
 
     def _abrir_estaciones(self):
         DialogoGestionEstaciones(self).exec()
@@ -464,6 +527,9 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
 
     def _abrir_accesos_admin(self):
         AccesosAdminWindow(self).exec()
+
+    def _abrir_entrar_desde_otra_pc(self):
+        DialogoEntrarDesdeOtraPC(self.usuario, self).exec()
 
     def _limpiar_base(self):
         DialogoLimpiarBase(self.usuario, self).exec()

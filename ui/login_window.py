@@ -19,8 +19,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette, QColor, QPixmap
 
 import dominio
+from admin_remoto import modo as modo_remoto
 from database import verificar_clave
-from repositories.usuarios_repo import autenticar_por_nombre, listar_usuarios
+# El módulo y no las funciones sueltas: en la copia para administrar desde otra
+# PC, admin_remoto/cliente.py las cambia por las que le preguntan al mostrador.
+from repositories import usuarios_repo
 from ui.utils import mostrar_error, mostrar_aviso, manejar_errores, aplicar_clase, encadenar_enter
 
 # Mismo ícono que usa main.py para las ventanas (carpeta assets, junto al código).
@@ -77,9 +80,16 @@ class LoginWindow(QWidget):
         titulo.setStyleSheet("font-size: 21px; font-weight: 700; color: #1F2430;")
         titulo.setAlignment(Qt.AlignCenter)
 
-        subtitulo = QLabel("Elegí tu nombre e ingresá la clave para continuar")
+        if modo_remoto.es_copia_remota():
+            subtitulo = QLabel(
+                f"Desde otra PC · mostrador: {modo_remoto.mostrador_en_uso()}\n"
+                "Entra solo un Administrador."
+            )
+        else:
+            subtitulo = QLabel("Elegí tu nombre e ingresá la clave para continuar")
         subtitulo.setStyleSheet("color: #6B7280; font-size: 12px;")
         subtitulo.setAlignment(Qt.AlignCenter)
+        subtitulo.setWordWrap(True)
 
         # Lista desplegable en vez de campo de texto: se arma de nuevo
         # cada vez que se abre esta pantalla (con listar_usuarios(), sin
@@ -90,7 +100,7 @@ class LoginWindow(QWidget):
         # "admin" (minúscula) quedaría después de cualquier nombre en
         # mayúscula en vez de intercalarse alfabéticamente de verdad.
         self.combo_nombre = QComboBox()
-        usuarios_ordenados = sorted(listar_usuarios(), key=lambda u: u["nombre"].lower())
+        usuarios_ordenados = sorted(usuarios_repo.listar_usuarios(), key=lambda u: u["nombre"].lower())
         for usuario in usuarios_ordenados:
             self.combo_nombre.addItem(usuario["nombre"])
         self.campo_clave = QLineEdit()
@@ -180,7 +190,7 @@ class LoginWindow(QWidget):
             self.campo_clave.clear()
             return
 
-        usuario = autenticar_por_nombre(nombre, clave)
+        usuario = usuarios_repo.autenticar_por_nombre(nombre, clave)
         if usuario is None:
             intentos += 1
             if intentos >= MAX_INTENTOS:

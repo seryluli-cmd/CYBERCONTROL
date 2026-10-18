@@ -6,7 +6,8 @@ una cuenta de administrador y cuándo. Exclusiva de ADMIN, igual que el
 resto de Configuración ADMIN.
 
 Tiene dos pestañas: los logins en CYBERCONTROL (los lee de la tabla
-`sesiones`, que se llena con cada login, vía usuarios_repo.listar_logins)
+`sesiones`, que se llena con cada login, vía usuarios_repo.listar_logins; dice
+si fue en el mostrador o desde otra PC del local, con su IP)
 y lo que pasó en el panel admin de las PCs cliente (quién cerró el Cliente
 PC y dejó una PC sin bloqueo, ver control_pcs/ui/accesos_admin_pc_tab.py).
 """
@@ -22,7 +23,7 @@ from repositories import usuarios_repo
 from control_pcs.ui.accesos_admin_pc_tab import PestañaAccesosAdminPc
 from ui.utils import (
     armar_filtro_por_fechas, manejar_errores, sin_boton_por_defecto, crear_tabla,
-    rango_de_fechas,
+    mostrar_columna_entera, rango_de_fechas,
 )
 
 
@@ -67,7 +68,7 @@ class PestañaLoginsAdmin(QWidget):
         self.etiqueta_cantidad = QLabel()
         self.etiqueta_cantidad.setStyleSheet("font-weight: bold;")
 
-        self.tabla = crear_tabla(["Fecha", "Hora", "Usuario", "Rol"], estirar=2)
+        self.tabla = crear_tabla(["Fecha", "Hora", "Usuario", "Rol", "Desde"], estirar=2)
 
         layout = QVBoxLayout()
         layout.addLayout(filtros)
@@ -87,8 +88,12 @@ class PestañaLoginsAdmin(QWidget):
             momento = datetime.fromisoformat(login["fecha_hora"])
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
+            # El Administrador puede entrar desde otra PC del local (admin_remoto/):
+            # ahí queda anotada la IP de esa PC.
+            desde = f"Otra PC ({login['desde_ip']})" if login["desde_ip"] else "Mostrador"
             for columna, valor in enumerate([
-                momento.strftime("%d/%m/%Y"), momento.strftime("%H:%M:%S"), login["nombre"], login["rol"],
+                momento.strftime("%d/%m/%Y"), momento.strftime("%H:%M:%S"), login["nombre"], login["rol"], desde,
             ]):
                 self.tabla.setItem(fila, columna, QTableWidgetItem(valor))
+        mostrar_columna_entera(self.tabla, 4)  # "Otra PC (192.168.0.25)" no entra en el ancho de siempre
         self.etiqueta_cantidad.setText(f"{len(logins)} login(s) en el período")

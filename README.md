@@ -46,6 +46,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos (con turnos faltantes y lo vendido en la ventana de un turno, `turnos_ventas_repo.py`), cajas con número (`cajas_repo.py` los datos, `relevo_repo.py` las reglas al entrar y el cierre forzoso, `control_cierres_repo.py` lo que se controla después), trámites, usuarios y ventas. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo (`ui/ingreso_caja.py`: lo que pasa con la caja entre el login y la ventana principal). `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). |
 | [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el mosaico de monitores de la pantalla principal se dibuja en `control_pcs/ui/pcs_mosaico.py` (solo dibuja: qué estado/color le toca a cada equipo lo decide `pcs_window.py`); el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y el fondo de la pantalla de bloqueo de las PCs en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py`, y el filtro de palabras en `control_pcs/repositories/filtro_palabras_repo.py` + `control_pcs/ui/pcs_filtro_dialogo.py`. |
+| [admin_remoto/](admin_remoto/) · [repositories/admin_remoto_repo.py](repositories/admin_remoto_repo.py) · [ui/admin_remoto_dialogo.py](ui/admin_remoto_dialogo.py) | Administrar desde otra PC del local (ver la sección propia más abajo). |
 | [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo`, el fondo de la pantalla de bloqueo, y `GET /filtro` + `POST /filtro_bloqueo`, el filtro de palabras) y registro de fallos compartido con la UI. |
 | [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
@@ -61,12 +62,15 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   `database.verificar_clave`), `rol` (`ADMIN` | `EMPLEADA`), `activo`
   (soft-delete, nunca se borra un usuario de verdad para no romper el
   historial de ventas/compras/cierres), `fecha_creacion`.
-- **`sesiones`** — `id` PK, `usuario_id`, `fecha_hora`. Una fila por cada
-  login exitoso (la inserta `usuarios_repo.autenticar()`, junto con la
+- **`sesiones`** — `id` PK, `usuario_id`, `fecha_hora`, `desde_ip` (NULL = en
+  el mostrador; la IP de la otra PC si el Administrador entró desde otra PC
+  del local, ver "Administrar desde otra PC"). Una fila por cada
+  login exitoso (la inserta `usuarios_repo._registrar_sesion`, junto con la
   migración de hash legacy). No hay horario asignado por empleada en el
   sistema, así que esto (junto con las ventas) es la única pista para
   saber quién podría ser responsable de un turno sin cerrar — ver
-  `turnos_faltantes_repo._responsables_del_mes` más abajo.
+  `turnos_faltantes_repo._responsables_del_mes` más abajo (los ingresos desde
+  otra PC no cuentan).
 - **`marcas`** / **`rubros`** — catálogos simples `id` + `nombre` (único).
   Las marcas se crean al vuelo escribiendo un nombre nuevo en el combo del
   artículo; los **rubros son un catálogo cerrado**, se gestionan aparte
@@ -89,7 +93,9 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   anular solo cambia el estado y guarda `anulada_por`/`anulada_fecha`/
   `anulada_motivo`) + **`venta_detalle`** (`descripcion` es una foto del
   nombre al momento de vender, no un join en vivo) + **`venta_pagos`**
-  (una venta puede tener varias filas — pago mixto Efectivo + Digital).
+  (una venta puede tener varias filas — pago mixto Efectivo + Digital; índice
+  `idx_venta_pagos_venta`: sin él, Reportes > Por Operador con un año de ventas
+  tardaba 6 minutos).
 - **`tramites`** (`id`, `nombre`, `activo` — baja lógica) + **`tramites_venta`**
   (`venta_id` único, `tramite_id`, `descripcion` = foto del nombre al cobrar)
   — servicios que los empleados hacen en el mostrador (sacar e imprimir una
@@ -456,6 +462,38 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   pantalla lo marca en rojo con un aviso. "Traer IP" relee la base; "Borrar IP" la
   olvida para que se asiente la nueva. No hizo falta tocar el Cliente PC.
 
+## Administrar desde otra PC (`admin_remoto/`)
+
+Pedido del dueño (2026-10-18): desde su casa entra por UltraVNC a una PC libre
+del local y administra desde ahí mientras el mostrador sigue atendiendo. Diseño
+y decisiones en [docs/ADMIN_REMOTO.md](docs/ADMIN_REMOTO.md).
+
+- **Cómo se abre:** el mismo `CyberBios.exe`, abierto desde la carpeta
+  compartida del mostrador. `admin_remoto/modo.py` lo reconoce (ruta
+  `\\PC\carpeta` o unidad de red) y esa copia NO abre ninguna base: le habla al
+  CyberBIOS de esa PC. Para probar: `python main.py --mostrador <ip>`.
+- **Cómo viaja:** `POST /admin/...` en el mismo servidor de red de las PCs (puerto
+  8899; esas rutas no usan la clave de los Clientes PC sino la del
+  Administrador). `admin_remoto/cliente.instalar` reemplaza en su módulo cada
+  función de `admin_remoto/lista_blanca.py` por un representante que manda la
+  llamada; las pantallas no se enteran. Por eso **ninguna pantalla importa una
+  función suelta de un repo** (un test lo vigila). Los datos van con
+  `admin_remoto/codec.py` (filas, tuplas, fechas, bytes; `clave_hash` nunca viaja).
+- **Quién entra** (`repositories/admin_remoto_repo.py`): viene apagado
+  (Configuración ADMIN > Entrar desde otra PC, solo en el mostrador); solo un
+  ADMIN activo; cada ingreso queda en `sesiones.desde_ip`. El servidor
+  (`admin_remoto/servidor.py`) da una sesión al azar atada a la IP, que vence a
+  las 3 h sin uso; 5 claves mal desde una PC la frenan 5 minutos; en cada pedido
+  vuelve a mirar que la entrada siga prendida y el usuario siga siendo Admin; y
+  el "quién lo hizo" (`lista_blanca.ACTOR`) lo pone el mostrador.
+- **Qué no se puede desde otra PC:** vender, cobrar, abrir/cerrar cajas y
+  turnos, la grilla de PCs, Miembros, Limpiar base de datos, Actualizar el
+  Cliente PC y la Copia de Seguridad (las pantallas lo esconden con
+  `modo.es_copia_remota()`, y la lista blanca lo rechaza igual). El cierre
+  forzoso de la caja lo hace solo el mostrador.
+- **Las dos copias tienen que ser el mismo .exe:** `lista_blanca.huella()`
+  (funciones, parámetros y actores) se compara al entrar.
+
 ## Identidad y permisos
 
 Login por **nombre + clave** (`login_window.py`, vía
@@ -518,8 +556,10 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-667 tests al 2026-10-18. Cubren turnos, caja y cajas con número
-(`tests/test_cajas.py`, `tests/test_cajas_ui.py`), stock, ventas y anulaciones,
+720 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+(`tests/test_cajas.py`, `tests/test_cajas_ui.py`), administrar desde otra PC
+(`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
+`tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
 y el filtro de palabras de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.
