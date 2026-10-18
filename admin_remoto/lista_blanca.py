@@ -31,8 +31,8 @@ import hashlib
 import inspect
 
 from repositories import (
-    articulos_repo, compras_repo, config_repo, relevo_repo, reportes_repo, tramites_repo, turnos_repo,
-    usuarios_repo, ventas_repo,
+    articulos_repo, compras_repo, config_repo, detalle_dia_repo, relevo_repo, reportes_repo, tramites_repo,
+    turnos_repo, usuarios_repo, ventas_repo,
 )
 from control_pcs.repositories import (
     accesos_admin_pc_repo, bonos_miembro_repo, clientes_repo, filtro_palabras_repo, fondo_repo, miembros_repo,
@@ -47,6 +47,7 @@ _MODULOS = {
     "articulos_repo": articulos_repo,
     "compras_repo": compras_repo,
     "config_repo": config_repo,
+    "detalle_dia_repo": detalle_dia_repo,
     "relevo_repo": relevo_repo,
     "reportes_repo": reportes_repo,
     "tramites_repo": tramites_repo,
@@ -84,7 +85,9 @@ FUNCIONES = {
         "resumen_ventas", "ranking_ventas", "resumen_por_origen", "resumen_por_turno",
         "resumen_por_operador", "ventas_de_operador",
     ),
-    # Reportes > Resumen del Día, Control de Cierres y Caja (solo mirar)
+    # Reportes > Resumen del Día (con el detalle venta por venta), Control de
+    # Cierres y Caja (solo mirar)
+    "detalle_dia_repo": ("detalle_del_dia",),
     "turnos_repo": (
         "resumen_del_dia", "listar_cierres", "detalle_cierre", "turnos_faltantes", "verificar_cierre",
         "resumen_turno_actual",

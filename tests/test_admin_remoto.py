@@ -504,6 +504,8 @@ _PANTALLAS_DE_OTRA_PC = [
     ("ui/consulta_ventas_window.py", None),
     ("ui/detalle_venta.py", None),
     ("ui/reportes_window.py", None),
+    ("ui/reportes_resumen_dia.py", None),
+    ("ui/reportes_detalle_dia.py", None),
     ("ui/reportes_operador.py", None),
     ("ui/reportes_pcstream.py", None),
     ("ui/control_cierres_window.py", None),

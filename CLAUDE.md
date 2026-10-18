@@ -153,7 +153,8 @@ Ya se hizo con `ventas_window.py` (carrito y diálogo de pago) y con
 `turnos.py` (calendario separado de la base), `turnos_faltantes_repo.py`
 (turnos vencidos sin cierre), `turnos_ventas_repo.py` (qué se vendió en la
 ventana de un turno), `control_cierres_repo.py` (Control de Cierres, con su
-pantalla `ui/control_cierres_window.py`), `actividad_repo.py` (feed de PCs) y
+pantalla `ui/control_cierres_window.py`), `ui/reportes_resumen_dia.py` (el Resumen
+del Día salió de `reportes_window.py`), `actividad_repo.py` (feed de PCs) y
 `database.py` (esquema en `database_esquema.py`, migraciones en
 `database_migraciones.py`, conexiones/copias/claves en `database.py`).
 Conservá las funciones públicas al partirlos para no tocar otras pantallas.
@@ -247,6 +248,8 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `ui.utils.formato_fecha_hora(fecha)` | una fecha con hora de la base se convierte en `"16/10/2026 22:13"` |
 | `reportes_repo.resumen_por_operador(...)` · `.ventas_de_operador(...)` | se calcula cuánto vendió cada usuario y se listan sus ventas con fecha y hora (Reportes > Por Operador) |
+| `turnos_repo._ventanas_del_dia(conexion, dia, ahora)` | se decide qué ventas son de qué turno de un día (los cierres anotados ese día y la ventana abierta si es de ese día): la usan las filas del Resumen del Día y su detalle |
+| `detalle_dia_repo.detalle_del_dia(dia)` | se arma el detalle venta por venta de un día (hora, turno, operador, rubro y qué se vendió de kiosko, trámites, PCs con la PC al momento de vender, PCSTREAM, PlayStation 5 y socios), lo vendido por producto y por operador (Reportes > Resumen del Día, pedido del dueño 2026-10-18) |
 | `limpieza_repo.limpiar_base(usuario_id)` | se borra la plata y el historial de ventas para volver a probar (qué tablas, en `_TABLAS_A_VACIAR`; devuelve el stock de las ventas confirmadas y deja a los socios con saldo 0). Una tabla nueva que guarde plata o ventas tiene que sumarse ahí |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
@@ -698,4 +701,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-723 pruebas al 2026-10-18 (con las cajas con número y administrar desde otra PC).
+731 pruebas al 2026-10-18 (con las cajas con número, administrar desde otra PC y el detalle del día).

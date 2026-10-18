@@ -386,7 +386,18 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   `resumen_del_dia()["cierres_de_otro_dia"]`, y en el día donde quedó anotado
   el estado dice "Cerrado el dd/mm" (`"cerrado_otro_dia"`). La Noche que se
   cierra a la madrugada (lo normal) no dispara nada
-  (`turnos_repo._cerrado_pasado_su_vencimiento`). La sexta, **Por Operador**
+  (`turnos_repo._cerrado_pasado_su_vencimiento`). Abajo de los turnos (pedido del
+  dueño 2026-10-18; `ui/reportes_resumen_dia.py` + `ui/reportes_detalle_dia.py`,
+  datos de `detalle_dia_repo.detalle_del_dia`) va el **detalle de todo lo vendido**
+  del día, o del turno que se toque: venta por venta (Nº, hora, turno, operador
+  —"(cargó X)" si la cobró el Admin—, rubro, qué se vendió con cantidades: "2 x
+  Coca 500", "PC1 · 3 horas (3 h)" con la PC donde estaba al venderlo aunque
+  después se la cambiara de máquina, PCSTREAM, PlayStation 5, socios y trámites —,
+  efectivo, digital, total y si se anuló), lo vendido por producto y por operador.
+  Qué venta es de qué turno sale de `turnos_repo._ventanas_del_dia`, la misma
+  función que arma las filas, así el detalle de un turno suma lo mismo que su fila
+  (salvo una venta anulada después de cerrar, que el cierre sí cuenta: se marca).
+  La sexta, **Por Operador**
   (`ui/reportes_operador.py`, archivo aparte por la regla 12; pedido del dueño
   2026-10-17), con Desde/Hasta y "Solo Hoy": arriba
   `reportes_repo.resumen_por_operador` (por usuario: ventas confirmadas,
@@ -557,8 +568,8 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-723 tests al 2026-10-18. Cubren turnos, caja y cajas con número
-(`tests/test_cajas.py`, `tests/test_cajas_ui.py`), administrar desde otra PC
+731 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+(`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
