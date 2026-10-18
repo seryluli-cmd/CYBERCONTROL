@@ -9,8 +9,9 @@ Confirmar. El monto arranca escrito con el total (pedido del dueño,
 
 Está separado de ventas_window.py a propósito: una arma el carrito y esta
 cobra, así se puede tocar la forma de cobrar sin riesgo de romper el
-escaneo, y al revés (ver CLAUDE.md, regla 12). También lo reutiliza el
-cobro Mixto de Control de PCs, vía `resolver_pagos` (más abajo).
+escaneo, y al revés (ver CLAUDE.md, regla 12). También lo reutilizan el
+cobro de un bono en Control de PCs, vía `cobrar`, y el Mixto de Cargar
+Saldo y Trámites, vía `resolver_pagos` (más abajo).
 """
 
 from PySide6.QtWidgets import (
@@ -348,6 +349,21 @@ class DialogoPago(QDialog):
         self.accept()
 
 
+def cobrar(parent, monto):
+    """
+    Abre este cuadro de cobro por `monto` y devuelve los pagos (netos de
+    vuelto, listos para mandarle al repo), o None si se canceló (el llamador
+    no debe seguir). Así se cobra un bono en Control de PCs -- PC, PCSTREAM
+    y PlayStation 5 --, igual que una venta de kiosko (pedido del dueño,
+    2026-10-18: antes se elegía el medio en un combo del panel). También lo
+    usa el Mixto de `resolver_pagos`.
+    """
+    dialogo = DialogoPago(parent, monto)
+    if not dialogo.exec():
+        return None
+    return dialogo.pagos
+
+
 def resolver_pagos(parent, metodo, monto):
     """
     Único lugar donde se resuelve "qué método eligió la usuaria" a una
@@ -357,16 +373,13 @@ def resolver_pagos(parent, metodo, monto):
     siempre termina siendo una o dos filas reales de Efectivo/Digital.
     Devuelve None si se canceló ese cuadro (el llamador no debe seguir).
 
-    Compartido entre control_pcs/ui/pcs_detalle.py (bono de PC) y
-    control_pcs/ui/miembros_window.py (cargar saldo de un socio), para no
-    repetir esta lógica (CLAUDE.md, regla 2). `monto <= 0` no abre el
+    Compartido entre control_pcs/ui/miembros_window.py (cargar saldo de un
+    socio) y ui/tramites_window.py (cobrar un trámite), para no repetir
+    esta lógica (CLAUDE.md, regla 2). `monto <= 0` no abre el
     cuadro (no tiene sentido cobrar un total en cero): el llamador que
     permite un monto libre en $ (Cargar Saldo) ya valida eso aparte antes
     de llegar a grabar nada.
     """
     if metodo == dominio.PAGO_MIXTO and monto > 0:
-        dialogo = DialogoPago(parent, monto)
-        if not dialogo.exec():
-            return None
-        return dialogo.pagos
+        return cobrar(parent, monto)
     return [{"metodo": metodo, "monto": monto}]

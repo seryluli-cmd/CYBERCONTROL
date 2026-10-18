@@ -384,8 +384,8 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
     vez de crear otra. Devuelve el id de la venta generada.
 
     `pagos`: lista de {"metodo", "monto"} -- una sola fila para Efectivo
-    o Digital, dos filas (Efectivo + Digital) para un cobro Mixto, ver
-    control_pcs/ui/pcs_detalle.PanelDetalleEstacion._confirmar_bono.
+    o Digital, dos filas si pagaron una parte en cada medio, ver
+    control_pcs/ui/pcs_detalle.PanelDetalleEstacion._cobrar_bono.
 
     Solo sirve para una PC (una fila activa de `estaciones`). El bono se busca
     en el catálogo que le toca a ESA PC: el de PCSTREAM (pcstream_repo) si es la
