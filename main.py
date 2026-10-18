@@ -361,6 +361,7 @@ HOJA_DE_ESTILOS = """
         border: 1px solid transparent;
         color: #2B3445;
         font-weight: 500;
+        padding: 9px 11px;
     }
     QPushButton[clase="barra"]:hover {
         background-color: #EEF1F6;
@@ -377,6 +378,7 @@ HOJA_DE_ESTILOS = """
         border: 1px solid #B42330;
         color: #FFFFFF;
         font-weight: 700;
+        padding: 9px 11px;
     }
     QPushButton[clase="alerta"]:hover {
         background-color: #C42532;

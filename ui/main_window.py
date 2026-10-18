@@ -135,12 +135,15 @@ class MainWindow(QMainWindow):
         self.resize(980, 680)
 
         # Tarjeta blanca "#encabezadoInicio" (estilo en la hoja de estilos
-        # global de main.py), armada como barra horizontal.
+        # global de main.py), en dos renglones (pedido del dueño, 2026-10-18: en
+        # la pantalla del mostrador, de 1366 de ancho, todo en una sola fila no
+        # entraba y se cortaban los textos): arriba quién está y la caja, abajo
+        # los botones, empezando por Vender desde la izquierda.
         barra = QFrame()
         barra.setObjectName("encabezadoInicio")
-        layout_barra = QHBoxLayout()
-        layout_barra.setContentsMargins(20, 12, 20, 12)
-        layout_barra.setSpacing(10)
+        layout_barra = QVBoxLayout()
+        layout_barra.setContentsMargins(16, 10, 16, 10)
+        layout_barra.setSpacing(8)
 
         # Pedido del dueño (2026-10-16): el nombre de quien está en el mostrador
         # como "Operador: TOBY", sin saludo y sin la palabra "EMPLEADA" (el rol
@@ -148,30 +151,22 @@ class MainWindow(QMainWindow):
         cargo = "Administrador" if self.es_admin else "Operador"
         titulo = QLabel(f"{cargo}: {self.usuario['nombre']}")
         titulo.setStyleSheet("font-size: 15px; font-weight: 700; color: #1B2233;")
-        layout_barra.addWidget(titulo)
-        # La caja abierta: "Caja Nº 12 · Mañana" (ver _actualizar_estado_de_la_caja).
+        # La caja abierta, al lado del nombre: "Caja Nº 12 · Mañana" (ver
+        # _actualizar_estado_de_la_caja).
         self.etiqueta_caja = QLabel()
         self.etiqueta_caja.setStyleSheet("font-size: 13px; color: #4A5568;")
-        layout_barra.addWidget(self.etiqueta_caja)
-        layout_barra.addStretch()
+        self.etiqueta_caja.hide()
+        renglon_nombre = QHBoxLayout()
+        renglon_nombre.setSpacing(10)
+        renglon_nombre.addWidget(titulo)
+        renglon_nombre.addWidget(self.etiqueta_caja)
+        renglon_nombre.addStretch()
+        layout_barra.addLayout(renglon_nombre)
 
-        if not self._remota:
-            self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
-            self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
-            if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"):
-                self._agregar_boton_barra(layout_barra, "🧑‍🤝‍🧑  Miembros", self._abrir_miembros)
-        if self._es_encargado:
-            self._agregar_boton_barra(layout_barra, "🛠️  Administrar Kiosko", self._abrir_administrar_kiosko)
-        if self.es_admin:
-            self._agregar_boton_barra(layout_barra, "⚙️  Configuración ADMIN", self._abrir_configuracion_admin)
-        self._agregar_boton_barra(layout_barra, "💵  Caja", self._abrir_caja)
-        self.boton_cierre_turno = None
-        if not self._remota:
-            self.boton_cierre_turno = self._agregar_boton_barra(
-                layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno
-            )
-        self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
-        self._agregar_boton_barra(layout_barra, "Cerrar sesión", self._cerrar_sesion, clase="peligro")
+        botones = QHBoxLayout()
+        botones.setSpacing(6)
+        layout_barra.addLayout(botones)
+        self._armar_botones_de_la_barra(botones)
         barra.setLayout(layout_barra)
 
         # Desde otra PC no va la grilla de PCs (eso se atiende en el mostrador):
@@ -186,6 +181,33 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.panel_pcs if self.panel_pcs is not None else _cartel_de_otra_pc(), 1)
         contenedor.setLayout(layout)
         self.setCentralWidget(contenedor)
+
+    def _armar_botones_de_la_barra(self, layout_barra):
+        """El renglón de botones, de izquierda a derecha empezando por Vender;
+        "Cerrar sesión" va solo, en la punta derecha (lejos de los demás, para no
+        apretarlo sin querer)."""
+        if not self._remota:
+            self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
+            self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
+            if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"):
+                # Una sola carita (2026-10-18): el emoji de "dos personas" de antes,
+                # en el Windows del mostrador, se veía como tres caras sueltas.
+                self._agregar_boton_barra(layout_barra, "🧑  Miembros", self._abrir_miembros)
+        # Nombres cortos en la barra (pedido del dueño, 2026-10-18); las ventanas
+        # que abren siguen con su nombre entero.
+        if self._es_encargado:
+            self._agregar_boton_barra(layout_barra, "🛠️  Admin Kiosko", self._abrir_administrar_kiosko)
+        if self.es_admin:
+            self._agregar_boton_barra(layout_barra, "⚙️  Config ADMIN", self._abrir_configuracion_admin)
+        self._agregar_boton_barra(layout_barra, "💵  Caja", self._abrir_caja)
+        self.boton_cierre_turno = None
+        if not self._remota:
+            self.boton_cierre_turno = self._agregar_boton_barra(
+                layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno
+            )
+        self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
+        layout_barra.addStretch()
+        self._agregar_boton_barra(layout_barra, "Cerrar sesión", self._cerrar_sesion, clase="peligro")
 
     def _agregar_boton_barra(self, layout, texto, funcion, clase=None):
         """Botón de la barra superior: alto fijo, ancho según el texto
@@ -218,15 +240,20 @@ class MainWindow(QMainWindow):
         relevo_repo.estado_de_la_caja) o None si no hay caja abierta."""
         estado = relevo_repo.estado_de_la_caja()
         if estado is None:
-            self.etiqueta_caja.setText("·  Sin caja abierta" if self.es_admin else "")
+            self._mostrar_texto_de_la_caja("·  Sin caja abierta" if self.es_admin else "")
         elif self.es_admin or estado["responsable_id"] != self.usuario["id"]:
-            self.etiqueta_caja.setText(
+            self._mostrar_texto_de_la_caja(
                 f"·  Caja Nº {estado['caja_numero']} de {estado['responsable']} · {estado['turno_label']}"
             )
         else:
-            self.etiqueta_caja.setText(f"·  Caja Nº {estado['caja_numero']} · {estado['turno_label']}")
+            self._mostrar_texto_de_la_caja(f"·  Caja Nº {estado['caja_numero']} · {estado['turno_label']}")
         self._titilar = bool(estado and estado["titilar"])
         return estado
+
+    def _mostrar_texto_de_la_caja(self, texto: str):
+        """La caja, al lado del nombre (escondida si no hay nada que decir)."""
+        self.etiqueta_caja.setText(texto)
+        self.etiqueta_caja.setVisible(bool(texto))
 
     def _mostrar_la_caja_del_mostrador(self):
         """Desde otra PC: el número de caja que ve el mostrador, o que no hay
@@ -234,7 +261,7 @@ class MainWindow(QMainWindow):
         try:
             self._actualizar_estado_de_la_caja()
         except (ValueError, PermissionError):  # sin red, o se cerró la sesión en el mostrador
-            self.etiqueta_caja.setText("·  Sin conexión con el mostrador")
+            self._mostrar_texto_de_la_caja("·  Sin conexión con el mostrador")
 
     def _parpadear(self):
         """Titila en rojo (alterna con su color de siempre) mientras toca

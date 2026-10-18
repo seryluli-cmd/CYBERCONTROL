@@ -99,7 +99,10 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         self.assertIn("Operador: TOBY", textos)
         self.assertFalse(any("Hola" in texto or dominio.ROL_EMPLEADA in texto for texto in textos), textos)
 
-    def test_el_admin_figura_como_administrador(self):
+    def test_el_admin_figura_como_administrador_y_la_barra_va_en_dos_renglones(self):
+        # Pedido del dueño (2026-10-18): arriba quién está y la caja; abajo los botones
+        # desde Vender, con nombres cortos ("Admin Kiosko", "Config ADMIN") y una sola
+        # carita en Miembros, para que todo entre en la pantalla del mostrador.
         admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN))
         ventana = MainWindow(admin, lambda: None)
         self.addCleanup(ventana.deleteLater)
@@ -107,7 +110,20 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
 
         barra = ventana.findChild(QFrame, "encabezadoInicio")
 
-        self.assertIn("Administrador: Sergio", [etiqueta.text() for etiqueta in barra.findChildren(QLabel)])
+        titulo = next(e for e in barra.findChildren(QLabel) if e.text() == "Administrador: Sergio")
+        botones = {boton.text(): boton for boton in barra.findChildren(QPushButton)}
+        for texto in ("🧑  Miembros", "🛠️  Admin Kiosko", "⚙️  Config ADMIN"):
+            self.assertIn(texto, botones)
+        ventana.resize(1340, 700)
+        ventana.show()
+        QApplication.processEvents()
+        self.addCleanup(ventana.close)
+        vender = botones["🛒  Vender"]
+        # Los botones van debajo del nombre, Vender primero a la izquierda.
+        self.assertGreater(vender.mapTo(barra, vender.rect().topLeft()).y(), titulo.mapTo(barra, titulo.rect().topLeft()).y())
+        self.assertLessEqual(vender.mapTo(barra, vender.rect().topLeft()).x(), titulo.mapTo(barra, titulo.rect().topLeft()).x())
+        # (Que entre en 1366 de ancho se midió con la pantalla real de Windows: acá,
+        # sin pantalla, las letras son otras y los anchos no sirven.)
 
     def test_los_montos_de_la_tarifa_de_socios_entran_en_su_fila(self):
         # Reportado por el dueño (2026-10-17): en "Tarifa por Hora para Socios" los
