@@ -56,6 +56,14 @@ VENTAS Y CAJA
 - Vender: escaneá artículos, ajustá cantidades y cobrá en efectivo,
   digital o ambos. El stock puede quedar negativo; luego se corrige
   al registrar la compra.
+- Cobrar: la ventana muestra Efectivo y Digital, que siempre suman el
+  total. Arranca con todo en Efectivo: si pagan justo, Enter y listo.
+  Si pagan una parte en cada medio, escribí una parte y la otra se
+  completa sola (después Enter). "Todo efectivo" y "Todo digital" ponen
+  todo de un lado. Si pagan con un billete más grande, escribilo en
+  Efectivo o en "Paga con" (sirve también cuando una parte va por
+  digital): muestra el VUELTO y Enter frena en Confirmar para que lo
+  veas; otro Enter cobra.
 - Trámites: cobrá el servicio que hizo el local, no el importe de la
   boleta del cliente. El Admin administra el catálogo de trámites.
 - Caja: muestra el efectivo esperado del turno y el desglose de ventas.

@@ -3,10 +3,14 @@ tests/test_dialogo_pago.py
 ============================
 El cuadro de cobro (ui/dialogo_pago.DialogoPago), que usan las ventas de kiosko,
 los bonos de Control de PCs (PC, PCSTREAM, PlayStation 5) y el Mixto de la carga de
-saldo y los trámites.
-Pedido del dueño (2026-10-18): el monto arranca escrito con el total, porque casi
-siempre pagan justo; si pagan justo, un Enter cobra; si pagan con otro billete, lo
-que se escribe reemplaza al total. Y un Enter que queda apretado no cobra solo.
+saldo y los trámites, y su cuenta (dominio.cuenta_del_cobro).
+
+Pedidos del dueño (2026-10-18): arranca con el total escrito en Efectivo, porque casi
+siempre pagan justo, y si pagan justo un Enter cobra; si pagan con otro billete, lo
+que se escribe reemplaza al total. Efectivo y Digital están siempre a la vista: al
+escribir en uno, el otro se completa con lo que falta; "Paga con" da el vuelto sin
+tocar lo digital. Con vuelto, Enter frena en Confirmar. Un Enter que queda apretado
+no cobra solo.
 Se prueba sin abrir ninguna ventana, plataforma "offscreen" de Qt.
 
 Se ejecutan con:
@@ -34,11 +38,51 @@ _EFECTIVO = dominio.PAGO_EFECTIVO
 _DIGITAL = dominio.PAGO_DIGITAL
 
 
+class TestCuentaDelCobro(unittest.TestCase):
+    """La cuenta, sin pantalla."""
+
+    def test_pago_justo_en_efectivo(self):
+        cuenta = dominio.cuenta_del_cobro(1500.0, 1500.0, 0.0)
+        self.assertEqual((cuenta["vuelto"], cuenta["falta"]), (0.0, 0.0))
+        self.assertEqual(cuenta["pagos"], [{"metodo": _EFECTIVO, "monto": 1500.0}])
+
+    def test_una_parte_en_cada_medio(self):
+        cuenta = dominio.cuenta_del_cobro(1500.0, 1000.0, 500.0)
+        self.assertEqual(cuenta["pagos"], [{"metodo": _EFECTIVO, "monto": 1000.0}, {"metodo": _DIGITAL, "monto": 500.0}])
+        self.assertEqual(cuenta["vuelto"], 0.0)
+
+    def test_el_billete_escrito_en_efectivo_da_vuelto_y_en_la_caja_queda_el_total(self):
+        cuenta = dominio.cuenta_del_cobro(1500.0, 2000.0, 0.0)
+        self.assertEqual(cuenta["vuelto"], 500.0)
+        self.assertEqual(cuenta["pagos"], [{"metodo": _EFECTIVO, "monto": 1500.0}])
+
+    def test_paga_con_da_vuelto_sin_tocar_lo_digital(self):
+        # El ejemplo del dueño: $1.500 = $1.000 efectivo + $500 digital, y los
+        # $1.000 los paga con uno de $2.000.
+        cuenta = dominio.cuenta_del_cobro(1500.0, 1000.0, 500.0, paga_con=2000.0)
+        self.assertEqual(cuenta["vuelto"], 1000.0)
+        self.assertEqual(cuenta["pagos"], [{"metodo": _EFECTIVO, "monto": 1000.0}, {"metodo": _DIGITAL, "monto": 500.0}])
+
+    def test_si_paga_con_menos_que_la_parte_en_efectivo_falta(self):
+        cuenta = dominio.cuenta_del_cobro(1500.0, 1000.0, 500.0, paga_con=800.0)
+        self.assertEqual((cuenta["falta"], cuenta["vuelto"]), (200.0, 0.0))
+
+    def test_todo_digital_no_da_vuelto_aunque_quede_un_billete_escrito(self):
+        cuenta = dominio.cuenta_del_cobro(1500.0, 0.0, 1500.0, paga_con=2000.0)
+        self.assertEqual((cuenta["vuelto"], cuenta["falta"]), (0.0, 0.0))
+        self.assertEqual(cuenta["pagos"], [{"metodo": _DIGITAL, "monto": 1500.0}])
+
+    def test_lo_digital_nunca_pasa_el_total(self):
+        cuenta = dominio.cuenta_del_cobro(1500.0, 0.0, 9999.0)
+        self.assertEqual(cuenta["pagos"], [{"metodo": _DIGITAL, "monto": 1500.0}])
+
+
 class TestDialogoPago(unittest.TestCase):
     def _abrir(self, total=2100.0):
         dialogo = DialogoPago(None, total)
         self.addCleanup(dialogo.deleteLater)
         dialogo.show()
+        dialogo.activateWindow()
         QApplication.processEvents()
         return dialogo
 
@@ -50,54 +94,68 @@ class TestDialogoPago(unittest.TestCase):
             QApplication.sendEvent(destino, QKeyEvent(tipo, Qt.Key_Return, Qt.NoModifier, "\r", repetido))
 
     @staticmethod
-    def _escribir(dialogo, texto):
-        QTest.keyClicks(dialogo.spin_monto.lineEdit(), texto)
+    def _escribir(campo, texto):
+        """Como la empleada: entra al campo (queda seleccionado) y escribe encima."""
+        campo.setFocus()
+        campo.selectAll()
+        QTest.keyClicks(campo.lineEdit(), texto)
 
-    def _elegir_medio(self, dialogo, metodo):
-        dialogo.combo_metodo.setCurrentIndex(dialogo.combo_metodo.findData(metodo))
-
-    def test_arranca_con_el_total_escrito_y_seleccionado(self):
+    def test_arranca_con_el_total_en_efectivo_y_seleccionado(self):
         dialogo = self._abrir(2100.0)
 
-        self.assertEqual(dialogo.spin_monto.value(), 2100.0)
-        self.assertTrue(dialogo.spin_monto.lineEdit().hasSelectedText())
+        self.assertEqual((dialogo.campo_efectivo.value(), dialogo.campo_digital.value()), (2100.0, 0.0))
+        self.assertTrue(dialogo.campo_efectivo.hasFocus())
+        self.assertTrue(dialogo.campo_efectivo.lineEdit().hasSelectedText())
+        self.assertEqual(dialogo.campo_paga_con.text(), "paga justo")
         self.assertEqual(dialogo.vuelto, 0.0)
 
     def test_pago_justo_en_efectivo_cobra_con_un_enter(self):
         dialogo = self._abrir(2100.0)
 
-        self._enter(dialogo.spin_monto)
+        self._enter(dialogo.campo_efectivo)
 
         self.assertEqual(dialogo.result(), QDialog.Accepted)
         self.assertEqual(dialogo.pagos, [{"metodo": _EFECTIVO, "monto": 2100.0}])
         self.assertEqual(dialogo.vuelto, 0.0)
 
-    def test_pago_justo_digital_cobra_con_un_enter(self):
+    def test_todo_digital_y_enter_cobra(self):
         dialogo = self._abrir(2100.0)
-        self._elegir_medio(dialogo, _DIGITAL)
 
-        self._enter(dialogo.spin_monto)
+        dialogo.boton_todo_digital.click()
+        self.assertEqual((dialogo.campo_efectivo.value(), dialogo.campo_digital.value()), (0.0, 2100.0))
+        self.assertFalse(dialogo.campo_paga_con.isEnabled())
+        self.assertTrue(dialogo.campo_digital.hasFocus())
+        self._enter(dialogo.campo_digital)
 
         self.assertEqual(dialogo.result(), QDialog.Accepted)
         self.assertEqual(dialogo.pagos, [{"metodo": _DIGITAL, "monto": 2100.0}])
 
-    def test_al_volver_del_medio_de_pago_el_monto_queda_seleccionado(self):
+    def test_una_parte_en_efectivo_completa_sola_la_digital_y_enter_cobra(self):
+        # Así arranca también el cobro Mixto de PCs, PlayStation 5, socios y trámites.
+        dialogo = self._abrir(1500.0)
+
+        self._escribir(dialogo.campo_efectivo, "1000")
+        self.assertEqual(dialogo.campo_digital.value(), 500.0)
+        self._enter(dialogo.campo_efectivo)
+
+        self.assertEqual(dialogo.result(), QDialog.Accepted)
+        self.assertEqual(dialogo.pagos, [{"metodo": _EFECTIVO, "monto": 1000.0}, {"metodo": _DIGITAL, "monto": 500.0}])
+
+    def test_escribir_en_digital_completa_el_efectivo(self):
+        dialogo = self._abrir(1500.0)
+
+        self._escribir(dialogo.campo_digital, "300")
+
+        self.assertEqual(dialogo.campo_efectivo.value(), 1200.0)
+        dialogo.boton_todo_efectivo.click()
+        self.assertEqual((dialogo.campo_efectivo.value(), dialogo.campo_digital.value()), (1500.0, 0.0))
+
+    def test_con_otro_billete_en_efectivo_frena_para_ver_el_vuelto(self):
         dialogo = self._abrir(2100.0)
-        dialogo.combo_metodo.setFocus()
-        self._elegir_medio(dialogo, _DIGITAL)
 
-        self._enter(dialogo.combo_metodo)
-        self._escribir(dialogo, "1000")
-
-        self.assertTrue(dialogo.spin_monto.hasFocus())
-        self.assertEqual(dialogo.spin_monto.value(), 1000.0)
-
-    def test_con_otro_billete_lo_escrito_reemplaza_al_total_y_frena_para_ver_el_vuelto(self):
-        dialogo = self._abrir(2100.0)
-
-        self._escribir(dialogo, "5000")
-        self.assertEqual(dialogo.spin_monto.value(), 5000.0)
-        self._enter(dialogo.spin_monto)
+        self._escribir(dialogo.campo_efectivo, "5000")
+        self.assertEqual(dialogo.campo_digital.value(), 0.0)
+        self._enter(dialogo.campo_efectivo)
 
         # Todavía no cobró: la empleada tiene que ver el vuelto antes.
         self.assertEqual(dialogo.result(), QDialog.Rejected)
@@ -113,36 +171,42 @@ class TestDialogoPago(unittest.TestCase):
         self.assertEqual(dialogo.pagos, [{"metodo": _EFECTIVO, "monto": 2100.0}])
         self.assertEqual(dialogo.vuelto, 2900.0)
 
-    def test_una_parte_en_efectivo_completa_el_resto_digital_y_frena_para_revisar(self):
-        # Así arranca también el cobro Mixto de PCs, PlayStation 5, socios y trámites.
-        dialogo = self._abrir(2100.0)
+    def test_paga_con_da_el_vuelto_sin_tocar_lo_digital(self):
+        dialogo = self._abrir(1500.0)
+        self._escribir(dialogo.campo_digital, "500")
 
-        self._escribir(dialogo, "1000")
-        self._enter(dialogo.spin_monto)
+        self._escribir(dialogo.campo_paga_con, "2000")
 
-        self.assertTrue(dialogo.isVisible())
-        self.assertEqual(dialogo.pagos, [
-            {"metodo": _EFECTIVO, "monto": 1000.0},
-            {"metodo": _DIGITAL, "monto": 1100.0},
-        ])
-        self.assertEqual(dialogo.spin_monto.value(), 0.0)
-
+        self.assertEqual(dialogo.campo_digital.value(), 500.0)
+        self.assertEqual(dialogo.vuelto, 1000.0)
+        self._enter(dialogo.campo_paga_con)
+        self.assertTrue(dialogo.boton_confirmar.hasFocus())  # frena por el vuelto
         QTest.keyClick(dialogo.boton_confirmar, Qt.Key_Return)
+        self.assertEqual(dialogo.pagos, [{"metodo": _EFECTIVO, "monto": 1000.0}, {"metodo": _DIGITAL, "monto": 500.0}])
 
-        self.assertEqual(dialogo.result(), QDialog.Accepted)
+    def test_si_paga_con_menos_no_deja_cobrar(self):
+        dialogo = self._abrir(1500.0)
+
+        self._escribir(dialogo.campo_paga_con, "1000")
+
+        self.assertFalse(dialogo.boton_confirmar.isEnabled())
+        self.assertIn("faltan $ 500,00", dialogo.etiqueta_falta.text())
+        self._enter(dialogo.campo_paga_con)
+        self.assertTrue(dialogo.isVisible())
+        self.assertEqual(dialogo.pagos, [])
 
     def test_un_enter_apretado_no_cobra(self):
         dialogo = self._abrir(2100.0)
 
-        self._enter(dialogo.spin_monto, repetido=True)
+        self._enter(dialogo.campo_efectivo, repetido=True)
 
         self.assertTrue(dialogo.isVisible())
         self.assertEqual(dialogo.pagos, [])
 
     def test_un_enter_apretado_en_confirmar_no_confirma(self):
         dialogo = self._abrir(2100.0)
-        self._escribir(dialogo, "5000")
-        self._enter(dialogo.spin_monto)
+        self._escribir(dialogo.campo_efectivo, "5000")
+        self._enter(dialogo.campo_efectivo)
 
         self.assertTrue(dialogo.boton_confirmar.hasFocus())
 
@@ -154,32 +218,12 @@ class TestDialogoPago(unittest.TestCase):
 
     def test_un_enter_de_mas_no_cobra_dos_veces(self):
         dialogo = self._abrir(2100.0)
-        self._enter(dialogo.spin_monto)
+        self._enter(dialogo.campo_efectivo)
 
-        self._enter(dialogo.spin_monto)
+        self._enter(dialogo.campo_efectivo)
         self._enter(dialogo.boton_confirmar)
 
         self.assertEqual(dialogo.pagos, [{"metodo": _EFECTIVO, "monto": 2100.0}])
-
-    def test_al_quitar_un_pago_vuelve_a_proponer_lo_que_falta(self):
-        dialogo = self._abrir(2100.0)
-        self._escribir(dialogo, "1000")
-        self._enter(dialogo.spin_monto)
-
-        dialogo.tabla_pagos.setCurrentCell(1, 0)
-        dialogo._quitar_pago()
-
-        self.assertEqual(dialogo.spin_monto.value(), 1100.0)
-        self.assertTrue(dialogo.spin_monto.lineEdit().hasSelectedText())
-
-    def test_el_boton_agregar_pago_propone_lo_que_falta(self):
-        dialogo = self._abrir(2100.0)
-        self._escribir(dialogo, "600")
-
-        dialogo._agregar_pago()
-
-        self.assertEqual(dialogo.pagos, [{"metodo": _EFECTIVO, "monto": 600.0}])
-        self.assertEqual(dialogo.spin_monto.value(), 1500.0)
 
 
 class TestCobrar(unittest.TestCase):
@@ -188,7 +232,7 @@ class TestCobrar(unittest.TestCase):
 
     def _con_el_cuadro_abierto(self, accion):
         def hacer():
-            QApplication.processEvents()  # que termine de mostrarse (deja el monto seleccionado)
+            QApplication.processEvents()  # que termine de mostrarse (deja el total seleccionado)
             dialogo = QApplication.activeModalWidget()
             try:
                 accion(dialogo)
@@ -199,7 +243,7 @@ class TestCobrar(unittest.TestCase):
         QTimer.singleShot(0, hacer)
 
     def test_pago_justo_devuelve_los_pagos(self):
-        self._con_el_cuadro_abierto(lambda dialogo: TestDialogoPago._enter(dialogo.spin_monto))
+        self._con_el_cuadro_abierto(lambda dialogo: TestDialogoPago._enter(dialogo.campo_efectivo))
 
         pagos = cobrar(None, 4000.0)
 
@@ -207,8 +251,8 @@ class TestCobrar(unittest.TestCase):
 
     def test_con_vuelto_devuelve_lo_que_queda_en_la_caja(self):
         def pagar_con_5000(dialogo):
-            QTest.keyClicks(dialogo.spin_monto.lineEdit(), "5000")
-            TestDialogoPago._enter(dialogo.spin_monto)  # frena en Confirmar por el vuelto
+            TestDialogoPago._escribir(dialogo.campo_efectivo, "5000")
+            TestDialogoPago._enter(dialogo.campo_efectivo)  # frena en Confirmar por el vuelto
             self.assertEqual(dialogo.vuelto, 1000.0)
             dialogo.boton_confirmar.click()
         self._con_el_cuadro_abierto(pagar_con_5000)

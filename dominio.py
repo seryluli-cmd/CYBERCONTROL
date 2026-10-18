@@ -239,6 +239,51 @@ def pagos_netos_de_vuelto(pagos: list, vuelto: float) -> list:
     return [pago for pago in pagos if pago["monto"] > 0.001]
 
 
+def lo_que_falta_para(total: float, monto: float) -> float:
+    """En el cobro, lo que va en el OTRO medio cuando se escribe `monto` en uno
+    (Efectivo <-> Digital): lo que falta para el total, nunca negativo."""
+    return round(max(0.0, total - monto), 2)
+
+
+def cuenta_del_cobro(total: float, efectivo: float, digital: float, paga_con: float = 0.0) -> dict:
+    """
+    La cuenta del cuadro de cobro (ui/dialogo_pago.py; pedido del dueño,
+    2026-10-18: Efectivo y Digital siempre a la vista, el reparto se completa
+    solo y el vuelto va aparte).
+
+    - `digital`: lo que se cobra por medio digital (de 0 al total).
+    - `efectivo`: lo escrito en Efectivo. Lo que no se cobra en digital es la
+      parte en efectivo; si se escribió MÁS, es el billete con que pagan (como
+      se hacía siempre: "escribí con cuánto pagan").
+    - `paga_con`: el billete que da el cliente, escrito aparte (0 = no se
+      escribió). Sirve para dar vuelto sin tocar lo digital: $1.500 = $1.000
+      efectivo + $500 digital, y paga los $1.000 con uno de $2.000.
+
+    Devuelve {"parte_efectivo", "digital", "entrega" (el efectivo que da el
+    cliente), "vuelto", "falta" (efectivo que todavía no entregó; con algo
+    acá no se puede cobrar) y "pagos"}. "pagos" ya es lo que queda en la caja
+    (neto de vuelto, como pagos_netos_de_vuelto): una o dos filas de
+    PAGO_EFECTIVO/PAGO_DIGITAL, listas para grabar.
+    """
+    total = round(total, 2)
+    digital = round(min(max(digital, 0.0), total), 2)
+    parte_efectivo = round(total - digital, 2)
+    entrega = round(paga_con if paga_con > 0 else max(efectivo, 0.0), 2)
+    if parte_efectivo <= 0:
+        entrega = 0.0  # todo digital: no entrega billetes, así que no hay vuelto
+    falta = round(max(0.0, parte_efectivo - entrega), 2)
+    vuelto = round(entrega - parte_efectivo, 2) if not falta else 0.0
+    pagos = []
+    if parte_efectivo > 0.001:
+        pagos.append({"metodo": PAGO_EFECTIVO, "monto": parte_efectivo})
+    if digital > 0.001:
+        pagos.append({"metodo": PAGO_DIGITAL, "monto": digital})
+    return {
+        "parte_efectivo": parte_efectivo, "digital": digital, "entrega": entrega,
+        "vuelto": max(vuelto, 0.0), "falta": falta, "pagos": pagos,
+    }
+
+
 # --------------------------------------------------------------------
 # Dispositivos que se alquilan por tiempo (PCs y PlayStation 5)
 # --------------------------------------------------------------------

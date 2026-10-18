@@ -239,6 +239,7 @@ abra no alcanza si los tests no pasan.
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo (y, con `pedir_datos`, completa sus datos del primer ingreso) |
 | `miembros_repo.normalizar_dni(...)` · `.tiene_dni(miembro)` · `.normalizar_telefono(...)` | se valida y se guarda el DNI (solo números, 7 u 8 cifras), el celular y el WhatsApp de un socio, y se decide si a un socio le falta el DNI (el Cliente PC se lo pide; Miembros lo marca "Falta DNI") |
 | `dominio.carga_minima_de_saldo(tramos)` · `miembros_repo.validar_monto_de_carga(...)` | se decide cuánto es lo mínimo que un socio puede cargar con un monto libre (el monto del tramo más bajo de la Tarifa por Hora para Socios; pedido del dueño, 2026-10-17) y se rechaza una carga menor: la pantalla la valida antes de pedir el medio de pago, el repo de nuevo al cobrar |
+| `dominio.cuenta_del_cobro(total, efectivo, digital, paga_con)` · `.lo_que_falta_para(total, monto)` | se calcula el cobro: la parte en efectivo y la digital, el billete que da el cliente, el vuelto, lo que falta y los pagos que quedan en la caja (netos de vuelto); y lo que completa el otro medio al escribir en uno |
 | `ui.dialogo_pago.cobrar(parent, monto)` | se cobra un monto fijo con la ventana de cobro de Ventas (medio de pago, reparto y vuelto): el bono de PC, PCSTREAM o PlayStation 5 del botón "Cobrar" de Control de PCs, y el Mixto de `resolver_pagos`. Devuelve los pagos netos de vuelto, o None si se canceló |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
@@ -598,10 +599,15 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   los tests usa otras tipografías y no aplica el esquema de color).
 - **El cobro arranca con el total escrito y, si pagan justo, un Enter cobra** (pedido del
   dueño, 2026-10-18: casi siempre pagan justo, en efectivo o por transferencia). En
-  `ui.dialogo_pago.DialogoPago` el monto propone lo que falta cubrir, seleccionado (lo que se
-  escribe lo reemplaza). Enter con un pago que cubre justo confirma solo; con vuelto, o con el
-  resto puesto en el otro medio, se frena en Confirmar: la empleada tiene que ver el vuelto o el
-  reparto antes de cobrar. No saques esa frenada "para ahorrar un Enter". Los bonos de PCs,
+  `ui.dialogo_pago.DialogoPago` Efectivo y Digital están siempre a la vista y suman el total
+  (idea del dueño, 2026-10-18): arranca con el total en Efectivo, seleccionado (lo que se
+  escribe lo reemplaza); al escribir en uno, el otro se completa con lo que falta; "Todo
+  efectivo"/"Todo digital"; y "Paga con" (opcional) es el billete que da el cliente, para dar
+  vuelto sin tocar lo digital. Escribir el billete en Efectivo también da vuelto (la costumbre
+  de siempre). La cuenta es `dominio.cuenta_del_cobro`. Enter cobra si no hay vuelto (también
+  con una parte en cada medio: el reparto ya está a la vista en los dos campos); con vuelto se
+  frena en Confirmar: la empleada tiene que ver el vuelto antes de cobrar. No saques esa
+  frenada "para ahorrar un Enter". Los bonos de PCs,
   PCSTREAM y PlayStation 5 (botón "Cobrar" del panel, siempre) y el Mixto de socios y trámites
   usan el mismo cuadro y arrancan igual (elegido por el dueño).
   Ventas: escanear, Enter con el código vacío (abre el cobro) y Enter. Un Enter que queda
@@ -701,4 +707,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-731 pruebas al 2026-10-18 (con las cajas con número, administrar desde otra PC y el detalle del día).
+738 pruebas al 2026-10-18 (con las cajas con número, administrar desde otra PC, el detalle del día y el cobro nuevo).

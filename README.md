@@ -568,7 +568,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-731 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+738 tests al 2026-10-18. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,
