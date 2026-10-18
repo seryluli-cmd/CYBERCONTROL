@@ -215,7 +215,12 @@ class _FiltroEnter(QObject):
 
     def eventFilter(self, watched, evento):
         if evento.type() == QEvent.KeyPress and evento.key() in (Qt.Key_Return, Qt.Key_Enter):
-            self._accion()
+            # Un Enter que quedó apretado (la repetición del teclado) se
+            # descarta: si no, saltaría todos los campos de un tirón y
+            # dispararía la acción final (Cobrar, Guardar) sin que nadie la
+            # pidiera. Un lector de códigos manda un Enter suelto, no repetido.
+            if not evento.isAutoRepeat():
+                self._accion()
             return True
         return False
 
