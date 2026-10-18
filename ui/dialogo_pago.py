@@ -74,7 +74,10 @@ class DialogoPago(QDialog):
         # al revés — así se resuelve en un solo Enter, sin calculadora.
         # Va por encadenar_enter (y no por returnPressed) porque así un
         # Enter que quedó apretado de la pantalla anterior no cobra solo.
-        encadenar_enter(self.combo_metodo, self.spin_monto, accion_final=self._agregar_pago_y_completar)
+        encadenar_enter(self.spin_monto, accion_final=self._agregar_pago_y_completar)
+        # Enter en "Medio de pago" vuelve al monto con el número seleccionado
+        # (Qt lo deselecciona al salir del campo), listo para pisarlo.
+        encadenar_enter(self.combo_metodo, accion_final=self._volver_al_monto)
 
         boton_agregar = QPushButton("Agregar pago")
         boton_agregar.setToolTip("Agrega únicamente el monto tipeado, con el medio elegido.")
@@ -172,6 +175,10 @@ class DialogoPago(QDialog):
         # recién después se puede dejar el número seleccionado, para que lo
         # que se escriba lo reemplace.
         QTimer.singleShot(0, self.spin_monto.lineEdit().selectAll)
+
+    def _volver_al_monto(self):
+        self.spin_monto.setFocus()
+        self.spin_monto.lineEdit().selectAll()
 
     def _falta_cubrir(self) -> float:
         return round(self.total - sum(p["monto"] for p in self.pagos), 2)

@@ -44,7 +44,7 @@ class TestDialogoPago(unittest.TestCase):
     @staticmethod
     def _enter(widget, repetido=False):
         """Un Enter en `widget`; `repetido` es la repetición del teclado (tecla apretada)."""
-        destino = widget.lineEdit() if hasattr(widget, "lineEdit") else widget
+        destino = widget.lineEdit() if hasattr(widget, "lineEdit") and widget.lineEdit() else widget
         for tipo in (QEvent.KeyPress, QEvent.KeyRelease):
             QApplication.sendEvent(destino, QKeyEvent(tipo, Qt.Key_Return, Qt.NoModifier, "\r", repetido))
 
@@ -79,6 +79,17 @@ class TestDialogoPago(unittest.TestCase):
 
         self.assertEqual(dialogo.result(), QDialog.Accepted)
         self.assertEqual(dialogo.pagos, [{"metodo": _DIGITAL, "monto": 2100.0}])
+
+    def test_al_volver_del_medio_de_pago_el_monto_queda_seleccionado(self):
+        dialogo = self._abrir(2100.0)
+        dialogo.combo_metodo.setFocus()
+        self._elegir_medio(dialogo, _DIGITAL)
+
+        self._enter(dialogo.combo_metodo)
+        self._escribir(dialogo, "1000")
+
+        self.assertTrue(dialogo.spin_monto.hasFocus())
+        self.assertEqual(dialogo.spin_monto.value(), 1000.0)
 
     def test_con_otro_billete_lo_escrito_reemplaza_al_total_y_frena_para_ver_el_vuelto(self):
         dialogo = self._abrir(2100.0)
