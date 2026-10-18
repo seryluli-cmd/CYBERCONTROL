@@ -8,7 +8,7 @@ lista de ventas arriba y, abajo, los artículos de la venta que se elija.
 from PySide6.QtWidgets import QDialog, QTableWidget, QTableWidgetItem
 
 from repositories import tramites_repo, ventas_repo
-from ui.utils import formato_pesos, manejar_errores, crear_tabla
+from ui.utils import formato_pesos, manejar_errores, crear_tabla, mostrar_columna_entera
 
 
 def crear_tabla_detalle_venta() -> QTableWidget:
@@ -60,3 +60,4 @@ class VentanaConDetalleDeVenta(QDialog):
             self.tabla_detalle.setItem(fila, 1, QTableWidgetItem(descripcion))
             self.tabla_detalle.setItem(fila, 2, QTableWidgetItem(cantidad))
             self.tabla_detalle.setItem(fila, 3, QTableWidgetItem(formato_pesos(subtotal)))
+        mostrar_columna_entera(self.tabla_detalle, 0)

@@ -30,9 +30,9 @@ import dominio
 from repositories import articulos_repo, ventas_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
-    sin_boton_por_defecto, crear_tabla,
+    sin_boton_por_defecto, crear_tabla, mostrar_columna_entera,
 )
-from ui.buscar_articulo import armar_botones_de_busqueda
+from ui.buscar_articulo import armar_botones_de_busqueda, avisar_codigo_no_encontrado
 from ui.dialogo_pago import DialogoPago
 
 
@@ -145,7 +145,7 @@ class VentasWindow(QDialog):
     def _agregar_al_carrito(self, codigo):
         articulo = articulos_repo.buscar_por_codigo(codigo)
         if articulo is None:
-            mostrar_error(self, "Artículo no encontrado", f"No hay ningún artículo con el código {codigo}.")
+            avisar_codigo_no_encontrado(self, codigo)
             self._cantidad_pendiente = 1
             return
 
@@ -228,6 +228,7 @@ class VentasWindow(QDialog):
             self.tabla.setItem(fila, 2, QTableWidgetItem(linea["descripcion"]))
             self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(linea["precio_unitario"])))
             self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(subtotal)))
+        mostrar_columna_entera(self.tabla, 1)
         self.etiqueta_total.setText(f"TOTAL: {formato_pesos(total)}")
 
     def _total_carrito(self):

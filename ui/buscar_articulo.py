@@ -17,6 +17,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from repositories import articulos_repo
 from ui.utils import (
     manejar_errores, aplicar_clase, formato_pesos, sin_boton_por_defecto, crear_tabla,
+    mostrar_columna_entera, mostrar_error,
 )
 
 
@@ -78,7 +79,11 @@ class DialogoBuscarArticulo(QDialog):
     @manejar_errores
     def _buscar(self, texto):
         if self.modo == "codigo":
-            resultados = articulos_repo.listar_articulos(texto)
+            # El que tiene ESE código exacto va primero: es el que se elige con
+            # Enter. Sin esto, buscar un EAN-8 como 77981133 elegía el primero
+            # por descripción de los que lo CONTIENEN (el EAN-13 de Manaos, la caja).
+            resultados = sorted(articulos_repo.listar_articulos(texto),
+                                key=lambda articulo: articulo["codigo"] != texto.strip())
         elif self.modo == "marca":
             resultados = articulos_repo.buscar_por_marca(texto) if texto else articulos_repo.listar_articulos("")
         else:
@@ -92,6 +97,7 @@ class DialogoBuscarArticulo(QDialog):
             self.tabla.setItem(fila, 1, QTableWidgetItem(articulo["descripcion"]))
             self.tabla.setItem(fila, 2, QTableWidgetItem(articulo["marca"] or ""))
             self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(articulo["precio_venta"])))
+        mostrar_columna_entera(self.tabla, 0)
 
     def _elegir_seleccion(self):
         fila = self.tabla.currentRow()
@@ -101,6 +107,20 @@ class DialogoBuscarArticulo(QDialog):
             return
         self.codigo_elegido = self.tabla.item(fila, 0).text()
         self.accept()
+
+
+def avisar_codigo_no_encontrado(ventana, codigo, agregado=""):
+    """
+    El aviso de Ventas y Compras cuando lo escaneado no es ningún artículo.
+    Dice cuántos dígitos llegaron: si el artículo SÍ está cargado, comparar
+    los dos códigos muestra enseguida si la pistola lee distinto de lo que
+    se tipeó en el alta (le falta o le sobra un dígito, por ejemplo).
+    """
+    largo = f"{len(codigo)} {'dígitos' if codigo.isdigit() else 'caracteres'}"
+    mensaje = f"No hay ningún artículo con el código {codigo} ({largo})."
+    if agregado:
+        mensaje += f"\n{agregado}"
+    mostrar_error(ventana, "Artículo no encontrado", mensaje)
 
 
 def armar_botones_de_busqueda(ventana, al_elegir):
