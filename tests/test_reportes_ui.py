@@ -113,13 +113,13 @@ class TestResumenDelDiaEnPantalla(BaseConBaseTemporal):
 
     def test_la_noche_cerrada_a_la_madrugada_se_ve_como_siempre_y_no_dispara_el_aviso(self):
         self._cerrar(datetime(2026, 1, 5, 22, 5))
-        self._cerrar(datetime(2026, 1, 6, 6, 30))
+        self._cerrar(datetime(2026, 1, 6, 6, 10))
 
         del_lunes = self._abrir(QDate(2026, 1, 5))
         del_martes = self._abrir(QDate(2026, 1, 6))
 
         self.assertEqual(del_lunes.tabla.item(_FILA_NOCHE, _COLUMNA_ESTADO).text(), "Cerrado")
-        self.assertEqual(del_lunes.tabla.item(_FILA_NOCHE, _COLUMNA_CERRO).text(), "Pedro · 06:30")
+        self.assertEqual(del_lunes.tabla.item(_FILA_NOCHE, _COLUMNA_CERRO).text(), "Pedro · 06:10")
         self.assertFalse(del_martes.aviso.isVisibleTo(del_martes))
 
 

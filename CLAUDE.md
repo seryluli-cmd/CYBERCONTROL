@@ -152,7 +152,8 @@ se cuelga de uno existente "porque es parecido".
 Ya se hizo con `ventas_window.py` (carrito y diálogo de pago) y con
 `turnos.py` (calendario separado de la base), `turnos_faltantes_repo.py`
 (turnos vencidos sin cierre), `turnos_ventas_repo.py` (qué se vendió en la
-ventana de un turno), `actividad_repo.py` (feed de PCs) y
+ventana de un turno), `control_cierres_repo.py` (Control de Cierres, con su
+pantalla `ui/control_cierres_window.py`), `actividad_repo.py` (feed de PCs) y
 `database.py` (esquema en `database_esquema.py`, migraciones en
 `database_migraciones.py`, conexiones/copias/claves en `database.py`).
 Conservá las funciones públicas al partirlos para no tocar otras pantallas.
@@ -167,7 +168,7 @@ sobra; uno que explica por qué esa línea es así vale oro.
 ### Cómo se verifica
 
 **14. Regla de negocio nueva, test nuevo.**
-`tests/` cubre turnos, stock, cierres, PCs, PCSTREAM, Miembros, PlayStation y totales.
+`tests/` cubre turnos, stock, cierres, cajas con número, PCs, PCSTREAM, Miembros, PlayStation y totales.
 Todo lo que se calcule con plata, fechas o
 turnos entra ahí antes de darse por terminado. La UI se prueba a mano;
 la lógica, no.
@@ -196,8 +197,14 @@ abra no alcanza si los tests no pasan.
 | `turnos.limites_de_los_dias(desde, hasta)` · `turnos.sql_dia_del_local(columna)` | se filtra y se agrupa por día en un reporte de ventas: días de 06:00 a 06:00, con la Noche entera en el día en que empezó (pedido del dueño, 2026-10-17) |
 | `turnos.dia_del_turno_que_arranca_tras_un_cierre(momento)` | se decide con qué DÍA queda anotado lo que sigue a un cierre (misma tolerancia que el turno): lo usa `turnos_repo._desde_y_turno_en_curso` |
 | `ui.utils.hoy_del_local()` | se decide qué es "hoy" en los reportes de ventas (hasta las 06:00, el día anterior) |
-| `turnos.turno_vencimiento(dia, turno)` | se decide si un turno ya debería estar cerrado |
-| `turnos.turno_que_arranca_tras_un_cierre(momento)` | se decide con qué turno queda anotado lo que sigue a un cierre (la hora del cierre + `TURNO_GRACIA_MIN`); la usa `turnos_repo._desde_y_turno_en_curso`, que es lo que ven Caja y Cierre de Turno y lo que graba `cerrar_turno` |
+| `turnos.turno_vencimiento(dia, turno)` | se decide si un turno ya debería estar cerrado: su fin + `MINUTOS_PARA_CIERRE_FORZOSO` (15 min, pedido del dueño 2026-10-18). Es también la hora del cierre forzoso de la caja |
+| `turnos.fin_del_turno(dia, turno)` · `.inicio_del_aviso_de_cierre(dia, turno)` | se decide a qué hora termina un turno (Mañana 14, Tarde 22, Noche 06; domingo 18 y 06) y desde cuándo titila el botón Cierre de Turno (`MINUTOS_AVISO_ANTES_DEL_FIN`, 5 min antes) |
+| `turnos.turno_que_arranca_tras_un_cierre(momento)` | se decide con qué turno queda anotado lo que sigue a un cierre (la hora del cierre + `TURNO_GRACIA_MIN`); la usa `turnos_repo._desde_y_turno_en_curso`, que es lo que ven Caja y Cierre de Turno y lo que graba `cerrar_turno`. Con la misma regla `relevo_repo.abrir_caja` decide el turno de una caja que se abre |
+| `relevo_repo.situacion_al_entrar(usuario_id)` · `.abrir_caja` · `.recibir_caja` · `.cerrar_para_entrar` | se decide qué pasa con la caja cuando alguien entra (abrirla contando, recibirla contando todo el cajón, cerrar la de quien se fue, cerrar aparte las ventas sin caja; el Admin entra sin caja). La pantalla es `ui/ingreso_caja.py` |
+| `relevo_repo.estado_de_la_caja()` · `.cierre_forzoso_si_corresponde()` | se decide si el botón Cierre de Turno titila y si toca el cierre forzoso (lo dispara `MainWindow._revisar_la_caja`, que espera si hay un cobro a medias) |
+| `cajas_repo._quien_vende(conexion, usuario_id)` | se decide a nombre de quién y en qué caja queda una venta (lo que cobra el Admin va a nombre de la responsable de la caja abierta, con `ventas_caja.cargada_por`); lo usa `ventas_repo._insertar_cabecera_venta` |
+| `cajas_repo.cambio_inicial(caja)` | se decide con cuánto cambio arrancó una caja (lo contado, o lo esperado si no se contó): es lo que queda en el cajón al cerrarla y lo que se espera en la siguiente |
+| `control_cierres_repo.listar_cierres()` · `.detalle_cierre(id)` · `.verificar_cierre(...)` | se arma lo que muestra Control de Cierres (cada cierre con su caja, responsables, relevos, si se cerró sola o en ausencia) y se carga lo contado del sobre (solo Admin, cada conteo en `verificaciones_cierre`). `turnos_repo` los reexporta con el mismo nombre |
 | `turnos_repo._cerrado_pasado_su_vencimiento(dia, turno, cerrado_a)` | se decide si un turno se cerró "tarde" (pasado su vencimiento): lo usan el aviso y el "Cerrado el dd/mm" del Resumen del Día |
 | `dominio.es_admin(usuario)` | se pregunta si alguien es Administrador |
 | `dominio.nombre_metodo(metodo)` | se arma el nombre corto de un método de pago |
@@ -424,8 +431,8 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   renombra la tabla vieja primero, y SQLite (desde 3.26) re-apunta a la renombrada
   todas las claves foráneas de las tablas hijas (`venta_detalle`, `venta_pagos`,
   `sesion_bonos`, `tramites_venta`, `movimientos_saldo_miembro`,
-  `sesion_playstation_bonos`): al borrarla, quedarían apuntando a una tabla que ya
-  no existe. Para una tabla MADRE el orden es otro: crear `<tabla>_nueva`, copiar,
+  `sesion_playstation_bonos`, `ventas_caja`): al borrarla, quedarían apuntando a una
+  tabla que ya no existe. Para una tabla MADRE el orden es otro: crear `<tabla>_nueva`, copiar,
   borrar la vieja y recién ahí renombrar, con las claves foráneas apagadas y todo
   en UNA transacción — ver `_migrar_check_origen_en_ventas` y
   `TestMigracionCheckOrigenEnVentas` (en tests/test_playstation.py).
@@ -505,7 +512,31 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   reporte marcaba "SIN CERRAR" turnos que sí se cerraron. No usarla para el
   primer cierre de todos (no hay cierre anterior). Cambiar esta regla toca lo que
   ven Caja, Cierre de Turno y Resumen del Día a la vez: todo sale de
-  `turnos_repo._desde_y_turno_en_curso`.
+  `turnos_repo._desde_y_turno_en_curso`. **Con una caja abierta, el turno y el día
+  son los de la caja** (decididos al abrirla con la misma tolerancia,
+  `turnos_repo._ventana_en_curso`): sin eso, una caja abierta a las 07:00 después de
+  una noche sin uso quedaba anotada como la Noche anterior. `TURNO_GRACIA_MIN` (40)
+  es SOLO esa tolerancia: lo que tarda en cerrarse sola una caja es
+  `MINUTOS_PARA_CIERRE_FORZOSO` (15), no los mezcles.
+- **Cajas con número (pedido del dueño, 2026-10-18; reglas en `relevo_repo`).** Una
+  empleada no entra sin caja y nunca hay dos abiertas. La caja es de UNA persona por
+  vez: si el reemplazo llega tarde, quien cubrió cierra a horario y vuelve a entrar
+  con una caja nueva (sin contar); el que llega la RECIBE contando todo el cajón
+  (`relevos_caja`) y lo vendido antes va en su sobre. Si el turno de la caja abierta
+  ya terminó, quien llega la cierra "en ausencia" de la otra. El Admin (el dueño) no
+  abre caja: lo que cobra va a nombre de la responsable (`cajas_repo._quien_vende`).
+  La plata del cierre sigue saliendo de la ventana entre cierres; las ventas sin caja
+  (de antes de las cajas, o del Admin sin nadie en el mostrador) se cierran aparte
+  antes de abrir la próxima caja (`SITUACION_VENTAS_SIN_CAJA`): si se sumaran a la
+  caja nueva, la empleada respondería por plata que no vendió (pasó en la base real
+  el 18/10: $61.600 de la noche en la caja de la mañana). Lo que queda en el cajón al
+  cerrar es el cambio con que arrancó la caja (`cajas_repo.cambio_inicial`), no el
+  Cambio Fijo: así un faltante del cambio se ve una sola vez. `ventas_caja` es una
+  tabla aparte (no columnas de `ventas`) para no tocar la reconstrucción de la tabla
+  madre. El cierre forzoso espera a que no haya un cobro a medias (una pantalla modal
+  abierta; Ventas con el carrito vacío y Caja se cierran solas con
+  `se_puede_cerrar_sola`). El conteo es a ciegas (`ui/ingreso_caja.DialogoContarPlata`):
+  no muestres lo esperado antes de que se escriba lo contado. Ver `tests/test_cajas.py`.
 - **Un cierre hecho tras días sin cerrar NO aparece en las filas de hoy.** Cubre
   desde el cierre anterior, así que queda anotado en el turno viejo (días atrás) y
   el Resumen del Día de hoy sale en cero. No es un error ni plata perdida: el
@@ -643,4 +674,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-624 pruebas al 2026-10-18.
+667 pruebas al 2026-10-18 (con las cajas con número).

@@ -25,6 +25,32 @@ y de la PlayStation 5 y el saldo de los socios, y deja todo lo cargado
 configuración). Hay que escribir LIMPIAR para confirmar, y antes de borrar
 guarda una copia completa en data/backups.
 
+LA CAJA (cada persona con su caja)
+----------------------------------
+- Al entrar, si no hay ninguna caja abierta, el programa pide contar el
+  Cambio Fijo del cajón y escribirlo. Primero se escribe lo que se contó y
+  recién después el programa dice cuánto tenía que haber y si falta o sobra.
+  Esa caja queda con un número y a tu nombre.
+- 5 minutos antes del fin del turno (13:55, 21:55 y 05:55; los domingos
+  17:55 y 05:55) el botón Cierre de Turno titila en rojo: cerrá la caja,
+  armá el sobre con lo que dice el programa y guardalo en la caja fuerte.
+- Si a los 15 minutos del fin del turno la caja sigue abierta, el programa
+  la cierra solo (cierre forzoso). Si estás en medio de un cobro, espera a
+  que termines.
+- Si tu reemplazo no llegó: cerrá tu caja a horario, volvé a entrar con tu
+  usuario y seguí vendiendo (no hace falta contar de nuevo). Cuando llegue,
+  sale de tu usuario con "Cerrar sesión" y entra con el suyo: el programa le
+  pide contar TODA la plata del cajón y desde ahí la caja es suya; lo que
+  vendiste mientras la esperabas va en su sobre.
+- Si quien estaba antes se fue sin cerrar y su turno ya terminó, el que
+  llega cierra esa caja (queda anotado "cerrada por ... en ausencia de ..."),
+  arma el sobre de la otra persona y después abre la suya.
+- El Administrador no abre caja. Si cobra algo con la caja de una empleada
+  abierta, la venta queda a nombre de ella, en su caja, y se anota que la
+  cargó el Administrador.
+- Lo contado en cada sobre lo carga solo el Administrador, desde Control de
+  Cierres. Cada conteo queda guardado.
+
 VENTAS Y CAJA
 -------------
 - Vender: escaneá artículos, ajustá cantidades y cobrá en efectivo,
@@ -38,15 +64,15 @@ VENTAS Y CAJA
   (Kiosko + Alquiler de PCs + PlayStation 5) y lo vendido en Impresiones
   y en Trámites (ya están sumados dentro de Kiosko, no se suman de nuevo).
 - Clave: cada persona puede cambiar su propia contraseña.
-- Cada cierre se anota en el turno y el día donde EMPEZÓ lo que cierra (desde
-  el cierre anterior). Cerrar hasta 40 minutos antes del cambio de turno
-  cuenta como cerrar ese turno. Si pasaron días sin cerrar, el cierre de hoy
+- Cada cierre se anota en el turno y el día de su caja (el que corresponde a
+  la hora en que se abrió: quien abre a las 05:55 abre la Mañana). Si pasaron días sin cerrar, el cierre de hoy
   queda anotado en el día viejo: Reportes > Resumen del Día lo avisa y tiene
   un botón para ir a verlo.
 - Reportes > Por Operador: cuánto vendió cada persona entre dos fechas y,
   tocando su nombre, cada una de sus ventas con el día y la hora, qué se
   vendió y cómo se cobró. Ojo: la venta queda a nombre de quien tenía la
-  sesión abierta; por eso cada uno tiene que entrar con su propio usuario.
+  sesión abierta (o de la dueña de la caja, si la cobró el Administrador);
+  por eso cada uno tiene que entrar con su propio usuario.
 - En los reportes, el día del local va de 06:00 a 06:00: la Noche entra
   entera en el día en que empezó, aunque termine a la madrugada siguiente.
   Por eso, a las 2 de la mañana "Solo Hoy" todavía muestra el día anterior.
@@ -102,7 +128,8 @@ El Admin puede delegar por separado Artículos, Compras, Consulta de
 Ventas, Reportes, Control de Cierres y el acceso a Miembros/PlayStation.
 Anular ventas, Usuarios y Configuración ADMIN quedan para el Admin.
 Una persona sin esos permisos puede vender, cobrar trámites, ver Caja,
-cerrar turno y cambiar su clave.
+cerrar turno y cambiar su clave. Con el permiso de Control de Cierres una
+empleada ve los cierres, pero cargar lo contado del sobre es solo del Admin.
 
 SI ALGO FALLA
 -------------

@@ -154,11 +154,21 @@ def etiqueta_turno(fecha, turno: str) -> str:
     return turno.capitalize()
 
 
-# Cuántos minutos de gracia se le dan a un turno vencido antes de
-# considerarlo realmente "sin cerrar": quien cierra un turno tarda un
-# rato en cargarlo, así que no tiene sentido avisar apenas termina su
-# horario nominal — ver turno_vencimiento.
+# Tolerancia para decidir a qué turno pertenece lo que arranca a cierta hora
+# (una caja que se abre, lo que sigue a un cierre): quien llega a las 13:25 ya
+# es de la Tarde. Ver turno_que_arranca_tras_un_cierre. NO es lo que tarda en
+# cerrarse sola una caja: eso es MINUTOS_PARA_CIERRE_FORZOSO.
 TURNO_GRACIA_MIN = 40
+
+# Cuántos minutos antes del fin del turno empieza a titilar en rojo el botón
+# Cierre de Turno (pedido del dueño, 2026-10-18). Ver inicio_del_aviso_de_cierre.
+MINUTOS_AVISO_ANTES_DEL_FIN = 5
+
+# Cuántos minutos después del fin del turno la caja se cierra sola (cierre
+# forzoso) y el turno pasa a contar como "sin cerrar" (pedido del dueño,
+# 2026-10-18: 15 minutos de gracia y "el programa aprieta solo Cierre de
+# Turno"). Ver turno_vencimiento.
+MINUTOS_PARA_CIERRE_FORZOSO = 15
 
 
 def turno_que_arranca_tras_un_cierre(momento_del_cierre: datetime) -> str:
@@ -172,8 +182,9 @@ def turno_que_arranca_tras_un_cierre(momento_del_cierre: datetime) -> str:
     cierre del turno que termina, no como el arranque del que sigue. Sin esa
     tolerancia, lo que se cerraba después quedaba anotado un turno corrido (la
     Tarde como "Mañana", la Noche como "Tarde") y el reporte mostraba como "sin
-    cerrar" un turno que sí se había cerrado. Es la misma gracia que
-    turno_vencimiento da a los cierres tardíos, pero en el otro sentido.
+    cerrar" un turno que sí se había cerrado. Con la misma regla se decide el
+    turno de una caja que se abre (relevo_repo.abrir_caja): quien abre a las
+    05:55 abre la Mañana.
     """
     return calcular_turno(momento_del_cierre + timedelta(minutes=TURNO_GRACIA_MIN))
 
@@ -193,30 +204,43 @@ def dia_del_turno_que_arranca_tras_un_cierre(momento_del_cierre: datetime) -> da
     return dia_en_que_empezo_el_turno(momento_del_cierre + timedelta(minutes=TURNO_GRACIA_MIN))
 
 
-def turno_vencimiento(dia_base, turno: str) -> datetime:
+def fin_del_turno(dia_base, turno: str) -> datetime:
     """
-    Momento exacto en que el turno `turno` de un día calendario dado
-    (`dia_base`, acepta lo mismo que es_domingo()) queda vencido: fin de
-    su ventana nominal + TURNO_GRACIA_MIN de gracia. Se usa para saber
-    si un turno del mes en curso que todavía no tiene cierre cargado ya
-    "debería" estarlo, o si puede seguir en curso.
+    A qué hora termina, según el horario del local, el turno `turno` del día
+    `dia_base` (acepta lo mismo que es_domingo()): Mañana a las 14:00 (el
+    domingo, a las 18:00), Tarde a las 22:00 y Noche a las 06:00.
 
-    NOCHE cruza la medianoche, por eso vence a la madrugada del día
+    NOCHE cruza la medianoche, por eso termina a la madrugada del día
     SIGUIENTE al que arrancó — esto no cambia los domingos: tanto la
     noche normal como "Domingo T2" terminan igual a las 06:00 del día
     siguiente, lo único que cambia es a qué hora arrancan.
     """
-    if isinstance(dia_base, datetime):
-        dia_base = dia_base.date()
-    elif isinstance(dia_base, str):
-        dia_base = date.fromisoformat(dia_base[:10])
+    dia_base = _como_date(dia_base)
     domingo = dia_base.weekday() == 6
     inicio_dia = datetime(dia_base.year, dia_base.month, dia_base.day)
 
     if turno == dominio.TURNO_MANANA:
-        hora_fin = 18 if domingo else 14
-        return inicio_dia.replace(hour=hora_fin, minute=TURNO_GRACIA_MIN)
+        return inicio_dia.replace(hour=18 if domingo else 14)
     if turno == dominio.TURNO_TARDE:
-        return inicio_dia.replace(hour=22, minute=TURNO_GRACIA_MIN)
-    # NOCHE: vence a la madrugada del día siguiente.
-    return (inicio_dia + timedelta(days=1)).replace(hour=6, minute=TURNO_GRACIA_MIN)
+        return inicio_dia.replace(hour=22)
+    return (inicio_dia + timedelta(days=1)).replace(hour=HORA_CAMBIO_DE_DIA)
+
+
+def inicio_del_aviso_de_cierre(dia_base, turno: str) -> datetime:
+    """Desde cuándo titila en rojo el botón Cierre de Turno: 5 minutos antes del
+    fin del turno (ver MINUTOS_AVISO_ANTES_DEL_FIN). Desde ese mismo momento, a
+    quien llega y encuentra abierta la caja de otra persona se le pide cerrarla
+    en vez de recibirla (relevo_repo.situacion_al_entrar)."""
+    return fin_del_turno(dia_base, turno) - timedelta(minutes=MINUTOS_AVISO_ANTES_DEL_FIN)
+
+
+def turno_vencimiento(dia_base, turno: str) -> datetime:
+    """
+    Momento exacto en que el turno `turno` de un día calendario dado
+    (`dia_base`, acepta lo mismo que es_domingo()) queda vencido: fin de
+    su horario (fin_del_turno) + MINUTOS_PARA_CIERRE_FORZOSO de gracia.
+    A esa hora la caja se cierra sola (cierre forzoso, ver MainWindow) y un
+    turno del mes en curso que todavía no tiene cierre pasa a contar como
+    "sin cerrar".
+    """
+    return fin_del_turno(dia_base, turno) + timedelta(minutes=MINUTOS_PARA_CIERRE_FORZOSO)

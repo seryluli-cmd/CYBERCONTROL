@@ -27,6 +27,7 @@ from PySide6.QtGui import QIcon
 
 from database import inicializar_base_de_datos, hacer_backup_automatico
 from servidor_red import iniciar_servidor
+from ui.ingreso_caja import resolver_caja_al_entrar
 from ui.login_window import LoginWindow
 from ui.main_window import MainWindow
 
@@ -362,6 +363,18 @@ HOJA_DE_ESTILOS = """
     QPushButton[clase="barra"]:pressed {
         background-color: #E1E6EE;
     }
+    /* Cierre de Turno cuando toca cerrar la caja (desde 5 minutos antes del fin
+       del turno, pedido del dueño 2026-10-18): titila alternando este rojo lleno
+       con el estilo "barra" (ver MainWindow._parpadear). */
+    QPushButton[clase="alerta"] {
+        background-color: #D92D3A;
+        border: 1px solid #B42330;
+        color: #FFFFFF;
+        font-weight: 700;
+    }
+    QPushButton[clase="alerta"]:hover {
+        background-color: #C42532;
+    }
 
     QLabel#tituloSeccion {
         font-size: 12px;
@@ -519,6 +532,11 @@ class Aplicacion:
         self.ventana_login.show()
 
     def _al_loguearse(self, usuario):
+        # Antes de entrar, la caja tiene que quedar lista: abrirla contando el
+        # cambio, recibirla de quien cubrió el turno o cerrar la de quien se fue
+        # (ver ui/ingreso_caja.py). Si se cancela, se queda en el ingreso.
+        if not resolver_caja_al_entrar(self.ventana_login, usuario):
+            return
         self.ventana_login.close()
         self.ventana_principal = MainWindow(usuario, al_cerrar_sesion=self._mostrar_login)
         self.ventana_principal.showMaximized()
