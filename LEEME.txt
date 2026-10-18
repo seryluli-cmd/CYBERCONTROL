@@ -68,6 +68,12 @@ VENTAS Y CAJA
   la hora en que se abrió: quien abre a las 05:55 abre la Mañana). Si pasaron días sin cerrar, el cierre de hoy
   queda anotado en el día viejo: Reportes > Resumen del Día lo avisa y tiene
   un botón para ir a verlo.
+- Reportes > Resumen del Día: cada turno del día (quién lo cerró, cuánto
+  se vendió y si el sobre cuadró) y, abajo, el detalle de TODO lo vendido:
+  cada venta con su hora, turno, operador y qué se vendió (artículos con
+  cantidades, bonos de PC con la PC, PCSTREAM, PlayStation 5, socios y
+  trámites), lo vendido por producto y cuánto vendió cada operador. Tocá un
+  turno para ver solo ese, o TOTAL DEL DÍA para ver todo.
 - Reportes > Por Operador: cuánto vendió cada persona entre dos fechas y,
   tocando su nombre, cada una de sus ventas con el día y la hora, qué se
   vendió y cómo se cobró. Ojo: la venta queda a nombre de quien tenía la

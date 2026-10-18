@@ -366,6 +366,45 @@ def _cierres_hechos_ese_dia_y_anotados_antes(conexion, dia: date) -> list:
     ]
 
 
+def _ventanas_del_dia(conexion, dia, ahora_dt) -> list:
+    """
+    Los tramos de ventas que forman los turnos de `dia` (un date), en orden:
+    uno por cada cierre anotado en ese día -- (cierre anterior, este cierre] --
+    y, si la ventana abierta ahora es de ese día, también ella (hasta ahora).
+    Cada uno es {"turno", "desde", "hasta", "cierre"}; "cierre" es la fila del
+    cierre (con "empleada": quien tenía la caja, o quien cerró si no había
+    caja) o None para la ventana abierta.
+
+    Es la única definición de "qué ventas son de qué turno de un día": la usan
+    resumen_del_dia (las filas de cada turno) y detalle_dia_repo (venta por
+    venta), así el detalle siempre suma lo mismo que la fila de su turno.
+    """
+    # "empleada" es quien tenía la caja (cajas_repo), no quien la cerró: la
+    # caja que cierra la que llega, en ausencia de la otra, sigue siendo de la
+    # otra. Un cierre sin caja (de antes de las cajas) muestra quién cerró.
+    cierres = conexion.execute(
+        """
+        SELECT cierres_turno.*, COALESCE(responsables.nombre, usuarios.nombre) AS empleada
+        FROM cierres_turno
+        JOIN usuarios ON usuarios.id = cierres_turno.usuario_id
+        LEFT JOIN cajas ON cajas.cierre_id = cierres_turno.id
+        LEFT JOIN usuarios AS responsables ON responsables.id = cajas.responsable_id
+        WHERE cierres_turno.fecha = ?
+        ORDER BY cierres_turno.id
+        """,
+        (dia.isoformat(),),
+    ).fetchall()
+    ventanas = [
+        {"turno": cierre["turno"], "desde": _desde_del_cierre(conexion, cierre["id"]),
+         "hasta": cierre["fecha_cierre"], "cierre": cierre}
+        for cierre in cierres
+    ]
+    abierta = _ventana_en_curso(conexion, ahora_dt)
+    if abierta["dia"] == dia:
+        ventanas.append({"turno": abierta["turno"], "desde": abierta["desde"], "hasta": abierta["hasta"], "cierre": None})
+    return ventanas
+
+
 def resumen_del_dia(dia):
     """
     El reporte de UN día del local, abierto por turno (Mañana/Tarde/Noche,
@@ -408,47 +447,29 @@ def resumen_del_dia(dia):
     ahora_dt = datetime.now()
 
     with conexion_db() as conexion:
-        # "empleada" es quien tenía la caja (cajas_repo), no quien la cerró: la
-        # caja que cierra la que llega, en ausencia de la otra, sigue siendo de la
-        # otra. Un cierre sin caja (de antes de las cajas) muestra quién cerró.
-        cierres = conexion.execute(
-            """
-            SELECT cierres_turno.*, COALESCE(responsables.nombre, usuarios.nombre) AS empleada
-            FROM cierres_turno
-            JOIN usuarios ON usuarios.id = cierres_turno.usuario_id
-            LEFT JOIN cajas ON cajas.cierre_id = cierres_turno.id
-            LEFT JOIN usuarios AS responsables ON responsables.id = cajas.responsable_id
-            WHERE cierres_turno.fecha = ?
-            ORDER BY cierres_turno.id
-            """,
-            (dia.isoformat(),),
-        ).fetchall()
-
         cierres_por_turno = {}
         aparte_por_turno = {}
-        for cierre in cierres:
-            desde = _desde_del_cierre(conexion, cierre["id"])
-            confirmadas, anuladas = _contar_ventas_entre(conexion, desde, cierre["fecha_cierre"])
+        abierta = None
+        for ventana in _ventanas_del_dia(conexion, dia, ahora_dt):
+            desde, hasta = ventana["desde"], ventana["hasta"]
+            cierre = ventana["cierre"]
+            confirmadas, anuladas = _contar_ventas_entre(conexion, desde, hasta)
+            if cierre is None:
+                # La ventana que está abierta ahora: se muestra en vivo.
+                desglose = _desglose_de_totales(_sumar_ventas_por_origen_y_metodo(conexion, desde, hasta))
+                abierta = {
+                    "turno": ventana["turno"], "confirmadas": confirmadas, "anuladas": anuladas,
+                    **_vendido_aparte_entre(conexion, desde, hasta),
+                    **{campo: desglose[campo] for campo in _CAMPOS_PLATA},
+                }
+                continue
             cierres_por_turno.setdefault(cierre["turno"], []).append((cierre, confirmadas, anuladas))
-            vendido = _vendido_aparte_entre(conexion, desde, cierre["fecha_cierre"], cierre_grabado=True)
+            vendido = _vendido_aparte_entre(conexion, desde, hasta, cierre_grabado=True)
             acumulado = aparte_por_turno.setdefault(cierre["turno"], {linea: 0.0 for linea in _LINEAS_APARTE})
             for linea in _LINEAS_APARTE:
                 acumulado[linea] += vendido[linea]
 
         cierres_de_otro_dia = _cierres_hechos_ese_dia_y_anotados_antes(conexion, dia)
-
-        # La ventana que está abierta ahora, si pertenece a este día.
-        ventana = _ventana_en_curso(conexion, ahora_dt)
-        abierta = None
-        if ventana["dia"] == dia:
-            totales = _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
-            confirmadas, anuladas = _contar_ventas_entre(conexion, ventana["desde"], ventana["hasta"])
-            desglose = _desglose_de_totales(totales)
-            abierta = {
-                "turno": ventana["turno"], "confirmadas": confirmadas, "anuladas": anuladas,
-                **_vendido_aparte_entre(conexion, ventana["desde"], ventana["hasta"]),
-                **{campo: desglose[campo] for campo in _CAMPOS_PLATA},
-            }
 
     # Los turnos esperados del día, más cualquier otro que tenga cierre o
     # esté abierto (no debería pasar, pero un dato raro no puede esconder
