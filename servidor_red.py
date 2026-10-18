@@ -104,6 +104,10 @@ POST /comando_resultado   {"comando_id", "imagen_base64"} o {"comando_id", "text
     fallar del lado de la PC y el mostrador tiene que enterarse). Los demás
     comandos no devuelven nada.
 
+POST /admin/...
+    La administración desde otra PC del local (el Administrador con su clave, no
+    la de los Clientes PC): ver admin_remoto/servidor.py.
+
 El puerto está en PUERTO_SERVIDOR más abajo: un solo lugar para cambiarlo.
 """
 
@@ -113,6 +117,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 import dominio
+from admin_remoto import servidor as admin_remoto_servidor
 from errores import registrar_error
 from control_pcs.repositories import (
     accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, filtro_palabras_repo,
@@ -415,6 +420,11 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         return item
 
     def do_POST(self):
+        # La administración desde otra PC del local (admin_remoto/servidor.py) no
+        # usa la clave de los Clientes PC: entra con la del Administrador.
+        if urlparse(self.path).path.startswith(admin_remoto_servidor.PREFIJO):
+            self._manejar_admin_remoto()
+            return
         try:
             autorizado = self._autorizado()
         except Exception as error:
@@ -438,6 +448,25 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self._manejar_comando_resultado()
         else:
             self._responder_error(404, "No existe.")
+
+    def _manejar_admin_remoto(self):
+        """Un pedido del Administrador desde otra PC: lo atiende
+        admin_remoto/servidor.py con la IP real del pedido (la del socket, no
+        un dato que mande la otra PC)."""
+        try:
+            largo = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            largo = -1
+        if largo < 0 or largo > admin_remoto_servidor.TAMANO_MAXIMO_PEDIDO:
+            self._responder_error(413, "Pedido demasiado grande.")
+            return
+        status, respuesta = admin_remoto_servidor.atender(
+            urlparse(self.path).path, self.rfile.read(largo), self.client_address[0]
+        )
+        try:
+            self._responder_json(status, respuesta)
+        except OSError:
+            pass  # la otra PC cortó antes de recibir la respuesta
 
     def _manejar_login(self):
         try:

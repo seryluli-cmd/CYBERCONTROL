@@ -63,13 +63,15 @@ def _responsables_del_mes(conexion, inicio_mes):
     # Las sesiones no tienen "turno" guardado (a diferencia de las
     # ventas): se calcula al vuelo con la misma calcular_turno() que usa
     # todo el resto del sistema, para que quede consistente incluso con
-    # la excepción de los domingos.
+    # la excepción de los domingos. Los ingresos desde otra PC (desde_ip, el
+    # Administrador administrando desde otra PC del local) no cuentan: no dicen
+    # nada de quién estaba en el mostrador.
     filas_sesiones = conexion.execute(
         """
         SELECT sesiones.fecha_hora, usuarios.nombre
         FROM sesiones
         JOIN usuarios ON usuarios.id = sesiones.usuario_id
-        WHERE sesiones.fecha_hora >= ?
+        WHERE sesiones.fecha_hora >= ? AND sesiones.desde_ip IS NULL
         """,
         (inicio_mes.isoformat(),),
     ).fetchall()

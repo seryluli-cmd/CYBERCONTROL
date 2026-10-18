@@ -139,6 +139,18 @@ def _migrar_columna_whatsapp_en_miembros(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columna_desde_ip_en_sesiones(conexion: sqlite3.Connection):
+    """
+    Agrega sesiones.desde_ip (2026-10-18): la IP de la otra PC cuando el
+    Administrador entra desde otra PC del local (ver admin_remoto_repo); NULL =
+    entró en el mostrador, como todos los ingresos de antes. Se ve en Accesos de
+    Admin y deja afuera esos ingresos de la pista de quién estaba en el mostrador
+    (turnos_faltantes_repo._responsables_del_mes).
+    """
+    _agregar_columna_si_falta(conexion, "sesiones", "desde_ip", "TEXT")
+    conexion.commit()
+
+
 # --- Reconstruir una tabla (cambiar un CHECK o un REFERENCES) ---
 
 # Columnas de movimientos_saldo_miembro, para copiarlas al reconstruir la tabla.

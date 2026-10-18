@@ -57,23 +57,44 @@ def _validar_credenciales_y_registrar_sesion(conexion, fila, clave: str):
     vendió nada en esa ventana (ver turnos_faltantes_repo._responsables_del_mes).
     Devuelve la fila del usuario si todo coincide, o None si no.
     """
-    if fila is None:
+    if not _clave_correcta(conexion, fila, clave):
         return None
-    if not verificar_clave(clave, fila["clave_hash"]):
-        return None
+    _registrar_sesion(conexion, fila["id"])
+    return fila
 
+
+def _clave_correcta(conexion, fila, clave: str) -> bool:
+    """Si `clave` es la de `fila` (None = no hay usuario: False). Si el hash
+    estaba en el formato viejo, sin salt, de paso lo pasa al nuevo."""
+    if fila is None or not verificar_clave(clave, fila["clave_hash"]):
+        return False
     if "$" not in fila["clave_hash"]:
         conexion.execute(
             "UPDATE usuarios SET clave_hash = ? WHERE id = ?",
             (hash_clave(clave), fila["id"]),
         )
+    return True
 
+
+def _registrar_sesion(conexion, usuario_id: int, desde_ip: str = None):
+    """Anota un ingreso en `sesiones`. `desde_ip` es la IP de la otra PC cuando
+    el Administrador entra desde otra PC del local (admin_remoto_repo); None =
+    entró en el mostrador."""
     conexion.execute(
-        "INSERT INTO sesiones (usuario_id, fecha_hora) VALUES (?, ?)",
-        (fila["id"], datetime.now().isoformat(timespec="seconds")),
+        "INSERT INTO sesiones (usuario_id, fecha_hora, desde_ip) VALUES (?, ?, ?)",
+        (usuario_id, datetime.now().isoformat(timespec="seconds"), desde_ip),
     )
 
-    return fila
+
+def _activo_por_nombre(conexion, nombre: str):
+    """El usuario ACTIVO que se llama `nombre` (sin distinguir mayúsculas ni
+    espacios de más, ver autenticar_por_nombre), o None."""
+    objetivo = nombre.strip().lower()
+    return next(
+        (f for f in conexion.execute("SELECT * FROM usuarios WHERE activo = 1")
+         if f["nombre"].strip().lower() == objetivo),
+        None,
+    )
 
 
 def autenticar(usuario_id: int, clave: str):
@@ -110,14 +131,8 @@ def autenticar_por_nombre(nombre: str, clave: str):
     entre usuarios activos (ver _nombre_en_uso), así que en la
     práctica esto no debería pasar.
     """
-    objetivo = nombre.strip().lower()
     with conexion_db() as conexion:
-        fila = next(
-            (f for f in conexion.execute("SELECT * FROM usuarios WHERE activo = 1")
-             if f["nombre"].strip().lower() == objetivo),
-            None,
-        )
-        return _validar_credenciales_y_registrar_sesion(conexion, fila, clave)
+        return _validar_credenciales_y_registrar_sesion(conexion, _activo_por_nombre(conexion, nombre), clave)
 
 
 def listar_logins(desde: str, hasta: str, solo_admin: bool = True):
@@ -131,9 +146,12 @@ def listar_logins(desde: str, hasta: str, solo_admin: bool = True):
 
     El rol es el que tiene el usuario HOY, no el que tenía al loguearse:
     si a alguien le cambian el rol, su historial viejo se ve con el nuevo.
+
+    Cada login trae "desde_ip": la IP de la otra PC si el Administrador entró
+    desde otra PC del local (ver admin_remoto_repo), o None si fue en el mostrador.
     """
     consulta = """
-        SELECT sesiones.fecha_hora, usuarios.nombre, usuarios.rol
+        SELECT sesiones.fecha_hora, sesiones.desde_ip, usuarios.nombre, usuarios.rol
         FROM sesiones
         JOIN usuarios ON usuarios.id = sesiones.usuario_id
         WHERE date(sesiones.fecha_hora) BETWEEN date(?) AND date(?)

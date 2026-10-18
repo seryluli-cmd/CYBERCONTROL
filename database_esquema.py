@@ -19,6 +19,7 @@ def inicializar_base_de_datos():
         _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_columnas_actualizacion_estaciones,
         _migrar_check_tipo_en_comandos_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_columna_whatsapp_en_miembros,
+        _migrar_columna_desde_ip_en_sesiones,
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
         _migrar_check_origen_en_ventas, _migrar_borrar_clave_vieja_de_clientes_pc, _cargar_datos_iniciales,
@@ -264,6 +265,8 @@ def inicializar_base_de_datos():
             fecha_hora  TEXT NOT NULL
         )
     """)
+    # desde_ip: el ingreso del Administrador desde otra PC del local.
+    _migrar_columna_desde_ip_en_sesiones(conexion)
 
     # -------------------------------------------------------------------
     # ESTACIONES y BONOS DE TIEMPO (Control de PCs)
@@ -586,6 +589,11 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ventas_turno ON ventas(turno, fecha)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_venta_detalle_venta ON venta_detalle(venta_id)")
+    # Los pagos de cada venta (2026-10-18). Sin este, "Reportes > Por Operador"
+    # con un año de ventas tardaba 6 minutos (por cada venta recorría todos los
+    # pagos de la historia); mirado desde otra PC (admin_remoto/), eso además
+    # frenaba las ventas del mostrador mientras duraba.
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_venta_pagos_venta ON venta_pagos(venta_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_venta_detalle_articulo ON venta_detalle(articulo_codigo)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_articulo ON compra_detalle(articulo_codigo)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_compra ON compra_detalle(compra_id)")

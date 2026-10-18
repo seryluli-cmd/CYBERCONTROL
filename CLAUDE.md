@@ -168,7 +168,7 @@ sobra; uno que explica por qué esa línea es así vale oro.
 ### Cómo se verifica
 
 **14. Regla de negocio nueva, test nuevo.**
-`tests/` cubre turnos, stock, cierres, cajas con número, PCs, PCSTREAM, Miembros, PlayStation y totales.
+`tests/` cubre turnos, stock, cierres, cajas con número, administrar desde otra PC, PCs, PCSTREAM, Miembros, PlayStation y totales.
 Todo lo que se calcule con plata, fechas o
 turnos entra ahí antes de darse por terminado. La UI se prueba a mano;
 la lógica, no.
@@ -219,6 +219,9 @@ abra no alcanza si los tests no pasan.
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `filtro_palabras_repo.obtener()` · `.guardar(...)` · `.registrar_bloqueo(...)` | se lee y se cambia el filtro de palabras de las PCs ("protección antiporno", pedido del dueño 2026-10-17: prendido, lista y mensaje, como JSON en `configuracion`; su versión viaja en `GET /estado` como `filtro_version`) y se anota cada página que cerró una PC (`bloqueos_filtro_pc`). Buscar las palabras en los títulos es tarea de cada Cliente PC (`CLIENTE PC/filtro_palabras.py`), no de este repo |
 | `actualizacion_cliente_repo.publicar(datos)` · `.version_para_estacion(id)` · `.registrar_reporte(id, parametros)` · `.estado_de_las_pcs()` | se carga y FIRMA una versión del Cliente PC (`data/cliente_pc/`), se decide qué versión le toca a cada PC (las de prueba o todas; viaja en `GET /estado` como `cliente_version`), se guarda lo que cuenta cada PC (versión, carpeta, cómo va) y se arma lo que muestra "Actualizar el Cliente PC de las PCs..." (pedido del dueño, 2026-10-18) |
+| `admin_remoto_repo.esta_activo()` · `.activar(...)` · `.entrar(nombre, clave, ip)` · `.exigir_admin_habilitado(id)` | se decide quién administra desde otra PC del local: viene apagado, solo un ADMIN activo, cada ingreso en `sesiones.desde_ip` (pedido del dueño, 2026-10-18) |
+| `admin_remoto.lista_blanca.FUNCIONES` · `.ACTOR` · `.huella()` | qué funciones de los repos se pueden pedir desde otra PC, qué parámetro es "quién lo hizo" (lo completa el mostrador) y la huella que tienen que compartir las dos copias del .exe |
+| `admin_remoto.modo.direccion_del_mostrador()` · `.es_copia_remota()` | se decide si esta copia es la del mostrador o una abierta por la red (y a qué PC le habla), y las pantallas esconden lo que solo se hace en el mostrador |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
 | `pcs_repo.estado_de_estacion(nombre, ip)` | se decide qué estación es una PC que se conecta: por el nombre que manda su Cliente PC y, si ninguna activa se llama así, por la IP asentada en su primer enlace (`registrar_conexion`); con una IP asentada en dos estaciones activas no adivina. La usan TODOS los endpoints de `servidor_red.py` |
@@ -537,6 +540,27 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   abierta; Ventas con el carrito vacío y Caja se cierran solas con
   `se_puede_cerrar_sola`). El conteo es a ciegas (`ui/ingreso_caja.DialogoContarPlata`):
   no muestres lo esperado antes de que se escriba lo contado. Ver `tests/test_cajas.py`.
+- **Administrar desde otra PC: la base la toca SOLO el mostrador** (pedido del
+  dueño, 2026-10-18; ver `admin_remoto/` y `docs/ADMIN_REMOTO.md`). El
+  `CyberBios.exe` abierto desde la carpeta compartida del mostrador es una copia
+  remota (`admin_remoto/modo.py`): no abre ninguna base (`conexion_db` queda
+  cerrada a propósito) y cada función de la lista blanca viaja al mostrador por
+  `POST /admin/...` del servidor de red. Nunca hagas que una copia abra
+  `data/kiosko.db` por la red: SQLite por una carpeta compartida puede dañar el
+  archivo con todas las ventas. Consecuencias: (1) una pantalla **nunca** importa
+  una función suelta de un repo (`from repositories.x import f`): la copia remota
+  reemplaza las funciones en su módulo y una suelta seguiría yendo a la base; (2)
+  si una pantalla que se abre desde otra PC empieza a usar otra función de un
+  repo, va a `admin_remoto/lista_blanca.py` (con su `ACTOR` si recibe quién lo
+  hace) — `tests/test_admin_remoto.py` lo vigila; (3) lo que solo se hace en el
+  mostrador (vender, cobrar, cajas y turnos, la grilla de PCs, Miembros, Limpiar
+  base, Actualizar el Cliente PC, Copia de Seguridad) se esconde con
+  `modo.es_copia_remota()` y NO entra en la lista; (4) el cierre forzoso de la
+  caja lo hace solo el mostrador; (5) una consulta de reporte lenta frena las
+  ventas del mostrador mientras dura (SQLite no deja grabar mientras otro lee):
+  todo lo que se lee desde otra PC tiene que andar rápido con un año de ventas
+  (medido el 2026-10-18: todo < 0,2 s con 110.000 ventas, después de sumar
+  `idx_venta_pagos_venta`; sin ese índice Por Operador tardaba 6 minutos).
 - **Un cierre hecho tras días sin cerrar NO aparece en las filas de hoy.** Cubre
   desde el cierre anterior, así que queda anotado en el turno viejo (días atrás) y
   el Resumen del Día de hoy sale en cero. No es un error ni plata perdida: el
@@ -674,4 +698,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-667 pruebas al 2026-10-18 (con las cajas con número).
+720 pruebas al 2026-10-18 (con las cajas con número y administrar desde otra PC).

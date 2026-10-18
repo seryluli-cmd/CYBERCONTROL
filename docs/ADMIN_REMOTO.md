@@ -1,153 +1,183 @@
-# Administrar CyberBIOS desde otra PC (propuesta)
+# Administrar CyberBIOS desde otra PC del local
 
-Borrador del 18/10/2026 para que lo revises (si querés, con ChatGPT). Todavía
-no está programado: primero necesito tus respuestas a las 3 preguntas del final.
+**Programado el 18/10/2026** (antes era la propuesta de este mismo archivo).
+Si lo querés revisar con ChatGPT, este archivo se puede adjuntar tal cual.
 
 ## Lo que pediste
 
-Hoy, para cargar mercadería o cambiar precios, usás la misma PC del mostrador
-(por UltraVNC) y le trabás la pantalla a la empleada. Querés lo mismo que en el
-otro local: **una PC atiende y en otra administrás vos**, a la vez y sin
-molestarse.
+> "Desde la PC de mi casa entro con UltraVNC a otra PC que no está en uso, y con
+> esa PC accedo al programa por red, me logueo como admin y de ahí hago las
+> modificaciones que quiera hacer, o miro reportes, controlo, etc. Esto sin
+> interrumpir a la operadora que está trabajando en ese momento, tal vez
+> habilitando PCs y esas cosas."
 
-La PC para administrar sería el servidor de archivos (el que no tiene monitor),
-al que entrás desde tu casa por UltraVNC.
+## Cómo quedó
 
-## Cómo funcionaría
+- **Una sola vez, en el mostrador:**
+  1. Configuración ADMIN > **Entrar desde otra PC**: tildar "Permitir que el
+     Administrador entre desde otra PC" y Guardar. Viene **apagado**.
+  2. Compartir en la red la carpeta donde está CyberBios.exe (con contraseña).
+     La pantalla del paso 1 dice el nombre y la IP del mostrador.
+- **Cada vez, en la PC libre:** abrir CyberBios.exe **desde la carpeta
+  compartida** (por ejemplo `\\MOSTRADOR\CyberBios\CyberBios.exe`) y entrar con
+  el usuario Administrador y su clave.
+- El programa se da cuenta solo de que lo abriste por la red. Esa copia **no
+  abre ninguna base**: cada vez que una pantalla necesita un dato o guarda algo,
+  se lo pide al CyberBIOS del mostrador por la red del local (el mismo camino
+  que ya usan las PCs del cyber, puerto 8899). El único que toca la base es el
+  mostrador, como siempre.
+- En la otra PC la ventana principal muestra un cartel ("Estás administrando
+  desde otra PC...") en lugar de la grilla de PCs, y arriba el número de la caja
+  abierta en el mostrador.
+- La operadora no ve nada ni se le traba la pantalla.
 
-- En el servidor va **una copia del mismo CyberBios.exe**, con un archivito al
-  lado que dice "esta copia es para administrar, y el mostrador está en la IP
-  tal". Te lo dejo armado; vos solo ponés la IP del mostrador.
-- Esa copia **no tiene base de datos propia**. Cada vez que abrís una pantalla o
-  apretás Guardar, le pide el dato al CyberBIOS del mostrador por la red del
-  local (por el mismo camino que ya usan las 40 PCs). El que guarda siempre es
-  el mostrador, en su base de siempre. **Las ventas y la plata siguen en un
-  solo lugar.**
-- Entrás con tu usuario Administrador y tu clave de siempre. Ves las pantallas
-  de administración (las que elijas en la pregunta 1), iguales a las de ahora.
-- La empleada sigue vendiendo en el mostrador como si nada: no se le abre
-  ninguna ventana ni se le traba la pantalla.
+### Qué se puede hacer desde la otra PC
 
-### Por qué así y no "compartiendo la carpeta de la base"
+- **Administrar Kiosko completo:** Artículos (y precios), Compras, Consulta de
+  Ventas **con anular**, Reportes, Control de Cierres (con la carga de lo contado
+  en el sobre) y Usuarios.
+- **Configuración ADMIN:** estaciones, los cuatro catálogos de bonos, tarifa de
+  socios, trámites, Accesos de Admin, fondo y filtro de palabras de las PCs.
+- **Caja** (solo mirar) y **Clave** (cambiar la propia).
 
-Lo más fácil parecería abrir la misma base desde las dos PCs por una carpeta
-compartida. No conviene: esta base (SQLite) no está hecha para que dos PCs la
-escriban por la red, y si dos guardan justo a la vez **se puede dañar el archivo
-con todas las ventas**. Con lo que propongo, el único que toca la base es el
-mostrador, como hoy.
+### Qué sigue solo en el mostrador
 
-## Lo que la copia del servidor NO hace
+Vender, cobrar (bonos, trámites, carga de saldo), Cierre de Turno y las cajas,
+la grilla de PCs, Miembros, Limpiar base de datos, Actualizar el Cliente PC (se
+firma con la clave que vive en la PC del mostrador), Copia de Seguridad y prender
+o apagar la entrada desde otra PC. El cierre forzoso de la caja también lo hace
+solo el mostrador.
 
-- No vende ni cobra, no abre ni cierra cajas, no hace cierres de turno (no hay
-  cajón ahí).
-- No atiende a las PCs del cyber (eso lo sigue haciendo solo el mostrador).
-- No hace la copia de seguridad automática diaria del mostrador ni el cierre
-  forzoso de la caja: eso sigue en el mostrador.
-- Lo que hace no puede saltearse las reglas: es el mismo programa del mostrador
-  el que guarda, con los mismos controles (precios, stock, permisos).
+## Las decisiones que salieron de tu respuesta
 
-## Qué pasa si...
+1. **Pantallas:** "hago las modificaciones que quiera hacer" → todo lo de
+   administración (Administrar Kiosko + Configuración ADMIN), con anular ventas.
+2. **Desde qué PC:** "otra PC que no está en uso" (no siempre la misma) → desde
+   **cualquier PC del local**, con la clave del Administrador. No se ata a una IP
+   fija.
+3. **Copia diaria de la base en la otra PC:** no se hizo. Con una PC que cambia
+   y no queda prendida, no tiene sentido; la copia diaria la sigue haciendo el
+   mostrador en su propia PC.
 
-- **El mostrador está apagado o con CyberBIOS cerrado:** la copia del servidor
-  avisa "no encuentro el programa del mostrador" y no deja hacer nada. Todo lo
-  que ya guardaste quedó guardado; lo que estabas tocando y no guardaste, no.
-- **Cambiás un precio mientras ella tiene ese artículo ya escaneado en el
-  carrito:** ese cliente paga el precio viejo (como hoy si lo cambiás entre dos
-  ventas); el próximo escaneo ya trae el precio nuevo.
-- **Cargás una compra mientras ella vende ese mismo artículo:** el stock queda
-  bien (cada operación se guarda entera, una detrás de la otra).
-- **Actualizás el CyberBios.exe del mostrador y no el del servidor:** la copia
-  del servidor avisa que son versiones distintas y no deja entrar hasta que
-  copies el mismo .exe en las dos.
-- **Sacás un reporte muy grande:** la venta del mostrador puede esperar un
-  instante mientras se arma (hoy pasa lo mismo si lo sacás en el mostrador).
-  Lo voy a medir con una base de prueba de un año antes de darlo por bueno.
+## Por qué así y no "abriendo la base por la carpeta compartida"
+
+La base (SQLite) no está hecha para que dos PCs la escriban por la red: si las
+dos guardan justo a la vez, **se puede dañar el archivo con todas las ventas**.
+Por eso, aunque abras el .exe desde la carpeta compartida, el programa nunca
+abre la base de esa carpeta: le habla al programa del mostrador.
 
 ## Seguridad (dicho sin exagerar)
 
-- Para entrar hace falta el usuario **Administrador** y su clave. Una empleada,
-  aunque tenga permisos de encargada, no entra desde otra PC.
-- 5 claves mal seguidas bloquean un minuto, como en el login de siempre.
-- Solo se puede hacer lo de la lista de pantallas que elijas: nada de "cualquier
-  cosa por la red".
-- Viene **apagado**: no cambia nada hasta que lo prendas desde Configuración
-  ADMIN en el mostrador.
-- Límite honesto: dentro de la red del local la clave viaja sin cifrar (igual que
-  hoy lo que hablan las PCs con el mostrador). Alguien que logre espiar la red
-  del local podría verla. Por eso recomiendo además la pregunta 2.
-- Nada de esto queda abierto a internet: desde tu casa seguís entrando al
-  servidor por UltraVNC, y es el servidor el que habla con el mostrador dentro
-  del local.
+- Solo entra un usuario **Administrador** activo, con su clave. Una empleada no
+  entra, ni siquiera con permisos de encargada.
+- Viene **apagado**. Apagarlo en el mostrador corta en el acto a quien estaba
+  adentro desde otra PC.
+- **5 claves mal seguidas desde una PC** dejan a esa PC sin poder probar por 5
+  minutos (las demás PCs no se afectan).
+- La sesión vale solo desde la PC que entró, vence a las 3 horas sin uso y se
+  pierde si se cierra el programa del mostrador. Ojo: con la ventana abierta en
+  la otra PC cuenta como "en uso" (mira la caja cada 10 segundos). **Al
+  terminar, cerrá sesión o cerrá el programa**, sobre todo si es una PC del
+  cyber: si no, el próximo cliente de esa PC la encontraría abierta.
+- Solo se pueden pedir las funciones de una **lista cerrada**; cualquier otra se
+  rechaza aunque venga con la clave del Administrador.
+- **Quién hizo cada cosa** (quién anuló, quién cargó la compra o el sobre) lo
+  anota el mostrador con el Administrador que entró, no con lo que mande la otra
+  PC.
+- Cada ingreso queda en **Accesos de Admin**, con la IP de la PC desde donde se
+  entró.
+- El hash de las claves nunca sale del mostrador.
+- **Límite honesto:** dentro de la red del local la clave viaja sin cifrar
+  (igual que hoy lo que hablan las PCs con el mostrador). Alguien que logre
+  espiar la red del local podría verla. Como se puede entrar desde cualquier PC
+  del local (incluidas las del cyber), **la clave del Administrador tiene que ser
+  buena** (no 1234, ni el nombre, ni una fecha). Nada de esto queda abierto a
+  internet: desde tu casa seguís entrando por UltraVNC.
 
-## Las 3 cosas que necesito que decidas
+## Qué pasa si...
 
-**1. ¿Qué pantallas querés desde el servidor?**
-- (a) **Recomendado para arrancar:** todo "Administrar Kiosko": Artículos (y
-  precios), Compras, Consulta de Ventas, Reportes, Control de Cierres y
-  Usuarios. Más "Caja" para mirar cómo va la caja abierta (solo mirar).
-- (b) Lo de (a) y además "Configuración ADMIN" (bonos, tarifa de socios,
-  trámites, estaciones, filtro de palabras, fondo de las PCs). Se puede, lleva
-  más trabajo; lo haría en una segunda tanda.
-- Dentro de Consulta de Ventas: **¿querés poder ANULAR ventas desde el
-  servidor?** (yo diría que sí: es lo mismo que hacés hoy por UltraVNC).
-- "Limpiar base de datos" y "Actualizar el Cliente PC de las PCs" los dejaría
-  solo en el mostrador.
+- **El mostrador está apagado o con CyberBIOS cerrado:** la otra PC avisa "No
+  encuentro el CyberBIOS del mostrador". Lo que ya guardaste quedó guardado.
+- **Se corta la red con la sesión abierta:** cada acción avisa que no encuentra
+  el mostrador; cuando vuelve la red, sigue andando (si pasaron más de 3 horas,
+  hay que cerrar sesión y volver a entrar).
+- **Se reinicia el programa del mostrador:** la sesión de la otra PC se pierde;
+  la próxima acción avisa "La sesión desde esta PC se cerró": cerrás sesión y
+  volvés a entrar.
+- **Cambiás un precio mientras ella tiene ese artículo en el carrito:** ese
+  cliente paga el precio viejo; el próximo escaneo trae el nuevo (igual que hoy).
+- **Cargás una compra mientras ella vende ese artículo:** el stock queda bien
+  (cada operación se guarda entera, una detrás de la otra).
+- **El .exe del mostrador y el de la otra PC no son el mismo:** no deja entrar
+  y avisa. Abriéndolo siempre desde la carpeta compartida, son el mismo.
+- **Sacás un reporte de un año:** lo medí con una base de prueba de un año
+  (110.000 ventas): todos los reportes tardan menos de 0,2 segundos, así que la
+  venta del mostrador ni lo nota. Al medir apareció un problema que **ya
+  existía**: Reportes > Por Operador tardaba **6 minutos** con un año de ventas
+  (también en el mostrador). Se arregló con un índice y ahora tarda 0,2 s.
+- **Windows pregunta si querés ejecutar el archivo** al abrirlo desde la red:
+  decile que sí.
 
-**2. ¿Desde qué PC se puede entrar?**
-- (a) **Recomendado:** solo desde el servidor. En el mostrador se anota la IP
-  del servidor y cualquier otra PC (por ejemplo, la de un cliente del cyber que
-  sepa tu clave) queda afuera aunque tenga la clave. Para esto el servidor
-  tiene que tener **IP fija** (como las PCs del cyber).
-- (b) Desde cualquier PC de la red del local, con la clave de Administrador.
+## Cómo se probó
 
-**3. Copia de seguridad en el servidor**
-- Hoy, "Copia de Seguridad" (en Usuarios) guarda la base en una carpeta de la PC
-  donde estás. Desde el servidor, guardaría una copia de la base del mostrador
-  en el servidor. ¿Querés además que **la copia del servidor guarde sola una
-  copia por día** de la base del mostrador? Así, si se rompe el disco del
-  mostrador, la base está también en otra PC.
+- 52 pruebas automáticas nuevas (`tests/test_admin_remoto.py`): sin clave o con
+  la de una empleada no se entra; con la entrada apagada tampoco; una función
+  fuera de la lista se rechaza; la sesión no sirve desde otra PC; las 5 claves
+  mal; quién anula es quien entró; el hash no viaja; y una **copia remota de
+  verdad** contra un **mostrador de prueba en otro proceso** (con una base de
+  prueba, nunca la real): abre todas las pantallas de administración sin
+  errores, cambia un precio, carga una compra, anula una venta, carga un sobre,
+  cambia el fondo de las PCs, y todo queda en la base del mostrador; esa copia
+  nunca crea una base propia.
+- Una prueba revisa las pantallas que se abren desde otra PC: si alguna empieza
+  a usar una función que no está en la lista, falla y dice cuál.
+- La suite completa del programa sigue pasando (720 pruebas).
 
-## Cómo lo voy a probar
+## Para probarlo en el local
 
-- Pruebas automáticas nuevas: que sin clave o con la de una empleada no se
-  entre, que desde otra IP no se entre (si elegís 2a), que una función fuera de
-  la lista sea rechazada, que cambiar un precio, cargar una compra y sacar un
-  reporte desde la otra copia quede igual que hecho en el mostrador, y que la
-  copia del servidor nunca cree una base propia.
-- Prueba con dos copias abiertas a la vez (una de mostrador vendiendo, otra de
-  administración cambiando precios y cargando una compra), con una base de
-  prueba, nunca con la real.
-- La suite completa de pruebas del programa tiene que seguir pasando.
+1. Armar el .exe nuevo y ponerlo en el mostrador (con un Cierre de Turno justo
+   antes, como siempre que se cambia el programa).
+2. En el mostrador: Configuración ADMIN > Entrar desde otra PC > prender.
+3. Compartir la carpeta del CyberBios.exe.
+4. Desde una PC libre: abrir el .exe desde la carpeta compartida, entrar como
+   Administrador, cambiar el precio de un artículo de prueba y fijarse en el
+   mostrador que cambió. Mirar Accesos de Admin: tiene que figurar "Otra PC
+   (IP)".
 
 ---
 
 ## Anexo técnico (para revisar con ChatGPT)
 
-- La copia remota reemplaza, al arrancar, cada módulo de `repositories/` (y los de
-  `control_pcs/repositories/` que use) por un "representante" que manda la
-  llamada por HTTP al mostrador: `POST /admin/llamar` en el puerto 8899, el mismo
-  `ThreadingHTTPServer` de los Clientes PC, en un módulo propio (el servidor de
-  hoy ya pasa las 600 líneas). La pantalla no se entera: sigue llamando a
-  `articulos_repo.modificar_articulo(...)`.
-- En la copia remota, `database.conexion_db` queda bloqueada a propósito: si
-  alguna pantalla quisiera tocar una base local, falla con un mensaje claro en vez
-  de crear una base vacía.
-- Lista blanca explícita (módulo + función) del lado del mostrador. Las filas de
-  SQLite viajan como JSON y del otro lado se rearman con un objeto que se lee
-  igual que `sqlite3.Row` (por nombre y por posición). Los errores pensados para
-  el usuario (`ValueError`, `PermissionError`) viajan con su mensaje y se
-  muestran igual que hoy.
-- Login: `POST /admin/login` con usuario y clave; el mostrador verifica que sea
-  ADMIN activo y devuelve un token al azar que vive solo en memoria (se pierde al
-  cerrar el programa del mostrador y vence por inactividad). Cada llamada
-  re-verifica que el usuario siga activo y siendo Admin. El hash de la clave no
-  viaja nunca a la otra PC.
-- El "usuario" que mandan las pantallas a los repos (quién cargó la compra, quién
-  anuló) lo pone el mostrador a partir del token, no se confía en lo que manda la
-  copia remota.
-- Versión: las dos copias calculan una huella de la lista blanca y de las firmas
-  de esas funciones; si no coinciden, no se entra.
-- La copia remota no arranca `servidor_red.iniciar_servidor`, ni
-  `hacer_backup_automatico`, ni el temporizador del cierre forzoso.
-- El servidor del mostrador no toca Qt (corre en los hilos del servidor, con
-  conexiones SQLite propias, como hoy los pedidos de las PCs).
+- `admin_remoto/modo.py`: copia remota si `database.BASE_DIR` es una ruta
+  `\\PC\carpeta` (o `\\?\UNC\...`) o una unidad de red (`GetDriveTypeW` =
+  `DRIVE_REMOTE` → `WNetGetConnectionW`); la PC es la de la ruta. Para probar:
+  `--mostrador <ip>`.
+- `admin_remoto/cliente.py`: `instalar()` cierra la base local (reemplaza
+  `conexion_db`/`get_connection` en `database` y en todo módulo que se trajo su
+  referencia), manda `DATA_DIR` (solo el log de errores) a `%LOCALAPPDATA%` y
+  reemplaza en su módulo cada función de la lista blanca por un representante
+  que hace `POST /admin/llamar`. `listar_usuarios`/`autenticar_por_nombre`
+  antes de entrar van por `/admin/usuarios` y `/admin/entrar`. Errores:
+  `ValueError`/`PermissionError` del mostrador llegan con su mensaje; sin red,
+  `SinConexion` (un `ValueError`).
+- `admin_remoto/servidor.py` (lo llama `servidor_red.do_POST` para `/admin/`,
+  antes del control de la clave de los Clientes PC): token
+  `secrets.token_urlsafe(32)` en memoria, atado a la IP del socket, vence a los
+  180 min sin uso; bloqueo por IP tras 5 claves mal (5 min); en cada llamada,
+  `admin_remoto_repo.exigir_admin_habilitado`; `inspect.signature(...).bind` de
+  los argumentos y el `ACTOR` se pisa con el usuario del token; tope de 16 MB
+  por pedido; nunca loguea claves ni cuerpos.
+- `admin_remoto/codec.py`: JSON con etiquetas de una clave (`__t` tupla, `__s`
+  conjunto, `__d` diccionario con claves no-texto, `__r` fila, `__dt`/`__da`
+  fechas, `__b` bytes en base64). Del otro lado solo se arman esos tipos.
+  `FilaRemota` se comporta como `sqlite3.Row`. `clave_hash` sale vacío.
+- `admin_remoto/lista_blanca.py`: `FUNCIONES` (módulo → nombres), `ACTOR`
+  ((módulo, función) → parámetro) y `huella()` (sha256 de la lista, las firmas y
+  los actores + versión del protocolo; se compara en `/admin/hola`, `usuarios` y
+  `entrar`).
+- Esquema: `sesiones.desde_ip` (migración idempotente) e índice
+  `idx_venta_pagos_venta`.
+- Concurrencia: el servidor corre en hilos con conexiones propias (como los
+  pedidos de las PCs); SQLite sin WAL, así que una lectura larga frena una
+  escritura del mostrador hasta 5 s (timeout por defecto) — por eso se midieron
+  los reportes con un año de datos.

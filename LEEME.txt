@@ -122,6 +122,41 @@ Gestionar Estaciones > "Fondo de pantalla de las PCs...". Las PCs lo
 piden al arrancar; las que ya están prendidas lo toman solas en
 unos segundos. Si no hay fondo, se ve el azul de siempre.
 
+ADMINISTRAR DESDE OTRA PC DEL LOCAL
+-----------------------------------
+El Administrador puede trabajar desde otra PC del local (por ejemplo, una
+PC libre a la que entrás desde tu casa con UltraVNC) mientras en el
+mostrador se sigue atendiendo normal: la operadora no ve nada.
+Se prepara una sola vez, en el mostrador:
+  1. Configuración ADMIN > Entrar desde otra PC: tildá "Permitir que el
+     Administrador entre desde otra PC" y Guardar. (Viene apagado.)
+  2. Compartí en la red la carpeta donde está CyberBios.exe, con contraseña.
+Para entrar, en la otra PC:
+  - Abrí CyberBios.exe DESDE ESA CARPETA COMPARTIDA (por ejemplo
+    \\NOMBRE-DEL-MOSTRADOR\CyberBios\CyberBios.exe; la pantalla del paso 1
+    te dice el nombre del mostrador). Si Windows pregunta si querés
+    ejecutarlo, decile que sí.
+  - Entrá con el usuario Administrador y su clave.
+Desde ahí se puede: Administrar Kiosko completo (artículos y precios,
+compras, consulta y anulación de ventas, reportes, control de cierres y
+sobres, usuarios), Configuración ADMIN (menos Limpiar base de datos y
+Actualizar el Cliente PC) y mirar la Caja. Lo que guardes queda guardado
+en el mostrador al instante.
+Vender, cobrar, cerrar el turno, la grilla de PCs y Miembros se hacen
+solo en el mostrador.
+Para que funcione, el programa del mostrador tiene que estar abierto.
+Al terminar, cerrá sesión o cerrá el programa en la otra PC: mientras
+quede abierto, la sesión sigue abierta (si es una PC del cyber, la
+podría usar el próximo cliente).
+Las empleadas no pueden entrar desde otra PC. Cada vez que entrás queda
+anotado en Accesos de Admin, con la PC desde donde entraste. Si alguien
+pone 5 claves mal seguidas desde una PC, esa PC no puede probar más por
+5 minutos.
+IMPORTANTE: el .exe del mostrador y el que abrís desde la otra PC tienen
+que ser el mismo (por eso conviene abrirlo siempre desde la carpeta
+compartida). Nunca copies la base (data\kiosko.db) a otra PC para
+trabajar ahí: lo que hagas en la copia no llega al mostrador.
+
 PERMISOS
 --------
 El Admin puede delegar por separado Artículos, Compras, Consulta de

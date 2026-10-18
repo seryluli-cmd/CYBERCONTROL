@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 import dominio
+from admin_remoto import modo as modo_remoto
 from control_pcs.repositories import clientes_repo, pcs_repo, pcstream_repo, playstation_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from control_pcs.ui.pcs_actualizacion_dialogo import DialogoActualizarCliente
@@ -121,7 +122,12 @@ class DialogoGestionEstaciones(QDialog):
         layout.addWidget(boton_clave_admin)
         layout.addWidget(boton_fondo)
         layout.addWidget(boton_filtro)
-        layout.addWidget(boton_actualizar)
+        # Mandar una versión nueva del Cliente PC firma el .exe con la clave que
+        # vive en la PC del mostrador: solo se hace ahí (no desde otra PC).
+        if modo_remoto.es_copia_remota():
+            boton_actualizar.deleteLater()
+        else:
+            layout.addWidget(boton_actualizar)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
