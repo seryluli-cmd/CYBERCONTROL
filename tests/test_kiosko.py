@@ -537,7 +537,7 @@ class TestExigirAdmin(BaseConBaseTemporal):
             usuarios_repo.exigir_admin(9999, "hacer algo")
 
 
-class TestGestionDeUsuarios(BaseConBaseTemporal):
+class TestGestionDeUsuarios(BaseConBaseTemporal):
     def test_crear_usuario_asigna_numeros_correlativos(self):
         # El id 1 ya lo tiene el Administrador que se siembra solo.
         id_a = usuarios_repo.crear_usuario("A", "1234", "EMPLEADA")
@@ -1751,7 +1751,10 @@ class TestRankingVentas(BaseConBaseTemporal):
     def setUp(self):
         super().setUp()
         self.usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
-        self.hoy = date.today().isoformat()
+        # El día del LOCAL de las ventas que graba cada prueba (ahora mismo), no el
+        # calendario: de 00:00 a 06:00 todavía es el día anterior (ver
+        # turnos.HORA_CAMBIO_DE_DIA) y con date.today() el ranking salía vacío.
+        self.hoy = turnos.dia_en_que_empezo_el_turno(datetime.now()).isoformat()
 
     def _ranking(self, ordenar_por="cantidad"):
         return {f["descripcion"]: f for f in reportes_repo.ranking_ventas(self.hoy, self.hoy, ordenar_por)}

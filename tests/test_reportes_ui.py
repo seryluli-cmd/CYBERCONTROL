@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton  # noqa: E402
 import dominio  # noqa: E402
 from repositories import turnos_repo, usuarios_repo  # noqa: E402
 from ui.reportes_window import PestañaResumenDelDia  # noqa: E402
+from ui.utils import hoy_del_local  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
@@ -94,7 +95,9 @@ class TestResumenDelDiaEnPantalla(BaseConBaseTemporal):
         self._cerrar(ahora - timedelta(days=11))
         self._cerrar(ahora)
 
-        pestaña = self._abrir(QDate.currentDate())
+        # El "hoy" del local, no el calendario (QDate.currentDate): de 00:00 a 06:00
+        # un cierre hecho recién es del día anterior y no figuraba en el de calendario.
+        pestaña = self._abrir(hoy_del_local())
 
         self.assertTrue(pestaña.aviso.isVisibleTo(pestaña))
         self.assertIn("Hoy se cerró un turno que quedó anotado en otro día:", self._textos_del_aviso(pestaña))

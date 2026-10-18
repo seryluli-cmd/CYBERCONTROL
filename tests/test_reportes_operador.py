@@ -15,7 +15,7 @@ Se ejecutan con:
 
 import os
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -34,6 +34,15 @@ _app = QApplication.instance() or QApplication([])
 
 _EFECTIVO = dominio.PAGO_EFECTIVO
 _DIGITAL = dominio.PAGO_DIGITAL
+
+
+def _hoy_del_local_a_las(hora, minuto):
+    """Una hora del día en que arranca la pestaña ("hoy", ver ui.utils.hoy_del_local).
+
+    Es el día del LOCAL, no el calendario: de 00:00 a 06:00 todavía es el día
+    anterior, y una venta "de hoy a las 10:30" con la fecha calendario quedaba
+    fuera de lo que muestra la pestaña al correr las pruebas de madrugada."""
+    return datetime.combine(dia_en_que_empezo_el_turno(datetime.now()), time(hora, minuto))
 
 
 class _ConVentas(BaseConBaseTemporal):
@@ -159,7 +168,7 @@ class TestPestañaPorOperador(_ConVentas):
         self.assertIn("Por Operador", [pestañas.tabText(i) for i in range(pestañas.count())])
 
     def test_elegir_un_operador_muestra_sus_ventas_con_la_hora(self):
-        ahora = datetime.now().replace(hour=10, minute=30, second=0, microsecond=0)
+        ahora = _hoy_del_local_a_las(10, 30)
         self._vender(self.toby_id, 2, [{"metodo": _EFECTIVO, "monto": 2000.0}], ahora)
         self._vender(self.nair_id, 1, [{"metodo": _DIGITAL, "monto": 1000.0}], ahora.replace(minute=45))
         anulada = self._vender(self.nair_id, 1, [{"metodo": _EFECTIVO, "monto": 1000.0}], ahora.replace(minute=50))
@@ -183,7 +192,7 @@ class TestPestañaPorOperador(_ConVentas):
         self.assertEqual(pestaña.tabla_ventas.item(1, 0).foreground().color().name(), "#c62828")
 
     def test_buscar_de_nuevo_conserva_el_operador_elegido(self):
-        ahora = datetime.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        ahora = _hoy_del_local_a_las(10, 0)
         self._vender(self.toby_id, 2, [{"metodo": _EFECTIVO, "monto": 2000.0}], ahora)
         self._vender(self.nair_id, 1, [{"metodo": _EFECTIVO, "monto": 1000.0}], ahora)
         pestaña = PestañaPorOperador()
