@@ -109,6 +109,19 @@ def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columna_whatsapp_en_miembros(conexion: sqlite3.Connection):
+    """
+    Agrega miembros.whatsapp (pedido del dueño, 2026-10-17: el socio lo carga,
+    opcional, la primera vez que entra desde una PC; ver
+    miembros_repo.abrir_estacion_por_miembro). Cadena vacía = no lo dio, igual
+    que dni/telefono: esas columnas ya eran NOT NULL y cambiarlas obligaría a
+    reconstruir `miembros`, que es tabla madre (ver "Trampas conocidas" en
+    CLAUDE.md), así que "sin dato" es '' en las tres.
+    """
+    _agregar_columna_si_falta(conexion, "miembros", "whatsapp", "TEXT NOT NULL DEFAULT ''")
+    conexion.commit()
+
+
 # --- Reconstruir una tabla (cambiar un CHECK o un REFERENCES) ---
 
 # Columnas de movimientos_saldo_miembro, para copiarlas al reconstruir la tabla.

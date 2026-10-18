@@ -224,7 +224,8 @@ abra no alcanza si los tests no pasan.
 | `playstation_repo.estado()` · `.vender_bono(...)` · `.finalizar_sesion(...)` | se sabe cómo está la PlayStation 5, se le vende un bono (origen PLAYSTATION) y se la libera; ahí mismo se exige el permiso (`puede_operar`) o ser Admin (catálogo) |
 | `turnos_repo._desglose_de_totales(...)` · `_PREFIJO_COLUMNAS_POR_ORIGEN` | se reparte lo cobrado de un turno por origen (kiosko/pcs/playstation × efectivo/digital) y se suma el efectivo del cajón sobre TODOS los `ORIGENES_VENTA` |
 | `bonos_miembro_repo.listar_bonos()` / `.obtener_bono(id)` | catálogo de bonos EXCLUSIVO de socios (no confundir con `pcs_repo`) |
-| `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo |
+| `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo (y, con `pedir_datos`, completa sus datos del primer ingreso) |
+| `miembros_repo.normalizar_dni(...)` · `.tiene_dni(miembro)` · `.normalizar_telefono(...)` | se valida y se guarda el DNI (solo números, 7 u 8 cifras), el celular y el WhatsApp de un socio, y se decide si a un socio le falta el DNI (el Cliente PC se lo pide; Miembros lo marca "Falta DNI") |
 | `dominio.carga_minima_de_saldo(tramos)` · `miembros_repo.validar_monto_de_carga(...)` | se decide cuánto es lo mínimo que un socio puede cargar con un monto libre (el monto del tramo más bajo de la Tarifa por Hora para Socios; pedido del dueño, 2026-10-17) y se rechaza una carga menor: la pantalla la valida antes de pedir el medio de pago, el repo de nuevo al cobrar |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
@@ -300,6 +301,21 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   (`pcs_repo.asignar_bono`), abrir con saldo de socio es autoservicio de
   autenticación pura (`miembros_repo.abrir_estacion_por_miembro`), sin
   que el Operador decida cuánto tiempo darle.
+- **Un socio se da de alta solo con usuario y clave; el DNI lo completa él en su
+  primer ingreso** (pedido del dueño, 2026-10-17: tenía muchísimas cuentas de su
+  programa anterior para volver a crear). El Cliente PC nuevo manda `pide_datos` en
+  `POST /login`; si el socio no tiene un DNI válido (`miembros_repo.tiene_dni`), el
+  servidor contesta `faltan_datos` sin abrir nada y el Cliente PC le pide DNI
+  (obligatorio), celular y WhatsApp (opcionales), que llegan en un segundo login y
+  se guardan en la MISMA transacción que abre la PC: con un dato mal o un DNI que ya
+  es de otra cuenta activa, no queda nada guardado ni se gasta saldo. Se pregunta
+  después de la clave y del saldo. Sin `pide_datos` (Cliente PC viejo, "Abrir PC con
+  Miembro" del mostrador) entra como siempre: no sumes esa exigencia ahí sin que el
+  dueño lo pida, trabaría a los socios en las PCs sin actualizar. "Sin dato" es `''`
+  en `dni`/`telefono`/`whatsapp` (son NOT NULL y `miembros` es tabla madre: no
+  reconstruirla por esto) y un nombre vacío se guarda como el usuario, así
+  `miembro_nombre` nunca queda vacío (las pantallas de PCs lo usan para distinguir
+  una sesión de socio de una de bono). En pantalla, `telefono` se llama "Celular".
 - **Toda venta sin artículo real de por medio pasa por
   `ventas_repo.registrar_venta_sin_detalle`, nunca un `INSERT INTO ventas`
   a mano.** Es lo único que le pone el `origen` correcto
@@ -591,4 +607,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-532 pruebas al 2026-10-17.
+556 pruebas al 2026-10-17.

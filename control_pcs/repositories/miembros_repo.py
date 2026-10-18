@@ -19,8 +19,17 @@ devuelve (ver pcs_repo.finalizar_sesion). Por eso cada movimiento de
 saldo (carga, consumo, reintegro) queda en el ledger
 `movimientos_saldo_miembro`: esto maneja plata real de terceros, así que
 tiene que poder auditarse.
+
+Alta rápida y datos en el primer ingreso (pedido del dueño, 2026-10-17: tenía
+muchísimas cuentas de su programa anterior para volver a crear). Para dar de
+alta un socio alcanzan usuario y contraseña; el DNI (obligatorio), el celular y
+el WhatsApp (opcionales) los carga el propio socio la primera vez que entra
+desde un Cliente PC, antes de que se le abra la PC (ver
+abrir_estacion_por_miembro). Una vez guardado un DNI válido no se le vuelve a
+pedir (`tiene_dni`). Un DNI no puede estar en dos cuentas activas.
 """
 
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -34,27 +43,98 @@ from control_pcs.repositories import pcs_repo, bonos_miembro_repo
 MINUTOS_POR_FRACCION = 30
 
 
-def _validar_datos_miembro(usuario: str, nombre: str, dni: str, telefono: str):
-    """Todos son obligatorios salvo el email (único dato realmente opcional)."""
-    if not usuario.strip():
+class FaltanDatosDelSocio(Exception):
+    """
+    La levanta abrir_estacion_por_miembro cuando el Cliente PC sabe pedir los
+    datos del primer ingreso y el socio todavía no tiene DNI: no se abrió nada
+    ni se gastó saldo. El servidor de red se la contesta al Cliente PC como
+    "faltan_datos", y el Cliente PC le muestra al socio el cuadro para
+    completarlos. No es un ValueError a propósito: no es un error del socio.
+    """
+
+
+# Lo que se acepta escrito entre los números de un DNI o de un teléfono, y se
+# saca antes de guardarlo: "30.111.222", "11 5555-4444", "(011) 5555 4444".
+_SEPARADORES = re.compile(r"[\s.\-()]")
+
+
+def normalizar_dni(texto: str) -> str:
+    """
+    El DNI tal cual se guarda: solo los números, sin puntos ni espacios ("" si
+    vino vacío). Levanta ValueError (mensaje listo para mostrarle al socio o al
+    operador) si no son 7 u 8 cifras.
+    """
+    dni = _SEPARADORES.sub("", texto or "")
+    if dni and not re.fullmatch(r"\d{7,8}", dni):
+        raise ValueError("El DNI tiene que ser solo números, de 7 u 8 cifras.")
+    return dni
+
+
+def tiene_dni(miembro) -> bool:
+    """
+    ¿Este socio ya tiene un DNI válido cargado? Si no, el Cliente PC se lo pide
+    al entrar (ver abrir_estacion_por_miembro) y Miembros lo marca "Falta DNI".
+    Mira que el DNI sea válido y no solo que haya algo escrito: un socio cargado
+    antes de que se validara (cuando el DNI era obligatorio en el alta) pudo
+    quedar con un relleno cualquiera, y a ese también hay que pedírselo.
+    """
+    try:
+        return bool(normalizar_dni(miembro["dni"]))
+    except ValueError:
+        return False
+
+
+def normalizar_telefono(texto: str, que: str) -> str:
+    """
+    Un celular o WhatsApp tal cual se guarda: los números, con el "+" de
+    adelante si lo tenía ("" si vino vacío; los dos son opcionales). Levanta
+    ValueError si no son de 8 a 15 cifras. `que` es cómo se lo nombra en el
+    mensaje ("El celular", "El WhatsApp").
+    """
+    telefono = _SEPARADORES.sub("", texto or "")
+    if telefono and not re.fullmatch(r"\+?\d{8,15}", telefono):
+        raise ValueError(f"{que} tiene que ser un número de teléfono (solo números, con la característica).")
+    return telefono
+
+
+def _exigir_dni_libre(conexion, dni: str, miembro_id: int = None, mensaje: str = None):
+    """
+    Levanta ValueError si `dni` ya está en OTRA cuenta activa: un DNI, una
+    cuenta (pedido del dueño). Las cuentas desactivadas no cuentan: no se pueden
+    usar, y si la persona vuelve con una cuenta nueva no hay que trabarla. Se
+    compara sin puntos ni espacios, por los DNI cargados antes de que se
+    guardaran así.
+    """
+    if not dni:
+        return
+    otra = conexion.execute(
+        """
+        SELECT usuario FROM miembros
+        WHERE activo = 1 AND id IS NOT ?
+          AND REPLACE(REPLACE(REPLACE(dni, '.', ''), ' ', ''), '-', '') = ?
+        """,
+        (miembro_id, dni),
+    ).fetchone()
+    if otra is not None:
+        raise ValueError(mensaje or f"Ese DNI ya está cargado en el socio '{otra['usuario']}'.")
+
+
+def _datos_de_miembro(usuario: str, nombre: str, dni: str, telefono: str, email: str = None,
+                      whatsapp: str = "") -> dict:
+    """Valida los datos de un socio y los devuelve como se guardan. Solo el
+    usuario es obligatorio: un nombre vacío queda igual al usuario (así se lo
+    ve en la lista y en las PCs), el DNI y los teléfonos se guardan solo con
+    los números, y un email vacío queda en None. Los usan crear_miembro y
+    modificar_miembro."""
+    usuario = (usuario or "").strip()
+    if not usuario:
         raise ValueError("El usuario no puede quedar vacío.")
-    if not nombre.strip():
-        raise ValueError("El nombre no puede quedar vacío.")
-    if not dni.strip():
-        raise ValueError("El DNI no puede quedar vacío.")
-    if not telefono.strip():
-        raise ValueError("El teléfono no puede quedar vacío.")
-
-
-def _datos_de_miembro(usuario: str, nombre: str, dni: str, telefono: str, email: str = None) -> dict:
-    """Valida los datos de un socio y los devuelve ya recortados (un email
-    vacío queda en None). Los usan crear_miembro y modificar_miembro."""
-    _validar_datos_miembro(usuario, nombre, dni, telefono)
     return {
-        "usuario": usuario.strip(),
-        "nombre": nombre.strip(),
-        "dni": dni.strip(),
-        "telefono": telefono.strip(),
+        "usuario": usuario,
+        "nombre": (nombre or "").strip() or usuario,
+        "dni": normalizar_dni(dni),
+        "telefono": normalizar_telefono(telefono, "El celular"),
+        "whatsapp": normalizar_telefono(whatsapp, "El WhatsApp"),
         "email": (email or "").strip() or None,
     }
 
@@ -69,37 +149,44 @@ def _usuario_de_socio_unico(usuario: str):
         raise ValueError(f"Ya existe un socio con el usuario '{usuario}'.")
 
 
-def crear_miembro(usuario: str, clave: str, nombre: str, dni: str, telefono: str, email: str = None) -> int:
-    """Da de alta un socio (arranca con saldo 0) y devuelve su id. Levanta
-    ValueError si falta un dato o si ya existe otro socio con ese usuario."""
-    datos = _datos_de_miembro(usuario, nombre, dni, telefono, email)
+def crear_miembro(usuario: str, clave: str, nombre: str = "", dni: str = "", telefono: str = "",
+                  email: str = None, whatsapp: str = "") -> int:
+    """Da de alta un socio (arranca con saldo 0) y devuelve su id. Alcanzan
+    usuario y clave: lo demás es opcional (ver _datos_de_miembro) y, si falta el
+    DNI, el socio lo completa al entrar por primera vez desde una PC. Levanta
+    ValueError si falta el usuario o la clave, si un dato está mal escrito, si
+    ya existe otro socio con ese usuario o si el DNI ya es de otra cuenta."""
+    datos = _datos_de_miembro(usuario, nombre, dni, telefono, email, whatsapp)
     if not clave:
         raise ValueError("El socio necesita una contraseña para poder loguearse solo.")
     ahora = datetime.now().isoformat(timespec="seconds")
     with _usuario_de_socio_unico(datos["usuario"]):
         with conexion_db() as conexion:
+            _exigir_dni_libre(conexion, datos["dni"])
             cursor = conexion.execute(
                 """
-                INSERT INTO miembros (usuario, clave_hash, nombre, dni, telefono, email, fecha_creacion)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO miembros (usuario, clave_hash, nombre, dni, telefono, whatsapp, email, fecha_creacion)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (datos["usuario"], hash_clave(clave), datos["nombre"], datos["dni"],
-                 datos["telefono"], datos["email"], ahora),
+                 datos["telefono"], datos["whatsapp"], datos["email"], ahora),
             )
             return cursor.lastrowid
 
 
 def modificar_miembro(miembro_id: int, usuario: str, nombre: str, dni: str, telefono: str,
-                       email: str = None, clave: str = None):
-    """Actualiza los datos de un socio. Si `clave` viene vacía se conserva
-    la anterior. No toca el saldo: eso solo se mueve con cargas, consumos y
-    reintegros (ver el ledger movimientos_saldo_miembro)."""
-    datos = _datos_de_miembro(usuario, nombre, dni, telefono, email)
+                       email: str = None, clave: str = None, whatsapp: str = ""):
+    """Actualiza los datos de un socio (mismas reglas que crear_miembro). Si
+    `clave` viene vacía se conserva la anterior. No toca el saldo: eso solo se
+    mueve con cargas, consumos y reintegros (ver el ledger
+    movimientos_saldo_miembro)."""
+    datos = _datos_de_miembro(usuario, nombre, dni, telefono, email, whatsapp)
     if clave:
         datos["clave_hash"] = hash_clave(clave)
     asignaciones = ", ".join(f"{columna} = ?" for columna in datos)
     with _usuario_de_socio_unico(datos["usuario"]):
         with conexion_db() as conexion:
+            _exigir_dni_libre(conexion, datos["dni"], miembro_id)
             conexion.execute(
                 f"UPDATE miembros SET {asignaciones} WHERE id = ?", (*datos.values(), miembro_id)
             )
@@ -309,13 +396,50 @@ def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):
             )
 
 
-def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> dict:
+def _guardar_datos_del_primer_ingreso(conexion, miembro, datos_socio: dict):
+    """
+    Guarda en la cuenta lo que el socio escribió en el cuadro del primer
+    ingreso de su PC: el DNI (obligatorio, y que no sea de otra cuenta activa),
+    el celular y el WhatsApp (opcionales: si los deja vacíos, se conserva lo que
+    hubiera cargado el mostrador). Levanta ValueError con un mensaje para el
+    socio; como corre dentro de la transacción de abrir_estacion_por_miembro, un
+    error no deja nada guardado.
+    """
+    dni = normalizar_dni(str(datos_socio.get("dni") or ""))
+    if not dni:
+        raise ValueError("El DNI es obligatorio.")
+    _exigir_dni_libre(
+        conexion, dni, miembro["id"],
+        mensaje="Ese DNI ya está registrado en otra cuenta. Pasá por el mostrador.",
+    )
+    celular = normalizar_telefono(str(datos_socio.get("celular") or ""), "El celular")
+    whatsapp = normalizar_telefono(str(datos_socio.get("whatsapp") or ""), "El WhatsApp")
+    conexion.execute(
+        "UPDATE miembros SET dni = ?, telefono = ?, whatsapp = ? WHERE id = ?",
+        (dni, celular or miembro["telefono"], whatsapp or miembro["whatsapp"], miembro["id"]),
+    )
+
+
+def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
+                               pedir_datos: bool = False, datos_socio: dict = None) -> dict:
     """
     El socio se loguea solo (usuario/clave) para abrir una estación con
     TODO su saldo disponible — no es el mostrador quien elige cuánto
     tiempo asignarle, es autoservicio puro. Levanta ValueError si las
     credenciales no coinciden o si no le queda al menos un bloque de 30
     minutos. Devuelve un resumen simple para mostrar en pantalla.
+
+    Datos del primer ingreso: `pedir_datos=True` lo manda el Cliente PC que
+    sabe pedírselos al socio. Si el socio todavía no tiene DNI (`tiene_dni`),
+    sin `datos_socio` levanta FaltanDatosDelSocio sin abrir nada (el Cliente PC
+    le muestra el cuadro), y con `datos_socio` ({"dni", "celular", "whatsapp"})
+    los guarda y abre la PC en la MISMA transacción: si el DNI está mal o es de
+    otra cuenta, no queda nada guardado ni se gasta saldo. Se pregunta DESPUÉS
+    de la clave y del saldo, para no hacerle escribir el DNI a alguien que igual
+    no va a poder entrar. Sin `pedir_datos` (un Cliente PC viejo, o "Abrir PC con
+    Miembro" del mostrador) entra como siempre: no se traba nadie mientras haya
+    PCs sin actualizar, y se le pide la próxima vez en una PC actualizada. A un
+    socio que ya tiene DNI no se le pide ni se le cambia nada.
 
     Autentica y consume el saldo DENTRO de una sola transacción con
     "BEGIN IMMEDIATE" (toma el lock de escritura de entrada, antes de
@@ -364,6 +488,10 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str) -> di
                 f"{miembro['nombre']} no tiene saldo suficiente (le quedan "
                 f"{miembro['saldo_minutos']} minutos, hace falta al menos {MINUTOS_POR_FRACCION})."
             )
+        if pedir_datos and not tiene_dni(miembro):
+            if datos_socio is None:
+                raise FaltanDatosDelSocio("Es tu primer ingreso: completá tus datos para entrar.")
+            _guardar_datos_del_primer_ingreso(conexion, miembro, datos_socio)
 
         minutos_a_usar = miembro["saldo_minutos"]
 

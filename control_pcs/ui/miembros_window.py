@@ -19,6 +19,7 @@ acá porque son del dominio de Miembros, pero el botón que las abre está
 en ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 """
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QLabel, QComboBox, QCheckBox, QFormLayout,
@@ -44,7 +45,7 @@ class MiembrosWindow(QDialog):
         super().__init__(parent)
         self.usuario_operador = usuario_operador
         self.setWindowTitle("Administración de Miembros")
-        self.resize(700, 480)
+        self.resize(860, 480)
         self._armar_interfaz()
         self._cargar_grilla()
 
@@ -73,7 +74,7 @@ class MiembrosWindow(QDialog):
         self.check_inactivos.stateChanged.connect(self._cargar_grilla)
 
         self.tabla = crear_tabla(
-            ["Usuario", "Nombre", "DNI", "Teléfono", "Saldo", "Estado"],
+            ["Usuario", "Nombre", "DNI", "Celular", "WhatsApp", "Saldo", "Estado"],
             estirar=1, por_filas=True,
         )
         self.tabla.doubleClicked.connect(self._modificar_miembro)
@@ -94,10 +95,19 @@ class MiembrosWindow(QDialog):
             self.tabla.insertRow(fila)
             self.tabla.setItem(fila, 0, QTableWidgetItem(miembro["usuario"]))
             self.tabla.setItem(fila, 1, QTableWidgetItem(miembro["nombre"]))
-            self.tabla.setItem(fila, 2, QTableWidgetItem(miembro["dni"]))
+            if miembros_repo.tiene_dni(miembro):
+                item_dni = QTableWidgetItem(miembro["dni"])
+            else:
+                # Se lo pide su PC la primera vez que entra (ver miembros_repo).
+                item_dni = QTableWidgetItem("Falta DNI")
+                item_dni.setForeground(Qt.red)
+            self.tabla.setItem(fila, 2, item_dni)
             self.tabla.setItem(fila, 3, QTableWidgetItem(miembro["telefono"]))
-            self.tabla.setItem(fila, 4, QTableWidgetItem(formato_tiempo(miembro["saldo_minutos"] * 60)))
-            self.tabla.setItem(fila, 5, QTableWidgetItem("Activo" if miembro["activo"] else "Inactivo"))
+            self.tabla.setItem(fila, 4, QTableWidgetItem(miembro["whatsapp"]))
+            self.tabla.setItem(fila, 5, QTableWidgetItem(formato_tiempo(miembro["saldo_minutos"] * 60)))
+            self.tabla.setItem(fila, 6, QTableWidgetItem("Activo" if miembro["activo"] else "Inactivo"))
+        # Con el ancho fijo de siempre, un WhatsApp con +54 9 se veía cortado.
+        self.tabla.resizeColumnsToContents()
 
     def _seleccionado(self):
         fila = self.tabla.currentRow()
@@ -157,25 +167,39 @@ class DialogoMiembro(QDialog):
         self.campo_nombre = QLineEdit()
         self.campo_dni = QLineEdit()
         self.campo_telefono = QLineEdit()
+        self.campo_whatsapp = QLineEdit()
         self.campo_email = QLineEdit()
-        self.campo_email.setPlaceholderText("(opcional)")
+        for campo in (self.campo_nombre, self.campo_dni, self.campo_telefono, self.campo_whatsapp,
+                      self.campo_email):
+            campo.setPlaceholderText("(opcional)")
+
+        # Alcanzan usuario y contraseña (pedido del dueño, 2026-10-17): el DNI, el
+        # celular y el WhatsApp los completa el socio al entrar desde su PC.
+        aclaracion = QLabel(
+            "Alcanza con usuario y contraseña: el DNI, el celular y el WhatsApp\n"
+            "se los pide la PC al socio la primera vez que entra."
+        )
+        aclaracion.setStyleSheet("color: gray; font-style: italic;")
 
         formulario = QFormLayout()
         formulario.addRow("Usuario:", self.campo_usuario)
         formulario.addRow("Contraseña:", self.campo_clave)
         formulario.addRow("Nombre:", self.campo_nombre)
         formulario.addRow("DNI:", self.campo_dni)
-        formulario.addRow("Teléfono:", self.campo_telefono)
+        formulario.addRow("Celular:", self.campo_telefono)
+        formulario.addRow("WhatsApp:", self.campo_whatsapp)
         formulario.addRow("Email:", self.campo_email)
 
         botones = fila_guardar_cancelar(self, self._guardar)
 
         layout = QVBoxLayout()
         layout.addLayout(formulario)
+        layout.addWidget(aclaracion)
         layout.addLayout(botones)
         self.setLayout(layout)
         encadenar_enter(self.campo_usuario, self.campo_clave, self.campo_nombre, self.campo_dni,
-                         self.campo_telefono, self.campo_email, accion_final=self._guardar)
+                         self.campo_telefono, self.campo_whatsapp, self.campo_email,
+                         accion_final=self._guardar)
         sin_boton_por_defecto(self)
 
     def _cargar_datos(self, miembro):
@@ -183,6 +207,7 @@ class DialogoMiembro(QDialog):
         self.campo_nombre.setText(miembro["nombre"])
         self.campo_dni.setText(miembro["dni"])
         self.campo_telefono.setText(miembro["telefono"])
+        self.campo_whatsapp.setText(miembro["whatsapp"])
         self.campo_email.setText(miembro["email"] or "")
 
     @manejar_errores
@@ -191,17 +216,18 @@ class DialogoMiembro(QDialog):
         nombre = self.campo_nombre.text().strip()
         dni = self.campo_dni.text().strip()
         telefono = self.campo_telefono.text().strip()
+        whatsapp = self.campo_whatsapp.text().strip()
         email = self.campo_email.text().strip() or None
         clave = self.campo_clave.text()
 
         if self.miembro:
             miembros_repo.modificar_miembro(self.miembro["id"], usuario, nombre, dni, telefono,
-                                             email, clave or None)
+                                             email, clave or None, whatsapp=whatsapp)
         else:
             if not clave:
                 mostrar_error(self, "Falta la contraseña", "Un socio nuevo necesita una contraseña.")
                 return
-            miembros_repo.crear_miembro(usuario, clave, nombre, dni, telefono, email)
+            miembros_repo.crear_miembro(usuario, clave, nombre, dni, telefono, email, whatsapp=whatsapp)
         self.accept()
 
 

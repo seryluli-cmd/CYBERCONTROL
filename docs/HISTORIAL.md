@@ -471,3 +471,21 @@ completa en 6-10 microsegundos, menos de una milésima de un núcleo cada 0,7 s.
   ventana. Como mucho un aviso cada 30 s por PC.
 529 tests al juntarse con la revisión del mismo día (26 nuevos en `tests/test_filtro_palabras.py`:
 el repositorio, el servidor real, la actividad y la pantalla).
+
+**2026-10-17:** **alta de socios con usuario y clave; el DNI lo completa el socio en su primer
+ingreso.** Pedido del dueño: tenía muchísimas cuentas de su programa de cyber anterior para volver
+a crear, y el alta pedía usuario, clave, nombre, DNI y teléfono.
+- **Alta:** en Miembros alcanzan usuario y contraseña; nombre, DNI, celular (el "teléfono" de
+  antes), WhatsApp (columna nueva `miembros.whatsapp`) y email son opcionales. Un nombre vacío se
+  guarda como el usuario. La lista muestra DNI, Celular y WhatsApp, y "Falta DNI" en rojo.
+- **Primer ingreso:** el Cliente PC nuevo manda `pide_datos` en `POST /login`; a un socio sin DNI
+  válido el servidor le contesta `faltan_datos` sin abrir nada, y la PC le pide DNI (obligatorio),
+  celular y WhatsApp (opcionales). Se guardan en la misma transacción que abre la PC: con un dato
+  mal o un DNI que ya es de otra cuenta activa ("pasá por el mostrador"), no se guarda nada ni se
+  gasta saldo. Es una sola vez.
+- **Compatible:** un Cliente PC viejo no manda `pide_datos` y el socio entra como siempre (se le
+  pide la próxima vez en una PC actualizada); uno nuevo contra un servidor viejo también entra.
+- El DNI se guarda solo con números (7 u 8 cifras) y los teléfonos con sus números (8 a 15, con el
+  "+" de adelante si lo tenía), también cuando los carga el mostrador.
+556 tests (24 nuevos en `tests/test_primer_ingreso_socio.py`: alta, primer ingreso, migración y
+servidor real).

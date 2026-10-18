@@ -17,7 +17,8 @@ def inicializar_base_de_datos():
         _migrar_columna_ultima_conexion_estaciones, _migrar_columna_ultima_ip_estaciones,
         _migrar_columna_ip_asentada_estaciones,
         _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_check_tipo_en_comandos_pc,
-        _migrar_columna_miembro_en_sesiones, _migrar_referencia_bono_en_movimientos_saldo_miembro,
+        _migrar_columna_miembro_en_sesiones, _migrar_columna_whatsapp_en_miembros,
+        _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
         _migrar_check_origen_en_ventas, _migrar_borrar_clave_vieja_de_clientes_pc, _cargar_datos_iniciales,
         _valores_sql,
@@ -476,7 +477,11 @@ def inicializar_base_de_datos():
     # (ver pcs_repo._abrir_o_extender_sesion / miembros_repo.abrir_estacion_por_miembro).
     # "usuario" acá SÍ es UNIQUE de verdad (a diferencia de usuarios.nombre,
     # que solo se valida en Python) porque es un campo de login real, no
-    # un nombre para mostrar. "email" es el único dato realmente opcional.
+    # un nombre para mostrar. Desde el 2026-10-17 el alta pide solo usuario y
+    # clave: dni, telefono (el "Celular" de la pantalla) y whatsapp quedan en ''
+    # hasta que el socio los completa en su primer ingreso desde una PC (ver
+    # miembros_repo.abrir_estacion_por_miembro), y un nombre vacío se guarda
+    # como el usuario.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS miembros (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -488,9 +493,11 @@ def inicializar_base_de_datos():
             email           TEXT,
             saldo_minutos   INTEGER NOT NULL DEFAULT 0,
             activo          INTEGER NOT NULL DEFAULT 1,
-            fecha_creacion  TEXT NOT NULL
+            fecha_creacion  TEXT NOT NULL,
+            whatsapp        TEXT NOT NULL DEFAULT ''
         )
     """)
+    _migrar_columna_whatsapp_en_miembros(conexion)
     # Catálogo de bonos EXCLUSIVO para Miembros -- mismo esquema que
     # bonos_tiempo (nombre/minutos/precio/activo) pero a propósito una
     # tabla aparte, nunca la misma fila: bonos_tiempo es lo que se le

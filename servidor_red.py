@@ -51,10 +51,16 @@ GET /fondo
     PC lo pide al arrancar, en un hilo aparte (nunca frena el bloqueo), y de
     nuevo solo cuando `fondo_version` de GET /estado cambia.
 
-POST /login           {"estacion", "usuario", "clave"}
+POST /login           {"estacion", "usuario", "clave", "pide_datos" (opcional), "datos_socio" (opcional)}
     Un Miembro se loguea directo desde su PC cliente con TODO su saldo
     (mismo mecanismo que miembros_repo.abrir_estacion_por_miembro, el de la
-    pantalla Miembros).
+    pantalla Miembros). Primer ingreso (pedido del dueño, 2026-10-17): un
+    Cliente PC que sabe pedirle sus datos al socio manda `"pide_datos": true`;
+    si el socio todavía no tiene DNI, contesta 200 con
+    `{"ok": false, "faltan_datos": true, "error": <texto>}` sin abrir nada, y
+    el Cliente PC vuelve a mandar el login con
+    `"datos_socio": {"dni", "celular", "whatsapp"}`. Un Cliente PC viejo no manda
+    `pide_datos` y entra como siempre.
 
 POST /logout          {"estacion", "sesion_id" (opcional)}
     Corta YA la sesión activa de esa estación (mismo mecanismo que
@@ -368,6 +374,10 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             nombre_estacion = str(cuerpo["estacion"])
             usuario = str(cuerpo["usuario"])
             clave = str(cuerpo["clave"])
+            pedir_datos = cuerpo.get("pide_datos") is True
+            datos_socio = cuerpo.get("datos_socio")
+            if datos_socio is not None and not isinstance(datos_socio, dict):
+                raise ValueError("datos_socio")
         except Exception:
             self._responder_error(400, _PEDIDO_INVALIDO)
             return
@@ -378,8 +388,14 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         try:
             resumen = miembros_repo.abrir_estacion_por_miembro(
-                item["estacion"]["id"], usuario, clave
+                item["estacion"]["id"], usuario, clave, pedir_datos=pedir_datos, datos_socio=datos_socio,
             )
+        except miembros_repo.FaltanDatosDelSocio as aviso:
+            # No es un error: el pedido estaba bien y el Cliente PC tiene que
+            # mostrarle al socio el cuadro de sus datos (y mandarlos en otro
+            # POST /login). Por eso 200 y no un 4xx.
+            self._responder_json(200, {"ok": False, "faltan_datos": True, "error": str(aviso)})
+            return
         except ValueError as error:
             # Credenciales incorrectas o saldo insuficiente -- el mensaje
             # ya viene pensado para mostrarle al Miembro tal cual.
