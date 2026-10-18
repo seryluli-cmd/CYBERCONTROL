@@ -212,6 +212,13 @@ cambiar el tamaño, descontando la barra de desplazamiento (Qt la reserva aunque
 no se vea). Si la ventana es tan angosta que no entran 8 casilleros enteros,
 pasa antes a la fila de abajo en vez de achicarlos.
 
+El panel lateral (`pcs_detalle.PanelDetalleEstacion`) vende el bono tildado con
+el botón **Cobrar** ("Cobrar y Agregar Bono" si el equipo ya tiene una sesión
+en curso): abre la misma ventana de cobro que Ventas (`dialogo_pago.cobrar` →
+`DialogoPago`), donde se elige el medio, se reparte y se ve el vuelto; si pagan
+justo, un Enter cobra. Pedido del dueño, 2026-10-18: antes el panel tenía un
+combo "Método de pago" e "Iniciar Sesión".
+
 **Para cualquier usuario (Admin o Empleada):**
 - **Ventas** (`ventas_window.py`, `VentasWindow` + `DialogoPago`) —
   pantalla de facturación. Escaneo por código de barras (Enter en el campo

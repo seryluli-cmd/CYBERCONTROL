@@ -360,7 +360,7 @@ class TestPcstreamEnPantalla(_ConPcstream):
         self.assertTrue(all(self._habilitados(panel.lista_pcstream)))
         self.assertFalse(any(self._habilitados(panel.lista_pc)))
         self.assertFalse(any(self._habilitados(panel.lista_playstation)))
-        self.assertTrue(panel.boton_iniciar.isEnabled())
+        self.assertTrue(panel.boton_cobrar.isEnabled())
         self.assertFalse(panel.boton_miembro.isEnabled())  # los socios no la usan
         self.assertEqual(panel.etiqueta_titulo.text(), "PCSTREAM")
 
@@ -378,9 +378,9 @@ class TestPcstreamEnPantalla(_ConPcstream):
         panel.mostrar(self._item(self.pcstream_id))
         panel.lista_pcstream.grupo.button(self.bono_stream_corto_id).click()  # "1 hora stream", $8.000
 
-        with mock.patch("control_pcs.ui.pcs_detalle.resolver_pagos") as resolver:
-            resolver.side_effect = lambda ventana, metodo, monto: _efectivo(monto)
-            panel._confirmar_bono()
+        with mock.patch("control_pcs.ui.pcs_detalle.cobrar") as cobrar:
+            cobrar.side_effect = lambda ventana, monto: _efectivo(monto)
+            panel._cobrar_bono()
 
         venta = ventas_repo.listar_ventas_recientes()[0]
         self.assertEqual((venta["origen"], venta["total"]), (dominio.ORIGEN_ALQUILER_PCS, 8000.0))

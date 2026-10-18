@@ -19,7 +19,7 @@ la mecánica del catálogo (`CatalogoDeBonos`, otra tabla), las reglas de un bon
 (`dominio.validar_datos_bono`), la cuenta del tiempo (`dominio.segundos_restantes`
 y `dominio.fin_al_sumar_minutos`, las mismas que usa `pcs_repo`), la venta
 (`ventas_repo.registrar_venta_sin_detalle`, con origen PLAYSTATION) y, en la
-pantalla, el cobro (`ui.dialogo_pago.resolver_pagos`).
+pantalla, el cobro (`ui.dialogo_pago.cobrar`).
 
 Quién puede qué (se pregunta con `usuarios_repo.tiene_permiso`, nunca
 comparando el rol a mano):
@@ -194,7 +194,7 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list) -> int:
     PC no sirve acá (si por casualidad coincidiera con uno de la consola, la
     pantalla nunca lo manda: lo toma de la lista de bonos de la consola).
     `pagos` es una lista de {"metodo", "monto"} -- ver
-    ui.dialogo_pago.resolver_pagos -- y tiene que cubrir el precio.
+    ui.dialogo_pago.cobrar -- y tiene que cubrir el precio.
 
     Requiere ADMIN o `permiso_control_pcs` (PermissionError si no). Venta,
     sesión y vínculo con el bono se graban en la misma transacción (regla 8 de

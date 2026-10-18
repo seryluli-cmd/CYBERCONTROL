@@ -15,6 +15,7 @@ Se ejecutan con:
 
 import os
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -127,21 +128,34 @@ class TestPanelDeBonos(_ConUsuario):
     def _panel(self):
         panel = self._mostrar(PanelDetalleEstacion(self.usuario, lambda: None))
         panel.mostrar(self._item())
-        panel.combo_metodo.setFocus()
+        panel.boton_cobrar.setFocus()
         return panel
 
-    def test_enter_en_el_medio_de_pago_inicia_la_sesion(self):
+    def _cobro_en_efectivo(self):
+        """Reemplaza la ventana de cobro (modal) por un pago justo en efectivo."""
+        cobrar = mock.patch(
+            "control_pcs.ui.pcs_detalle.cobrar",
+            side_effect=lambda ventana, monto: [{"metodo": dominio.PAGO_EFECTIVO, "monto": monto}],
+        ).start()
+        self.addCleanup(mock.patch.stopall)
+        return cobrar
+
+    def test_enter_en_cobrar_abre_el_cobro_y_arranca_la_sesion(self):
         panel = self._panel()
+        cobrar = self._cobro_en_efectivo()
 
-        _enter(panel.combo_metodo)  # Efectivo: cobra el bono elegido
+        _enter(panel.boton_cobrar)
 
+        cobrar.assert_called_once_with(panel, 1000.0)
         self.assertIsNotNone(self._item()["sesion"])
 
-    def test_un_enter_apretado_no_inicia_la_sesion(self):
+    def test_un_enter_apretado_no_abre_el_cobro(self):
         panel = self._panel()
+        cobrar = self._cobro_en_efectivo()
 
-        _enter(panel.combo_metodo, repetido=True)
+        _enter(panel.boton_cobrar, repetido=True)
 
+        cobrar.assert_not_called()
         self.assertIsNone(self._item()["sesion"])
 
 

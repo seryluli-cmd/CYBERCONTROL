@@ -111,7 +111,7 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
         self.assertEqual(len(panel.lista_playstation.grupo.buttons()), 2)
         self.assertFalse(any(self._habilitados(panel.lista_pc)))
         self.assertFalse(any(self._habilitados(panel.lista_playstation)))
-        self.assertFalse(panel.boton_iniciar.isEnabled())
+        self.assertFalse(panel.boton_cobrar.isEnabled())
 
     def test_con_una_pc_elegida_solo_se_pueden_tocar_los_bonos_de_pc(self):
         panel = self._panel(self.operadora_id)
@@ -120,7 +120,7 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
 
         self.assertTrue(all(self._habilitados(panel.lista_pc)))
         self.assertFalse(any(self._habilitados(panel.lista_playstation)))
-        self.assertTrue(panel.boton_iniciar.isEnabled())
+        self.assertTrue(panel.boton_cobrar.isEnabled())
         self.assertTrue(panel.boton_miembro.isEnabled())
 
     def test_con_la_consola_elegida_solo_se_pueden_tocar_los_bonos_de_la_consola(self):
@@ -130,7 +130,7 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
 
         self.assertFalse(any(self._habilitados(panel.lista_pc)))
         self.assertTrue(all(self._habilitados(panel.lista_playstation)))
-        self.assertTrue(panel.boton_iniciar.isEnabled())
+        self.assertTrue(panel.boton_cobrar.isEnabled())
         # Abrir con el saldo de un socio es solo de las PCs.
         self.assertFalse(panel.boton_miembro.isEnabled())
         self.assertEqual(panel.etiqueta_titulo.text(), "PLAYSTATION 5")
@@ -157,7 +157,7 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
 
         self.assertFalse(any(self._habilitados(panel.lista_playstation)))
         self.assertFalse(any(self._habilitados(panel.lista_pc)))
-        self.assertFalse(panel.boton_iniciar.isEnabled())
+        self.assertFalse(panel.boton_cobrar.isEnabled())
         self.assertFalse(panel.boton_finalizar.isEnabled())
         self.assertIn("Sin permiso", panel.etiqueta_estado.text())
 
@@ -167,14 +167,14 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
         panel.mostrar(playstation_repo.estado())
 
         self.assertTrue(all(self._habilitados(panel.lista_playstation)))
-        self.assertTrue(panel.boton_iniciar.isEnabled())
+        self.assertTrue(panel.boton_cobrar.isEnabled())
 
     def test_aunque_se_fuerce_el_boton_sin_permiso_el_repo_lo_frena(self):
         panel = self._panel(self.empleada_id)
         panel.mostrar(playstation_repo.estado())
 
-        with mock.patch("control_pcs.ui.pcs_detalle.resolver_pagos", return_value=_efectivo(3000.0)):
-            panel._confirmar_bono()  # lo que haría el clic si el botón no estuviera apagado
+        with mock.patch("control_pcs.ui.pcs_detalle.cobrar", return_value=_efectivo(3000.0)):
+            panel._cobrar_bono()  # lo que haría el clic si el botón no estuviera apagado
 
         self.assertEqual(ventas_repo.listar_ventas_recientes(), [])
         self.assertEqual(len(self.errores), 1)
@@ -183,9 +183,9 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
 
 class TestCobrarDesdeElPanel(_ConPantalla):
     def _cobrar(self, panel):
-        with mock.patch("control_pcs.ui.pcs_detalle.resolver_pagos") as resolver:
-            resolver.side_effect = lambda ventana, metodo, monto: _efectivo(monto)
-            panel._confirmar_bono()
+        with mock.patch("control_pcs.ui.pcs_detalle.cobrar") as cobrar:
+            cobrar.side_effect = lambda ventana, monto: _efectivo(monto)
+            panel._cobrar_bono()
 
     def test_con_la_consola_elegida_se_cobra_el_bono_de_la_consola(self):
         panel = self._panel(self.operadora_id)
@@ -198,6 +198,39 @@ class TestCobrarDesdeElPanel(_ConPantalla):
         self.assertIsNotNone(playstation_repo.estado()["sesion"])
         self.assertIsNone(self._item_pc()["sesion"])  # ninguna PC recibió nada
         self.assertEqual(self.errores, [])
+
+    def test_cobrar_abre_la_ventana_de_cobro_con_el_precio_del_bono(self):
+        # Pedido del dueño (2026-10-18): la misma ventana que una venta de
+        # kiosko, en vez de elegir el medio de pago en un combo del panel.
+        panel = self._panel(self.operadora_id)
+        panel.mostrar(playstation_repo.estado())
+
+        with mock.patch("control_pcs.ui.pcs_detalle.cobrar", return_value=_efectivo(3000.0)) as cobrar:
+            panel.boton_cobrar.click()
+
+        cobrar.assert_called_once_with(panel, 3000.0)
+        self.assertIsNotNone(playstation_repo.estado()["sesion"])
+
+    def test_si_se_cancela_el_cobro_no_se_vende_nada(self):
+        panel = self._panel(self.operadora_id)
+        panel.mostrar(self._item_pc())
+
+        with mock.patch("control_pcs.ui.pcs_detalle.cobrar", return_value=None):
+            panel.boton_cobrar.click()
+
+        self.assertEqual(ventas_repo.listar_ventas_recientes(), [])
+        self.assertIsNone(self._item_pc()["sesion"])
+        self.assertEqual(self.errores, [])
+
+    def test_el_boton_dice_cobrar_y_con_sesion_en_curso_agregar_bono(self):
+        panel = self._panel(self.operadora_id)
+        panel.mostrar(self._item_pc())
+        self.assertEqual(panel.boton_cobrar.text(), "Cobrar")
+
+        self._cobrar(panel)
+        panel.mostrar(self._item_pc())
+
+        self.assertEqual(panel.boton_cobrar.text(), "Cobrar y Agregar Bono")
 
     def test_con_una_pc_elegida_se_cobra_el_bono_de_pc(self):
         panel = self._panel(self.operadora_id)

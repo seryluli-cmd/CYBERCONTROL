@@ -1,8 +1,9 @@
 """
 tests/test_dialogo_pago.py
 ============================
-El cuadro de cobro (ui/dialogo_pago.DialogoPago), que usan las ventas de kiosko y
-todo cobro Mixto (bonos de PC, PCSTREAM, PlayStation 5, carga de saldo, trámites).
+El cuadro de cobro (ui/dialogo_pago.DialogoPago), que usan las ventas de kiosko,
+los bonos de Control de PCs (PC, PCSTREAM, PlayStation 5) y el Mixto de la carga de
+saldo y los trámites.
 Pedido del dueño (2026-10-18): el monto arranca escrito con el total, porque casi
 siempre pagan justo; si pagan justo, un Enter cobra; si pagan con otro billete, lo
 que se escribe reemplaza al total. Y un Enter que queda apretado no cobra solo.
@@ -18,14 +19,14 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEvent, Qt  # noqa: E402
+from PySide6.QtCore import QEvent, Qt, QTimer  # noqa: E402
 from PySide6.QtGui import QKeyEvent  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QDialog  # noqa: E402
 
 import dominio  # noqa: E402
 
-from ui.dialogo_pago import DialogoPago  # noqa: E402
+from ui.dialogo_pago import DialogoPago, cobrar  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
@@ -179,6 +180,47 @@ class TestDialogoPago(unittest.TestCase):
 
         self.assertEqual(dialogo.pagos, [{"metodo": _EFECTIVO, "monto": 600.0}])
         self.assertEqual(dialogo.spin_monto.value(), 1500.0)
+
+
+class TestCobrar(unittest.TestCase):
+    """`cobrar` abre el cuadro de verdad (modal): lo que haría la empleada se
+    manda apenas aparece, desde el mismo bucle de eventos."""
+
+    def _con_el_cuadro_abierto(self, accion):
+        def hacer():
+            QApplication.processEvents()  # que termine de mostrarse (deja el monto seleccionado)
+            dialogo = QApplication.activeModalWidget()
+            try:
+                accion(dialogo)
+            finally:
+                # Si la prueba falla, que la ventana no quede abierta para siempre.
+                if isinstance(dialogo, DialogoPago) and dialogo.isVisible():
+                    dialogo.reject()
+        QTimer.singleShot(0, hacer)
+
+    def test_pago_justo_devuelve_los_pagos(self):
+        self._con_el_cuadro_abierto(lambda dialogo: TestDialogoPago._enter(dialogo.spin_monto))
+
+        pagos = cobrar(None, 4000.0)
+
+        self.assertEqual(pagos, [{"metodo": _EFECTIVO, "monto": 4000.0}])
+
+    def test_con_vuelto_devuelve_lo_que_queda_en_la_caja(self):
+        def pagar_con_5000(dialogo):
+            QTest.keyClicks(dialogo.spin_monto.lineEdit(), "5000")
+            TestDialogoPago._enter(dialogo.spin_monto)  # frena en Confirmar por el vuelto
+            self.assertEqual(dialogo.vuelto, 1000.0)
+            dialogo.boton_confirmar.click()
+        self._con_el_cuadro_abierto(pagar_con_5000)
+
+        pagos = cobrar(None, 4000.0)
+
+        self.assertEqual(pagos, [{"metodo": _EFECTIVO, "monto": 4000.0}])
+
+    def test_cancelar_devuelve_none(self):
+        self._con_el_cuadro_abierto(lambda dialogo: dialogo.reject())
+
+        self.assertIsNone(cobrar(None, 4000.0))
 
 
 if __name__ == "__main__":

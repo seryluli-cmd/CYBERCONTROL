@@ -9,14 +9,14 @@ finalizar la sesión — y el diálogo con el que un socio se loguea solo
 """
 
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QDialog, QFrame, QLabel, QLineEdit, QPushButton, QScrollArea,
+    QButtonGroup, QDialog, QFrame, QLabel, QLineEdit, QPushButton, QScrollArea,
     QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
 from control_pcs.repositories import miembros_repo, pcs_repo, pcstream_repo, playstation_repo
-from ui.dialogo_pago import resolver_pagos
+from ui.dialogo_pago import cobrar
 from ui.utils import (
     aplicar_clase, confirmar, encadenar_enter, fila_guardar_cancelar, formato_pesos,
     formato_tiempo, manejar_errores, mostrar_error, mostrar_info, sin_boton_por_defecto,
@@ -120,8 +120,10 @@ class PanelDetalleEstacion(QFrame):
     - Solo se habilita la lista del equipo elegido: PCSTREAM es una PC, pero con
       ella elegida se usan SUS bonos, no los de PC (`item["es_pcstream"]`, ver
       pcs_repo.estado_estaciones). Sin nada elegido, ninguna.
-    - "Iniciar Sesión"/"Agregar Bono" toma el bono de la lista que corresponde al
-      equipo elegido, y solo de esa: no hay un camino que cruce dos listas.
+    - "Cobrar" toma el bono de la lista que corresponde al equipo elegido, y
+      solo de esa: no hay un camino que cruce dos listas. Abre la misma ventana
+      de cobro que una venta de kiosko (`ui.dialogo_pago.cobrar`, pedido del
+      dueño 2026-10-18), donde se elige el medio y se ve el vuelto.
     La PlayStation 5 además exige el permiso operativo (ver
     playstation_repo.puede_operar): sin él, ve la consola pero no puede vender ni
     liberar. PCSTREAM no se abre con Miembro (los socios no la pueden usar).
@@ -162,8 +164,8 @@ class PanelDetalleEstacion(QFrame):
         )
 
         # Las listas van en un área con scroll: entre todas pueden tener
-        # más botones de los que entran en la altura de la ventana, y el método
-        # de pago y los botones de acción tienen que quedar siempre a la vista.
+        # más botones de los que entran en la altura de la ventana, y los
+        # botones de acción tienen que quedar siempre a la vista.
         contenedor_bonos = QWidget()
         layout_bonos = QVBoxLayout(contenedor_bonos)
         layout_bonos.setContentsMargins(0, 0, 0, 0)
@@ -183,13 +185,9 @@ class PanelDetalleEstacion(QFrame):
         contenedor_bonos.setObjectName("contenedorBonos")
         self.area_bonos.setWidget(contenedor_bonos)
 
-        self.combo_metodo = QComboBox()
-        for metodo in (dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL, dominio.PAGO_MIXTO):
-            self.combo_metodo.addItem(dominio.NOMBRE_METODO_PAGO[metodo], metodo)
-
-        self.boton_iniciar = QPushButton("Iniciar Sesión")
-        aplicar_clase(self.boton_iniciar, "primario")
-        self.boton_iniciar.clicked.connect(self._confirmar_bono)
+        self.boton_cobrar = QPushButton("Cobrar")
+        aplicar_clase(self.boton_cobrar, "primario")
+        self.boton_cobrar.clicked.connect(self._cobrar_bono)
 
         self.boton_miembro = QPushButton("Abrir con Miembro...")
         self.boton_miembro.clicked.connect(self._abrir_con_miembro)
@@ -202,15 +200,14 @@ class PanelDetalleEstacion(QFrame):
         layout.addWidget(self.etiqueta_titulo)
         layout.addWidget(self.etiqueta_estado)
         layout.addWidget(self.area_bonos, 1)
-        layout.addWidget(QLabel("Método de pago:"))
-        layout.addWidget(self.combo_metodo)
-        layout.addWidget(self.boton_iniciar)
+        layout.addWidget(self.boton_cobrar)
         layout.addWidget(self.boton_miembro)
         layout.addWidget(self.boton_finalizar)
         self.setLayout(layout)
-        # Enter en el método de pago hace lo mismo que "Iniciar Sesión" (que
-        # no hace nada si está deshabilitado).
-        encadenar_enter(self.combo_metodo, accion_final=self.boton_iniciar.click)
+        # Enter con el foco en "Cobrar" lo aprieta (no hace nada si está
+        # deshabilitado): sin_boton_por_defecto le saca a los botones el Enter
+        # de Qt, y así uno que queda apretado tampoco abre el cobro solo.
+        encadenar_enter(self.boton_cobrar, accion_final=self.boton_cobrar.click)
         sin_boton_por_defecto(self)
 
     @staticmethod
@@ -256,7 +253,7 @@ class PanelDetalleEstacion(QFrame):
 
         if item is None:
             self.etiqueta_titulo.setText("Elegí una estación de la grilla")
-            for widget in (self.combo_metodo, self.boton_iniciar, self.boton_miembro, self.boton_finalizar):
+            for widget in (self.boton_cobrar, self.boton_miembro, self.boton_finalizar):
                 widget.setEnabled(False)
             return
 
@@ -277,12 +274,11 @@ class PanelDetalleEstacion(QFrame):
                 self.etiqueta_estado.setText(texto)
             lista, puede = self._lista_del_equipo(item), True
 
-        self.boton_iniciar.setText("Iniciar Sesión" if sesion is None else "Agregar Bono")
+        self.boton_cobrar.setText("Cobrar" if sesion is None else "Cobrar y Agregar Bono")
         self.boton_finalizar.setText(
             "Ya avisé: liberar la consola" if es_consola and item["tiempo_agotado"] else "Finalizar Sesión"
         )
-        self.combo_metodo.setEnabled(puede)
-        self.boton_iniciar.setEnabled(puede and bool(lista.bonos))
+        self.boton_cobrar.setEnabled(puede and bool(lista.bonos))
         self.boton_finalizar.setEnabled(puede and sesion is not None)
         # Abrir con el saldo de un socio es cosa de las PCs: la consola y
         # PCSTREAM se venden solo con sus bonos (miembros_repo también lo rechaza).
@@ -315,10 +311,10 @@ class PanelDetalleEstacion(QFrame):
         self.etiqueta_estado.setText(texto)
 
     @manejar_errores
-    def _confirmar_bono(self):
+    def _cobrar_bono(self):
         # Todo se decide con el equipo elegido AHORA (`item`): de esa foto sale
         # la lista de bonos y a dónde se vende. Se toma antes de abrir el cobro
-        # (que puede mostrar un diálogo mientras la grilla se sigue refrescando
+        # (la ventana queda abierta mientras la grilla se sigue refrescando
         # sola), así lo que se cobra y a quién se lo aplica nunca se separan.
         item = self.item
         if item is None:
@@ -343,8 +339,7 @@ class PanelDetalleEstacion(QFrame):
             mostrar_error(self, "Sin bonos", sin_bonos)
             return
 
-        metodo = self.combo_metodo.currentData()
-        pagos = resolver_pagos(self, metodo, bono["precio"])
+        pagos = cobrar(self, bono["precio"])
         if pagos is None:
             return
         if es_playstation(item):

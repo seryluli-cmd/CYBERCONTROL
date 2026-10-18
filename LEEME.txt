@@ -62,6 +62,9 @@ El reloj y las monedas indican que corre con un bono; las dos personitas,
 que la abrió un socio (su nombre aparece abajo). Debajo de cada monitor va
 el tiempo que le queda. Clic para elegirla, clic derecho para el control
 remoto (reiniciar, apagar, mensaje, etc.).
+Para venderle tiempo: clic en el monitor, clic en el bono y "Cobrar". Se
+abre la misma ventana de cobro que en Ventas: si pagan justo, Enter y
+listo; si pagan con otro billete, se escribe con cuánto y muestra el vuelto.
 Los bonos de PC, de PCSTREAM, de socios y de PlayStation son catálogos
 separados.
 Las PCs comunes se pueden operar con cualquier usuario logueado.
