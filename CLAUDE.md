@@ -273,6 +273,9 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   (`turnos.dia_del_turno_que_arranca_tras_un_cierre`). Los historiales que no
   son de ventas (accesos, logins, movimientos de un artículo) siguen por día
   calendario. Ver `tests/test_noche_del_dia.py` y `tests/test_reportes_fechas.py`.
+  En las pruebas pasa lo mismo: el "hoy" de una prueba de reportes es
+  `turnos.dia_en_que_empezo_el_turno(datetime.now())` o `hoy_del_local()`, nunca
+  `date.today()` ni `QDate.currentDate()` (con esos, 11 pruebas fallaban de madrugada).
 - **Los domingos tienen 2 turnos de 12hs, no 3.** `MAÑANA` dura hasta las
   18:00 y no existe `TARDE`. El sábado a la noche sigue siendo el turno
   normal 22–06. Nunca asumas tres turnos por día.
@@ -622,6 +625,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-591 pruebas al 2026-10-18. Ojo: entre las 00:00 y las 06:00 fallan 11 pruebas de reportes
-y del ranking de ventas que dependen de la hora (también en master sin cambios; ver el día del
-local en "Trampas conocidas"): correrlas de día.
+591 pruebas al 2026-10-18.
