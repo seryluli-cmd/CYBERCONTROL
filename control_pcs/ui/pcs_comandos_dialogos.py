@@ -21,7 +21,7 @@ from PySide6.QtCore import Qt, QTimer
 import database
 from control_pcs.repositories import comandos_pc_repo, config_red_repo, pcs_repo
 from ui.utils import (
-    aplicar_clase, confirmar, formato_tiempo, manejar_errores, mostrar_error, mostrar_info,
+    aplicar_clase, confirmar, encadenar_enter, formato_tiempo, manejar_errores, mostrar_error, mostrar_info,
     sin_boton_por_defecto, fila_agregar_quitar,
 )
 
@@ -323,6 +323,7 @@ class DialogoTrasladarSesion(QDialog):
         layout.addStretch()
         layout.addLayout(botones)
         self.setLayout(layout)
+        encadenar_enter(self.combo_destino, accion_final=self.boton_confirmar.click)
         sin_boton_por_defecto(self)
         self._actualizar_efecto()
 

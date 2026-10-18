@@ -21,7 +21,7 @@ from PySide6.QtGui import QPalette, QColor, QPixmap
 import dominio
 from database import verificar_clave
 from repositories.usuarios_repo import autenticar_por_nombre, listar_usuarios
-from ui.utils import mostrar_error, mostrar_aviso, manejar_errores, aplicar_clase
+from ui.utils import mostrar_error, mostrar_aviso, manejar_errores, aplicar_clase, encadenar_enter
 
 # Mismo ícono que usa main.py para las ventanas (carpeta assets, junto al código).
 RUTA_ICONO_PNG = Path(__file__).resolve().parent.parent / "assets" / "icono.png"
@@ -98,6 +98,8 @@ class LoginWindow(QWidget):
         # Al apretar Enter en la clave, intenta entrar directamente (más
         # rápido para el uso diario que tener que hacer clic siempre).
         self.campo_clave.returnPressed.connect(self._intentar_ingresar)
+        # Enter en el nombre pasa a la clave, como Tab.
+        encadenar_enter(self.combo_nombre, self.campo_clave)
 
         formulario = QFormLayout()
         formulario.setSpacing(10)
