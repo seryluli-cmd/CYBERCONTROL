@@ -239,7 +239,7 @@ abra no alcanza si los tests no pasan.
 | `limpieza_repo.limpiar_base(usuario_id)` | se borra la plata y el historial de ventas para volver a probar (qué tablas, en `_TABLAS_A_VACIAR`; devuelve el stock de las ventas confirmadas y deja a los socios con saldo 0). Una tabla nueva que guarde plata o ventas tiene que sumarse ahí |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
-| `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter |
+| `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter, como Tab, y la acción del último campo (pedido del dueño, 2026-10-18: todo formulario lo usa). Descarta el Enter repetido de una tecla que quedó apretada |
 | `ui.utils.aplicar_clase(widget, clase)` | un botón se marca como primario/peligro |
 | `ui.utils.sin_boton_por_defecto(ventana)` | se evita que Enter en un campo active el primer botón de un diálogo (llamarla al final de `_armar_interfaz`) |
 | `ui.utils.crear_tabla(titulos, ...)` | se arma una tabla de solo lectura (filas alternadas, columna que se estira, selección por filas) |
@@ -535,6 +535,18 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   (no sacar el esquema claro). Para ver cómo queda una pantalla sin abrirla se puede
   dibujar con `widget.grab()` usando la plataforma real de Windows (la "offscreen" de
   los tests usa otras tipografías y no aplica el esquema de color).
+- **El cobro arranca con el total escrito y, si pagan justo, un Enter cobra** (pedido del
+  dueño, 2026-10-18: casi siempre pagan justo, en efectivo o por transferencia). En
+  `ui.dialogo_pago.DialogoPago` el monto propone lo que falta cubrir, seleccionado (lo que se
+  escribe lo reemplaza). Enter con un pago que cubre justo confirma solo; con vuelto, o con el
+  resto puesto en el otro medio, se frena en Confirmar: la empleada tiene que ver el vuelto o el
+  reparto antes de cobrar. No saques esa frenada "para ahorrar un Enter". El Mixto de PCs,
+  PlayStation 5, socios y trámites usa el mismo cuadro y arranca igual (elegido por el dueño).
+  Ventas: escanear, Enter con el código vacío (abre el cobro) y Enter. Un Enter que queda
+  apretado no cobra: `encadenar_enter` descarta la repetición del teclado y los atajos de
+  Confirmar no se repiten (`tests/test_dialogo_pago.py`, `tests/test_enter_como_tab.py`).
+  Excepciones a propósito: el texto de varias líneas del filtro de palabras (Enter es un
+  renglón nuevo) y "Limpiar base de datos" (Enter nunca borra).
 - **El recolector cíclico está desactivado a propósito** en `main.py`: evita que
   un hilo del servidor destruya un `QTimer` de Qt. Antes de reactivarlo, revisar
   la propiedad de los objetos de UI y sus ciclos de referencias.
@@ -627,4 +639,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-600 pruebas al 2026-10-18.
+618 pruebas al 2026-10-18.
