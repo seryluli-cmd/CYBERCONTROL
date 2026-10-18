@@ -38,6 +38,7 @@ from ui.reportes_pcstream import PestañaPcstream
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, manejar_errores, sin_boton_por_defecto,
     crear_tabla, rango_de_fechas, fecha_iso, crear_selector_de_fecha, hoy_del_local,
+    mostrar_columna_entera,
 )
 
 
@@ -552,3 +553,4 @@ class PestañaRanking(QWidget):
             self.tabla.setItem(fila, 2, QTableWidgetItem(fila_datos["codigo"]))
             self.tabla.setItem(fila, 3, QTableWidgetItem(fila_datos["descripcion"]))
             self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(fila_datos["importe"])))
+        mostrar_columna_entera(self.tabla, 2)

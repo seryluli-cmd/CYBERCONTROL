@@ -18,9 +18,9 @@ from datetime import datetime
 from repositories import articulos_repo, compras_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, manejar_errores, aplicar_clase,
-    sin_boton_por_defecto, crear_tabla,
+    sin_boton_por_defecto, crear_tabla, mostrar_columna_entera,
 )
-from ui.buscar_articulo import armar_botones_de_busqueda
+from ui.buscar_articulo import armar_botones_de_busqueda, avisar_codigo_no_encontrado
 
 
 class ComprasWindow(QDialog):
@@ -96,9 +96,7 @@ class ComprasWindow(QDialog):
     def _procesar_codigo(self, codigo):
         articulo = articulos_repo.buscar_por_codigo(codigo)
         if articulo is None:
-            mostrar_error(self, "Artículo no encontrado",
-                           f"No hay ningún artículo con el código {codigo}.\n"
-                           "Cargalo primero en Artículos.")
+            avisar_codigo_no_encontrado(self, codigo, "Cargalo primero en Artículos.")
             return
 
         cantidad, aceptado = QInputDialog.getInt(
@@ -140,6 +138,7 @@ class ComprasWindow(QDialog):
             self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(linea["costo_unitario"])))
             self.tabla.setItem(fila, 4, QTableWidgetItem(str(linea["stock_antes"])))
             self.tabla.setItem(fila, 5, QTableWidgetItem(str(linea["stock_despues"])))
+        mostrar_columna_entera(self.tabla, 1)
 
     def _borrar_linea(self):
         fila = self.tabla.currentRow()

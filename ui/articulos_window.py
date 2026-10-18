@@ -17,7 +17,7 @@ from repositories import articulos_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase,
     encadenar_enter, armar_filtro_por_fechas, sin_boton_por_defecto, fila_guardar_cancelar,
-    crear_tabla, rango_de_fechas,
+    crear_tabla, rango_de_fechas, mostrar_columna_entera,
 )
 
 
@@ -99,6 +99,7 @@ class ArticulosWindow(QDialog):
             self.tabla.setItem(fila, 6, item_stock)
             self.tabla.setItem(fila, 7, QTableWidgetItem(str(fila_datos["stock_minimo"])))
         self.tabla.setSortingEnabled(True)
+        mostrar_columna_entera(self.tabla, 0)
 
     def _codigo_seleccionado(self):
         fila = self.tabla.currentRow()
