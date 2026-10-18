@@ -161,6 +161,22 @@ ESTADOS_COMANDO_PC = (ESTADO_COMANDO_PENDIENTE, ESTADO_COMANDO_ENTREGADO)
 
 
 # --------------------------------------------------------------------
+# Actualización del Cliente PC desde el Servidor
+# --------------------------------------------------------------------
+# Cómo va la actualización en cada PC, tal como la cuenta su Cliente PC en cada
+# GET /estado (parámetro `act`, ver actualizacion_cliente_repo). Tienen que
+# coincidir con las de CLIENTE PC/actualizador.py; cualquier otro valor se guarda
+# como "nada pendiente". Vacío también es "nada pendiente".
+ACTUALIZACION_BAJANDO = "bajando"
+ACTUALIZACION_DESCARGADA = "descargada"
+ACTUALIZACION_ERROR = "error"
+ACTUALIZACION_FALLO = "fallo"
+ESTADOS_ACTUALIZACION_CLIENTE = (
+    ACTUALIZACION_BAJANDO, ACTUALIZACION_DESCARGADA, ACTUALIZACION_ERROR, ACTUALIZACION_FALLO,
+)
+
+
+# --------------------------------------------------------------------
 # Accesos de admin en las PCs cliente
 # --------------------------------------------------------------------
 # Lo que el Cliente PC le avisa al servidor cuando alguien entra a su panel

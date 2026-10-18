@@ -211,6 +211,7 @@ abra no alcanza si los tests no pasan.
 | `clientes_repo.es_clave_de_clientes(clave)` | se decide si un pedido de red viene de un Cliente PC (clave fija, comparada por su huella SHA-256; la usa `servidor_red._autorizado`) |
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `filtro_palabras_repo.obtener()` · `.guardar(...)` · `.registrar_bloqueo(...)` | se lee y se cambia el filtro de palabras de las PCs ("protección antiporno", pedido del dueño 2026-10-17: prendido, lista y mensaje, como JSON en `configuracion`; su versión viaja en `GET /estado` como `filtro_version`) y se anota cada página que cerró una PC (`bloqueos_filtro_pc`). Buscar las palabras en los títulos es tarea de cada Cliente PC (`CLIENTE PC/filtro_palabras.py`), no de este repo |
+| `actualizacion_cliente_repo.publicar(datos)` · `.version_para_estacion(id)` · `.registrar_reporte(id, parametros)` · `.estado_de_las_pcs()` | se carga y FIRMA una versión del Cliente PC (`data/cliente_pc/`), se decide qué versión le toca a cada PC (las de prueba o todas; viaja en `GET /estado` como `cliente_version`), se guarda lo que cuenta cada PC (versión, carpeta, cómo va) y se arma lo que muestra "Actualizar el Cliente PC de las PCs..." (pedido del dueño, 2026-10-18) |
 | `config_repo.obtener_fondo_cambio()` | se lee el fondo de cambio del turno |
 | `pcs_repo.estado_estaciones()` | se calcula el tiempo restante y estado de cada PC |
 | `pcs_repo.estado_de_estacion(nombre, ip)` | se decide qué estación es una PC que se conecta: por el nombre que manda su Cliente PC y, si ninguna activa se llama así, por la IP asentada en su primer enlace (`registrar_conexion`); con una IP asentada en dos estaciones activas no adivina. La usan TODOS los endpoints de `servidor_red.py` |
@@ -444,6 +445,20 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   ni acentos ("anal" no salta con "análisis"); por eso el repo rechaza palabras de una letra.
   Si se cambia cómo se guarda la lista, la versión tiene que seguir saliendo del mismo
   `obtener()` que la lista: si no, las PCs la piden en cada consulta o no se enteran del cambio.
+- **Una versión del Cliente PC solo la acepta una PC si está firmada con la clave del dueño.**
+  `actualizacion_cliente_repo.publicar` la firma (Ed25519) con la clave privada que vive en la
+  carpeta `FirmaClientePC` del usuario de Windows de la PC del mostrador (`ruta_clave_privada`),
+  FUERA de los repos: este repo es
+  público y solo tiene la clave PÚBLICA (`CLAVE_PUBLICA_FIRMA`, la misma que `CLIENTE PC/actualizacion.py`;
+  un test lo vigila). Nunca la escribas en el repo, en `data/` ni en un test (los tests generan una de
+  prueba). Si se pierde, no se pueden mandar más versiones hasta reinstalar el lanzador PC por PC. La
+  firma es lo que protege: el servidor de red no tiene forma de hacer pasar otro exe por bueno. Además:
+  `publicar` rechaza un .exe que no sea el Cliente PC (busca `cliente_pc` en la lista de PyInstaller del
+  final del archivo: CyberBios.exe elegido por error se abriría en las PCs en vez del bloqueo), una versión
+  recién cargada vuelve el alcance a "solo las de prueba" (nunca va sola a todas), y la versión es la
+  fecha y hora de carga y siempre crece. El reporte de cada PC (`registrar_reporte`) se escribe solo si
+  cambió: llega en cada `GET /estado` de cada PC, cada 5 s. Poner la versión en uso, vigilarla y volver
+  atrás es tarea del lanzador de cada PC (`CLIENTE PC/lanzador.py`), no de acá.
 - **El servidor de red no debe tocar Qt.** Usa conexiones SQLite propias desde
   sus hilos y registra fallos inesperados con `errores.registrar_error`, sin
   incluir claves ni el cuerpo de los pedidos en el contexto del log.
@@ -607,4 +622,6 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-556 pruebas al 2026-10-17.
+591 pruebas al 2026-10-18. Ojo: entre las 00:00 y las 06:00 fallan 11 pruebas de reportes
+y del ranking de ventas que dependen de la hora (también en master sin cambios; ver el día del
+local en "Trampas conocidas"): correrlas de día.
