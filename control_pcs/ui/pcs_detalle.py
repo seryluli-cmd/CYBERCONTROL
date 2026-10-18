@@ -208,6 +208,9 @@ class PanelDetalleEstacion(QFrame):
         layout.addWidget(self.boton_miembro)
         layout.addWidget(self.boton_finalizar)
         self.setLayout(layout)
+        # Enter en el método de pago hace lo mismo que "Iniciar Sesión" (que
+        # no hace nada si está deshabilitado).
+        encadenar_enter(self.combo_metodo, accion_final=self.boton_iniciar.click)
         sin_boton_por_defecto(self)
 
     @staticmethod

@@ -309,8 +309,18 @@ class DialogoCargarSaldo(QDialog):
         layout.addWidget(self.combo_metodo)
         layout.addLayout(botones)
         self.setLayout(layout)
+        # Enter pasa al siguiente campo, como Tab: de la forma de carga al
+        # monto o al bono (según cuál se ve), de ahí al medio de pago, y ahí
+        # cobra.
+        encadenar_enter(self.combo_modo, accion_final=self._ir_al_monto_o_al_bono)
+        encadenar_enter(self.spin_monto, self.combo_metodo, accion_final=self._confirmar)
+        encadenar_enter(self.combo_bono, self.combo_metodo)
         sin_boton_por_defecto(self)
         self._actualizar_preview_monto()
+
+    def _ir_al_monto_o_al_bono(self):
+        campo = self.spin_monto if self.combo_modo.currentData() == "MONTO" else self.combo_bono
+        campo.setFocus()
 
     def _actualizar_modo(self):
         self.paginas.setCurrentIndex(self.combo_modo.currentIndex())

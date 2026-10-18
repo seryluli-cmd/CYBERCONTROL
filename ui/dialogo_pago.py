@@ -4,7 +4,8 @@ dialogo_pago.py
 El cuadro de cobro que se abre al final de una venta: permite ir
 agregando pagos parciales (una parte en Efectivo, el resto en Digital)
 hasta cubrir el total, calcula el vuelto y recién ahí habilita
-Confirmar.
+Confirmar. El monto arranca escrito con el total (pedido del dueño,
+2026-10-18: casi siempre pagan justo), así que el cobro común es un Enter.
 
 Está separado de ventas_window.py a propósito: una arma el carrito y esta
 cobra, así se puede tocar la forma de cobrar sin riesgo de romper el
@@ -71,11 +72,12 @@ class DialogoPago(QDialog):
         # de pago (ver _agregar_pago_y_completar). Es el caso más común
         # en el mostrador: "una parte en efectivo, el resto digital", o
         # al revés — así se resuelve en un solo Enter, sin calculadora.
-        self.spin_monto.lineEdit().returnPressed.connect(self._agregar_pago_y_completar)
-        # Enter en "Medio de pago" pasa el foco al monto (el monto ya
-        # tiene su propio Enter especial de arriba, así que no se
-        # encadena hasta ahí con encadenar_enter).
-        encadenar_enter(self.combo_metodo, self.spin_monto)
+        # Va por encadenar_enter (y no por returnPressed) porque así un
+        # Enter que quedó apretado de la pantalla anterior no cobra solo.
+        encadenar_enter(self.spin_monto, accion_final=self._agregar_pago_y_completar)
+        # Enter en "Medio de pago" vuelve al monto con el número seleccionado
+        # (Qt lo deselecciona al salir del campo), listo para pisarlo.
+        encadenar_enter(self.combo_metodo, accion_final=self._volver_al_monto)
 
         boton_agregar = QPushButton("Agregar pago")
         boton_agregar.setToolTip("Agrega únicamente el monto tipeado, con el medio elegido.")
@@ -87,8 +89,10 @@ class DialogoPago(QDialog):
         fila_agregar.addWidget(boton_agregar)
 
         etiqueta_ayuda = QLabel(
-            "Tip: escribí el monto de un medio de pago y apretá Enter — si sobra algo "
-            "para llegar al total, se completa solo con el otro medio."
+            "El monto ya viene con el total: si pagan justo, apretá Enter y listo. "
+            "Si pagan con otro billete, escribí con cuánto pagan. Si pagan una parte "
+            "en cada medio, escribí una parte y apretá Enter: el resto se completa solo "
+            "con el otro medio."
         )
         etiqueta_ayuda.setWordWrap(True)
         etiqueta_ayuda.setStyleSheet("color: gray; font-style: italic; font-size: 11px;")
@@ -135,11 +139,14 @@ class DialogoPago(QDialog):
         # reintroduce el problema de "Enter en cualquier lado dispara el
         # botón". Se cubren Key_Return (Enter del teclado) y Key_Enter
         # (Enter del teclado numérico).
+        # Sin repetición: un Enter que queda apretado no confirma solo.
         self._atajo_confirmar_return = QShortcut(QKeySequence(Qt.Key_Return), self.boton_confirmar)
         self._atajo_confirmar_return.setContext(Qt.WidgetShortcut)
+        self._atajo_confirmar_return.setAutoRepeat(False)
         self._atajo_confirmar_return.activated.connect(self.boton_confirmar.click)
         self._atajo_confirmar_enter = QShortcut(QKeySequence(Qt.Key_Enter), self.boton_confirmar)
         self._atajo_confirmar_enter.setContext(Qt.WidgetShortcut)
+        self._atajo_confirmar_enter.setAutoRepeat(False)
         self._atajo_confirmar_enter.activated.connect(self.boton_confirmar.click)
 
         botones = QHBoxLayout()
@@ -159,7 +166,34 @@ class DialogoPago(QDialog):
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
+        self._proponer_lo_que_falta()
         self.spin_monto.setFocus()
+
+    def showEvent(self, evento):
+        super().showEvent(evento)
+        # Al mostrarse, Qt le pone el foco al monto y le acomoda el cursor:
+        # recién después se puede dejar el número seleccionado, para que lo
+        # que se escriba lo reemplace.
+        QTimer.singleShot(0, self.spin_monto.lineEdit().selectAll)
+
+    def _volver_al_monto(self):
+        self.spin_monto.setFocus()
+        self.spin_monto.lineEdit().selectAll()
+
+    def _falta_cubrir(self) -> float:
+        return round(self.total - sum(p["monto"] for p in self.pagos), 2)
+
+    def _proponer_lo_que_falta(self):
+        """
+        Deja escrito en el monto lo que falta cubrir (al abrir, el total), y
+        seleccionado: casi siempre pagan justo, en efectivo o por
+        transferencia (pedido del dueño, 2026-10-18), así que alcanza con
+        Enter. Si pagan con otro billete, lo que se escribe reemplaza al
+        número propuesto sin tener que borrarlo. Con todo cubierto queda en
+        cero, que es lo que hace que un Enter de más no agregue nada.
+        """
+        self.spin_monto.setValue(max(0.0, self._falta_cubrir()))
+        self.spin_monto.lineEdit().selectAll()
 
     def _validar_y_agregar(self, metodo, monto):
         """
@@ -192,8 +226,8 @@ class DialogoPago(QDialog):
         monto = self.spin_monto.value()
         metodo = self.combo_metodo.currentData()
         if self._validar_y_agregar(metodo, monto):
-            self.spin_monto.setValue(0)
             self._refrescar()
+            self._proponer_lo_que_falta()
 
     def _agregar_pago_y_completar(self):
         """
@@ -219,21 +253,27 @@ class DialogoPago(QDialog):
             return
 
         resto = falta_antes - monto
-        if resto > 0.01:
+        completado_con_el_otro_medio = resto > 0.01
+        if completado_con_el_otro_medio:
             otro_metodo = dominio.PAGO_DIGITAL if metodo == dominio.PAGO_EFECTIVO else dominio.PAGO_EFECTIVO
             # El resto siempre es, como mucho, lo que faltaba cubrir, así
             # que nunca puede superar el tope de Digital: no hace falta
             # volver a validar acá.
             self.pagos.append({"metodo": otro_metodo, "monto": round(resto, 2)})
 
-        self.spin_monto.setValue(0)
         self._refrescar()
+        self._proponer_lo_que_falta()
 
-        # Si con este Enter ya quedó todo cubierto, el foco pasa directo
-        # a Confirmar: así, apretando Enter una vez más (ahora con el
-        # atajo de teclado que responde solo cuando el foco está en ese
-        # botón), se confirma la venta sin tocar el mouse.
-        if self.boton_confirmar.isEnabled():
+        if not self.boton_confirmar.isEnabled():
+            return
+        # Pagó justo (lo más común): no hay vuelto que entregar ni un
+        # reparto entre medios que revisar, así que este mismo Enter cobra.
+        # Con vuelto o con el resto puesto en el otro medio, el foco pasa a
+        # Confirmar y hace falta un Enter más: la empleada tiene que ver el
+        # vuelto que titila, o el reparto, antes de cobrar.
+        if self.vuelto <= 0 and not completado_con_el_otro_medio:
+            self._confirmar()
+        else:
             self.boton_confirmar.setFocus()
 
     def _quitar_pago(self):
@@ -241,6 +281,7 @@ class DialogoPago(QDialog):
         if fila >= 0:
             del self.pagos[fila]
             self._refrescar()
+            self._proponer_lo_que_falta()
 
     def _alternar_parpadeo_vuelto(self):
         """Cada vez que dispara el timer, alterna el color del texto del
