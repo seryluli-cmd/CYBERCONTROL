@@ -37,6 +37,21 @@ GET /estado?estacion=<nombre>
       a pedir GET /fondo.
     - Y `filtro_version`: la versión del filtro de palabras. Si cambia, el
       Cliente PC vuelve a pedir GET /filtro.
+    - Y `cliente_version`: la versión del Cliente PC que le toca a esa PC (None si
+      ninguna; ver actualizacion_cliente_repo). Si es más nueva que la suya, la PC
+      pide GET /cliente_pc y GET /cliente_pc/exe.
+    - La PC cuenta, como parámetros de la misma consulta, su versión, su carpeta y
+      cómo va su actualización (`version`, `carpeta`, `act`, `act_detalle`; un
+      Cliente PC viejo no los manda): ver actualizacion_cliente_repo.registrar_reporte.
+
+GET /cliente_pc
+    El manifiesto firmado de la versión del Cliente PC cargada, como JSON:
+    {"manifiesto", "firma", "version"}. 404 si no hay ninguna. La firma la
+    comprueba la PC con la clave pública que trae adentro: este servidor no
+    puede hacer pasar otro exe por bueno.
+
+GET /cliente_pc/exe
+    El PCcliente.exe de esa versión, tal cual (unos 19 MB). 404 si no hay.
 
 GET /filtro
     El filtro de palabras de las PCs (ver
@@ -100,8 +115,8 @@ from urllib.parse import urlparse, parse_qs
 import dominio
 from errores import registrar_error
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, clientes_repo, comandos_pc_repo, filtro_palabras_repo, fondo_repo, miembros_repo,
-    pcs_repo,
+    accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, filtro_palabras_repo,
+    fondo_repo, miembros_repo, pcs_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -197,11 +212,19 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         if ruta.path == "/filtro":
             self._manejar_filtro()
             return
+        if ruta.path == "/cliente_pc":
+            self._manejar_version_cliente()
+            return
+        if ruta.path == "/cliente_pc/exe":
+            self._manejar_exe_cliente()
+            return
         if ruta.path != "/estado":
             self._responder_vacio(404)
             return
 
-        nombre_estacion = (parse_qs(ruta.query).get("estacion") or [""])[0]
+        # Con los vacíos: una PC instalada a mano manda `version=` vacío y tiene que contar igual.
+        parametros = {clave: valores[0] for clave, valores in parse_qs(ruta.query, keep_blank_values=True).items()}
+        nombre_estacion = parametros.get("estacion", "")
         if not nombre_estacion:
             self._responder_vacio(400)
             return
@@ -238,6 +261,17 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                     accesos_admin_pc_repo.registrar_regreso_del_cliente(item["estacion"]["id"])
                 except Exception as error:
                     registrar_error(error, "Servidor de red: registrar regreso del Cliente PC")
+            try:
+                # Lo que cuenta la PC de su actualización (versión, carpeta, cómo va). Si falla,
+                # la pantalla muestra lo de la consulta anterior: nada que decida el bloqueo.
+                actualizacion_cliente_repo.registrar_reporte(item["estacion"]["id"], parametros)
+            except Exception as error:
+                registrar_error(error, "Servidor de red: registrar la versión del Cliente PC")
+            try:
+                # La versión del Cliente PC que le toca. Si falla, no viaja y la PC se queda con la suya.
+                cuerpo["cliente_version"] = actualizacion_cliente_repo.version_para_estacion(item["estacion"]["id"])
+            except Exception as error:
+                registrar_error(error, "Servidor de red: leer la versión del Cliente PC")
             try:
                 comando = comandos_pc_repo.proximo_comando_pendiente(item["estacion"]["id"])
                 if comando is not None:
@@ -312,6 +346,43 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self.wfile.write(datos)
         except OSError:
             pass  # la PC cortó a mitad de camino (se apagó, o se cansó de esperar): no hay a quién avisarle
+
+    def _manejar_version_cliente(self):
+        """GET /cliente_pc: el manifiesto firmado de la versión cargada (ver
+        actualizacion_cliente_repo). 404 sin cuerpo si no hay ninguna."""
+        try:
+            paquete = actualizacion_cliente_repo.paquete()
+        except Exception as error:
+            registrar_error(error, "Servidor de red: leer la versión del Cliente PC")
+            self._responder_vacio(500)
+            return
+        if paquete is None:
+            self._responder_vacio(404)
+            return
+        self._responder_json(200, {"manifiesto": paquete["manifiesto"], "firma": paquete["firma"],
+                                   "version": paquete["version"]})
+
+    def _manejar_exe_cliente(self):
+        """GET /cliente_pc/exe: el PCcliente.exe de la versión cargada, tal cual. 404 sin cuerpo si
+        no hay. Si el Admin carga otra justo en el medio, la PC nota que no coincide con el
+        manifiesto que pidió antes, lo descarta y vuelve a probar."""
+        try:
+            datos = actualizacion_cliente_repo.datos_exe()
+        except Exception as error:
+            registrar_error(error, "Servidor de red: leer el exe del Cliente PC")
+            self._responder_vacio(500)
+            return
+        if datos is None:
+            self._responder_vacio(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(datos)))
+        self.end_headers()
+        try:
+            self.wfile.write(datos)
+        except OSError:
+            pass  # la PC cortó a mitad de camino (se apagó, o se cansó de esperar): lo vuelve a pedir
 
     def _leer_cuerpo_json(self) -> dict:
         largo = int(self.headers.get("Content-Length", 0))

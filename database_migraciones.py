@@ -99,6 +99,23 @@ def _migrar_columna_cliente_cerrado_desde_estaciones(conexion: sqlite3.Connectio
     conexion.commit()
 
 
+def _migrar_columnas_actualizacion_estaciones(conexion: sqlite3.Connection):
+    """
+    Agrega a `estaciones` lo que cuenta el Cliente PC de su actualización desde el
+    Servidor (pedido del dueño, 2026-10-18; ver actualizacion_cliente_repo):
+    `version_cliente` (la versión instalada; NULL = un Cliente PC sin actualización
+    automática), `carpeta_cliente` (dónde está instalado), `estado_actualizacion`
+    (uno de dominio.ESTADOS_ACTUALIZACION_CLIENTE, o vacío) y `detalle_actualizacion`
+    (el texto que manda la PC). Arrancan vacías: cada PC las completa en su próxima
+    consulta.
+    """
+    _agregar_columna_si_falta(conexion, "estaciones", "version_cliente", "INTEGER")
+    _agregar_columna_si_falta(conexion, "estaciones", "carpeta_cliente", "TEXT")
+    _agregar_columna_si_falta(conexion, "estaciones", "estado_actualizacion", "TEXT")
+    _agregar_columna_si_falta(conexion, "estaciones", "detalle_actualizacion", "TEXT")
+    conexion.commit()
+
+
 def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     """
     Para una base creada antes de que existiera "Miembros": agrega

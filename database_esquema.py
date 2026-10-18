@@ -16,7 +16,8 @@ def inicializar_base_de_datos():
         _migrar_columnas_permisos, _migrar_columnas_origen_en_cierres,
         _migrar_columna_ultima_conexion_estaciones, _migrar_columna_ultima_ip_estaciones,
         _migrar_columna_ip_asentada_estaciones,
-        _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_check_tipo_en_comandos_pc,
+        _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_columnas_actualizacion_estaciones,
+        _migrar_check_tipo_en_comandos_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_columna_whatsapp_en_miembros,
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
@@ -293,6 +294,7 @@ def inicializar_base_de_datos():
     _migrar_columna_ultima_ip_estaciones(conexion)
     _migrar_columna_ip_asentada_estaciones(conexion)
     _migrar_columna_cliente_cerrado_desde_estaciones(conexion)
+    _migrar_columnas_actualizacion_estaciones(conexion)
     cursor.execute(_sql_tabla_de_bonos("bonos_tiempo"))
 
     # Una fila por uso continuo de una estación. Al vender un bono a una

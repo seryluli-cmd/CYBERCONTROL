@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 import dominio
 from control_pcs.repositories import clientes_repo, pcs_repo, pcstream_repo, playstation_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
+from control_pcs.ui.pcs_actualizacion_dialogo import DialogoActualizarCliente
 from control_pcs.ui.pcs_filtro_dialogo import DialogoFiltroPalabras
 from control_pcs.ui.pcs_fondo_dialogo import DialogoFondoPantalla
 from ui.utils import (
@@ -28,8 +29,8 @@ from ui.utils import (
 
 class DialogoGestionEstaciones(QDialog):
     """Alta, renombre y baja de estaciones, IP de cada una, la contraseña de
-    admin que usan los Clientes PC, el fondo de su pantalla de bloqueo y su
-    filtro de palabras. (La
+    admin que usan los Clientes PC, el fondo de su pantalla de bloqueo, su
+    filtro de palabras y la actualización de su Cliente PC. (La
     clave de conexión de los Clientes PC es fija: no se gestiona desde ninguna
     pantalla, ver `clientes_repo`.) Solo se llega desde Configuración ADMIN."""
 
@@ -104,6 +105,9 @@ class DialogoGestionEstaciones(QDialog):
         boton_filtro = QPushButton("Filtro de palabras de las PCs...")
         boton_filtro.clicked.connect(self._abrir_filtro)
 
+        boton_actualizar = QPushButton("Actualizar el Cliente PC de las PCs...")
+        boton_actualizar.clicked.connect(self._abrir_actualizacion)
+
         boton_cerrar = QPushButton("Cerrar")
         boton_cerrar.clicked.connect(self.close)
 
@@ -117,6 +121,7 @@ class DialogoGestionEstaciones(QDialog):
         layout.addWidget(boton_clave_admin)
         layout.addWidget(boton_fondo)
         layout.addWidget(boton_filtro)
+        layout.addWidget(boton_actualizar)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
@@ -251,6 +256,10 @@ class DialogoGestionEstaciones(QDialog):
     def _abrir_filtro(self):
         """El filtro de palabras de todas las PCs (ver pcs_filtro_dialogo)."""
         DialogoFiltroPalabras(self).exec()
+
+    def _abrir_actualizacion(self):
+        """Mandar una versión nueva del Cliente PC a las PCs (ver pcs_actualizacion_dialogo)."""
+        DialogoActualizarCliente(self).exec()
 
     @manejar_errores
     def _cambiar_clave_admin_pcs(self):
