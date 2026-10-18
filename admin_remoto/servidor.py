@@ -18,6 +18,8 @@ Rutas (todas POST, JSON):
     MAX_INTENTOS claves mal seguidas desde una misma PC, esa PC no puede probar
     más por BLOQUEO_MINUTOS (5 por minuto como en el login de siempre sería
     poco: acá cualquiera de la red del local puede probar sin que lo vean).
+    Cada PC prueba de a una clave por vez, y hay un tope para todas las PCs
+    juntas (MAX_FALLIDOS_EN_TOTAL en VENTANA_TOTAL_MINUTOS).
 /admin/llamar    {"token", "modulo", "funcion", "args", "kwargs"}
     Hace UNA función de la lista blanca con la base del mostrador y devuelve
     {"ok": true, "resultado"} o {"ok": false, "error": {"tipo", "mensaje"}}.
@@ -38,6 +40,7 @@ No toca Qt (corre en los hilos del servidor de red) y nunca anota claves ni el
 cuerpo de un pedido en el log de errores.
 """
 
+import collections
 import inspect
 import json
 import secrets
@@ -52,6 +55,12 @@ PREFIJO = "/admin/"
 
 MAX_INTENTOS = 5
 BLOQUEO_MINUTOS = 5
+# Tope para TODAS las PCs juntas (cambiándose de IP se podría esquivar el de
+# cada PC): con más claves mal que esto en la ventana, nadie prueba desde otra
+# PC hasta que se vaya la más vieja. Alguien podría usarlo para no dejar entrar
+# al dueño desde otra PC un rato; el mostrador sigue andando igual.
+MAX_FALLIDOS_EN_TOTAL = 20
+VENTANA_TOTAL_MINUTOS = 15
 SESION_VENCE_MINUTOS = 180
 # Un fondo de pantalla de las PCs (el pedido más grande) pesa a lo sumo ~1,5 MB.
 TAMANO_MAXIMO_PEDIDO = 16 * 1024 * 1024
@@ -66,6 +75,8 @@ _MENSAJE_SESION_VENCIDA = "La sesión desde esta PC se cerró (o venció). Cerr�
 _candado = threading.Lock()
 _sesiones = {}   # token -> {"usuario_id", "ip", "ultimo_uso"}
 _intentos = {}   # ip -> (claves mal seguidas, bloqueada_hasta)
+_probando = set()  # IPs con una clave comprobándose en este momento
+_fallidos_recientes = collections.deque()  # cuándo fue cada clave mal (todas las PCs)
 
 
 def _ahora() -> float:
@@ -124,40 +135,82 @@ def _entrar(pedido, ip):
         return _error("Pedido", "Pedido inválido.", 400)
 
     with _candado:
-        bloqueada_hasta = _intentos.get(ip, (0, 0.0))[1]
-        if bloqueada_hasta > _ahora():
-            minutos = int((bloqueada_hasta - _ahora()) // 60) + 1
-            return _error(
-                "Bloqueo",
-                f"Demasiadas claves incorrectas seguidas desde esta PC. Esperá {minutos} minuto(s) "
-                "y volvé a intentar.",
-            )
+        rechazo = _rechazo_antes_de_probar(ip)
+        if rechazo is not None:
+            return rechazo
+        # Una sola prueba a la vez por PC: si no, muchas mandadas juntas pasaban
+        # todas este control antes de que se anotara la primera clave mal.
+        _probando.add(ip)
 
     try:
         usuario = admin_remoto_repo.entrar(nombre, clave, ip)
     except PermissionError as error:
+        with _candado:
+            _probando.discard(ip)
         return _error("Permiso", str(error))
+    except Exception:
+        with _candado:
+            _probando.discard(ip)
+        raise
 
     with _candado:
+        _probando.discard(ip)
         if usuario is None:
-            # Se relee acá (y no arriba) por si otro intento desde la misma PC
-            # terminó mientras se comprobaba la clave: no se pierde ninguno.
-            fallidos = _intentos.get(ip, (0, 0.0))[0] + 1
-            if fallidos >= MAX_INTENTOS:
-                _intentos[ip] = (0, _ahora() + BLOQUEO_MINUTOS * 60)
-                return _error(
-                    "Bloqueo",
-                    f"Demasiadas claves incorrectas seguidas: esta PC no puede probar más por "
-                    f"{BLOQUEO_MINUTOS} minutos.",
-                )
-            _intentos[ip] = (fallidos, 0.0)
-            return _error("Clave", "Nombre o clave incorrectos.")
-
-        _intentos.pop(ip, None)
+            return _anotar_clave_mal(ip)
+        if _intentos.get(ip, (0, 0.0))[1] <= _ahora():
+            _intentos.pop(ip, None)
         _olvidar_sesiones_vencidas()
         token = secrets.token_urlsafe(32)
         _sesiones[token] = {"usuario_id": usuario["id"], "ip": ip, "ultimo_uso": _ahora()}
     return 200, {"ok": True, "token": token, "usuario": codec.a_json(usuario)}
+
+
+def _minutos_hasta(momento: float) -> int:
+    return int((momento - _ahora()) // 60) + 1
+
+
+def _rechazo_antes_de_probar(ip):
+    """Por qué no se deja probar una clave desde `ip` (la respuesta lista), o
+    None si se puede. Con el candado ya tomado."""
+    ahora = _ahora()
+    while _fallidos_recientes and _fallidos_recientes[0] <= ahora - VENTANA_TOTAL_MINUTOS * 60:
+        _fallidos_recientes.popleft()
+    bloqueada_hasta = _intentos.get(ip, (0, 0.0))[1]
+    if bloqueada_hasta > ahora:
+        return _error(
+            "Bloqueo",
+            f"Demasiadas claves incorrectas seguidas desde esta PC. Esperá {_minutos_hasta(bloqueada_hasta)} "
+            "minuto(s) y volvé a intentar.",
+        )
+    if len(_fallidos_recientes) >= MAX_FALLIDOS_EN_TOTAL:
+        libre_desde = _fallidos_recientes[0] + VENTANA_TOTAL_MINUTOS * 60
+        return _error(
+            "Bloqueo",
+            "Hubo demasiadas claves incorrectas desde las PCs del local: la entrada desde otra PC "
+            f"queda frenada {_minutos_hasta(libre_desde)} minuto(s). En el mostrador se sigue entrando normal.",
+        )
+    if ip in _probando:
+        return _error("Bloqueo", "Ya hay un intento de entrada en curso desde esta PC. Esperá un momento.")
+    return None
+
+
+def _anotar_clave_mal(ip):
+    """Anota una clave mal desde `ip` y devuelve la respuesta. Un bloqueo ya
+    puesto nunca se acorta ni se borra acá. Con el candado ya tomado."""
+    ahora = _ahora()
+    _fallidos_recientes.append(ahora)
+    fallidos, bloqueada_hasta = _intentos.get(ip, (0, 0.0))
+    if bloqueada_hasta > ahora:
+        return _error("Bloqueo", f"Esta PC no puede probar más claves por {_minutos_hasta(bloqueada_hasta)} minuto(s).")
+    fallidos += 1
+    if fallidos >= MAX_INTENTOS:
+        _intentos[ip] = (0, ahora + BLOQUEO_MINUTOS * 60)
+        return _error(
+            "Bloqueo",
+            f"Demasiadas claves incorrectas seguidas: esta PC no puede probar más por {BLOQUEO_MINUTOS} minutos.",
+        )
+    _intentos[ip] = (fallidos, 0.0)
+    return _error("Clave", "Nombre o clave incorrectos.")
 
 
 def _olvidar_sesiones_vencidas():
@@ -235,3 +288,5 @@ def _olvidar_todo():
     with _candado:
         _sesiones.clear()
         _intentos.clear()
+        _probando.clear()
+        _fallidos_recientes.clear()

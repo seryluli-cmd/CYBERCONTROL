@@ -698,4 +698,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-720 pruebas al 2026-10-18 (con las cajas con número y administrar desde otra PC).
+723 pruebas al 2026-10-18 (con las cajas con número y administrar desde otra PC).

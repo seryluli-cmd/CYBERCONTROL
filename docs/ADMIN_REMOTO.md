@@ -73,7 +73,11 @@ abre la base de esa carpeta: le habla al programa del mostrador.
 - Viene **apagado**. Apagarlo en el mostrador corta en el acto a quien estaba
   adentro desde otra PC.
 - **5 claves mal seguidas desde una PC** dejan a esa PC sin poder probar por 5
-  minutos (las demás PCs no se afectan).
+  minutos (las demás PCs no se afectan), y cada PC prueba de a una clave por
+  vez. Además hay un tope para todas las PCs juntas: con 20 claves mal en 15
+  minutos, nadie puede entrar desde otra PC hasta que pase ese rato (en el
+  mostrador se sigue entrando normal). Alguien podría usar eso para no dejarte
+  entrar desde otra PC un rato; nunca para entrar.
 - La sesión vale solo desde la PC que entró, vence a las 3 horas sin uso y se
   pierde si se cierra el programa del mostrador. Ojo: con la ventana abierta en
   la otra PC cuenta como "en uso" (mira la caja cada 10 segundos). **Al
@@ -120,10 +124,10 @@ abre la base de esa carpeta: le habla al programa del mostrador.
 
 ## Cómo se probó
 
-- 52 pruebas automáticas nuevas (`tests/test_admin_remoto.py`): sin clave o con
+- 55 pruebas automáticas nuevas (`tests/test_admin_remoto.py`): sin clave o con
   la de una empleada no se entra; con la entrada apagada tampoco; una función
   fuera de la lista se rechaza; la sesión no sirve desde otra PC; las 5 claves
-  mal; quién anula es quien entró; el hash no viaja; y una **copia remota de
+  mal (también mandadas todas juntas, o desde varias PCs); quién anula es quien entró; el hash no viaja; y una **copia remota de
   verdad** contra un **mostrador de prueba en otro proceso** (con una base de
   prueba, nunca la real): abre todas las pantallas de administración sin
   errores, cambia un precio, carga una compra, anula una venta, carga un sobre,
@@ -131,7 +135,7 @@ abre la base de esa carpeta: le habla al programa del mostrador.
   nunca crea una base propia.
 - Una prueba revisa las pantallas que se abren desde otra PC: si alguna empieza
   a usar una función que no está en la lista, falla y dice cuál.
-- La suite completa del programa sigue pasando (720 pruebas).
+- La suite completa del programa sigue pasando (723 pruebas).
 
 ## Para probarlo en el local
 
@@ -163,7 +167,9 @@ abre la base de esa carpeta: le habla al programa del mostrador.
 - `admin_remoto/servidor.py` (lo llama `servidor_red.do_POST` para `/admin/`,
   antes del control de la clave de los Clientes PC): token
   `secrets.token_urlsafe(32)` en memoria, atado a la IP del socket, vence a los
-  180 min sin uso; bloqueo por IP tras 5 claves mal (5 min); en cada llamada,
+  180 min sin uso; bloqueo por IP tras 5 claves mal (5 min), una prueba de clave
+  a la vez por IP, un bloqueo nunca se acorta, y tope global de 20 claves mal en
+  15 min (revisión de seguridad del 2026-10-18); en cada llamada,
   `admin_remoto_repo.exigir_admin_habilitado`; `inspect.signature(...).bind` de
   los argumentos y el `ACTOR` se pisa con el usuario del token; tope de 16 MB
   por pedido; nunca loguea claves ni cuerpos.

@@ -151,7 +151,8 @@ podría usar el próximo cliente).
 Las empleadas no pueden entrar desde otra PC. Cada vez que entrás queda
 anotado en Accesos de Admin, con la PC desde donde entraste. Si alguien
 pone 5 claves mal seguidas desde una PC, esa PC no puede probar más por
-5 minutos.
+5 minutos; y si hay 20 claves mal en 15 minutos (sumando todas las PCs),
+nadie puede entrar desde otra PC por un rato (en el mostrador sí).
 IMPORTANTE: el .exe del mostrador y el que abrís desde la otra PC tienen
 que ser el mismo (por eso conviene abrirlo siempre desde la carpeta
 compartida). Nunca copies la base (data\kiosko.db) a otra PC para

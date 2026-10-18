@@ -483,7 +483,8 @@ y decisiones en [docs/ADMIN_REMOTO.md](docs/ADMIN_REMOTO.md).
   (Configuración ADMIN > Entrar desde otra PC, solo en el mostrador); solo un
   ADMIN activo; cada ingreso queda en `sesiones.desde_ip`. El servidor
   (`admin_remoto/servidor.py`) da una sesión al azar atada a la IP, que vence a
-  las 3 h sin uso; 5 claves mal desde una PC la frenan 5 minutos; en cada pedido
+  las 3 h sin uso; 5 claves mal desde una PC la frenan 5 minutos (de a una prueba por PC, y
+  un tope de 20 claves mal en 15 minutos para todas juntas); en cada pedido
   vuelve a mirar que la entrada siga prendida y el usuario siga siendo Admin; y
   el "quién lo hizo" (`lista_blanca.ACTOR`) lo pone el mostrador.
 - **Qué no se puede desde otra PC:** vender, cobrar, abrir/cerrar cajas y
@@ -556,7 +557,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-720 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+723 tests al 2026-10-18. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,

@@ -359,6 +359,54 @@ class TestServidorDelMostrador(_ConServidor):
         with mock.patch.object(servidor, "_ahora", return_value=ahora + servidor.BLOQUEO_MINUTOS * 60 + 1):
             self.assertTrue(self._entrar()["ok"])
 
+    def test_mientras_se_comprueba_una_clave_esa_pc_no_puede_mandar_otra(self):
+        # Sin esto, muchos intentos mandados juntos pasaban todos el control antes
+        # de que se anotara la primera clave mal (revisión de seguridad, 2026-10-18).
+        sigue = threading.Event()
+        entrar_de_verdad = admin_remoto_repo.entrar
+
+        def entrar_lento(*args):
+            sigue.wait(5)
+            return entrar_de_verdad(*args)
+
+        respuestas = []
+        with mock.patch.object(admin_remoto_repo, "entrar", side_effect=entrar_lento):
+            hilo = threading.Thread(target=lambda: respuestas.append(self._entrar(clave="mal")))
+            hilo.start()
+            for _ in range(500):
+                if IP in servidor._probando:
+                    break
+                threading.Event().wait(0.01)
+            segunda = self._entrar(clave="otra")
+            sigue.set()
+            hilo.join(5)
+        self.assertEqual(segunda["error"]["tipo"], "Bloqueo")
+        self.assertIn("en curso", segunda["error"]["mensaje"])
+        self.assertEqual(respuestas[0]["error"]["tipo"], "Clave")
+        self.assertTrue(self._entrar()["ok"])  # terminada esa, se puede volver a probar
+
+    def test_una_clave_mal_que_termina_tarde_no_borra_un_bloqueo(self):
+        def mientras_tanto_se_bloqueo(*_args):
+            servidor._intentos[IP] = (0, servidor._ahora() + servidor.BLOQUEO_MINUTOS * 60)
+            return None
+
+        with mock.patch.object(admin_remoto_repo, "entrar", side_effect=mientras_tanto_se_bloqueo):
+            self.assertEqual(self._entrar(clave="mal")["error"]["tipo"], "Bloqueo")
+        self.assertEqual(self._entrar()["error"]["tipo"], "Bloqueo")
+
+    def test_muchas_claves_mal_desde_varias_pcs_frenan_la_entrada_para_todas(self):
+        pcs = [f"10.0.1.{numero}" for numero in range(servidor.MAX_FALLIDOS_EN_TOTAL // servidor.MAX_INTENTOS)]
+        for ip in pcs:
+            for _ in range(servidor.MAX_INTENTOS):
+                self._entrar(clave="mal", ip=ip)
+        respuesta = self._entrar(ip="10.0.2.1")
+        self.assertEqual(respuesta["error"]["tipo"], "Bloqueo")
+        self.assertIn("En el mostrador se sigue entrando normal", respuesta["error"]["mensaje"])
+
+        ahora = servidor._ahora()
+        with mock.patch.object(servidor, "_ahora", return_value=ahora + servidor.VENTANA_TOTAL_MINUTOS * 60 + 1):
+            self.assertTrue(self._entrar(ip="10.0.2.1")["ok"])
+
     def test_la_sesion_vence_sin_uso_y_al_salir(self):
         token = self._entrar()["token"]
         ahora = servidor._ahora()
