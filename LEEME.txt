@@ -79,7 +79,12 @@ VENTAS Y CAJA
   queda anotado en el día viejo: Reportes > Resumen del Día lo avisa y tiene
   un botón para ir a verlo.
 - Reportes > Resumen del Día: cada turno del día (quién lo cerró, cuánto
-  se vendió y si el sobre cuadró) y, abajo, el detalle de TODO lo vendido:
+  se vendió y si el sobre cuadró) y, abajo, el detalle de TODO lo vendido.
+  "Renglón por renglón" muestra cada cosa tal cual se cobró (hora, turno,
+  operador, código, descripción, cantidad y total): 14 impresiones cobradas
+  juntas son un renglón de 14; 4 cobradas por separado son 4 renglones.
+  "Imprimir" lo muestra como hoja para imprimir (o guardar en PDF eligiendo
+  la impresora "Microsoft Print to PDF"). "Venta por venta" muestra
   cada venta con su hora, turno, operador y qué se vendió (artículos con
   cantidades, bonos de PC con la PC, PCSTREAM, PlayStation 5, socios y
   trámites), lo vendido por producto y cuánto vendió cada operador. Tocá un

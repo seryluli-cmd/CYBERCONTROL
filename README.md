@@ -391,7 +391,12 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   (`turnos_repo._cerrado_pasado_su_vencimiento`). Abajo de los turnos (pedido del
   dueño 2026-10-18; `ui/reportes_resumen_dia.py` + `ui/reportes_detalle_dia.py`,
   datos de `detalle_dia_repo.detalle_del_dia`) va el **detalle de todo lo vendido**
-  del día, o del turno que se toque: venta por venta (Nº, hora, turno, operador
+  del día, o del turno que se toque: **renglón por renglón** (cada cosa tal cual
+  se cobró: hora, turno, operador, Nº de venta, código, descripción, cantidad y
+  total, con la fila TOTAL; 14 impresiones juntas son un renglón de 14, 4 cobradas
+  por separado son 4 renglones; el botón **Imprimir** abre la vista previa de ese
+  listado en hojas A4, `ui/imprimir.py`, y desde ahí se imprime o se guarda en PDF
+  con "Microsoft Print to PDF"), venta por venta (Nº, hora, turno, operador
   —"(cargó X)" si la cobró el Admin—, rubro, qué se vendió con cantidades: "2 x
   Coca 500", "PC1 · 3 horas (3 h)" con la PC donde estaba al venderlo aunque
   después se la cambiara de máquina, PCSTREAM, PlayStation 5, socios y trámites —,
@@ -570,7 +575,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-744 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+753 tests al 2026-10-18. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,

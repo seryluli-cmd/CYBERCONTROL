@@ -250,7 +250,8 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.formato_fecha_hora(fecha)` | una fecha con hora de la base se convierte en `"16/10/2026 22:13"` |
 | `reportes_repo.resumen_por_operador(...)` · `.ventas_de_operador(...)` | se calcula cuánto vendió cada usuario y se listan sus ventas con fecha y hora (Reportes > Por Operador) |
 | `turnos_repo._ventanas_del_dia(conexion, dia, ahora)` | se decide qué ventas son de qué turno de un día (los cierres anotados ese día y la ventana abierta si es de ese día): la usan las filas del Resumen del Día y su detalle |
-| `detalle_dia_repo.detalle_del_dia(dia)` | se arma el detalle venta por venta de un día (hora, turno, operador, rubro y qué se vendió de kiosko, trámites, PCs con la PC al momento de vender, PCSTREAM, PlayStation 5 y socios), lo vendido por producto y por operador (Reportes > Resumen del Día, pedido del dueño 2026-10-18) |
+| `detalle_dia_repo.detalle_del_dia(dia)` | se arma el detalle venta por venta de un día (hora, turno, operador, rubro y qué se vendió de kiosko, trámites, PCs con la PC al momento de vender, PCSTREAM, PlayStation 5 y socios), con los renglones de cada venta tal cual se cobraron (`lineas`, con el código), lo vendido por producto y por operador (Reportes > Resumen del Día, pedido del dueño 2026-10-18) |
+| `ui.imprimir.html_del_listado(...)` · `.vista_previa(parent, html, nombre)` | se imprime un listado: HTML en hojas A4 con los títulos de las columnas repetidos en cada hoja y vista previa (desde ahí se imprime o se guarda en PDF). Lo usa el "Renglón por renglón" del Detalle del Día |
 | `limpieza_repo.limpiar_base(usuario_id)` | se borra la plata y el historial de ventas para volver a probar (qué tablas, en `_TABLAS_A_VACIAR`; devuelve el stock de las ventas confirmadas y deja a los socios con saldo 0). Una tabla nueva que guarde plata o ventas tiene que sumarse ahí |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
@@ -613,6 +614,12 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   Confirmar no se repiten (`tests/test_dialogo_pago.py`, `tests/test_enter_como_tab.py`).
   Excepciones a propósito: el texto de varias líneas del filtro de palabras (Enter es un
   renglón nuevo) y "Limpiar base de datos" (Enter nunca borra).
+- **El "Renglón por renglón" del Detalle del Día muestra cada renglón TAL CUAL se
+  cobró** (pedido del dueño, 2026-10-18: "si se cobran 14 impresiones juntas, que diga
+  14; si se hacen 4 por separado, que las ponga tal cual se cobraron, con su horario y
+  su operador"; lo imprime como la planilla de su programa anterior). No lo agrupes
+  por producto "para que sea más corto": para eso está "Lo vendido (cantidades)". En
+  pantalla y en papel salen las mismas filas (`ui.reportes_detalle_dia._renglones`).
 - **El recolector cíclico está desactivado a propósito** en `main.py`: evita que
   un hilo del servidor destruya un `QTimer` de Qt. Antes de reactivarlo, revisar
   la propiedad de los objetos de UI y sus ciclos de referencias.
@@ -705,4 +712,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-744 pruebas al 2026-10-18 (con las cajas con número, administrar desde otra PC, el detalle del día y el cobro nuevo en todas las pantallas).
+753 pruebas al 2026-10-18 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir y el cobro nuevo en todas las pantallas).

@@ -18,6 +18,12 @@ en reportes_repo.ranking_ventas, con sus mismas categorías): venta_detalle
 donde estaba la sesión AL VENDERLO aunque después se haya cambiado de máquina),
 sesion_pcstream_bonos, sesion_playstation_bonos y movimientos_saldo_miembro
 (bono o carga de saldo de un socio).
+
+Cada venta trae además sus `lineas`, renglón por renglón tal cual se cobró (con el
+código del artículo), para el listado "Renglón por renglón" que se imprime (pedido
+del dueño, 2026-10-18: "si se cobran 14 impresiones juntas, que diga 14; si se
+hacen 4 por separado, que las ponga tal cual se cobraron, con su horario y su
+operador").
 """
 
 from datetime import datetime
@@ -38,6 +44,15 @@ def _texto_minutos(minutos: int) -> str:
 
 def _texto_cantidad(cantidad) -> str:
     return str(int(cantidad)) if float(cantidad).is_integer() else str(cantidad)
+
+
+def _sin_articulo(rubro: str, detalle: str, producto: str, importe: float) -> tuple:
+    """Lo vendido en una venta sin artículo de kiosko (trámite, bono, carga de
+    saldo): un solo renglón, sin código."""
+    return (
+        rubro, detalle, [(rubro, producto, 1, importe)],
+        [{"codigo": "", "descripcion": detalle, "cantidad": 1, "importe": round(importe, 2)}],
+    )
 
 
 def _ventas_entre(conexion, desde: str, hasta: str):
@@ -62,9 +77,10 @@ def _ventas_entre(conexion, desde: str, hasta: str):
 
 def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
     """
-    {venta_id: (rubro, detalle, renglones)} de las ventas de (desde, hasta] que
-    tienen algo vendido anotado. `renglones` es [(rubro, producto, cantidad,
-    importe)] para sumar por producto.
+    {venta_id: (rubro, detalle, renglones, lineas)} de las ventas de (desde,
+    hasta] que tienen algo vendido anotado. `renglones` es [(rubro, producto,
+    cantidad, importe)] para sumar por producto; `lineas` es lo cobrado tal cual,
+    [{"codigo", "descripcion", "cantidad", "importe"}].
     """
     rango = (desde, hasta)
     resultado = {}
@@ -72,7 +88,8 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
     lineas = {}
     for fila in conexion.execute(
         """
-        SELECT venta_detalle.venta_id, venta_detalle.descripcion, venta_detalle.cantidad, venta_detalle.subtotal
+        SELECT venta_detalle.venta_id, venta_detalle.articulo_codigo AS codigo, venta_detalle.descripcion,
+               venta_detalle.cantidad, venta_detalle.subtotal
         FROM venta_detalle JOIN ventas ON ventas.id = venta_detalle.venta_id
         WHERE ventas.fecha > ? AND ventas.fecha <= ?
         ORDER BY venta_detalle.id
@@ -84,6 +101,8 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
             reportes_repo.CATEGORIA_KIOSKO,
             ", ".join(f"{_texto_cantidad(f['cantidad'])} x {f['descripcion']}" for f in filas),
             [(reportes_repo.CATEGORIA_KIOSKO, f["descripcion"], f["cantidad"], f["subtotal"]) for f in filas],
+            [{"codigo": f["codigo"], "descripcion": f["descripcion"], "cantidad": f["cantidad"],
+              "importe": round(f["subtotal"], 2)} for f in filas],
         )
 
     for fila in conexion.execute(
@@ -93,9 +112,8 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
         WHERE ventas.fecha > ? AND ventas.fecha <= ?
         """, rango,
     ):
-        resultado[fila["venta_id"]] = (
-            reportes_repo.CATEGORIA_TRAMITE, f"Trámite: {fila['descripcion']}",
-            [(reportes_repo.CATEGORIA_TRAMITE, fila["descripcion"], 1, fila["total"])],
+        resultado[fila["venta_id"]] = _sin_articulo(
+            reportes_repo.CATEGORIA_TRAMITE, f"Trámite: {fila['descripcion']}", fila["descripcion"], fila["total"],
         )
 
     # La PC donde estaba la sesión al vender el bono: si después la cambiaron de
@@ -120,9 +138,9 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
         WHERE ventas.fecha > ? AND ventas.fecha <= ?
         """, rango,
     ):
-        resultado[fila["venta_id"]] = (
+        resultado[fila["venta_id"]] = _sin_articulo(
             reportes_repo.CATEGORIA_BONO_PC, f"{fila['pc']} · {fila['bono']} ({_texto_minutos(fila['minutos'])})",
-            [(reportes_repo.CATEGORIA_BONO_PC, fila["bono"], 1, fila["total"])],
+            fila["bono"], fila["total"],
         )
 
     for fila in conexion.execute(
@@ -137,10 +155,10 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
         WHERE ventas.fecha > ? AND ventas.fecha <= ?
         """, rango,
     ):
-        resultado[fila["venta_id"]] = (
+        resultado[fila["venta_id"]] = _sin_articulo(
             reportes_repo.CATEGORIA_BONO_PCSTREAM,
             f"{fila['pc']} · {fila['bono']} ({_texto_minutos(fila['minutos'])})",
-            [(reportes_repo.CATEGORIA_BONO_PCSTREAM, fila["bono"], 1, fila["total"])],
+            fila["bono"], fila["total"],
         )
 
     for fila in conexion.execute(
@@ -153,10 +171,10 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
         WHERE ventas.fecha > ? AND ventas.fecha <= ?
         """, rango,
     ):
-        resultado[fila["venta_id"]] = (
+        resultado[fila["venta_id"]] = _sin_articulo(
             reportes_repo.CATEGORIA_BONO_PLAYSTATION,
             f"{dominio.NOMBRE_PLAYSTATION} · {fila['bono']} ({_texto_minutos(fila['minutos'])})",
-            [(reportes_repo.CATEGORIA_BONO_PLAYSTATION, fila["bono"], 1, fila["total"])],
+            fila["bono"], fila["total"],
         )
 
     for fila in conexion.execute(
@@ -172,14 +190,14 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
     ):
         minutos = _texto_minutos(fila["minutos"])
         if fila["bono"] is not None:
-            resultado[fila["venta_id"]] = (
+            resultado[fila["venta_id"]] = _sin_articulo(
                 reportes_repo.CATEGORIA_BONO_SOCIO, f"Socio {fila['socio']} · {fila['bono']} ({minutos})",
-                [(reportes_repo.CATEGORIA_BONO_SOCIO, fila["bono"], 1, fila["total"])],
+                fila["bono"], fila["total"],
             )
         else:
-            resultado[fila["venta_id"]] = (
+            resultado[fila["venta_id"]] = _sin_articulo(
                 reportes_repo.CATEGORIA_CARGA_TARIFA_SOCIO, f"Socio {fila['socio']} · carga de saldo ({minutos})",
-                [(reportes_repo.CATEGORIA_CARGA_TARIFA_SOCIO, "Carga por monto", 1, fila["total"])],
+                "Carga por monto", fila["total"],
             )
     return resultado
 
@@ -220,10 +238,14 @@ def _por_operador(ventas: list) -> list:
 
 
 def _totales(ventas: list) -> dict:
+    """Ventas, anuladas, unidades (la suma de las cantidades de todos los
+    renglones, como el pie del listado que se imprime), efectivo, digital y
+    total, sin las anuladas."""
     validas = [venta for venta in ventas if not venta["anulada"]]
     return {
         "ventas": len(validas),
         "anuladas": len(ventas) - len(validas),
+        "unidades": sum(linea["cantidad"] for venta in validas for linea in venta["lineas"]),
         **{campo: round(sum(venta[campo] for venta in validas), 2) for campo in ("efectivo", "digital", "total")},
     }
 
@@ -241,8 +263,8 @@ def detalle_del_dia(dia) -> dict:
     orden del día). Cada venta: {"id", "fecha", "turno", "etiqueta_turno",
     "operador", "cargada_por" (quien la cobró si no fue el operador, o None),
     "rubro", "detalle", "efectivo", "digital", "total", "anulada",
-    "anulada_despues_del_cierre", "renglones"}. "totales" y los resúmenes
-    cuentan solo las ventas no anuladas.
+    "anulada_despues_del_cierre", "renglones", "lineas"}. "totales" y los
+    resúmenes cuentan solo las ventas no anuladas.
     """
     dia = datetime.fromisoformat((dia if isinstance(dia, str) else dia.isoformat())[:10]).date()
     with conexion_db() as conexion:
@@ -254,10 +276,10 @@ def detalle_del_dia(dia) -> dict:
             etiqueta = etiqueta_turno(dia, ventana["turno"])
             for fila in _ventas_entre(conexion, ventana["desde"], ventana["hasta"]):
                 anulada = fila["estado"] == dominio.VENTA_ANULADA
-                rubro, detalle, renglones = vendido.get(fila["id"], (
-                    dominio.NOMBRE_ORIGEN_VENTA.get(fila["origen"], fila["origen"]), "(sin detalle)",
-                    [(dominio.NOMBRE_ORIGEN_VENTA.get(fila["origen"], fila["origen"]), "(sin detalle)", 1, fila["total"])],
-                ))
+                origen = dominio.NOMBRE_ORIGEN_VENTA.get(fila["origen"], fila["origen"])
+                rubro, detalle, renglones, lineas = vendido.get(
+                    fila["id"], _sin_articulo(origen, "(sin detalle)", "(sin detalle)", fila["total"])
+                )
                 ventas_por_turno.setdefault(ventana["turno"], []).append({
                     "id": fila["id"],
                     "fecha": fila["fecha"],
@@ -277,6 +299,7 @@ def detalle_del_dia(dia) -> dict:
                         and datetime.fromisoformat(fila["anulada_fecha"]) > datetime.fromisoformat(ventana["hasta"])
                     ),
                     "renglones": renglones,
+                    "lineas": lineas,
                 })
 
     orden = {turno: posicion for posicion, turno in enumerate(dominio.TURNOS)}
