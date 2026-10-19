@@ -6,8 +6,10 @@ La barra de arriba de la ventana principal muestra los mismos botones a todos
 muy vacía). Los que no le tocan a alguien se ven igual que los demás pero no abren
 nada al apretarlos. Configuración ADMIN la abre cualquiera, pero un Operador solo
 puede usar Gestionar Estaciones: el resto se ve en gris (mismo día). Adentro, todo
-menos la contraseña de las PCs clientes y Actualizar el Cliente PC. Se prueba sin
-abrir ninguna ventana (plataforma "offscreen").
+menos la contraseña de las PCs clientes y Actualizar el Cliente PC. Miembros abre
+para cualquier operador logueado (pedido del dueño, 2026-10-19: antes pedía
+permiso_control_pcs o Admin). Se prueba sin abrir ninguna ventana (plataforma
+"offscreen").
 
 Se ejecutan con:
 
@@ -30,8 +32,9 @@ from base import BaseConBaseTemporal  # noqa: E402
 _app = QApplication.instance() or QApplication([])
 
 # Botón de la barra -> la ventana que abre (el nombre en ui.main_window).
+# Miembros no está acá: abre para cualquiera, como Vender (ver
+# test_miembros_abre_para_cualquier_empleada).
 _CON_PERMISO = {
-    "🧑  Miembros": "MiembrosWindow",
     "🛠️  Admin Kiosko": "AdministrarKioskoWindow",
 }
 
@@ -89,9 +92,21 @@ class TestBarraParaTodos(_ConUsuarios):
         encargada = self._ventana("Encargada", dominio.ROL_EMPLEADA, {"permiso_reportes": True})
 
         # Operar PCs y Miembros también la hace "encargada" (es uno de los
-        # permisos de usuarios_repo.PERMISOS_EMPLEADA), como antes de este cambio.
-        self.assertEqual(self._que_abre(con_pcs), {"🧑  Miembros", "🛠️  Admin Kiosko"})
+        # permisos de usuarios_repo.PERMISOS_EMPLEADA).
+        self.assertEqual(self._que_abre(con_pcs), {"🛠️  Admin Kiosko"})
         self.assertEqual(self._que_abre(encargada), {"🛠️  Admin Kiosko"})
+
+    def test_miembros_abre_para_cualquier_empleada(self):
+        """Pedido del dueño, 2026-10-19: antes pedía permiso_control_pcs o Admin,
+        pero cargarle saldo a un socio es una venta más y cualquiera tiene que
+        poder hacerlo."""
+        empleada = self._ventana("TOBY", dominio.ROL_EMPLEADA)
+        botones = self._botones(empleada)
+
+        with mock.patch("ui.main_window.MiembrosWindow") as clase:
+            botones["🧑  Miembros"].click()
+
+        clase.assert_called_once()
 
     def test_config_admin_abre_para_todos(self):
         for ventana in (self._ventana("Admin", dominio.ROL_ADMIN), self._ventana("TOBY", dominio.ROL_EMPLEADA)):

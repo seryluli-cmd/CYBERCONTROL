@@ -15,13 +15,14 @@ los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
 
 - Cualquiera logueado: operar la grilla de PCs (asignar un bono ya
   creado, abrir con Miembro, finalizar sesión — es una venta más, como
-  Vender), Vender, cobrar Impresiones o un Trámite, Caja, Cierre de Turno, y
-  Cambiar mi Clave. La PlayStation 5, que está en esa misma grilla, la ve cualquiera pero
-  solo la opera (vender sus bonos, liberarla) quien tenga `permiso_control_pcs`
-  (o sea Admin).
-- Con `permiso_control_pcs` (o Admin): además abre "Miembros" (alta,
-  modificar datos, cargar saldo, desactivar — usa la tarifa y los bonos
-  ya definidos, no los edita).
+  Vender), Vender, cobrar Impresiones o un Trámite, "Miembros" (alta,
+  modificar datos, cargar saldo, desactivar — usa la tarifa y los bonos ya
+  definidos, no los edita; pedido del dueño, 2026-10-19: antes pedía
+  `permiso_control_pcs`, cualquier operador tiene que poder cargarle saldo a
+  un socio), Caja, Cierre de Turno, y Cambiar mi Clave. La PlayStation 5, que
+  está en esa misma grilla, la ve cualquiera pero solo la opera (vender sus
+  bonos, liberarla) quien tenga `permiso_control_pcs` (o sea Admin) —
+  ese permiso sigue existiendo, solo que ya no hace falta para Miembros.
 - "Encargado" (ADMIN, o EMPLEADA con al menos uno de los permisos de
   usuarios_repo.PERMISOS_EMPLEADA): además abre "Administrar Kiosko", que
   agrupa Artículos/Compras/Consulta de Ventas/Reportes/Control de
@@ -201,10 +202,10 @@ class MainWindow(QMainWindow):
             self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
             # Una sola carita (2026-10-18): el emoji de "dos personas" de antes,
             # en el Windows del mostrador, se veía como tres caras sueltas.
-            self._agregar_boton_barra(
-                layout_barra, "🧑  Miembros", self._abrir_miembros,
-                habilitado=self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"),
-            )
+            # Abre para cualquier operador logueado (pedido del dueño, 2026-10-19):
+            # antes pedía permiso_control_pcs o Admin, pero cargarle saldo a un socio
+            # es una venta más y cualquiera tiene que poder hacerlo.
+            self._agregar_boton_barra(layout_barra, "🧑  Miembros", self._abrir_miembros)
         # Nombres cortos en la barra (pedido del dueño, 2026-10-18); las ventanas
         # que abren siguen con su nombre entero.
         self._agregar_boton_barra(

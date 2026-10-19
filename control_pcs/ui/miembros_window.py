@@ -5,9 +5,11 @@ Administración de Miembros (socios con saldo prepago de tiempo): alta,
 edición y baja de cuentas, y la carga de saldo — que siempre hace el
 Operador, porque implica cobrar plata (a diferencia de "Abrir PC con
 Miembro" en pcs_detalle.py, que es autoservicio del socio). Botón propio
-de la barra superior ("Miembros"), accesible con permiso_control_pcs o
-Admin — son tareas de *usar* el catálogo (cargar saldo con la tarifa y
-los bonos ya definidos), no de editarlo.
+de la barra superior ("Miembros"), accesible para cualquier operador
+logueado (pedido del dueño, 2026-10-19: antes pedía permiso_control_pcs o
+Admin, pero cargarle saldo a un socio tiene que poder hacerlo cualquiera)
+— son tareas de *usar* el catálogo (cargar saldo con la tarifa y los
+bonos ya definidos), no de editarlo.
 
 La configuración de la tabla de tramos de tarifa $/hora (ver
 config_repo.obtener_tramos_tarifa_hora_miembro) y la gestión del

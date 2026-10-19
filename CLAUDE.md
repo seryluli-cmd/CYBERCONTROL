@@ -386,7 +386,9 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   bono, de cualquiera de los dos catálogos, es exclusivo de ADMIN desde
   "Configuración ADMIN" (`ui/main_window.ConfiguracionAdminWindow` —
   pedido explícito del dueño, 2026-09-28: editar el catálogo es tarea de
-  super admin; *usar* un bono ya creado sigue delegable con
+  super admin; *usar* un bono ya creado (cargarle saldo a un socio con
+  "Bono fijo") abre para cualquier operador desde "Miembros", pedido del
+  dueño 2026-10-19; el de la PlayStation 5 sigue pidiendo
   `permiso_control_pcs`). No fusionar estos catálogos "para simplificar":
   son dos negocios distintos con reglas de negocio propias, aunque ahora
   compartan el mismo nivel de permiso para editarlos.
@@ -718,15 +720,6 @@ Estos puntos todavía no están construidos:
 - **Reportes específicos de PCs** (ej. "horas vendidas por día"). Se
   puede sumar reutilizando `sesion_bonos`, no hace falta tocar el
   esquema.
-- **Separar "Cargar Saldo" de Miembros de la gestión completa de
-  socios.** Hoy vive dentro de "Miembros" (botón propio de la barra
-  superior, permiso `permiso_control_pcs`), aunque cargar saldo es una
-  venta como cualquier otra. Editar la tarifa y el catálogo de Bonos de
-  Socios ya quedó exclusivo de ADMIN desde "Configuración ADMIN"
-  (2026-09-28) — lo que falta, si en algún momento se quiere, es un
-  permiso aparte para que un empleado común pueda cobrarle saldo a un
-  socio sin tener acceso a dar de alta/baja Miembros — decisión
-  consciente de no hacerlo hasta que el dueño lo pida.
 
 ---
 
@@ -753,6 +746,6 @@ La suite actual se ejecuta con `python -m unittest discover tests` y tiene
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 
-La barra muestra los mismos botones a todos (pedido del dueño 2026-10-19: con solo los suyos la de una empleada quedaba muy vacía). Los que alguien no tiene habilitados (Miembros, Admin Kiosko) se ven igual pero no hacen nada al apretarlos: no se apagan con `setEnabled(False)` porque se verían grises. Config ADMIN la abre cualquiera, pero un Operador solo usa Gestionar Estaciones y ve el resto en gris (`ConfiguracionAdminWindow`, mismo día). Adentro, el Operador usa todo (estaciones, IP, fondo, filtro de palabras) menos "Cambiar contraseña de PC clientes" y "Actualizar el Cliente PC", que ve en gris (`DialogoGestionEstaciones` recibe el `usuario`; lo decidió el dueño el mismo día). Ese bloqueo es solo de pantalla: `clientes_repo` y `actualizacion_cliente_repo` no exigen Admin. Lo cuida `tests/test_barra_para_todos.py`.
+La barra muestra los mismos botones a todos (pedido del dueño 2026-10-19: con solo los suyos la de una empleada quedaba muy vacía). El que alguien no tiene habilitado (Admin Kiosko) se ve igual pero no hace nada al apretarlo: no se apaga con `setEnabled(False)` porque se vería gris. Miembros abre para cualquier operador logueado (mismo día: antes pedía `permiso_control_pcs` o Admin, pero cargarle saldo a un socio tiene que poder hacerlo cualquiera). Config ADMIN la abre cualquiera, pero un Operador solo usa Gestionar Estaciones y ve el resto en gris (`ConfiguracionAdminWindow`, mismo día). Adentro, el Operador usa todo (estaciones, IP, fondo, filtro de palabras) menos "Cambiar contraseña de PC clientes" y "Actualizar el Cliente PC", que ve en gris (`DialogoGestionEstaciones` recibe el `usuario`; lo decidió el dueño el mismo día). Ese bloqueo es solo de pantalla: `clientes_repo` y `actualizacion_cliente_repo` no exigen Admin. Lo cuida `tests/test_barra_para_todos.py`.
 
 El panel del costado de Control de PCs (`#panelDetalle`, los bonos y Cobrar) es gris medio (pedido del dueño 2026-10-19, eligió esta entre cinco maquetas). Sus reglas en `main.py` van con `>` (solo hijos directos del panel y de `#contenedorBonos`) a propósito: el cobro, el login del socio y los avisos se abren con el panel como padre, y con un selector común quedarían con letras claras sobre su fondo claro (lo cuida `test_estilo_ui`).
