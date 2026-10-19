@@ -522,6 +522,9 @@ CONFIG ADMIN solo muestre disponible Gestionar Estaciones, las demás en gris".
 - `MainWindow._agregar_boton_barra(..., habilitado=...)`: Miembros y Admin Kiosko se ven siempre; sin
   permiso no se conectan (se ven iguales, no grises). Config ADMIN abre para todos.
 - `ConfiguracionAdminWindow`: un no Admin solo puede usar Gestionar Estaciones (`_armar_botones(...,
-  habilitados=...)`); el resto queda en gris. Gestionar Estaciones no exige Admin en ningún repo: el
-  Operador también usa lo de adentro (contraseña de PC clientes, fondo, filtro, actualizar el Cliente PC).
-811 tests (9 nuevos en `tests/test_barra_para_todos.py`).
+  habilitados=...)`); el resto queda en gris.
+- Adentro de Gestionar Estaciones (pedido del dueño, mismo día: "de las 4 cosas, solo Actualización de
+  cliente PC bloqueado", y enseguida "también cambiar la contraseña de las PC clientes"): el Operador
+  ve en gris esos dos botones; estaciones, IP, fondo y filtro los usa. `DialogoGestionEstaciones` recibe el
+  `usuario`. Bloqueo solo de pantalla: los repos no exigen Admin.
+813 tests (11 nuevos en `tests/test_barra_para_todos.py`).

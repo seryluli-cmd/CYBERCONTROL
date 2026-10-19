@@ -750,7 +750,7 @@ class TestCopiaRemota(unittest.TestCase):
                 ConsultaVentasWindow(self.usuario, ventana), ReportesWindow(ventana),
                 ControlCierresWindow(self.usuario, ventana), UsuariosWindow(self.usuario, ventana),
                 DialogoCambiarClave(self.usuario, ventana), CajaWindow(ventana),
-                DialogoGestionEstaciones(ventana), DialogoGestionBonos(ventana),
+                DialogoGestionEstaciones(self.usuario, ventana), DialogoGestionBonos(ventana),
                 DialogoGestionBonosPlaystation(self.usuario, ventana), DialogoGestionBonosPcstream(ventana),
                 DialogoTramosTarifaMiembro(ventana), DialogoGestionBonosMiembro(ventana),
                 DialogoGestionTramites(ventana), AccesosAdminWindow(ventana),

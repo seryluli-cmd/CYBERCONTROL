@@ -28,6 +28,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 
+import dominio  # noqa: E402
 import servidor_red  # noqa: E402
 import test_control_pcs  # noqa: E402  (solo para reusar el servidor real de _ConServidorRed)
 from base import BaseConBaseTemporal  # noqa: E402
@@ -306,7 +307,7 @@ class TestPantallaDelFiltro(_ConDialogo):
 
 class TestBotonEnGestionarEstaciones(_ConDialogo):
     def test_gestionar_estaciones_tiene_el_boton_y_abre_la_pantalla_del_filtro(self):
-        gestion = pcs_gestion_dialogos.DialogoGestionEstaciones()
+        gestion = pcs_gestion_dialogos.DialogoGestionEstaciones({"rol": dominio.ROL_ADMIN})
         self.addCleanup(gestion.deleteLater)
         botones = [b for b in gestion.findChildren(QPushButton) if b.text() == "Filtro de palabras de las PCs..."]
         self.assertEqual(len(botones), 1)

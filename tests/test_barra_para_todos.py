@@ -5,7 +5,8 @@ La barra de arriba de la ventana principal muestra los mismos botones a todos
 (pedido del dueño, 2026-10-19: con solo los suyos, la barra de una empleada quedaba
 muy vacía). Los que no le tocan a alguien se ven igual que los demás pero no abren
 nada al apretarlos. Configuración ADMIN la abre cualquiera, pero un Operador solo
-puede usar Gestionar Estaciones: el resto se ve en gris (mismo día). Se prueba sin
+puede usar Gestionar Estaciones: el resto se ve en gris (mismo día). Adentro, todo
+menos la contraseña de las PCs clientes y Actualizar el Cliente PC. Se prueba sin
 abrir ninguna ventana (plataforma "offscreen").
 
 Se ejecutan con:
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QPushButton  # noqa: E402
 import dominio  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from ui.main_window import ConfiguracionAdminWindow, MainWindow  # noqa: E402
+from control_pcs.ui.pcs_gestion_dialogos import DialogoGestionEstaciones  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
@@ -132,3 +134,28 @@ class TestConfiguracionAdminParaUnOperador(_ConUsuarios):
             boton.click()
 
         dialogo.assert_called_once()
+
+
+class TestGestionarEstacionesParaUnOperador(_ConUsuarios):
+    """Adentro de Gestionar Estaciones el Operador usa todo menos la contraseña de
+    las PCs clientes y Actualizar el Cliente PC, que ve en gris (pedido del dueño,
+    2026-10-19: el fondo y el filtro sí los puede usar)."""
+
+    def _habilitados(self, usuario):
+        ventana = DialogoGestionEstaciones(usuario)
+        self.addCleanup(ventana.deleteLater)
+        return {b.text(): b.isEnabled() for b in ventana.findChildren(QPushButton)}
+
+    def test_un_operador_ve_en_gris_la_contrasena_y_actualizar_el_cliente_pc(self):
+        habilitados = self._habilitados(self._usuario("TOBY", dominio.ROL_EMPLEADA))
+
+        self.assertEqual(sorted(texto for texto, si in habilitados.items() if not si),
+                         ["Actualizar el Cliente PC de las PCs...", "Cambiar contraseña de PC clientes..."])
+        for texto in ("Agregar", "Renombrar seleccionada", "Fondo de pantalla de las PCs...",
+                      "Filtro de palabras de las PCs..."):
+            self.assertTrue(habilitados[texto], texto)
+
+    def test_el_admin_usa_todo(self):
+        habilitados = self._habilitados(self._usuario("Admin", dominio.ROL_ADMIN))
+
+        self.assertTrue(all(habilitados.values()), habilitados)

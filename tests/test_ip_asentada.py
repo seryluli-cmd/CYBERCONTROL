@@ -26,6 +26,7 @@ from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import database  # noqa: E402
+import dominio  # noqa: E402
 import test_control_pcs  # noqa: E402  (solo para reusar el servidor real de _ConServidorRed)
 from base import BaseConBaseTemporal  # noqa: E402
 from control_pcs.repositories import pcs_repo  # noqa: E402
@@ -182,7 +183,7 @@ class TestPantallaGestionEstaciones(BaseConBaseTemporal):
         pcs_repo.registrar_conexion(self.pc2, IP_PC2)
 
     def _dialogo(self):
-        dialogo = pcs_gestion_dialogos.DialogoGestionEstaciones()
+        dialogo = pcs_gestion_dialogos.DialogoGestionEstaciones({"rol": dominio.ROL_ADMIN})
         self.addCleanup(dialogo.deleteLater)
         return dialogo
 

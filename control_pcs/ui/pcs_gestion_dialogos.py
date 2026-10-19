@@ -5,8 +5,9 @@ Diálogos para ADMINISTRAR los catálogos de Estaciones (las PCs del local, su
 IP y la contraseña de admin de los Clientes PC) y de Bonos de Tiempo de walk-ins (mismo
 espíritu que "Gestionar Rubros" en Artículos), más los de la PlayStation 5 y los
 de PCSTREAM. Solo se abren desde `ConfiguracionAdminWindow` (ui/main_window.py):
-los de bonos, solo un ADMIN; Gestionar Estaciones, también un Operador (pedido
-del dueño, 2026-10-19). Los bonos exclusivos de socios se gestionan aparte, en
+los de bonos, solo un ADMIN; Gestionar Estaciones, también un Operador, salvo
+la contraseña de las PCs clientes y Actualizar el Cliente PC (pedido del dueño,
+2026-10-19). Los bonos exclusivos de socios se gestionan aparte, en
 miembros_window.py.
 """
 
@@ -34,10 +35,14 @@ class DialogoGestionEstaciones(QDialog):
     admin que usan los Clientes PC, el fondo de su pantalla de bloqueo, su
     filtro de palabras y la actualización de su Cliente PC. (La
     clave de conexión de los Clientes PC es fija: no se gestiona desde ninguna
-    pantalla, ver `clientes_repo`.) Solo se llega desde Configuración ADMIN."""
+    pantalla, ver `clientes_repo`.) Solo se llega desde Configuración ADMIN, y la
+    usa también un Operador: todo menos la contraseña de las PCs clientes y
+    Actualizar el Cliente PC, que ve en gris (pedido del dueño, 2026-10-19).
+    Recibe el `usuario` para eso."""
 
-    def __init__(self, parent=None):
+    def __init__(self, usuario, parent=None):
         super().__init__(parent)
+        self.usuario = usuario
         self.setWindowTitle("Gestionar Estaciones")
         self.resize(440, 580)
         self._armar_interfaz()
@@ -100,6 +105,9 @@ class DialogoGestionEstaciones(QDialog):
 
         boton_clave_admin = QPushButton("Cambiar contraseña de PC clientes...")
         boton_clave_admin.clicked.connect(self._cambiar_clave_admin_pcs)
+        # Solo un Admin (con esa contraseña se sale del bloqueo de una PC): el
+        # Operador lo ve en gris.
+        boton_clave_admin.setEnabled(dominio.es_admin(self.usuario))
 
         boton_fondo = QPushButton("Fondo de pantalla de las PCs...")
         boton_fondo.clicked.connect(self._abrir_fondo)
@@ -128,6 +136,9 @@ class DialogoGestionEstaciones(QDialog):
         if modo_remoto.es_copia_remota():
             boton_actualizar.deleteLater()
         else:
+            # Y solo un Admin: lo que se manda se instala en todas las PCs. El
+            # Operador lo ve en gris.
+            boton_actualizar.setEnabled(dominio.es_admin(self.usuario))
             layout.addWidget(boton_actualizar)
         layout.addWidget(boton_cerrar)
         self.setLayout(layout)

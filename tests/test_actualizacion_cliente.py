@@ -454,7 +454,7 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         self.assertFalse(repo.obtener_alcance()["para_todas"])
 
     def test_gestionar_estaciones_tiene_el_boton(self):
-        gestion = pcs_gestion_dialogos.DialogoGestionEstaciones()
+        gestion = pcs_gestion_dialogos.DialogoGestionEstaciones({"rol": dominio.ROL_ADMIN})
         self.addCleanup(gestion.deleteLater)
         botones = [b for b in gestion.findChildren(QPushButton) if b.text() == "Actualizar el Cliente PC de las PCs..."]
         self.assertEqual(len(botones), 1)

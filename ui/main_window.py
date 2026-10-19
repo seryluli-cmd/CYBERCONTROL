@@ -565,7 +565,7 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
         self._armar_botones(botones, habilitados=None if dominio.es_admin(usuario) else [self._abrir_estaciones])
 
     def _abrir_estaciones(self):
-        DialogoGestionEstaciones(self).exec()
+        DialogoGestionEstaciones(self.usuario, self).exec()
 
     def _abrir_bonos(self):
         DialogoGestionBonos(self).exec()
