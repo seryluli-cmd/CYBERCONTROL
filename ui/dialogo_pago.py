@@ -10,10 +10,11 @@ Antes había que ir agregando pagos a una lista.
 
 Lo de siempre se mantiene (pedido del dueño, 2026-10-18): arranca con el total
 escrito en Efectivo y seleccionado, así que si pagan justo un Enter cobra; si
-pagan con otro billete se puede escribir ahí mismo con cuánto pagan. Con
-vuelto, Enter frena una vez en Confirmar: la empleada tiene que ver el vuelto
-(que titila) antes de cobrar. La cuenta (reparto, vuelto, lo que queda en la
-caja) es dominio.cuenta_del_cobro; esta pantalla solo la muestra.
+pagan con otro billete se puede escribir ahí mismo con cuánto pagan. Un Enter
+cobra siempre, también con una parte en cada medio y con vuelto (pedido del
+dueño, esa misma noche: "el Enter debería ser para agilizar"); el vuelto se ve
+titilando mientras se escribe el billete. La cuenta (reparto, vuelto, lo que
+queda en la caja) es dominio.cuenta_del_cobro; esta pantalla solo la muestra.
 
 Está separado de ventas_window.py a propósito: una arma el carrito y esta
 cobra, así se puede tocar la forma de cobrar sin riesgo de romper el
@@ -109,9 +110,9 @@ class DialogoPago(QDialog):
         self.campo_efectivo.valueChanged.connect(lambda _valor: self._al_escribir_en(self.campo_efectivo))
         self.campo_digital.valueChanged.connect(lambda _valor: self._al_escribir_en(self.campo_digital))
         self.campo_paga_con.valueChanged.connect(lambda _valor: self._refrescar())
-        # Enter en cualquiera de los tres cobra (o frena en Confirmar si hay
-        # vuelto). Va por encadenar_enter (y no por returnPressed) porque así un
-        # Enter que quedó apretado de la pantalla anterior no cobra solo.
+        # Enter en cualquiera de los tres cobra. Va por encadenar_enter (y no
+        # por returnPressed) porque así un Enter que quedó apretado de la
+        # pantalla anterior no cobra solo.
         for campo in (self.campo_efectivo, self.campo_digital, self.campo_paga_con):
             encadenar_enter(campo, accion_final=self._enter_en_un_importe)
 
@@ -147,9 +148,9 @@ class DialogoPago(QDialog):
         boton_cancelar.clicked.connect(self.reject)
 
         # Confirmar no es el botón "default" (ver sin_boton_por_defecto), así que
-        # Enter con el foco EN Confirmar no lo activaría solo: se le agrega un
-        # atajo que responde únicamente con el foco puesto ahí. Sin repetición: un
-        # Enter que queda apretado no confirma solo.
+        # Enter con el foco EN Confirmar (llegando con Tab) no lo activaría solo:
+        # se le agrega un atajo que responde únicamente con el foco puesto ahí.
+        # Sin repetición: un Enter que queda apretado no confirma solo.
         for tecla in (Qt.Key_Return, Qt.Key_Enter):
             atajo = QShortcut(QKeySequence(tecla), self.boton_confirmar)
             atajo.setContext(Qt.WidgetShortcut)
@@ -270,17 +271,14 @@ class DialogoPago(QDialog):
 
     def _enter_en_un_importe(self):
         """
-        Enter en Efectivo, Digital o "Paga con". Pagó justo (lo más común, y
-        también con una parte en cada medio, que ya se ve en los dos campos):
-        este mismo Enter cobra. Con vuelto, el foco pasa a Confirmar y hace
-        falta un Enter más: la empleada tiene que ver el vuelto que titila antes
-        de cobrar. Si con lo que paga no alcanza, no hace nada (lo dice en rojo).
+        Enter en Efectivo, Digital o "Paga con": cobra, pague justo, con una
+        parte en cada medio o con vuelto. Hasta el 2026-10-18 con vuelto frenaba
+        en Confirmar y hacía falta otro Enter; el dueño pidió que no: el vuelto
+        ya se ve al escribir el billete y, en Ventas, sale también en el cartel
+        de la venta cobrada. Si con lo que paga no alcanza, no hace nada (lo
+        dice en rojo).
         """
-        if not self.boton_confirmar.isEnabled():
-            return
-        if self.vuelto > 0:
-            self.boton_confirmar.setFocus()
-        else:
+        if self.boton_confirmar.isEnabled():
             self._confirmar()
 
     def _alternar_parpadeo_vuelto(self):

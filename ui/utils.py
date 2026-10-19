@@ -209,9 +209,10 @@ class _FiltroEnter(QObject):
     """Intercepta la tecla Enter/Intro en el widget donde se instala y,
     en vez de dejarla pasar, ejecuta `accion` (ver `encadenar_enter`)."""
 
-    def __init__(self, accion):
+    def __init__(self, accion, widget):
         super().__init__()
         self._accion = accion
+        self._widget = widget
 
     def eventFilter(self, watched, evento):
         if evento.type() == QEvent.KeyPress and evento.key() in (Qt.Key_Return, Qt.Key_Enter):
@@ -220,22 +221,32 @@ class _FiltroEnter(QObject):
             # dispararía la acción final (Cobrar, Guardar) sin que nadie la
             # pidiera. Un lector de códigos manda un Enter suelto, no repetido.
             if not evento.isAutoRepeat():
+                # El Enter no le llega al campo (se lo queda este filtro): se
+                # hace a mano lo que haría él, dar por terminado lo escrito,
+                # para que la acción lea el número que se ve.
+                if isinstance(self._widget, QAbstractSpinBox):
+                    self._widget.interpretText()
                 self._accion()
             return True
         return False
 
 
-def _widget_de_teclado(widget):
+def _widgets_de_teclado(widget):
     """
-    El widget que realmente recibe las teclas al escribir no siempre es
-    el que uno arma (QComboBox editable, QSpinBox, QDoubleSpinBox y
-    QDateEdit por dentro tienen su propio QLineEdit, y es ESE el que
-    recibe el evento de tecla) — hay que engancharse ahí, si no el
-    filtro de Enter nunca se llega a disparar.
+    Dónde engancharse para ver el Enter de `widget`. QComboBox editable,
+    QSpinBox, QDoubleSpinBox y QDateEdit tienen por dentro su propio
+    QLineEdit, pero con el teclado de verdad el Enter le llega al widget de
+    afuera (el de adentro le pasa el foco a él) y nunca al de adentro. Se
+    midió el 2026-10-18 con el PySide6 del programa: enganchado solo al de
+    adentro, Enter no hacía nada en ningún importe (el cobro, Contar plata,
+    Trámites, Cargar Saldo...). Las pruebas no lo veían porque mandaban el
+    Enter directo al de adentro. Se engancha a los dos por si otra versión
+    de Qt lo entrega al de adentro: el primero que lo ve lo consume, así que
+    un Enter nunca dispara la acción dos veces.
     """
     if isinstance(widget, QAbstractSpinBox) or (isinstance(widget, QComboBox) and widget.isEditable()):
-        return widget.lineEdit()
-    return widget
+        return [widget, widget.lineEdit()]
+    return [widget]
 
 
 def encadenar_enter(*widgets, accion_final=None):
@@ -257,12 +268,13 @@ def encadenar_enter(*widgets, accion_final=None):
 
     for widget, destino in zip(widgets, destinos):
         accion = destino.setFocus if isinstance(destino, QWidget) else destino
-        filtro = _FiltroEnter(accion)
+        filtro = _FiltroEnter(accion, widget)
         # Qt no retiene una referencia propia al filtro (solo la usa por
         # fuera, en C++); si no la guardamos nosotros en algún lado,
         # Python lo destruye enseguida y el filtro deja de funcionar.
         widget._filtro_enter = filtro
-        _widget_de_teclado(widget).installEventFilter(filtro)
+        for destino_de_la_tecla in _widgets_de_teclado(widget):
+            destino_de_la_tecla.installEventFilter(filtro)
 
 
 def crear_tabla(titulos, estirar=None, por_filas=False, una_sola=False) -> QTableWidget:

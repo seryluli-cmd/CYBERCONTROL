@@ -255,7 +255,7 @@ abra no alcanza si los tests no pasan.
 | `limpieza_repo.limpiar_base(usuario_id)` | se borra la plata y el historial de ventas para volver a probar (qué tablas, en `_TABLAS_A_VACIAR`; devuelve el stock de las ventas confirmadas y deja a los socios con saldo 0). Una tabla nueva que guarde plata o ventas tiene que sumarse ahí |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
-| `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter, como Tab, y la acción del último campo (pedido del dueño, 2026-10-18: todo formulario lo usa). Descarta el Enter repetido de una tecla que quedó apretada |
+| `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter, como Tab, y la acción del último campo (pedido del dueño, 2026-10-18: todo formulario lo usa). Descarta el Enter repetido de una tecla que quedó apretada. Ojo: en un QSpinBox/QDoubleSpinBox/QDateEdit/QComboBox editable el Enter del teclado le llega al campo de AFUERA, no a su `lineEdit()`; una prueba que le manda el Enter al `lineEdit()` pasa aunque en el mostrador no ande (pasó hasta el 2026-10-18: ningún importe respondía al Enter). Ver `TestDondeLlegaElEnter` |
 | `ui.utils.aplicar_clase(widget, clase)` | un botón se marca como primario/peligro |
 | `ui.utils.sin_boton_por_defecto(ventana)` | se evita que Enter en un campo active el primer botón de un diálogo (llamarla al final de `_armar_interfaz`) |
 | `ui.utils.crear_tabla(titulos, ...)` | se arma una tabla de solo lectura (filas alternadas, columna que se estira, selección por filas) |
@@ -603,10 +603,12 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   escribe lo reemplaza); al escribir en uno, el otro se completa con lo que falta; "Todo
   efectivo"/"Todo digital"; y "Paga con" (opcional) es el billete que da el cliente, para dar
   vuelto sin tocar lo digital. Escribir el billete en Efectivo también da vuelto (la costumbre
-  de siempre). La cuenta es `dominio.cuenta_del_cobro`. Enter cobra si no hay vuelto (también
-  con una parte en cada medio: el reparto ya está a la vista en los dos campos); con vuelto se
-  frena en Confirmar: la empleada tiene que ver el vuelto antes de cobrar. No saques esa
-  frenada "para ahorrar un Enter". Los bonos de PCs,
+  de siempre). La cuenta es `dominio.cuenta_del_cobro`. Un Enter cobra SIEMPRE: pago justo,
+  una parte en cada medio o con vuelto (pedido del dueño, 2026-10-18 a la noche: "el Enter
+  debería ser para agilizar"; hasta ese momento con vuelto frenaba en Confirmar, y se sacó a
+  pedido suyo). El vuelto se ve titilando mientras se escribe el billete y en Ventas sale
+  además en el cartel de la venta cobrada. No vuelvas a poner la frenada sin que el dueño lo
+  pida. Los bonos de PCs,
   PCSTREAM y PlayStation 5 (botón "Cobrar" del panel), Cargar Saldo de un socio y Trámites
   (Enter en el monto o en el bono) usan el mismo cuadro y arrancan igual (elegido por el dueño).
   Ventas: escanear, Enter con el código vacío (abre el cobro) y Enter. Un Enter que queda

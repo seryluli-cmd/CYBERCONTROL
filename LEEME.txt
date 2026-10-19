@@ -62,8 +62,9 @@ VENTAS Y CAJA
   completa sola (después Enter). "Todo efectivo" y "Todo digital" ponen
   todo de un lado. Si pagan con un billete más grande, escribilo en
   Efectivo o en "Paga con" (sirve también cuando una parte va por
-  digital): muestra el VUELTO y Enter frena en Confirmar para que lo
-  veas; otro Enter cobra. Es la misma ventana para todo lo que se
+  digital): muestra el VUELTO mientras escribís y Enter cobra (en
+  Ventas el vuelto sale de nuevo en el cartel de la venta cobrada).
+  Siempre alcanza con un Enter. Es la misma ventana para todo lo que se
   cobra: kiosko, bonos de PCs, PCSTREAM, PlayStation 5, carga de saldo
   de un socio y trámites.
 - Trámites: cobrá el servicio que hizo el local, no el importe de la

@@ -9,8 +9,8 @@ Pedidos del dueño (2026-10-18): arranca con el total escrito en Efectivo, porqu
 siempre pagan justo, y si pagan justo un Enter cobra; si pagan con otro billete, lo
 que se escribe reemplaza al total. Efectivo y Digital están siempre a la vista: al
 escribir en uno, el otro se completa con lo que falta; "Paga con" da el vuelto sin
-tocar lo digital. Con vuelto, Enter frena en Confirmar. Un Enter que queda apretado
-no cobra solo.
+tocar lo digital. Un Enter cobra siempre, también con vuelto (pedido del dueño, esa
+misma noche). Un Enter que queda apretado no cobra solo.
 Se prueba sin abrir ninguna ventana, plataforma "offscreen" de Qt.
 
 Se ejecutan con:
@@ -88,10 +88,12 @@ class TestDialogoPago(unittest.TestCase):
 
     @staticmethod
     def _enter(widget, repetido=False):
-        """Un Enter en `widget`; `repetido` es la repetición del teclado (tecla apretada)."""
-        destino = widget.lineEdit() if hasattr(widget, "lineEdit") and widget.lineEdit() else widget
+        """Un Enter en `widget`, adonde lo manda el teclado de verdad (al campo, no
+        a su QLineEdit de adentro: mandándolo ahí las pruebas pasaban y en el
+        mostrador Enter no cobraba, ver ui.utils._widgets_de_teclado); `repetido`
+        es la repetición del teclado (tecla apretada)."""
         for tipo in (QEvent.KeyPress, QEvent.KeyRelease):
-            QApplication.sendEvent(destino, QKeyEvent(tipo, Qt.Key_Return, Qt.NoModifier, "\r", repetido))
+            QApplication.sendEvent(widget,QKeyEvent(tipo, Qt.Key_Return, Qt.NoModifier, "\r", repetido))
 
     @staticmethod
     def _escribir(campo, texto):
@@ -150,21 +152,14 @@ class TestDialogoPago(unittest.TestCase):
         dialogo.boton_todo_efectivo.click()
         self.assertEqual((dialogo.campo_efectivo.value(), dialogo.campo_digital.value()), (1500.0, 0.0))
 
-    def test_con_otro_billete_en_efectivo_frena_para_ver_el_vuelto(self):
+    def test_con_otro_billete_en_efectivo_muestra_el_vuelto_y_un_enter_cobra(self):
         dialogo = self._abrir(2100.0)
 
         self._escribir(dialogo.campo_efectivo, "5000")
         self.assertEqual(dialogo.campo_digital.value(), 0.0)
-        self._enter(dialogo.campo_efectivo)
-
-        # Todavía no cobró: la empleada tiene que ver el vuelto antes.
-        self.assertEqual(dialogo.result(), QDialog.Rejected)
-        self.assertTrue(dialogo.isVisible())
-        self.assertEqual(dialogo.vuelto, 2900.0)
+        # El vuelto se ve mientras se escribe el billete.
         self.assertIn("2.900", dialogo.etiqueta_vuelto.text())
-        self.assertTrue(dialogo.boton_confirmar.hasFocus())
-
-        QTest.keyClick(dialogo.boton_confirmar, Qt.Key_Return)
+        self._enter(dialogo.campo_efectivo)
 
         self.assertEqual(dialogo.result(), QDialog.Accepted)
         # Lo que queda en la caja, neto del vuelto.
@@ -180,8 +175,7 @@ class TestDialogoPago(unittest.TestCase):
         self.assertEqual(dialogo.campo_digital.value(), 500.0)
         self.assertEqual(dialogo.vuelto, 1000.0)
         self._enter(dialogo.campo_paga_con)
-        self.assertTrue(dialogo.boton_confirmar.hasFocus())  # frena por el vuelto
-        QTest.keyClick(dialogo.boton_confirmar, Qt.Key_Return)
+        self.assertEqual(dialogo.result(), QDialog.Accepted)
         self.assertEqual(dialogo.pagos, [{"metodo": _EFECTIVO, "monto": 1000.0}, {"metodo": _DIGITAL, "monto": 500.0}])
 
     def test_si_paga_con_menos_no_deja_cobrar(self):
@@ -206,9 +200,7 @@ class TestDialogoPago(unittest.TestCase):
     def test_un_enter_apretado_en_confirmar_no_confirma(self):
         dialogo = self._abrir(2100.0)
         self._escribir(dialogo.campo_efectivo, "5000")
-        self._enter(dialogo.campo_efectivo)
-
-        self.assertTrue(dialogo.boton_confirmar.hasFocus())
+        dialogo.boton_confirmar.setFocus()  # llegando con Tab
 
         self._enter(dialogo.boton_confirmar, repetido=True)
         self.assertTrue(dialogo.isVisible())
@@ -252,9 +244,8 @@ class TestCobrar(unittest.TestCase):
     def test_con_vuelto_devuelve_lo_que_queda_en_la_caja(self):
         def pagar_con_5000(dialogo):
             TestDialogoPago._escribir(dialogo.campo_efectivo, "5000")
-            TestDialogoPago._enter(dialogo.campo_efectivo)  # frena en Confirmar por el vuelto
             self.assertEqual(dialogo.vuelto, 1000.0)
-            dialogo.boton_confirmar.click()
+            TestDialogoPago._enter(dialogo.campo_efectivo)
         self._con_el_cuadro_abierto(pagar_con_5000)
 
         pagos = cobrar(None, 4000.0)
