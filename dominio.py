@@ -181,18 +181,32 @@ ESTADOS_ACTUALIZACION_CLIENTE = (
 # --------------------------------------------------------------------
 # Lo que el Cliente PC le avisa al servidor cuando alguien entra a su panel
 # admin (la "A" chica de la pantalla de bloqueo) -- ver
-# control_pcs/repositories/accesos_admin_pc_repo.py. Los tres primeros los
-# manda el Cliente PC (son el "protocolo" de POST /evento_admin, tienen que
-# coincidir con CLIENTE PC/red_kiosko.py); CLIENTE_REANUDADO no viaja por la
-# red: lo anota el servidor solo, cuando una PC que había quedado sin
-# Cliente PC vuelve a preguntar su estado.
+# control_pcs/repositories/accesos_admin_pc_repo.py. Los de
+# EVENTOS_ADMIN_REPORTADOS_POR_CLIENTE los manda el Cliente PC (son el
+# "protocolo" de POST /evento_admin, tienen que coincidir con CLIENTE
+# PC/red_kiosko.py); CLIENTE_REANUDADO no viaja por la red: lo anota el
+# servidor solo, cuando una PC que había quedado sin Cliente PC vuelve a
+# preguntar su estado. Sumar uno cambia el CHECK de eventos_admin_pc: la
+# migración (database_migraciones._migrar_check_tipo_en_eventos_admin_pc) lo
+# agrega sola a las bases que ya existen.
 EVENTO_ADMIN_ACCESO = "ACCESO"
+# Desde el 2026-10-19 el Cliente PC nuevo ya no lo manda ("Cerrar software
+# cliente" lo reemplazó "Hacer mantenimiento"), pero una PC sin actualizar sí,
+# y está en la historia de la base.
 EVENTO_ADMIN_CIERRE_CLIENTE = "CIERRE_CLIENTE"
 EVENTO_ADMIN_RECONFIGURAR = "RECONFIGURAR"
+# "Hacer mantenimiento (15 min)" del panel admin (pedido del dueño,
+# 2026-10-19): la PC queda libre ese rato con el Cliente PC ABIERTO, contando,
+# y se vuelve a bloquear sola. Por eso no está en
+# EVENTOS_ADMIN_QUE_DEJAN_PC_SIN_CLIENTE: la PC sigue preguntando su estado.
+EVENTO_ADMIN_MANTENIMIENTO = "MANTENIMIENTO"
 EVENTO_ADMIN_CLIENTE_REANUDADO = "CLIENTE_REANUDADO"
+# Cuánto dura el mantenimiento lo decide el Cliente PC (CLIENTE PC/mantenimiento.py);
+# acá es solo para el texto.
+MINUTOS_MANTENIMIENTO_PC = 15
 
 EVENTOS_ADMIN_REPORTADOS_POR_CLIENTE = (
-    EVENTO_ADMIN_ACCESO, EVENTO_ADMIN_CIERRE_CLIENTE, EVENTO_ADMIN_RECONFIGURAR,
+    EVENTO_ADMIN_ACCESO, EVENTO_ADMIN_CIERRE_CLIENTE, EVENTO_ADMIN_RECONFIGURAR, EVENTO_ADMIN_MANTENIMIENTO,
 )
 EVENTOS_ADMIN_PC = EVENTOS_ADMIN_REPORTADOS_POR_CLIENTE + (EVENTO_ADMIN_CLIENTE_REANUDADO,)
 # Los que dejan a la PC SIN Cliente PC corriendo, o sea sin bloqueo: la PC
@@ -203,6 +217,7 @@ NOMBRE_EVENTO_ADMIN_PC = {
     EVENTO_ADMIN_ACCESO: "Entró al panel admin",
     EVENTO_ADMIN_CIERRE_CLIENTE: "Cerró el Cliente PC (la PC quedó SIN bloqueo)",
     EVENTO_ADMIN_RECONFIGURAR: "Abrió la reconfiguración (el Cliente PC se cerró)",
+    EVENTO_ADMIN_MANTENIMIENTO: f"Mantenimiento: {MINUTOS_MANTENIMIENTO_PC} min sin bloqueo (después se bloquea sola)",
     EVENTO_ADMIN_CLIENTE_REANUDADO: "El Cliente PC volvió a arrancar",
 }
 

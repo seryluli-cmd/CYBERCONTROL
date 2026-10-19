@@ -96,7 +96,10 @@ class PestañaAccesosAdminPc(QWidget):
                 dominio.NOMBRE_EVENTO_ADMIN_PC[evento["tipo"]], duracion,
             ]):
                 celda = QTableWidgetItem(valor)
-                if evento["tipo"] in dominio.EVENTOS_ADMIN_QUE_DEJAN_PC_SIN_CLIENTE:
+                # El mantenimiento también deja la PC sin bloqueo (15 min, con el Cliente PC
+                # abierto): mismo lila, aunque la grilla no la marque.
+                if (evento["tipo"] in dominio.EVENTOS_ADMIN_QUE_DEJAN_PC_SIN_CLIENTE
+                        or evento["tipo"] == dominio.EVENTO_ADMIN_MANTENIMIENTO):
                     celda.setBackground(COLOR_SIN_BLOQUEO)
                 elif evento["tipo"] == dominio.EVENTO_ADMIN_CLIENTE_REANUDADO:
                     celda.setBackground(COLOR_VOLVIO)

@@ -368,6 +368,8 @@ from database_migraciones import (
     _migrar_check_tipo_en_movimientos_saldo_miembro,
     _sql_tabla_comandos_pc,
     _migrar_check_tipo_en_comandos_pc,
+    _sql_tabla_eventos_admin_pc,
+    _migrar_check_tipo_en_eventos_admin_pc,
     _migrar_borrar_clave_vieja_de_clientes_pc,
     _migrar_columna_origen_en_ventas,
     _migrar_columnas_origen_en_cierres,
@@ -376,4 +378,5 @@ from database_migraciones import (
     _TIPOS_MOVIMIENTO_SALDO_ORIGINALES,
     _TIPOS_MOVIMIENTO_SALDO,
     _TIPOS_COMANDO_PC_ORIGINALES,
+    _TIPOS_EVENTO_ADMIN_PC_ORIGINALES,
 )

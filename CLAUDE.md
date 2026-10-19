@@ -101,7 +101,8 @@ de las listas de `dominio.py` (`ROLES`, `ESTADOS_VENTA`, `TURNOS`,
 `database._valores_sql` (revisión del 2026-10-17): una base NUEVA nunca queda
 desfasada. Pero SQLite no deja cambiar un CHECK ya grabado: si se agrega un
 valor, las bases que ya existen necesitan una migración que reconstruya la
-tabla. Para `comandos_pc.tipo`, `movimientos_saldo_miembro.tipo` y
+tabla. Para `comandos_pc.tipo`, `movimientos_saldo_miembro.tipo`,
+`eventos_admin_pc.tipo` (desde el 2026-10-19, por el aviso `MANTENIMIENTO`) y
 `ventas.origen` esa migración ya existe y se dispara sola si falta algún valor
 (alcanza con sumarlo a la lista); para los demás, hay que escribirla.
 
@@ -716,7 +717,11 @@ ubicado en la carpeta hermana. Se comunica con el servidor de este repo
 el login de Miembros y cerrar sesiones. `explorer.exe` sigue siendo el
 shell de Windows; el cliente usa pantalla de bloqueo, hook de teclado y
 una tarea programada para volver a arrancar si se cierra. El reemplazo
-del shell no forma parte del diseño actual. Todo pedido del cliente lleva la
+del shell no forma parte del diseño actual. Desde el 2026-10-19 el panel admin
+de cada PC (la "A") ya no cierra el Cliente PC: "Hacer mantenimiento (15 min)"
+deja la PC libre con el programa abierto y avisa `MANTENIMIENTO`, que se ve en
+Actividad reciente pero NO marca la PC como sin cliente (sigue preguntando su
+estado). `CIERRE_CLIENTE` solo llega de PCs sin actualizar. Todo pedido del cliente lleva la
 clave fija de los Clientes PC (ver "Qué no cambiar sin que el dueño lo pida
 explícitamente"). El README de `CLIENTE PC/` contiene las instrucciones
 vigentes de instalación y recuperación.
@@ -750,7 +755,7 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-851 pruebas al 2026-10-19 (la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+857 pruebas al 2026-10-19 (el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

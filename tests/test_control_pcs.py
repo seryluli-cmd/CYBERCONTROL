@@ -1184,6 +1184,68 @@ class TestMigracionCheckTipoEnComandosPc(BaseConBaseTemporal):
             )
 
 
+class TestMigracionCheckTipoEnEventosAdminPc(BaseConBaseTemporal):
+    """database._migrar_check_tipo_en_eventos_admin_pc: la base del local se creó antes
+    de que existiera el aviso MANTENIMIENTO (2026-10-19) y tiene el CHECK viejo."""
+
+    def _dejar_la_tabla_como_en_una_base_vieja(self, conexion):
+        conexion.execute("DROP TABLE eventos_admin_pc")
+        conexion.execute(database._sql_tabla_eventos_admin_pc(database._TIPOS_EVENTO_ADMIN_PC_ORIGINALES))
+        conexion.execute("CREATE INDEX idx_eventos_admin_pc_fecha ON eventos_admin_pc(fecha_hora)")
+
+    def _insertar(self, conexion, estacion_id, tipo, segundos=None):
+        return conexion.execute(
+            "INSERT INTO eventos_admin_pc (estacion_id, fecha_hora, tipo, segundos_sin_cliente) VALUES (?, ?, ?, ?)",
+            (estacion_id, "2026-10-19T10:00:00", tipo, segundos),
+        ).lastrowid
+
+    def test_agrega_mantenimiento_sin_perder_el_historial(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+
+        with database.conexion_db() as conexion:
+            self._dejar_la_tabla_como_en_una_base_vieja(conexion)
+            cierre_id = self._insertar(conexion, estacion_id, "CIERRE_CLIENTE")
+            regreso_id = self._insertar(conexion, estacion_id, "CLIENTE_REANUDADO", 125)
+            # El CHECK viejo rechaza el aviso nuevo: es lo que pasaba en la base del local.
+            with self.assertRaises(sqlite3.IntegrityError):
+                self._insertar(conexion, estacion_id, "MANTENIMIENTO")
+
+            database._migrar_check_tipo_en_eventos_admin_pc(conexion)
+
+            filas = {fila["id"]: fila for fila in conexion.execute("SELECT * FROM eventos_admin_pc")}
+            self.assertEqual(filas[cierre_id]["tipo"], "CIERRE_CLIENTE")
+            self.assertEqual((filas[regreso_id]["tipo"], filas[regreso_id]["segundos_sin_cliente"]),
+                             ("CLIENTE_REANUDADO", 125))
+            self._insertar(conexion, estacion_id, "MANTENIMIENTO")
+
+    def test_correrla_de_nuevo_no_hace_nada(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        accesos_admin_pc_repo.registrar_evento(estacion_id, "ACCESO")
+
+        with database.conexion_db() as conexion:
+            database._migrar_check_tipo_en_eventos_admin_pc(conexion)
+            database._migrar_check_tipo_en_eventos_admin_pc(conexion)
+
+        self.assertEqual([e["tipo"] for e in accesos_admin_pc_repo.listar_eventos("2000-01-01", "2100-01-01")],
+                         ["ACCESO"])
+
+    def test_al_arrancar_el_programa_se_migra_y_el_indice_queda_en_la_tabla_nueva(self):
+        estacion_id = pcs_repo.crear_estacion("PC 1")
+        with database.conexion_db() as conexion:
+            self._dejar_la_tabla_como_en_una_base_vieja(conexion)
+            self._insertar(conexion, estacion_id, "ACCESO")
+
+        database.inicializar_base_de_datos()
+
+        with database.conexion_db() as conexion:
+            indices = conexion.execute(
+                "SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = 'idx_eventos_admin_pc_fecha'"
+            ).fetchall()
+            self.assertEqual([fila["tbl_name"] for fila in indices], ["eventos_admin_pc"])
+            self.assertEqual(conexion.execute("SELECT COUNT(*) AS n FROM eventos_admin_pc").fetchone()["n"], 1)
+        accesos_admin_pc_repo.registrar_evento(estacion_id, "MANTENIMIENTO")
+
+
 class TestClientesRepo(BaseConBaseTemporal):
     def test_la_clave_de_conexion_se_reconoce_por_su_huella(self):
         huella_de_prueba = clientes_repo.huella_de_clave("clave-de-prueba")
@@ -1573,6 +1635,26 @@ class TestAccesosAdminPc(BaseConBaseTemporal):
         self.assertEqual(eventos[0]["evento_admin"], "CIERRE_CLIENTE")
         self.assertEqual(eventos[0]["estacion_nombre"], "PC 12")
 
+    def test_el_mantenimiento_se_anota_y_se_ve_pero_no_marca_la_pc_como_sin_cliente(self):
+        # El Cliente PC sigue abierto, contando sus 15 minutos (CLIENTE PC/mantenimiento.py):
+        # la PC sigue preguntando su estado y la grilla no tiene que mostrarla "sin bloqueo"
+        # ni esperar un regreso.
+        self._registrar("ACCESO", datetime(2026, 1, 5, 10, 0, 0))
+        self._registrar("MANTENIMIENTO", datetime(2026, 1, 5, 10, 0, 5))
+
+        self.assertEqual(self._tipos(), ["ACCESO", "MANTENIMIENTO"])
+        self.assertIsNone(self._estado_a(datetime(2026, 1, 5, 10, 5, 0))["cliente_cerrado_admin_desde"])
+        self.assertFalse(self._regreso(datetime(2026, 1, 5, 10, 5, 0)))
+        (ultimo,) = [e for e in pcs_repo.actividad_reciente()
+                     if e["tipo"] == "ADMIN_PC" and e["evento_admin"] == "MANTENIMIENTO"]
+        self.assertEqual(dominio.NOMBRE_EVENTO_ADMIN_PC[ultimo["evento_admin"]],
+                         "Mantenimiento: 15 min sin bloqueo (después se bloquea sola)")
+
+    def test_cada_aviso_tiene_su_nombre_para_la_pantalla(self):
+        # Actividad reciente y la pestaña de accesos buscan el texto en este diccionario:
+        # un tipo sin nombre rompería la pantalla al mostrarlo.
+        self.assertEqual(set(dominio.NOMBRE_EVENTO_ADMIN_PC), set(dominio.EVENTOS_ADMIN_PC))
+
 
 class TestServidorRedEventoAdmin(_ConServidorRed):
     """POST /evento_admin y el aviso de regreso en GET /estado."""
@@ -1595,6 +1677,14 @@ class TestServidorRedEventoAdmin(_ConServidorRed):
     def test_segundos_atras_es_opcional(self):
         status, _ = self._post("/evento_admin", {"estacion": "PC 12", "tipo": "ACCESO"})
         self.assertEqual(status, 200)
+
+    def test_el_aviso_de_mantenimiento_se_acepta_y_no_deja_la_pc_sin_cliente(self):
+        status, datos = self._post("/evento_admin", {"estacion": "PC 12", "tipo": "MANTENIMIENTO", "segundos_atras": 0})
+
+        self.assertEqual(status, 200)
+        self.assertTrue(datos["ok"])
+        self.assertEqual(self._eventos(), ["MANTENIMIENTO"])
+        self.assertIsNone(pcs_repo.obtener_estacion(self.estacion_id)["cliente_cerrado_desde"])
 
     def test_rechaza_el_evento_que_solo_anota_el_servidor_y_los_pedidos_mal_armados(self):
         self.assertEqual(self._post("/evento_admin", {"estacion": "PC 12", "tipo": "CLIENTE_REANUDADO"})[0], 400)

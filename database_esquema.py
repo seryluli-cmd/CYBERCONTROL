@@ -11,14 +11,14 @@ def inicializar_base_de_datos():
     """
     from database import (
         get_connection, _sql_tabla_ventas, _sql_tabla_de_bonos,
-        _sql_tabla_comandos_pc, _sql_tabla_movimientos_saldo_miembro,
+        _sql_tabla_comandos_pc, _sql_tabla_eventos_admin_pc, _sql_tabla_movimientos_saldo_miembro,
         _TIPOS_MOVIMIENTO_SALDO,
         _migrar_columnas_permisos, _migrar_columnas_origen_en_cierres,
         _migrar_columna_ultima_conexion_estaciones, _migrar_columna_ultima_ip_estaciones,
         _migrar_columna_ip_asentada_estaciones,
         _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_columnas_actualizacion_estaciones,
         _migrar_columna_cliente_arranque_estaciones,
-        _migrar_check_tipo_en_comandos_pc,
+        _migrar_check_tipo_en_comandos_pc, _migrar_check_tipo_en_eventos_admin_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_columna_whatsapp_en_miembros,
         _migrar_columna_desde_ip_en_sesiones,
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
@@ -341,15 +341,11 @@ def inicializar_base_de_datos():
     # dueño quería enterarse cuándo pasa y cuánto dura. Nada se borra
     # (regla 7 de CLAUDE.md). "segundos_sin_cliente" solo se llena en
     # CLIENTE_REANUDADO: cuánto estuvo la PC sin Cliente PC.
-    cursor.execute(f"""
-        CREATE TABLE IF NOT EXISTS eventos_admin_pc (
-            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-            estacion_id          INTEGER NOT NULL REFERENCES estaciones(id),
-            fecha_hora           TEXT NOT NULL,
-            tipo                 TEXT NOT NULL CHECK (tipo IN ({_valores_sql(dominio.EVENTOS_ADMIN_PC)})),
-            segundos_sin_cliente INTEGER
-        )
-    """)
+    # (El SQL está en database_migraciones._sql_tabla_eventos_admin_pc: la migración
+    # de abajo la reconstruye cuando se suma un tipo, como MANTENIMIENTO el 2026-10-19.)
+    cursor.execute(_sql_tabla_eventos_admin_pc(dominio.EVENTOS_ADMIN_PC, si_no_existe=True))
+    # Antes del índice: reconstruir la tabla borra los que tenía.
+    _migrar_check_tipo_en_eventos_admin_pc(conexion)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_eventos_admin_pc_fecha ON eventos_admin_pc(fecha_hora)")
     # Cada vez que una PC con sesión dejó de dar noticias (la alerta "SIN
     # CLIENTE" que titila) y volvió sola: cuándo volvió, cuánto estuvo sin

@@ -398,6 +398,50 @@ def _migrar_check_tipo_en_comandos_pc(conexion: sqlite3.Connection):
     )
 
 
+# Tipos que admitía el CHECK de eventos_admin_pc.tipo antes de que se sumara
+# MANTENIMIENTO (2026-10-19, ver dominio.EVENTOS_ADMIN_PC).
+_TIPOS_EVENTO_ADMIN_PC_ORIGINALES = ("ACCESO", "CIERRE_CLIENTE", "RECONFIGURAR", "CLIENTE_REANUDADO")
+_COLUMNAS_EVENTOS_ADMIN_PC = ("id", "estacion_id", "fecha_hora", "tipo", "segundos_sin_cliente")
+
+
+def _sql_tabla_eventos_admin_pc(tipos: tuple, si_no_existe: bool = False) -> str:
+    """
+    El CREATE TABLE de eventos_admin_pc, escrito una sola vez (mismo esquema que
+    _sql_tabla_comandos_pc): lo usa inicializar_base_de_datos() con todos los
+    dominio.EVENTOS_ADMIN_PC y la migración de abajo para reconstruir la tabla.
+    Los tests usan los tipos originales para simular una base vieja.
+    """
+    existe = "IF NOT EXISTS " if si_no_existe else ""
+    return f"""
+        CREATE TABLE {existe}eventos_admin_pc (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id          INTEGER NOT NULL REFERENCES estaciones(id),
+            fecha_hora           TEXT NOT NULL,
+            tipo                 TEXT NOT NULL CHECK (tipo IN ({_valores_sql(tipos)})),
+            segundos_sin_cliente INTEGER
+        )
+    """
+
+
+def _migrar_check_tipo_en_eventos_admin_pc(conexion: sqlite3.Connection):
+    """
+    Agrega MANTENIMIENTO (el "Hacer mantenimiento (15 min)" del panel admin de
+    los Clientes PC, pedido del dueño 2026-10-19) a los tipos válidos de
+    eventos_admin_pc.tipo. Sin esto, el aviso de una PC que entra en
+    mantenimiento fallaba al grabarse con "CHECK constraint failed" en la base
+    del local (creada antes de que existiera).
+
+    Reconstruye la tabla (ver _reconstruir_tabla) conservando todo el historial
+    de accesos. Como la de comandos_pc, mira TODOS los dominio.EVENTOS_ADMIN_PC:
+    un aviso nuevo el día de mañana se suma solo con agregarlo ahí.
+    """
+    _reconstruir_tabla(
+        conexion, "eventos_admin_pc", _COLUMNAS_EVENTOS_ADMIN_PC,
+        ya_esta_al_dia=_admite_todos_los_tipos(dominio.EVENTOS_ADMIN_PC),
+        sql_tabla_nueva=lambda sql: _sql_tabla_eventos_admin_pc(dominio.EVENTOS_ADMIN_PC),
+    )
+
+
 # --- el resto de las migraciones ---
 
 def _migrar_borrar_clave_vieja_de_clientes_pc(conexion: sqlite3.Connection):

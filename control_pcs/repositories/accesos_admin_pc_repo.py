@@ -9,10 +9,13 @@ y dejar esa PC SIN bloqueo -- queda usable por cualquiera, gratis, hasta
 que el Cliente PC vuelva a arrancar. Es lo que hace un empleado de
 mantenimiento a propósito para trabajar en una PC, pero también es la
 forma de dejarla abierta horas para jugar. El dueño quería enterarse
-cuándo pasa y cuánto dura, así que el Cliente PC avisa tres cosas
-(`POST /evento_admin`, ver servidor_red.py): entró al panel, cerró el
-Cliente PC, o abrió la reconfiguración. La contraseña admin es una sola
-para todos, así que esto dice QUÉ PC y CUÁNDO, no QUIÉN.
+cuándo pasa y cuánto dura, así que el Cliente PC avisa (`POST /evento_admin`,
+ver servidor_red.py): entró al panel, cerró el Cliente PC, abrió la
+reconfiguración o puso la PC en mantenimiento. Desde el 2026-10-19 el Cliente PC
+nuevo ya no se cierra desde el panel: "Hacer mantenimiento" deja la PC libre 15
+minutos con el programa abierto y después se bloquea sola, así que ese aviso no
+marca la PC como sin Cliente PC. La contraseña admin es una sola para todos, así
+que esto dice QUÉ PC y CUÁNDO, no QUIÉN.
 
 El cuarto evento, CLIENTE_REANUDADO, lo anota el servidor solo: la
 primera vez que una PC que había quedado sin Cliente PC vuelve a preguntar
