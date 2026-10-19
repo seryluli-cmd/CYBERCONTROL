@@ -43,6 +43,9 @@ GET /estado?estacion=<nombre>
     - La PC cuenta, como parámetros de la misma consulta, su versión, su carpeta y
       cómo va su actualización (`version`, `carpeta`, `act`, `act_detalle`; un
       Cliente PC viejo no los manda): ver actualizacion_cliente_repo.registrar_reporte.
+    - Y su pulso (`arranque`, `fallas`, `sin_ok`, `encendida`; tampoco los manda un
+      Cliente PC viejo): si la PC estaba titilando "SIN CLIENTE", con eso se anota
+      por qué se cortó (cortes_pc_repo.registrar_si_volvio_de_un_corte).
 
 GET /cliente_pc
     El manifiesto firmado de la versión del Cliente PC cargada, como JSON:
@@ -120,8 +123,8 @@ import dominio
 from admin_remoto import servidor as admin_remoto_servidor
 from errores import registrar_error
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, filtro_palabras_repo,
-    fondo_repo, miembros_repo, pcs_repo,
+    accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, cortes_pc_repo,
+    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -245,6 +248,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         cuerpo = _estado_a_json(item)
         if item is not None:
+            pulso = cortes_pc_repo.leer_pulso(parametros)
             try:
                 # Que haya llegado hasta acá (autorizado, estación
                 # conocida) ya prueba que el Cliente PC está prendido y con
@@ -254,9 +258,16 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 # dato que mande el Cliente PC) queda guardada como
                 # estaciones.ultima_ip, y como ip_asentada si es el primer
                 # enlace de esa estación.
-                pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0])
+                pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0], pulso["arranque"])
             except Exception as error:
                 registrar_error(error, "Servidor de red: registrar conexión de PC")
+            try:
+                # Si esta PC estaba titilando "SIN CLIENTE", acaba de volver: se anota
+                # cuánto estuvo sin noticias y por qué. `item` es de ANTES de esta
+                # consulta, así que da igual que la de arriba ya la haya anotado.
+                cortes_pc_repo.registrar_si_volvio_de_un_corte(item, pulso)
+            except Exception as error:
+                registrar_error(error, "Servidor de red: registrar un corte de PC")
             if item["estacion"]["cliente_cerrado_desde"] is not None:
                 # Esta PC había quedado sin Cliente PC (alguien lo cerró
                 # desde el panel admin) y acaba de volver: se anota cuánto

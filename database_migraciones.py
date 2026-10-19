@@ -116,6 +116,19 @@ def _migrar_columnas_actualizacion_estaciones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columna_cliente_arranque_estaciones(conexion: sqlite3.Connection):
+    """
+    Agrega estaciones.cliente_arranque (pedido del dueño, 2026-10-19): el
+    `arranque` que mandó el Cliente PC de esa estación en su última consulta, o
+    sea qué programa abierto era (ver CLIENTE PC/pulso.py). Si el que llega
+    después de un corte es otro, el Cliente PC se cerró y se volvió a abrir
+    (ver cortes_pc_repo). Arranca vacía: cada PC la completa en su próxima
+    consulta; un Cliente PC viejo no la manda y queda vacía.
+    """
+    _agregar_columna_si_falta(conexion, "estaciones", "cliente_arranque", "TEXT")
+    conexion.commit()
+
+
 def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     """
     Para una base creada antes de que existiera "Miembros": agrega

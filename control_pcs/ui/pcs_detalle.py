@@ -16,10 +16,12 @@ from PySide6.QtCore import Qt, QTimer
 
 import dominio
 from control_pcs.repositories import miembros_repo, pcs_repo, pcstream_repo, playstation_repo
+from control_pcs.ui.pcs_cortes import texto_para_el_panel
 from ui.dialogo_pago import cobrar
 from ui.utils import (
     aplicar_clase, confirmar, encadenar_enter, fila_guardar_cancelar, formato_pesos,
-    formato_tiempo, manejar_errores, mostrar_error, mostrar_info, sin_boton_por_defecto,
+    formato_tiempo, formato_transcurrido, manejar_errores, mostrar_error, mostrar_info,
+    sin_boton_por_defecto,
 )
 
 
@@ -273,6 +275,13 @@ class PanelDetalleEstacion(QFrame):
                 texto = f"▶ Activa — {formato_tiempo(item['segundos_restantes'])} restantes ({quien})."
                 if item["esperando_cliente"]:
                     texto += "\n⏳ El tiempo ya corre; la PC lo toma sola cuando el cliente la prenda."
+                elif (not item["enlazada"] and item["ultima_conexion"] is not None
+                      and item["cliente_cerrado_admin_desde"] is None):
+                    # La alerta "SIN CLIENTE": mientras dura no se sabe la causa (no llega nada).
+                    texto += (f"\n🚨 Sin noticias de esta PC hace {formato_transcurrido(item['ultima_conexion'])}. "
+                              "Cuando vuelva, acá dice por qué se cortó.")
+                if item["cortes"]:
+                    texto += "\n" + texto_para_el_panel(item["cortes"])
                 self.etiqueta_estado.setText(texto)
             lista, puede = self._lista_del_equipo(item), True
 

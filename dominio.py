@@ -207,6 +207,44 @@ NOMBRE_EVENTO_ADMIN_PC = {
 }
 
 
+# --------------------------------------------------------------------
+# Cortes de las PCs (alerta "SIN CLIENTE" que se apagó sola)
+# --------------------------------------------------------------------
+# Por qué una PC con sesión dejó de dar noticias un rato y volvió sola (pedido
+# del dueño, 2026-10-19). Lo decide el servidor cuando la PC vuelve, con lo que
+# cuenta su Cliente PC: ver control_pcs/repositories/cortes_pc_repo.py. No viaja
+# por la red: el Cliente PC manda datos, no la causa.
+CORTE_RED = "RED"
+CORTE_CLIENTE_REABIERTO = "CLIENTE_REABIERTO"
+CORTE_PC_REINICIADA = "PC_REINICIADA"
+CORTE_CLIENTE_TRABADO = "CLIENTE_TRABADO"
+CORTE_MOSTRADOR = "MOSTRADOR"
+CORTE_SIN_DATOS = "SIN_DATOS"
+
+CAUSAS_CORTE_PC = (
+    CORTE_RED, CORTE_CLIENTE_REABIERTO, CORTE_PC_REINICIADA, CORTE_CLIENTE_TRABADO, CORTE_MOSTRADOR,
+    CORTE_SIN_DATOS,
+)
+
+NOMBRE_CAUSA_CORTE_PC = {
+    CORTE_RED: "se cortó la comunicación con el mostrador (red)",
+    CORTE_CLIENTE_REABIERTO: "el Cliente PC se cerró y se volvió a abrir",
+    CORTE_PC_REINICIADA: "la PC se reinició",
+    CORTE_CLIENTE_TRABADO: "el Cliente PC se trabó o la PC se suspendió",
+    CORTE_MOSTRADOR: "la PC tuvo respuesta pero el mostrador no la anotó",
+    CORTE_SIN_DATOS: "no se sabe (el Cliente PC de esa PC es una versión vieja)",
+}
+# Para la cuenta de cortes de una sesión ("red ×2, PC reiniciada"), donde no entra la frase.
+NOMBRE_CORTO_CAUSA_CORTE_PC = {
+    CORTE_RED: "red",
+    CORTE_CLIENTE_REABIERTO: "Cliente PC reabierto",
+    CORTE_PC_REINICIADA: "PC reiniciada",
+    CORTE_CLIENTE_TRABADO: "Cliente PC trabado",
+    CORTE_MOSTRADOR: "mostrador",
+    CORTE_SIN_DATOS: "sin datos",
+}
+
+
 def pagos_netos_de_vuelto(pagos: list, vuelto: float) -> list:
     """
     Descuenta el vuelto de los pagos en Efectivo antes de que se graben en

@@ -17,6 +17,7 @@ def inicializar_base_de_datos():
         _migrar_columna_ultima_conexion_estaciones, _migrar_columna_ultima_ip_estaciones,
         _migrar_columna_ip_asentada_estaciones,
         _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_columnas_actualizacion_estaciones,
+        _migrar_columna_cliente_arranque_estaciones,
         _migrar_check_tipo_en_comandos_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_columna_whatsapp_en_miembros,
         _migrar_columna_desde_ip_en_sesiones,
@@ -298,6 +299,7 @@ def inicializar_base_de_datos():
     _migrar_columna_ip_asentada_estaciones(conexion)
     _migrar_columna_cliente_cerrado_desde_estaciones(conexion)
     _migrar_columnas_actualizacion_estaciones(conexion)
+    _migrar_columna_cliente_arranque_estaciones(conexion)
     cursor.execute(_sql_tabla_de_bonos("bonos_tiempo"))
 
     # Una fila por uso continuo de una estación. Al vender un bono a una
@@ -349,6 +351,26 @@ def inicializar_base_de_datos():
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_eventos_admin_pc_fecha ON eventos_admin_pc(fecha_hora)")
+    # Cada vez que una PC con sesión dejó de dar noticias (la alerta "SIN
+    # CLIENTE" que titila) y volvió sola: cuándo volvió, cuánto estuvo sin
+    # noticias y por qué (ver control_pcs/repositories/cortes_pc_repo.py).
+    # "fallas" es cuántas consultas le fallaron a la PC en el medio, según ella
+    # (NULL = no lo dijo: Cliente PC viejo). Nada se borra (regla 7). Índice por
+    # fecha para "Actividad reciente"; por sesión, para la cuenta de cortes de
+    # la sesión en curso que muestra el panel de cada PC.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS cortes_pc (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id          INTEGER NOT NULL REFERENCES estaciones(id),
+            sesion_id            INTEGER REFERENCES sesiones_pc(id),
+            fecha_hora           TEXT NOT NULL,
+            segundos             INTEGER NOT NULL,
+            causa                TEXT NOT NULL CHECK (causa IN ({_valores_sql(dominio.CAUSAS_CORTE_PC)})),
+            fallas               INTEGER
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cortes_pc_fecha ON cortes_pc(fecha_hora)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cortes_pc_sesion ON cortes_pc(sesion_id)")
     # Cada página que cerró el filtro de palabras de una PC cliente (ver
     # control_pcs/repositories/filtro_palabras_repo.py): qué palabra encontró y en
     # qué título. Nada se borra (regla 7). El índice por fecha es porque

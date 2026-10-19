@@ -357,6 +357,7 @@ from database_migraciones import (
     _migrar_columna_ip_asentada_estaciones,
     _migrar_columna_cliente_cerrado_desde_estaciones,
     _migrar_columnas_actualizacion_estaciones,
+    _migrar_columna_cliente_arranque_estaciones,
     _migrar_columna_miembro_en_sesiones,
     _migrar_columna_whatsapp_en_miembros,
     _migrar_columna_desde_ip_en_sesiones,

@@ -53,6 +53,7 @@ from control_pcs.ui.pcs_comandos_dialogos import (
 )
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
 from control_pcs.ui.pcs_actividad import PanelActividad
+from control_pcs.ui.pcs_cortes import resumen_de_cortes
 from control_pcs.ui.pcs_detalle import PanelDetalleEstacion, es_playstation
 from control_pcs.ui.pcs_mosaico import (
     MosaicoDeEquipos, LeyendaDeColores, Ficha,
@@ -280,6 +281,9 @@ class PanelControlPcs(QWidget):
             texto_alerta = "SIN CLIENTE (revisar)"
             if item["cliente_cerrado_admin_desde"] is not None:
                 texto_alerta = f"SIN CLIENTE (cerrado por admin hace {formato_transcurrido(item['cliente_cerrado_admin_desde'])})"
+            elif item["ultima_conexion"] is not None:
+                # Por qué, recién se sabe cuando vuelve (ver cortes_pc_repo).
+                texto_alerta = f"SIN CLIENTE hace {formato_transcurrido(item['ultima_conexion'])} (revisar)"
             icono, texto_estado, color = "🚨", texto_alerta, COLOR_ALERTA_SESION_SIN_CLIENTE
             en_alerta, dibujo, aviso = True, DIBUJO_ALERTA, "SIN CLIENTE"
         elif sesion is not None:
@@ -300,10 +304,15 @@ class PanelControlPcs(QWidget):
         if not aviso and dibujo == DIBUJO_SOCIO:
             aviso = quien_texto  # el nombre del socio, si no hay nada más urgente que avisar
 
+        estado = f"{icono} {texto_estado}"
+        if item["cortes"]:
+            # Solo en el cartelito: el monitor dibujado no cambia (el detalle, en el panel).
+            estado += f"\n⚠ {resumen_de_cortes(item['cortes'])}"
+
         return Ficha(
             clave=_clave_de_item(item),
             nombre=estacion["nombre"],
-            estado=f"{icono} {texto_estado}",
+            estado=estado,
             restante=restante_texto,
             quien=quien_texto,
             color=color,

@@ -220,6 +220,7 @@ abra no alcanza si los tests no pasan.
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `filtro_palabras_repo.obtener()` · `.guardar(...)` · `.registrar_bloqueo(...)` | se lee y se cambia el filtro de palabras de las PCs ("protección antiporno", pedido del dueño 2026-10-17: prendido, lista y mensaje, como JSON en `configuracion`; su versión viaja en `GET /estado` como `filtro_version`) y se anota cada página que cerró una PC (`bloqueos_filtro_pc`). Buscar las palabras en los títulos es tarea de cada Cliente PC (`CLIENTE PC/filtro_palabras.py`), no de este repo |
 | `actualizacion_cliente_repo.publicar(datos)` · `.version_para_estacion(id)` · `.registrar_reporte(id, parametros)` · `.estado_de_las_pcs()` | se carga y FIRMA una versión del Cliente PC (`data/cliente_pc/`), se decide qué versión le toca a cada PC (las de prueba o todas; viaja en `GET /estado` como `cliente_version`), se guarda lo que cuenta cada PC (versión, carpeta, cómo va) y se arma lo que muestra "Actualizar el Cliente PC de las PCs..." (pedido del dueño, 2026-10-18) |
+| `cortes_pc_repo.leer_pulso(parametros)` · `.causa_del_corte(...)` · `.registrar_si_volvio_de_un_corte(item, pulso)` | se decide POR QUÉ una PC en uso titiló "SIN CLIENTE" y volvió sola (pedido del dueño, 2026-10-19): red, Cliente PC reabierto, PC reiniciada, Cliente PC trabado, mostrador que no anotó, o sin datos (Cliente PC viejo). Se sabe cuando la PC vuelve, con el pulso que manda en cada `GET /estado` (`CLIENTE PC/pulso.py`); se anota en `cortes_pc` y se ve en Actividad reciente, en el panel de la PC y en el cartelito de su monitor (`control_pcs/ui/pcs_cortes.py`) |
 | `congelado_repo.pedir(estacion_ids, tipo, clave, discos)` · `.esta_ocupada(item)` · `.interpretar_respuesta(texto)` | se manda congelar, descongelar o ver cómo está Shadow Defender en las PCs (pedido del dueño, 2026-10-18; clic derecho en una PC, solo Admin): con la clave de Shadow Defender, que no se guarda; nunca a una PC con cliente (descongelar no manda nada si se eligió alguna; congelar y ver cómo está la saltean y la ventana lo avisa en su renglón, `.texto_salteada()`). Lo hace cada Cliente PC con CmdTool.exe (`CLIENTE PC/shadow_defender.py`) |
 | `admin_remoto_repo.esta_activo()` · `.activar(...)` · `.entrar(nombre, clave, ip)` · `.exigir_admin_habilitado(id)` | se decide quién administra desde otra PC del local: viene apagado, solo un ADMIN activo, cada ingreso en `sesiones.desde_ip` (pedido del dueño, 2026-10-18) |
 | `admin_remoto.lista_blanca.FUNCIONES` · `.ACTOR` · `.huella()` | qué funciones de los repos se pueden pedir desde otra PC, qué parámetro es "quién lo hizo" (lo completa el mostrador) y la huella que tienen que compartir las dos copias del .exe |
@@ -385,7 +386,9 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   bono, de cualquiera de los dos catálogos, es exclusivo de ADMIN desde
   "Configuración ADMIN" (`ui/main_window.ConfiguracionAdminWindow` —
   pedido explícito del dueño, 2026-09-28: editar el catálogo es tarea de
-  super admin; *usar* un bono ya creado sigue delegable con
+  super admin; *usar* un bono ya creado (cargarle saldo a un socio con
+  "Bono fijo") abre para cualquier operador desde "Miembros", pedido del
+  dueño 2026-10-19; el de la PlayStation 5 sigue pidiendo
   `permiso_control_pcs`). No fusionar estos catálogos "para simplificar":
   son dos negocios distintos con reglas de negocio propias, aunque ahora
   compartan el mismo nivel de permiso para editarlos.
@@ -512,6 +515,12 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   estación aún no se conectó desde que arrancó el bono, muestra "Esperando al
   cliente"; si se desconecta después de estar enlazada, avisa "SIN CLIENTE".
   `pcs_repo._estado_para_estacion` decide esto para la grilla y para el Cliente PC.
+  "Desconectada" es más de `UMBRAL_ENLACE_SEGUNDOS` (30 s desde el 2026-10-19;
+  antes 15, y 2 o 3 consultas perdidas hacían titilar una PC sana). El corte se
+  anota recién cuando la PC vuelve (`cortes_pc_repo`), con el estado de ANTES de
+  esa consulta: `registrar_conexion` y el corte usan el mismo `item`, así que el
+  orden entre los dos no importa. Un corte que empezó antes de abrir el programa
+  no se anota: con el mostrador cerrado se quedan sin noticias todas las PCs.
 - **Lo que corre en cada refresco de la pantalla de PCs (cada 5 s) no puede leer
   todo el historial.** `pcs_repo.estado_estaciones` y el panel "Actividad reciente"
   (`actividad_repo.actividad_reciente`, con `playstation_repo.eventos_recientes`)
@@ -711,15 +720,6 @@ Estos puntos todavía no están construidos:
 - **Reportes específicos de PCs** (ej. "horas vendidas por día"). Se
   puede sumar reutilizando `sesion_bonos`, no hace falta tocar el
   esquema.
-- **Separar "Cargar Saldo" de Miembros de la gestión completa de
-  socios.** Hoy vive dentro de "Miembros" (botón propio de la barra
-  superior, permiso `permiso_control_pcs`), aunque cargar saldo es una
-  venta como cualquier otra. Editar la tarifa y el catálogo de Bonos de
-  Socios ya quedó exclusivo de ADMIN desde "Configuración ADMIN"
-  (2026-09-28) — lo que falta, si en algún momento se quiere, es un
-  permiso aparte para que un empleado común pueda cobrarle saldo a un
-  socio sin tener acceso a dar de alta/baja Miembros — decisión
-  consciente de no hacerlo hasta que el dueño lo pida.
 
 ---
 
@@ -742,10 +742,10 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-813 pruebas al 2026-10-19 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+843 pruebas al 2026-10-19 (con los cortes de las PCs, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 
-La barra muestra los mismos botones a todos (pedido del dueño 2026-10-19: con solo los suyos la de una empleada quedaba muy vacía). Los que alguien no tiene habilitados (Miembros, Admin Kiosko) se ven igual pero no hacen nada al apretarlos: no se apagan con `setEnabled(False)` porque se verían grises. Config ADMIN la abre cualquiera, pero un Operador solo usa Gestionar Estaciones y ve el resto en gris (`ConfiguracionAdminWindow`, mismo día). Adentro, el Operador usa todo (estaciones, IP, fondo, filtro de palabras) menos "Cambiar contraseña de PC clientes" y "Actualizar el Cliente PC", que ve en gris (`DialogoGestionEstaciones` recibe el `usuario`; lo decidió el dueño el mismo día). Ese bloqueo es solo de pantalla: `clientes_repo` y `actualizacion_cliente_repo` no exigen Admin. Lo cuida `tests/test_barra_para_todos.py`.
+La barra muestra los mismos botones a todos (pedido del dueño 2026-10-19: con solo los suyos la de una empleada quedaba muy vacía). El que alguien no tiene habilitado (Admin Kiosko) se ve igual pero no hace nada al apretarlo: no se apaga con `setEnabled(False)` porque se vería gris. Miembros abre para cualquier operador logueado (mismo día: antes pedía `permiso_control_pcs` o Admin, pero cargarle saldo a un socio tiene que poder hacerlo cualquiera). Config ADMIN la abre cualquiera, pero un Operador solo usa Gestionar Estaciones y ve el resto en gris (`ConfiguracionAdminWindow`, mismo día). Adentro, el Operador usa todo (estaciones, IP, fondo, filtro de palabras) menos "Cambiar contraseña de PC clientes" y "Actualizar el Cliente PC", que ve en gris (`DialogoGestionEstaciones` recibe el `usuario`; lo decidió el dueño el mismo día). Ese bloqueo es solo de pantalla: `clientes_repo` y `actualizacion_cliente_repo` no exigen Admin. Lo cuida `tests/test_barra_para_todos.py`.
 
 El panel del costado de Control de PCs (`#panelDetalle`, los bonos y Cobrar) es gris medio (pedido del dueño 2026-10-19, eligió esta entre cinco maquetas). Sus reglas en `main.py` van con `>` (solo hijos directos del panel y de `#contenedorBonos`) a propósito: el cobro, el login del socio y los avisos se abren con el panel como padre, y con un selector común quedarían con letras claras sobre su fondo claro (lo cuida `test_estilo_ui`).

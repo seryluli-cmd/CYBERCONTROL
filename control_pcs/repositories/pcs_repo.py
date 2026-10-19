@@ -37,7 +37,7 @@ from datetime import datetime
 import dominio
 from database import conexion_db
 from repositories import ventas_repo
-from control_pcs.repositories import pcstream_repo
+from control_pcs.repositories import cortes_pc_repo, pcstream_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 from control_pcs.repositories.actividad_repo import actividad_reciente
 from control_pcs.repositories.reintegros_repo import reintegros_por_miembro
@@ -46,8 +46,12 @@ from control_pcs.repositories.reintegros_repo import reintegros_por_miembro
 # control_pcs/ui/pcs_window.py) para darle margen de red antes de
 # considerar "sin conexión" a una estación que en realidad sigue
 # prendida -- se resetea a "enlazada" en su próxima consulta, sin
-# necesitar que nadie la reinicie a mano.
-UMBRAL_ENLACE_SEGUNDOS = 15
+# necesitar que nadie la reinicie a mano. Era 15 s hasta el 2026-10-19:
+# con una consulta cada 5 s y 3 s de espera, alcanzaban 2 o 3 consultas
+# perdidas para que una PC en uso titilara "SIN CLIENTE" (pedido del dueño:
+# que un corte cortito de red no dispare la alerta). Un Cliente PC cerrado
+# se sigue viendo, 15 s más tarde. Por qué se cortó: cortes_pc_repo.
+UMBRAL_ENLACE_SEGUNDOS = 30
 
 
 # ---------------------------------------------------------------------
@@ -130,7 +134,7 @@ def desactivar_estacion(estacion_id: int):
         conexion.execute("UPDATE estaciones SET activa = 0 WHERE id = ?", (estacion_id,))
 
 
-def registrar_conexion(estacion_id: int, ip: str = None):
+def registrar_conexion(estacion_id: int, ip: str = None, arranque: str = None):
     """
     Deja constancia de que el Cliente PC de esa estación acaba de preguntar
     su estado (GET /estado en servidor_red.py) -- es la única señal que
@@ -146,21 +150,29 @@ def registrar_conexion(estacion_id: int, ip: str = None):
     que después ya no se pisa sola (ver estado_de_estacion). Puede venir None
     (por ejemplo desde un test que no simula una conexión real); en ese caso
     no se toca ninguna IP.
+
+    `arranque` identifica al Cliente PC abierto que hizo el pedido (ver
+    cortes_pc_repo): se guarda en estaciones.cliente_arranque. Un Cliente PC
+    viejo no lo manda (None) y queda el que había.
     """
     with conexion_db() as conexion:
         if ip:
             conexion.execute(
                 """
                 UPDATE estaciones SET ultima_conexion = ?, ultima_ip = ?,
-                                      ip_asentada = COALESCE(ip_asentada, ?)
+                                      ip_asentada = COALESCE(ip_asentada, ?),
+                                      cliente_arranque = COALESCE(?, cliente_arranque)
                 WHERE id = ?
                 """,
-                (datetime.now().isoformat(timespec="seconds"), ip, ip, estacion_id),
+                (datetime.now().isoformat(timespec="seconds"), ip, ip, arranque, estacion_id),
             )
         else:
             conexion.execute(
-                "UPDATE estaciones SET ultima_conexion = ? WHERE id = ?",
-                (datetime.now().isoformat(timespec="seconds"), estacion_id),
+                """
+                UPDATE estaciones SET ultima_conexion = ?, cliente_arranque = COALESCE(?, cliente_arranque)
+                WHERE id = ?
+                """,
+                (datetime.now().isoformat(timespec="seconds"), arranque, estacion_id),
             )
 
 
@@ -231,6 +243,9 @@ def estado_estaciones():
     UMBRAL_ENLACE_SEGUNDOS o menos. Es la única forma de distinguir una
     estación prendida-pero-libre de una apagada o sin red -- sin sesión
     activa, las dos se ven igual de "sin uso" si no se mira esto.
+
+    Y "cortes": las veces que la PC estuvo en la alerta "SIN CLIENTE" durante
+    la sesión en curso y volvió sola, con la causa (ver cortes_pc_repo).
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
@@ -244,17 +259,21 @@ def estado_estaciones():
             LEFT JOIN miembros ON miembros.id = sesiones_pc.miembro_id
             WHERE sesiones_pc.estado = ?
         """, (dominio.SESION_ACTIVA,)).fetchall()
+        cortes = cortes_pc_repo.cortes_de_sesiones(conexion, [sesion["id"] for sesion in sesiones])
 
     sesiones_por_estacion = {sesion["estacion_id"]: sesion for sesion in sesiones}
 
-    return [
-        _estado_para_estacion(estacion, sesiones_por_estacion.get(estacion["id"]), ahora)
-        for estacion in estaciones
-    ]
+    estados = []
+    for estacion in estaciones:
+        sesion = sesiones_por_estacion.get(estacion["id"])
+        cortes_de_la_sesion = cortes.get(sesion["id"], []) if sesion is not None else []
+        estados.append(_estado_para_estacion(estacion, sesion, ahora, cortes_de_la_sesion))
+    return estados
 
 
-def _estado_para_estacion(estacion, sesion, ahora):
-    """Misma cuenta para la grilla y para la consulta individual de un Cliente PC."""
+def _estado_para_estacion(estacion, sesion, ahora, cortes=()):
+    """Misma cuenta para la grilla y para la consulta individual de un Cliente PC
+    (esa no necesita los cortes: ver estado_de_estacion)."""
     segundos_restantes = None
     if sesion is not None:
         fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
@@ -288,8 +307,11 @@ def _estado_para_estacion(estacion, sesion, ahora):
         "sesion": sesion,
         "segundos_restantes": segundos_restantes,
         "enlazada": enlazada,
+        # La última vez que preguntó su Cliente PC (None = nunca): de cuándo es la última noticia.
+        "ultima_conexion": ultima_conexion,
         "esperando_cliente": esperando_cliente,
         "cliente_cerrado_admin_desde": cliente_cerrado_admin_desde,
+        "cortes": list(cortes),
     }
 
 

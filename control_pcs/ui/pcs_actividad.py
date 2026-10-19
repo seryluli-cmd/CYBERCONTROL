@@ -3,8 +3,9 @@ pcs_actividad.py
 ==================
 El panel de "Actividad reciente" de la parte de abajo de Control de PCs
 (`PanelActividad`): el log de los últimos movimientos -- sesiones y bonos de las
-PCs y de la PlayStation 5, saldo de socios, traslados, accesos de admin y páginas
-que cerró el filtro de palabras. Vive
+PCs y de la PlayStation 5, saldo de socios, traslados, accesos de admin, páginas
+que cerró el filtro de palabras y PCs que titilaron "SIN CLIENTE" y volvieron
+(con la causa, ver pcs_cortes.py). Vive
 aparte de la grilla (pcs_window.py) para que ese archivo no pase de largo.
 """
 
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import QTextEdit
 
 import dominio
 from control_pcs.repositories import pcs_repo
+from control_pcs.ui.pcs_cortes import detalle_del_corte
 from ui.utils import formato_pesos, formato_tiempo
 
 
@@ -50,6 +52,9 @@ def _texto_evento(evento) -> str:
     if tipo == "FILTRO":
         return (f"{hora} — {evento['estacion_nombre']}: el filtro cerró una página con "
                 f"\"{evento['palabra']}\" ({titulo_corto(evento['titulo'])}).")
+    if tipo == "CORTE":
+        return (f"{hora} — {evento['estacion_nombre']}: "
+                f"{detalle_del_corte(evento['causa'], evento['segundos'], evento['fallas'])}.")
     return hora
 
 
