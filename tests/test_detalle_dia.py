@@ -79,6 +79,17 @@ class _UnDiaConDeTodo(BaseConBaseTemporal):
         self.v_tramite = tramites_repo.registrar_tramite(self.lucia_id, tramite, 500.0, _digital(500.0))
         self.v_pc = pcs_repo.asignar_bono(self.pc1, bono_pc, self.lucia_id, _efectivo(3000.0))
         pcs_repo.trasladar_sesion(self.pc1, self.pc2, self.lucia_id)  # después de venderlo
+        with conexion_db() as conexion:
+            # Un minuto después de la venta, como en la vida real (son dos clics de
+            # una persona). El reloj de Windows avanza de a saltos de ~0,5 ms: hechos
+            # uno atrás del otro, la venta y el traslado quedaban la mitad de las veces
+            # con la MISMA hora, el traslado no era "posterior" a la venta y el bono
+            # salía en la PC2 (medido el 2026-10-19: 8 de 15 corridas).
+            vendido = conexion.execute("SELECT fecha FROM ventas WHERE id = ?", (self.v_pc,)).fetchone()["fecha"]
+            conexion.execute(
+                "UPDATE traslados_sesion SET fecha = ?",
+                ((datetime.fromisoformat(vendido) + timedelta(minutes=1)).isoformat(timespec="microseconds"),),
+            )
         self.v_stream = pcs_repo.asignar_bono(self.pcstream, bono_stream, self.lucia_id, _digital(2000.0))
         self.v_ps5 = playstation_repo.vender_bono(self.lucia_id, bono_ps5, _efectivo(1500.0))
         self.v_carga = miembros_repo.cargar_saldo_por_monto(socio, 3000.0, _efectivo(3000.0), self.lucia_id)
