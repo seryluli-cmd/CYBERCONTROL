@@ -3,8 +3,8 @@ tests/test_actualizacion_cliente.py
 =====================================
 Actualizar el Cliente PC de las PCs desde acá (pedido del dueño, 2026-10-18):
 
-- `actualizacion_cliente_repo`: firmar y guardar una versión, a qué PCs va, lo que cuenta cada
-  PC y a cuáles se puede reiniciar.
+- `actualizacion_cliente_repo`: firmar y guardar una versión, a qué PCs va (las que marca el
+  Admin), lo que cuenta cada PC y cómo está cada una (`situacion`, rehecho el 2026-10-19).
 - `servidor_red.py`: `cliente_version` y el reporte en `GET /estado`, `GET /cliente_pc` y
   `GET /cliente_pc/exe` (con el servidor real).
 - La pantalla "Actualizar el Cliente PC de las PCs..." y su botón en Gestionar Estaciones.
@@ -24,7 +24,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -40,7 +40,7 @@ import dominio  # noqa: E402
 import test_control_pcs  # noqa: E402  (solo para reusar el servidor real de _ConServidorRed)
 from base import BaseConBaseTemporal  # noqa: E402
 from control_pcs.repositories import actualizacion_cliente_repo as repo  # noqa: E402
-from control_pcs.repositories import comandos_pc_repo, pcs_repo  # noqa: E402
+from control_pcs.repositories import pcs_repo  # noqa: E402
 from control_pcs.ui import pcs_actualizacion_dialogo, pcs_gestion_dialogos  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
@@ -105,14 +105,14 @@ class TestPublicar(_ConClaveDePrueba):
         self.assertEqual(repo.version_publicada(), segunda)
         self.assertEqual(repo.datos_exe(), exe_de_cliente(b"dos"))
 
-    def test_una_version_nueva_nunca_va_sola_a_todas(self):
-        a, b = pcs_repo.crear_estacion("PC1"), pcs_repo.crear_estacion("PC2")
-        repo.guardar_alcance(True, [a])
+    def test_una_version_nueva_no_va_a_ninguna_hasta_que_se_marquen(self):
+        a = pcs_repo.crear_estacion("PC1")
+        repo.guardar_seleccion([a])
 
         repo.publicar(exe_de_cliente())
 
-        self.assertEqual(repo.obtener_alcance(), {"para_todas": False, "prueba": {a}})
-        self.assertIsNone(repo.version_para_estacion(b))
+        self.assertEqual(repo.obtener_seleccion(), set())
+        self.assertIsNone(repo.version_para_estacion(a))
 
     def test_rechaza_lo_que_no_es_el_cliente_pc(self):
         for datos, texto in ((b"", "no es un programa"), (b"PK zip", "no es un programa"),
@@ -172,16 +172,25 @@ class TestAlcanceYReporte(_ConClaveDePrueba):
         self.pc1, self.pc2 = pcs_repo.crear_estacion("PC1"), pcs_repo.crear_estacion("PC2")
 
     def test_sin_version_cargada_no_le_toca_nada_a_nadie(self):
-        repo.guardar_alcance(True, [self.pc1])
+        repo.guardar_seleccion([self.pc1])
         self.assertIsNone(repo.version_para_estacion(self.pc1))
 
-    def test_le_toca_a_las_de_prueba_o_a_todas(self):
+    def test_le_toca_solo_a_las_marcadas(self):
         version = repo.publicar(exe_de_cliente())["version"]
-        repo.guardar_alcance(False, [self.pc1])
+        repo.guardar_seleccion([self.pc1])
         self.assertEqual((repo.version_para_estacion(self.pc1), repo.version_para_estacion(self.pc2)), (version, None))
 
-        repo.guardar_alcance(True, [self.pc1])
+        repo.guardar_seleccion([self.pc1, self.pc2])
         self.assertEqual((repo.version_para_estacion(self.pc1), repo.version_para_estacion(self.pc2)), (version, version))
+
+        repo.guardar_seleccion([])
+        self.assertIsNone(repo.version_para_estacion(self.pc1))
+
+    def test_lo_que_guardo_la_pantalla_vieja_cuenta_como_marcadas_las_de_prueba(self):
+        with database.conexion_db() as conexion:
+            conexion.execute("INSERT OR REPLACE INTO configuracion (clave, valor) VALUES (?, ?)",
+                             ("actualizacion_cliente_alcance", json.dumps({"para_todas": True, "prueba": [self.pc2]})))
+        self.assertEqual(repo.obtener_seleccion(), {self.pc2})
 
     def estacion(self, estacion_id):
         return pcs_repo.obtener_estacion(estacion_id)
@@ -189,13 +198,18 @@ class TestAlcanceYReporte(_ConClaveDePrueba):
     def test_guarda_lo_que_cuenta_la_pc(self):
         repo.registrar_reporte(self.pc1, {"estacion": "PC1", "version": "20261018193005",
                                           "carpeta": "C:\\Program Files\\AAAAA26\\cliente",
-                                          "act": "descargada", "act_detalle": "Se pone en el próximo reinicio."})
+                                          "act": "descargada", "act_detalle": "Se pone en el próximo reinicio.",
+                                          "act_version": "20261019120000"})
 
         fila = self.estacion(self.pc1)
         self.assertEqual((fila["version_cliente"], fila["carpeta_cliente"], fila["estado_actualizacion"],
-                          fila["detalle_actualizacion"]),
+                          fila["detalle_actualizacion"], fila["version_bajada"]),
                          (20261018193005, "C:\\Program Files\\AAAAA26\\cliente", "descargada",
-                          "Se pone en el próximo reinicio."))
+                          "Se pone en el próximo reinicio.", 20261019120000))
+
+    def test_un_cliente_pc_sin_act_version_deja_la_bajada_sin_dato(self):
+        repo.registrar_reporte(self.pc1, {"version": "1", "carpeta": "C:\\c", "act": "descargada", "act_detalle": ""})
+        self.assertIsNone(self.estacion(self.pc1)["version_bajada"])
 
     def test_un_cliente_pc_viejo_no_manda_nada_y_no_se_toca_nada(self):
         repo.registrar_reporte(self.pc1, {"estacion": "PC1"})
@@ -226,32 +240,69 @@ class TestAlcanceYReporte(_ConClaveDePrueba):
         repo.registrar_reporte(self.pc1, {**reporte, "act": "bajando"})   # algo distinto: escribe
         self.assertEqual(self.estacion(self.pc1)["carpeta_cliente"], "C:\\c")
 
-    def test_estado_de_las_pcs_y_reiniciar_solo_las_libres_que_ya_la_bajaron(self):
+    def test_estado_de_las_pcs(self):
         version = repo.publicar(exe_de_cliente())["version"]
         pc3 = pcs_repo.crear_estacion("PC3")
-        repo.guardar_alcance(True, [self.pc1])
-        for estacion_id, estado in ((self.pc1, "descargada"), (self.pc2, "descargada"), (pc3, "")):
-            repo.registrar_reporte(estacion_id, {"version": "1", "carpeta": "C:\\c", "act": estado, "act_detalle": ""})
+        repo.guardar_seleccion([self.pc1, self.pc2])
+        for estacion_id, estado in ((self.pc1, "descargada"), (self.pc2, "bajando"), (pc3, "")):
+            repo.registrar_reporte(estacion_id, {"version": "1", "carpeta": "C:\\c", "act": estado, "act_detalle": "",
+                                                 "act_version": str(version) if estado else ""})
+        ahora = datetime(2026, 10, 19, 12, 0, 0)
         with database.conexion_db() as conexion:     # PC2 tiene a un cliente usándola
             conexion.execute(
                 "INSERT INTO sesiones_pc (estacion_id, fecha_inicio, fecha_fin_prevista, estado) VALUES (?, ?, ?, ?)",
                 (self.pc2, "2026-10-18T19:00:00", "2099-01-01T00:00:00", dominio.SESION_ACTIVA))
+            for estacion_id, hace in ((self.pc1, 5), (self.pc2, 31)):
+                conexion.execute("UPDATE estaciones SET ultima_conexion = ? WHERE id = ?",
+                                 ((ahora - timedelta(seconds=hace)).isoformat(timespec="seconds"), estacion_id))
 
-        pcs = {pc["nombre"]: pc for pc in repo.estado_de_las_pcs()}
-        self.assertEqual([pcs[n]["ocupada"] for n in ("PC1", "PC2", "PC3")], [False, True, False])
-        self.assertEqual([pcs[n]["en_prueba"] for n in ("PC1", "PC2", "PC3")], [True, False, False])
-        self.assertEqual({pc["le_toca"] for pc in pcs.values()}, {version})
-
-        self.assertEqual(repo.reiniciar_las_libres_que_ya_la_bajaron(), ["PC1"])
-        comando = comandos_pc_repo.proximo_comando_pendiente(self.pc1)
-        self.assertEqual(comando["tipo"], dominio.COMANDO_REINICIAR)
-        self.assertIsNone(comandos_pc_repo.proximo_comando_pendiente(self.pc2))
-        self.assertIsNone(comandos_pc_repo.proximo_comando_pendiente(pc3))
+        pcs = {pc["nombre"]: pc for pc in repo.estado_de_las_pcs(ahora)}
+        nombres = ("PC1", "PC2", "PC3")
+        self.assertEqual([pcs[n]["ocupada"] for n in nombres], [False, True, False])
+        self.assertEqual([pcs[n]["seleccionada"] for n in nombres], [True, True, False])
+        self.assertEqual([pcs[n]["conectada"] for n in nombres], [True, False, False])   # 30 s, como SIN CLIENTE
+        self.assertEqual([pcs[n]["le_toca"] for n in nombres], [version, version, None])
+        self.assertEqual(pcs["PC1"]["version_bajada"], version)
+        self.assertEqual([repo.situacion(pcs[n]) for n in nombres], [repo.LISTA, repo.APAGADA, repo.NO_SELECCIONADA])
 
     def test_texto_de_una_version(self):
         self.assertEqual(repo.texto_version(20261018193005), "18/10/2026 19:30")
         self.assertEqual(repo.texto_version(7), "7")
         self.assertEqual(repo.texto_version(None), "")
+
+
+class TestSituacion(unittest.TestCase):
+    """Cómo está cada PC con la versión cargada: lo que dice la pantalla, en palabras."""
+
+    BASE = {"carpeta": "C:\\c", "ultima_conexion": "2026-10-19T12:00:00", "conectada": True,
+            "le_toca": 5, "version": 4, "estado": "", "detalle": "", "version_bajada": None, "seleccionada": True}
+
+    def situacion(self, **cambios):
+        return repo.situacion({**self.BASE, **cambios})
+
+    def test_cada_caso(self):
+        self.assertEqual(self.situacion(), repo.ESPERANDO)
+        self.assertEqual(self.situacion(estado="bajando", version_bajada=5), repo.COPIANDO)
+        self.assertEqual(self.situacion(estado="descargada", version_bajada=5), repo.LISTA)
+        self.assertEqual(self.situacion(estado="descargada"), repo.LISTA)              # un Cliente PC sin act_version
+        self.assertEqual(self.situacion(version=5), repo.FUNCIONANDO)
+        self.assertEqual(self.situacion(estado="error", detalle="x"), repo.ERROR)
+        self.assertEqual(self.situacion(estado="fallo", detalle="x"), repo.FALLO)
+        self.assertEqual(self.situacion(conectada=False), repo.APAGADA)
+        self.assertEqual(self.situacion(le_toca=None, seleccionada=False), repo.NO_SELECCIONADA)
+        self.assertEqual(self.situacion(carpeta=""), repo.INSTALACION_VIEJA)
+        self.assertEqual(self.situacion(carpeta="", ultima_conexion=None, conectada=False), repo.NUNCA_CONECTADA)
+
+    def test_una_vieja_copiada_no_cuenta_como_lista_con_la_nueva(self):
+        self.assertEqual(self.situacion(estado="descargada", version_bajada=3), repo.ESPERANDO)
+
+    def test_lo_que_ya_paso_vale_aunque_este_apagada_y_lo_que_esta_pasando_no(self):
+        apagada = {"conectada": False}
+        self.assertEqual(self.situacion(estado="descargada", version_bajada=5, **apagada), repo.LISTA)
+        self.assertEqual(self.situacion(version=5, **apagada), repo.FUNCIONANDO)
+        self.assertEqual(self.situacion(estado="fallo", **apagada), repo.FALLO)
+        self.assertEqual(self.situacion(estado="bajando", **apagada), repo.APAGADA)
+        self.assertEqual(self.situacion(estado="error", **apagada), repo.APAGADA)
 
 
 class TestServidorRedActualizacion(test_control_pcs._ConServidorRed):
@@ -290,10 +341,10 @@ class TestServidorRedActualizacion(test_control_pcs._ConServidorRed):
         self.assertEqual(self._get_crudo("/cliente_pc")[0], 404)
         self.assertEqual(self._get_crudo("/cliente_pc/exe")[0], 404)
 
-    def test_la_pc_de_prueba_recibe_su_version_y_puede_bajarla_entera(self):
+    def test_la_pc_marcada_recibe_su_version_y_puede_bajarla_entera(self):
         datos = exe_de_cliente()
         version = repo.publicar(datos)["version"]
-        repo.guardar_alcance(False, [self.pc1])
+        repo.guardar_seleccion([self.pc1])
 
         status, estado = self._get("/estado?estacion=PC1")
         self.assertEqual((status, estado["cliente_version"]), (200, version))
@@ -309,7 +360,7 @@ class TestServidorRedActualizacion(test_control_pcs._ConServidorRed):
         self.assertEqual((status, tipo), (200, "application/octet-stream"))
         self.assertEqual(hashlib.sha256(exe).hexdigest(), manifiesto["sha256"])
 
-    def test_una_pc_que_no_esta_en_el_alcance_no_recibe_version(self):
+    def test_una_pc_sin_marcar_no_recibe_version(self):
         repo.publicar(exe_de_cliente())
 
         self.assertIsNone(self._get("/estado?estacion=PC1")[1]["cliente_version"])
@@ -321,11 +372,13 @@ class TestServidorRedActualizacion(test_control_pcs._ConServidorRed):
         self.assertEqual(self._get_crudo("/cliente_pc/exe", con_clave=False), (403, None, b""))
 
     def test_la_consulta_de_estado_guarda_lo_que_cuenta_la_pc(self):
-        self._get("/estado?estacion=PC1&version=20261018193005&carpeta=C%3A%5Ccliente&act=error&act_detalle=sin%20red")
+        self._get("/estado?estacion=PC1&version=20261018193005&carpeta=C%3A%5Ccliente&act=bajando"
+                  "&act_detalle=Bajando&act_version=20261019120000")
 
         fila = pcs_repo.obtener_estacion(self.pc1)
         self.assertEqual((fila["version_cliente"], fila["carpeta_cliente"], fila["estado_actualizacion"],
-                          fila["detalle_actualizacion"]), (20261018193005, "C:\\cliente", "error", "sin red"))
+                          fila["detalle_actualizacion"], fila["version_bajada"]),
+                         (20261018193005, "C:\\cliente", "bajando", "Bajando", 20261019120000))
 
     def test_una_instalada_a_mano_manda_la_version_vacia_y_cuenta_igual(self):
         self._get("/estado?estacion=PC1&version=&carpeta=C%3A%5Ccliente&act=&act_detalle=")
@@ -371,21 +424,28 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         self.addCleanup(dialogo.deleteLater)
         return dialogo
 
+    def casillas(self, d):
+        return [d.tabla.item(f, 0).checkState() == Qt.CheckState.Checked for f in range(d.tabla.rowCount())]
+
     def test_sin_version_lo_dice_y_lista_las_pcs(self):
         d = self.dialogo()
 
         self.assertEqual(d.etiqueta_version.text(), "Todavía no cargaste ninguna versión.")
         self.assertEqual([d.tabla.item(f, 1).text() for f in range(d.tabla.rowCount())], ["PC1", "PC2"])
+        self.assertIn("Primero cargá la versión nueva", d.etiqueta_resumen.text())
 
-    def test_cargar_una_version_la_firma_y_dice_a_cuantas_va(self):
-        repo.guardar_alcance(False, [self.pc1])
+    def test_cargar_una_version_la_firma_y_deja_todas_sin_marcar(self):
+        repo.guardar_seleccion([self.pc1])
         d = self.dialogo()
+        self.assertEqual(self.casillas(d), [True, False])
 
         d._cargar_version()
 
         self.assertIsNotNone(repo.paquete())
         self.assertIn("Versión cargada:", d.etiqueta_version.text())
-        self.assertIn("Va a las 1 PC de prueba", self.infos[-1])
+        self.assertIn("Ahora marcá las PCs", self.infos[-1])
+        self.assertEqual(self.casillas(d), [False, False])
+        self.assertEqual(repo.obtener_seleccion(), set())
 
     def test_si_no_confirma_no_carga_nada(self):
         self.respuesta_confirmar = False
@@ -401,57 +461,129 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         self.assertIsNone(repo.paquete())
         self.assertIn("no es el Cliente PC", self.infos[-1][1])
 
-    def test_marcar_de_prueba_y_guardar(self):
+    def test_marcar_y_actualizar_las_seleccionadas(self):
         repo.publicar(exe_de_cliente())
         d = self.dialogo()
         d.tabla.item(1, 0).setCheckState(Qt.CheckState.Checked)
 
-        d._guardar()
+        d._actualizar_seleccionadas()
 
-        self.assertEqual(repo.obtener_alcance(), {"para_todas": False, "prueba": {self.pc2}})
-        self.assertEqual(d.tabla.item(1, 3).text(), "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
+        self.assertEqual(repo.obtener_seleccion(), {self.pc2})
+        self.assertIn("Listo: va a 1 PC.", self.infos[-1])
+        self.assertEqual(d.tabla.item(1, 2).text(), "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
+        self.assertEqual(d.tabla.item(0, 2).text(), "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
 
-    def test_mandarla_a_todas_pide_confirmacion(self):
+    def test_marcar_y_desmarcar_todas(self):
+        repo.publicar(exe_de_cliente())
         d = self.dialogo()
-        d.casilla_todas.setChecked(True)
+        d._marcar_todas(True)
+        self.assertEqual(self.casillas(d), [True, True])
+        d._actualizar_seleccionadas()
+        self.assertEqual(repo.obtener_seleccion(), {self.pc1, self.pc2})
+
+        d._marcar_todas(False)
+        d._actualizar_seleccionadas()
+        self.assertEqual(repo.obtener_seleccion(), set())
+        self.assertIn("no va a ninguna PC", self.infos[-1])
+
+    def test_sin_version_cargada_no_deja_actualizar(self):
+        d = self.dialogo()
+        d._marcar_todas(True)
+
+        d._actualizar_seleccionadas()
+
+        self.assertEqual(repo.obtener_seleccion(), set())
+        self.assertIn("Primero cargá la versión nueva", self.infos[-1])
+
+    def test_desmarcar_una_que_ya_la_copio_pregunta_antes(self):
+        version = repo.publicar(exe_de_cliente())["version"]
+        repo.guardar_seleccion([self.pc1])
+        repo.registrar_reporte(self.pc1, {"version": "1", "carpeta": "C:\\c", "act": "descargada",
+                                          "act_detalle": "", "act_version": str(version)})
+        d = self.dialogo()
+        self.assertEqual(d.tabla.item(0, 2).text(), "Actualizada con éxito · se aplica en el próximo reinicio")
+        d._marcar_todas(False)
         self.respuesta_confirmar = False
 
-        d._guardar()
-        self.assertFalse(repo.obtener_alcance()["para_todas"])
+        d._actualizar_seleccionadas()
+        self.assertEqual(repo.obtener_seleccion(), {self.pc1})
 
         self.respuesta_confirmar = True
-        d._guardar()
-        self.assertTrue(repo.obtener_alcance()["para_todas"])
+        d._actualizar_seleccionadas()
+        self.assertEqual(repo.obtener_seleccion(), set())
+
+    def test_el_refresco_solo_cambia_los_estados_y_respeta_lo_tildado(self):
+        version = repo.publicar(exe_de_cliente())["version"]
+        repo.guardar_seleccion([self.pc1])
+        d = self.dialogo()
+        d.tabla.item(1, 0).setCheckState(Qt.CheckState.Checked)       # tildada y sin guardar
+        repo.registrar_reporte(self.pc1, {"version": str(version), "carpeta": "C:\\c", "act": "", "act_detalle": ""})
+
+        d._refrescar_solo()
+
+        self.assertEqual(self.casillas(d), [True, True])
+        self.assertEqual(d.tabla.item(0, 2).text(), "Funcionando con la versión nueva")
+        self.assertEqual(d.etiqueta_resumen.text(), "✔ La PC seleccionada está actualizada.")
+
+    def test_el_refresco_no_muestra_carteles_si_algo_falla(self):
+        d = self.dialogo()
+        with mock.patch.object(repo, "estado_de_las_pcs", side_effect=RuntimeError("disco")), \
+                mock.patch.object(pcs_actualizacion_dialogo, "registrar_error") as registrar:
+            d._refrescar_solo()
+        registrar.assert_called_once()
+        self.assertEqual(self.infos, [])
 
     def test_el_estado_de_cada_pc_en_palabras(self):
         texto = pcs_actualizacion_dialogo.texto_del_estado
-        base = {"estado": "", "detalle": "", "carpeta": "C:\\c", "le_toca": 5, "version": 5,
-                "ultima_conexion": "2026-10-18T22:39:00"}
-        self.assertEqual(texto(base), "Al día")
-        self.assertEqual(texto({**base, "version": 4}), "Pendiente")
-        self.assertEqual(texto({**base, "le_toca": None}), "Lista: espera que cargues una versión")
+        base = {"estado": "", "detalle": "", "carpeta": "C:\\c", "le_toca": 5, "version": 4, "version_bajada": None,
+                "ultima_conexion": "2026-10-19T12:00:00", "conectada": True, "seleccionada": True}
+        self.assertEqual(texto(base), "Esperando")
+        self.assertEqual(texto({**base, "version": 5}), "Funcionando con la versión nueva")
+        self.assertEqual(texto({**base, "estado": "bajando"}), "Copiando…")
+        self.assertEqual(texto({**base, "estado": "descargada"}), "Actualizada con éxito · se aplica en el próximo reinicio")
+        self.assertEqual(texto({**base, "estado": "error", "detalle": "No se pudo conectar con el Servidor."}),
+                         "Error: No se pudo conectar con el Servidor · reintenta sola")
+        self.assertEqual(texto({**base, "conectada": False}), "Apagada / sin conexión · se actualiza sola al prenderla")
+        self.assertEqual(texto({**base, "le_toca": None, "seleccionada": False}), "No seleccionada")
         self.assertEqual(texto({**base, "carpeta": "", "ultima_conexion": None}),
                          "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
-        self.assertEqual(texto({**base, "estado": "descargada"}), "Bajada: se pone en el próximo reinicio")
-        self.assertEqual(texto({**base, "estado": "fallo", "detalle": "x"}), "FALLÓ: x")
-        self.assertEqual(texto({**base, "estado": "error", "detalle": "sin red"}), "No la pudo bajar: sin red")
-        self.assertEqual(texto({**base, "carpeta": ""}), "Sin actualización automática (instalación vieja)")
+        self.assertEqual(texto({**base, "carpeta": ""}),
+                         "Instalación vieja: hay que reinstalarla con el pendrive (preparar_pc.bat)")
         self.assertEqual(texto({**base, "estado": "fallo", "detalle": "La versión 20261018005701 se cerró"}),
-                         "FALLÓ: La versión 18/10/2026 00:57 se cerró")
+                         "Falló al arrancar: La versión 18/10/2026 00:57 se cerró")
         version = pcs_actualizacion_dialogo.texto_de_la_version
         self.assertEqual(version({"version": 20261018193005, "carpeta": "C:\\c"}), "18/10/2026 19:30")
         self.assertEqual(version({"version": None, "carpeta": "C:\\c"}), "a mano (sin versión)")
         self.assertEqual(version({"version": None, "carpeta": ""}), "")
 
-    def test_cerrar_con_cambios_sin_guardar_pregunta(self):
+    def test_el_resumen_dice_cuantas_estan_listas_y_que_les_falta(self):
+        resumen = pcs_actualizacion_dialogo.texto_del_resumen
+        base = {"estado": "", "detalle": "", "carpeta": "C:\\c", "le_toca": 5, "version": 4, "version_bajada": None,
+                "ultima_conexion": "2026-10-19T12:00:00", "conectada": True, "seleccionada": True}
+        pcs = [{**base, "nombre": "PC1", "version": 5},
+               {**base, "nombre": "PC2", "estado": "descargada"},
+               {**base, "nombre": "PC3", "estado": "bajando"},
+               {**base, "nombre": "PC4", "conectada": False},
+               {**base, "nombre": "PC5", "le_toca": None, "seleccionada": False}]
+        self.assertEqual(resumen(pcs, True), "2 de 4 listas · faltan: PC3 (copiando), PC4 (apagada)")
+        self.assertEqual(resumen(pcs[:2], True), "✔ Las 2 PCs seleccionadas están actualizadas.")
+        self.assertIn("Marcá las PCs", resumen(pcs[4:], True))
+        self.assertIn("Primero cargá", resumen(pcs, False))
+
+    def test_cerrar_con_casillas_cambiadas_pregunta(self):
         d = self.dialogo()
-        d.casilla_todas.setChecked(True)
+        d._marcar_todas(True)
         self.respuesta_confirmar = False
 
         d.reject()
 
-        self.assertTrue(d.isVisible() or d.result() == 0)
-        self.assertFalse(repo.obtener_alcance()["para_todas"])
+        self.assertEqual(d.result(), 0)
+        self.assertTrue(d._timer.isActive())
+        self.assertEqual(repo.obtener_seleccion(), set())
+
+        self.respuesta_confirmar = True
+        d.reject()
+        self.assertFalse(d._timer.isActive())
 
     def test_gestionar_estaciones_tiene_el_boton(self):
         gestion = pcs_gestion_dialogos.DialogoGestionEstaciones({"rol": dominio.ROL_ADMIN})

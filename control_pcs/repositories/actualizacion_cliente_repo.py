@@ -10,14 +10,16 @@ Cómo viaja una versión:
    que vive solo en esta PC, fuera de los repos (`ruta_clave_privada`; este repo es PÚBLICO: acá
    solo está la clave pública, que puede ser pública). Lo firmado es un "manifiesto": un texto
    JSON con la versión, el tamaño y la huella SHA-256 del exe.
-2. El Admin elige a qué PCs va: unas pocas "de prueba" o todas (`guardar_alcance`). Una versión
-   recién cargada NUNCA va sola a todas: el alcance vuelve a "solo las de prueba".
+2. El Admin marca a qué PCs va (`guardar_seleccion`; rehecho a pedido del dueño el 2026-10-19:
+   antes eran unas "de prueba" y después todas, y no le resultaba claro). Una versión recién
+   cargada no va a ninguna hasta que las marque.
 3. En cada GET /estado, la PC recibe `cliente_version` (`version_para_estacion`). Si es más
    nueva que la suya, pide GET /cliente_pc (el manifiesto y la firma) y GET /cliente_pc/exe,
-   comprueba todo y la deja lista; su lanzador la pone en uso en el próximo reinicio y vuelve
-   solo a la anterior si no arranca bien (ver CLIENTE PC/lanzador.py).
+   aunque haya un cliente usándola, comprueba todo y la deja lista; su lanzador la pone en uso en
+   el próximo reinicio y vuelve solo a la anterior si no arranca bien (ver CLIENTE PC/lanzador.py).
+   Si recibe None (la desmarcaron), borra la que tenga copiada y sin poner.
 4. Cada PC cuenta en cada consulta su versión, su carpeta y cómo va (`registrar_reporte`), y eso
-   se ve en la pantalla (`estado_de_las_pcs`).
+   se ve en la pantalla, en palabras (`estado_de_las_pcs` y `situacion`).
 
 Dónde vive: `data/cliente_pc/PCcliente.exe` y `data/cliente_pc/version.json` (el manifiesto y su
 firma), como el fondo de pantalla: fuera de la base y de git. Si se pierde `data/`, se vuelve a
@@ -40,7 +42,6 @@ from pathlib import Path
 
 import database
 import dominio
-from control_pcs.repositories import comandos_pc_repo
 from database import conexion_db
 
 # La mitad pública de la clave con que se firman las versiones. Tiene que ser la MISMA que
@@ -122,8 +123,8 @@ def _version_nueva(ahora: datetime, anterior) -> int:
 
 
 def publicar(datos_exe: bytes, ahora: datetime = None) -> dict:
-    """Firma `datos_exe` (un PCcliente.exe) y lo deja como la versión de las PCs. El alcance vuelve
-    a "solo las de prueba". Devuelve el manifiesto. Levanta ValueError, con un mensaje para
+    """Firma `datos_exe` (un PCcliente.exe) y lo deja como la versión de las PCs. No va a ninguna
+    hasta que el Admin las marque: se vacía la selección. Devuelve el manifiesto. Levanta ValueError, con un mensaje para
     mostrarle a la persona, si no es un PCcliente.exe o no se puede firmar."""
     if not datos_exe or not datos_exe.startswith(b"MZ"):
         raise ValueError("El archivo elegido no es un programa (.exe).")
@@ -149,8 +150,7 @@ def publicar(datos_exe: bytes, ahora: datetime = None) -> dict:
         _escribir(_ruta(NOMBRE_EXE), datos_exe)
         _escribir(_ruta(NOMBRE_VERSION), json.dumps({"manifiesto": manifiesto, "firma": firma}).encode("utf-8"))
         _ultimo.update(clave=None, paquete=None, exe=None)
-    alcance = obtener_alcance()
-    guardar_alcance(False, alcance["prueba"])
+    guardar_seleccion(())
     return json.loads(manifiesto)
 
 
@@ -221,34 +221,34 @@ def version_publicada():
 # --------------------------------------------------------------------
 # A qué PCs va
 # --------------------------------------------------------------------
-def obtener_alcance() -> dict:
-    """{"para_todas": bool, "prueba": set de ids de estación}. Sin nada guardado: ninguna."""
+def obtener_seleccion() -> set:
+    """Los ids de las estaciones marcadas para recibir la versión cargada. Sin nada guardado:
+    ninguna. Lo que guardaba la pantalla vieja ("prueba" y "para_todas") cuenta como las de
+    prueba marcadas."""
     with conexion_db() as conexion:
         fila = conexion.execute("SELECT valor FROM configuracion WHERE clave = ?", (_CLAVE_ALCANCE,)).fetchone()
     try:
         datos = json.loads(fila["valor"]) if fila else {}
-        return {"para_todas": datos.get("para_todas") is True,
-                "prueba": {int(i) for i in datos.get("prueba") or []}}
+        return {int(i) for i in datos.get("seleccionadas", datos.get("prueba")) or []}
     except (ValueError, TypeError, AttributeError):
-        return {"para_todas": False, "prueba": set()}
+        return set()
 
 
-def guardar_alcance(para_todas: bool, ids_prueba):
+def guardar_seleccion(ids):
     with conexion_db() as conexion:
         conexion.execute(
             "INSERT OR REPLACE INTO configuracion (clave, valor) VALUES (?, ?)",
-            (_CLAVE_ALCANCE, json.dumps({"para_todas": bool(para_todas), "prueba": sorted({int(i) for i in ids_prueba})})),
+            (_CLAVE_ALCANCE, json.dumps({"seleccionadas": sorted({int(i) for i in ids})})),
         )
 
 
 def version_para_estacion(estacion_id: int):
     """La versión que le toca a esa PC (viaja en cada GET /estado como `cliente_version`), o None si
-    no hay ninguna cargada o esa PC no está en el alcance."""
+    no hay ninguna cargada o esa PC no está marcada."""
     version = version_publicada()
     if version is None:
         return None
-    alcance = obtener_alcance()
-    return version if alcance["para_todas"] or estacion_id in alcance["prueba"] else None
+    return version if estacion_id in obtener_seleccion() else None
 
 
 # --------------------------------------------------------------------
@@ -256,18 +256,18 @@ def version_para_estacion(estacion_id: int):
 # --------------------------------------------------------------------
 def registrar_reporte(estacion_id: int, parametros: dict):
     """Guarda lo que contó la PC en su GET /estado (`parametros`: los de la consulta, ya de a uno):
-    `version`, `carpeta`, `act` y `act_detalle`. Un Cliente PC sin actualización automática no
-    manda nada y no se toca nada. Solo escribe en la base si cambió algo."""
+    `version`, `carpeta`, `act`, `act_detalle` y `act_version` (la que está copiando o ya copió;
+    un Cliente PC de antes del 2026-10-19 no la manda). Un Cliente PC sin actualización automática
+    no manda nada y no se toca nada. Solo escribe en la base si cambió algo."""
     if "version" not in parametros:
         return
-    texto_version = str(parametros.get("version") or "").strip()
-    version = int(texto_version) if texto_version.isdigit() else None
+    version = _numero(parametros.get("version"))
     carpeta = str(parametros.get("carpeta") or "")[:_TOPE_CARPETA]
     estado = str(parametros.get("act") or "")
     if estado not in dominio.ESTADOS_ACTUALIZACION_CLIENTE:
         estado = ""
     detalle = str(parametros.get("act_detalle") or "")[:_TOPE_DETALLE] if estado else ""
-    nuevo = (version, carpeta, estado, detalle)
+    nuevo = (version, carpeta, estado, detalle, _numero(parametros.get("act_version")) if estado else None)
     with _candado_reportes:
         if _reportes.get(estacion_id) == nuevo:
             return
@@ -275,7 +275,7 @@ def registrar_reporte(estacion_id: int, parametros: dict):
         conexion.execute(
             """
             UPDATE estaciones SET version_cliente = ?, carpeta_cliente = ?, estado_actualizacion = ?,
-                                  detalle_actualizacion = ?
+                                  detalle_actualizacion = ?, version_bajada = ?
             WHERE id = ?
             """,
             (*nuevo, estacion_id),
@@ -284,44 +284,91 @@ def registrar_reporte(estacion_id: int, parametros: dict):
         _reportes[estacion_id] = nuevo
 
 
+def _numero(valor):
+    texto = str(valor or "").strip()
+    return int(texto) if texto.isdigit() else None
+
+
 def olvidar_reportes():
     """Que la próxima consulta de cada PC se vuelva a escribir (para los tests)."""
     with _candado_reportes:
         _reportes.clear()
 
 
-def estado_de_las_pcs() -> list:
-    """Una fila por estación activa, en el orden de siempre: lo que contó su Cliente PC, si está en
-    la prueba, qué versión le toca y si tiene una sesión en curso."""
+def estado_de_las_pcs(ahora: datetime = None) -> list:
+    """Una fila por estación activa, en el orden de siempre: lo que contó su Cliente PC, si está
+    marcada, qué versión le toca, si se conectó hace poco y si tiene una sesión en curso."""
     from control_pcs.repositories import pcs_repo   # aquí: pcs_repo no depende de este repo
-    alcance = obtener_alcance()
+    seleccion = obtener_seleccion()
     publicada = version_publicada()
+    ahora = ahora or datetime.now()
     with conexion_db() as conexion:
         ocupadas = {fila["estacion_id"] for fila in conexion.execute(
             "SELECT DISTINCT estacion_id FROM sesiones_pc WHERE estado = ?", (dominio.SESION_ACTIVA,))}
     filas = []
     for estacion in pcs_repo.listar_estaciones():
-        en_prueba = estacion["id"] in alcance["prueba"]
+        seleccionada = estacion["id"] in seleccion
         filas.append({
             "id": estacion["id"], "nombre": estacion["nombre"],
             "version": estacion["version_cliente"], "carpeta": estacion["carpeta_cliente"] or "",
             "estado": estacion["estado_actualizacion"] or "", "detalle": estacion["detalle_actualizacion"] or "",
-            "ultima_conexion": estacion["ultima_conexion"], "en_prueba": en_prueba,
-            "le_toca": publicada if publicada is not None and (alcance["para_todas"] or en_prueba) else None,
+            "version_bajada": estacion["version_bajada"],
+            "ultima_conexion": estacion["ultima_conexion"],
+            "conectada": _conectada(estacion["ultima_conexion"], ahora, pcs_repo.UMBRAL_ENLACE_SEGUNDOS),
+            "seleccionada": seleccionada,
+            "le_toca": publicada if publicada is not None and seleccionada else None,
             "ocupada": estacion["id"] in ocupadas,
         })
     return filas
 
 
-def reiniciar_las_libres_que_ya_la_bajaron() -> list:
-    """Manda REINICIAR a cada PC sin sesión en curso que ya tiene la versión bajada (así la pone en
-    uso ya, sin esperar al próximo cliente). Devuelve los nombres."""
-    reiniciadas = []
-    for pc in estado_de_las_pcs():
-        if pc["estado"] == dominio.ACTUALIZACION_DESCARGADA and not pc["ocupada"]:
-            comandos_pc_repo.encolar_comando(pc["id"], dominio.COMANDO_REINICIAR)
-            reiniciadas.append(pc["nombre"])
-    return reiniciadas
+def _conectada(ultima_conexion, ahora: datetime, umbral: int) -> bool:
+    """¿Consultó hace `umbral` segundos o menos? El mismo criterio que "SIN CLIENTE" en Control de PCs."""
+    if not ultima_conexion:
+        return False
+    try:
+        return (ahora - datetime.fromisoformat(ultima_conexion)).total_seconds() <= umbral
+    except (ValueError, TypeError):
+        return False
+
+
+# Cómo está cada PC con la actualización, para la pantalla (`situacion`).
+NUNCA_CONECTADA = "nunca_conectada"
+INSTALACION_VIEJA = "instalacion_vieja"
+NO_SELECCIONADA = "no_seleccionada"
+FUNCIONANDO = "funcionando"          # ya arrancó con la versión que le toca
+LISTA = "lista"                      # la copió y la comprobó: se pone en el próximo reinicio
+FALLO = "fallo"                      # la puso, no arrancó bien y volvió sola a la anterior
+APAGADA = "apagada"
+COPIANDO = "copiando"
+ERROR = "error"                      # no la pudo copiar: reintenta sola al minuto
+ESPERANDO = "esperando"              # marcada, todavía no empezó (empieza en segundos)
+# Las que ya no necesitan nada: cuentan como "listas" en el resumen.
+SITUACIONES_LISTAS = (FUNCIONANDO, LISTA)
+
+
+def situacion(pc: dict) -> str:
+    """Cómo está una fila de `estado_de_las_pcs` con la versión cargada: una de las constantes de
+    arriba. Lo que es verdad aunque la PC esté apagada (ya la copió, ya arrancó con ella, falló)
+    va antes que "apagada"; lo que cuenta mientras pasa (copiando, error) solo vale si está
+    conectada, porque es lo último que dijo."""
+    if not pc["carpeta"]:
+        return NUNCA_CONECTADA if not pc["ultima_conexion"] else INSTALACION_VIEJA
+    if pc["le_toca"] is None:
+        return NO_SELECCIONADA
+    if pc["version"] == pc["le_toca"]:
+        return FUNCIONANDO
+    if pc["estado"] == dominio.ACTUALIZACION_FALLO:
+        return FALLO
+    if pc["estado"] == dominio.ACTUALIZACION_DESCARGADA and pc["version_bajada"] in (None, pc["le_toca"]):
+        return LISTA
+    if not pc["conectada"]:
+        return APAGADA
+    if pc["estado"] == dominio.ACTUALIZACION_BAJANDO:
+        return COPIANDO
+    if pc["estado"] == dominio.ACTUALIZACION_ERROR:
+        return ERROR
+    return ESPERANDO
 
 
 def texto_version(version) -> str:
