@@ -504,3 +504,13 @@ dueño: "entre Vender y Trámites quiero el botón Impresiones, es el artículo 
   efectivo y digital (el dueño eligió esta opción entre dos). Lo grabado en el cierre, el efectivo a
   retirar y el TOTAL no cambian.
 800 tests (21 nuevos en `tests/test_impresiones.py`).
+
+**2026-10-19:** **panel del costado de Control de PCs en gris medio.** Pedido del dueño: cambiar el
+color de "todo ese sector del costado"; eligió la B (gris medio) entre cinco maquetas (gris claro, gris
+medio, grafito, azul noche como la barra, todo oscuro).
+- `PanelDetalleEstacion` se llama `panelDetalle` (y su área de bonos `areaBonos`); los colores viven en
+  la hoja de estilos de `main.py`: fondo #5E636B, letras claras, bonos claros, el elegido y Cobrar en
+  azul, Finalizar con borde rojo. El aviso "Todavía no hay bonos" dejó su color fijo por `avisoSinBonos`.
+- Las reglas van con `>` (solo hijos directos): el cobro, el login del socio y los avisos tienen al panel
+  como padre y con un selector común heredaban las letras claras.
+802 tests (1 nuevo en `tests/test_estilo_ui.py`, que falla si se saca el `>`).

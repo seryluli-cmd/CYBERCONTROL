@@ -5,8 +5,9 @@ El aspecto del programa (se prueba sin abrir ninguna ventana, plataforma "offscr
 de Qt): que se le pida a Qt el esquema de color CLARO aunque Windows esté en modo
 oscuro (si no, los cuadros que la hoja de estilos no pinta, como el log de "Actividad
 reciente", salen negros con la letra oscura encima), que las tablas no muestren la
-numeración de filas y que la barra oscura de arriba use sus teclas (y que Cierre de
-Turno no cambie de tamaño al titilar).
+numeración de filas, que la barra oscura de arriba use sus teclas (y que Cierre de
+Turno no cambie de tamaño al titilar) y que las ventanas que abre el panel gris de
+Control de PCs no hereden sus letras claras.
 
 Se ejecutan con:
 
@@ -20,7 +21,8 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton  # noqa: E402
+from PySide6.QtGui import QPalette  # noqa: E402
+from PySide6.QtWidgets import QApplication, QDialog, QFrame, QLabel, QPushButton, QVBoxLayout  # noqa: E402
 
 import dominio  # noqa: E402
 import main as programa  # noqa: E402
@@ -29,6 +31,7 @@ from ui.login_window import LoginWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from ui.utils import crear_tabla  # noqa: E402
 from control_pcs.ui.miembros_window import DialogoTramosTarifaMiembro  # noqa: E402
+from control_pcs.ui.pcs_detalle import PanelDetalleEstacion  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
@@ -164,6 +167,29 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
                 campo = tabla.cellWidget(fila, columna)
                 self.assertGreaterEqual(tabla.rowHeight(fila), campo.sizeHint().height(), (fila, columna))
         self.assertFalse(tabla.verticalHeader().isVisible())
+
+    def test_las_ventanas_que_abre_el_panel_gris_no_heredan_sus_letras_claras(self):
+        # El panel del costado de Control de PCs es gris medio con letras claras
+        # (eligió el dueño, 2026-10-19). El cobro, el login del socio y los avisos se
+        # abren con el panel como padre: si sus reglas no fueran solo para los hijos
+        # directos (">"), esas ventanas quedarían con letras claras sobre fondo claro.
+        self.addCleanup(_app.setStyleSheet, _app.styleSheet())
+        _app.setStyleSheet(programa.HOJA_DE_ESTILOS)
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        panel = PanelDetalleEstacion(admin, lambda: None)
+        self.addCleanup(panel.deleteLater)
+        dialogo = QDialog(panel)
+        texto_del_dialogo = QLabel("¿Finalizar la sesión?", dialogo)
+        QVBoxLayout(dialogo).addWidget(texto_del_dialogo)
+
+        for etiqueta in (panel.etiqueta_titulo, texto_del_dialogo):
+            etiqueta.ensurePolished()
+
+        letra_del_panel = panel.etiqueta_titulo.palette().color(QPalette.WindowText).name()
+        letra_del_dialogo = texto_del_dialogo.palette().color(QPalette.WindowText).name()
+
+        self.assertEqual(letra_del_dialogo, _regla("QWidget")["color"].lower())
+        self.assertNotEqual(letra_del_panel, letra_del_dialogo)  # el panel sí, con su letra clara
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ class _ListaDeBonos:
         self.etiqueta = QLabel(titulo)
         self.aviso_sin_bonos = QLabel(aviso_sin_bonos)
         self.aviso_sin_bonos.setWordWrap(True)
-        self.aviso_sin_bonos.setStyleSheet("color: #7A869A;")
+        self.aviso_sin_bonos.setObjectName("avisoSinBonos")  # color en la hoja de estilos de main.py
         self.layout = QVBoxLayout()
         self.layout.setSpacing(6)  # los bonos como botones separados, no pegados en un bloque
         self.grupo = QButtonGroup(padre)
@@ -135,6 +135,7 @@ class PanelDetalleEstacion(QFrame):
         self._avisar_cambio = avisar_cambio  # sin argumentos: le pide a PanelControlPcs que se refresque
         self.item = None
         self._equipo_mostrado = None  # (dispositivo, id) de lo último que se mostró, ver mostrar()
+        self.setObjectName("panelDetalle")  # el fondo gris, en la hoja de estilos de main.py
         self.setFixedWidth(260)
         self._armar_interfaz()
         self.mostrar(None)
@@ -176,6 +177,7 @@ class PanelDetalleEstacion(QFrame):
         layout_bonos.addStretch()
 
         self.area_bonos = QScrollArea()
+        self.area_bonos.setObjectName("areaBonos")
         self.area_bonos.setWidgetResizable(True)
         self.area_bonos.setFrameShape(QFrame.NoFrame)
         self.area_bonos.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)

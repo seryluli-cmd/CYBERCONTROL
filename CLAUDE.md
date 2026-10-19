@@ -742,6 +742,8 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-800 pruebas al 2026-10-19 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba y el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno).
+802 pruebas al 2026-10-19 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno y el panel gris del costado).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
+
+El panel del costado de Control de PCs (`#panelDetalle`, los bonos y Cobrar) es gris medio (pedido del dueño 2026-10-19, eligió esta entre cinco maquetas). Sus reglas en `main.py` van con `>` (solo hijos directos del panel y de `#contenedorBonos`) a propósito: el cobro, el login del socio y los avisos se abren con el panel como padre, y con un selector común quedarían con letras claras sobre su fondo claro (lo cuida `test_estilo_ui`).

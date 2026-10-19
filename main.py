@@ -362,6 +362,82 @@ HOJA_DE_ESTILOS = """
         background: #4A5160;
     }
 
+    /* Panel del costado de Control de PCs (control_pcs/ui/pcs_detalle.py) en gris
+       medio: lo eligió el dueño entre 5 maquetas (2026-10-19). Todo va con ">"
+       (solo los hijos directos del panel y de su lista de bonos) a propósito: las
+       ventanas que abre el panel (el cobro, el login del socio, los avisos) son
+       hijas suyas, y con un selector común heredarían las letras claras sobre su
+       fondo claro. */
+    QFrame#panelDetalle {
+        background-color: #5E636B;
+        border: 1px solid #4A4E55;
+        border-radius: 12px;
+    }
+    QFrame#panelDetalle > QLabel, QWidget#contenedorBonos > QLabel {
+        color: #F3F4F6;
+        background: transparent;
+    }
+    /* La lista de bonos que no corresponde al equipo elegido, con su título apagado. */
+    QFrame#panelDetalle > QLabel:disabled, QWidget#contenedorBonos > QLabel:disabled {
+        color: #A3A8B0;
+    }
+    QWidget#contenedorBonos > QLabel#avisoSinBonos {
+        color: #D5D8DD;
+    }
+    QFrame#panelDetalle > QPushButton, QWidget#contenedorBonos > QPushButton {
+        background-color: #F2F3F5;
+        border: 1px solid #C3C7CD;
+        color: #1E2229;
+    }
+    QFrame#panelDetalle > QPushButton:hover, QWidget#contenedorBonos > QPushButton:hover {
+        background-color: #FFFFFF;
+        border-color: #E1E4E8;
+    }
+    QFrame#panelDetalle > QPushButton:pressed, QWidget#contenedorBonos > QPushButton:pressed {
+        background-color: #DADDE2;
+    }
+    QWidget#contenedorBonos > QPushButton:checked,
+    QFrame#panelDetalle > QPushButton[clase="primario"] {
+        background-color: #2F6FED;
+        border-color: #2F6FED;
+        color: #FFFFFF;
+    }
+    QWidget#contenedorBonos > QPushButton:checked:hover,
+    QFrame#panelDetalle > QPushButton[clase="primario"]:hover {
+        background-color: #255BC7;
+        border-color: #255BC7;
+    }
+    QFrame#panelDetalle > QPushButton[clase="primario"]:pressed {
+        background-color: #1D48A0;
+        border-color: #1D48A0;
+    }
+    QFrame#panelDetalle > QPushButton[clase="peligro"] {
+        border-color: #D9838A;
+        color: #A6323C;
+    }
+    QFrame#panelDetalle > QPushButton[clase="peligro"]:hover {
+        background-color: #FBEAEA;
+        border-color: #C96870;
+    }
+    QFrame#panelDetalle > QPushButton[clase="peligro"]:pressed {
+        background-color: #F3D3D3;
+    }
+    QFrame#panelDetalle > QPushButton:disabled, QWidget#contenedorBonos > QPushButton:disabled,
+    QFrame#panelDetalle > QPushButton[clase="peligro"]:disabled {
+        background-color: #6B7078;
+        border-color: #767B83;
+        color: #A9AEB6;
+    }
+    QWidget#contenedorBonos > QPushButton:checked:disabled,
+    QFrame#panelDetalle > QPushButton[clase="primario"]:disabled {
+        background-color: #5B72A3;
+        border-color: #5B72A3;
+        color: #C9D3EA;
+    }
+    QScrollArea#areaBonos QScrollBar:vertical {
+        background: #5E636B;
+    }
+
     /* --- Pulido visual (2026-10-10) --- */
 
     /* Botones de la barra oscura de arriba (2026-10-19): cada uno es una tecla con
