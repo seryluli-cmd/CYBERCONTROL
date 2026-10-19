@@ -327,8 +327,12 @@ MOVIMIENTO_CARGA = "CARGA"
 MOVIMIENTO_CONSUMO = "CONSUMO"
 MOVIMIENTO_REINTEGRO = "REINTEGRO"
 MOVIMIENTO_ANULACION = "ANULACION"
-# El tiempo que el socio traía del programa de cyber anterior (ver
-# importar_miembros_repo): sin venta, porque esa plata se cobró allá.
+# El tiempo que cada socio traía del programa de cyber anterior, sin venta
+# (esa plata se cobró allá). Lo grabó una importación desde Excel que se usó
+# una sola vez en la base del local (2026-10-19) y después se sacó del programa
+# a pedido del dueño. No lo saques de la lista: esas filas siguen en la base, y
+# una migración que reconstruya la tabla sin este tipo en el CHECK las perdería
+# sin aviso (INSERT OR IGNORE también saltea las que no pasan el CHECK).
 MOVIMIENTO_IMPORTACION = "IMPORTACION"
 TIPOS_MOVIMIENTO_SALDO = (
     MOVIMIENTO_CARGA, MOVIMIENTO_CONSUMO, MOVIMIENTO_REINTEGRO, MOVIMIENTO_ANULACION,

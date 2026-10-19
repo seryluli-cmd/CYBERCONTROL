@@ -358,6 +358,19 @@ class TestPcsRepo(BaseConBaseTemporal):
         fechas = [evento["fecha"] for evento in eventos]
         self.assertEqual(fechas, sorted(fechas, reverse=True))
 
+    def test_el_tiempo_traido_del_programa_anterior_no_sale_en_la_actividad(self):
+        # La base del local tiene estos movimientos de la importación del
+        # 2026-10-19 (ver dominio.MOVIMIENTO_IMPORTACION): 45 de una vez
+        # tapaban todo el panel, y el panel no sabe mostrarlos.
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123")
+        with database.conexion_db() as conexion:
+            conexion.execute(
+                "INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha) VALUES (?, ?, ?, ?)",
+                (miembro_id, dominio.MOVIMIENTO_IMPORTACION, 120, datetime.now().isoformat(timespec="seconds")),
+            )
+
+        self.assertEqual(pcs_repo.actividad_reciente(), [])
+
     def test_crear_estacion_con_nombre_de_una_desactivada_la_reactiva(self):
         # Bug real reportado por el dueño (2026-09-29): desactivar una
         # estación y volver a crearla con el mismo nombre tiraba "ya

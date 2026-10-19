@@ -57,9 +57,9 @@ def actividad_reciente(limite: int = 30):
                                  "estacion_nombre": fila["estacion_nombre"],
                                  "bono_nombre": fila["bono_nombre"], "precio": fila["precio"]})
 
-        # Sin el tiempo traído del programa anterior (importar_miembros_repo):
-        # no pasó en ninguna PC, y una importación de 45 socios taparía todo
-        # lo demás del panel.
+        # Sin el tiempo traído del programa anterior (ver
+        # dominio.MOVIMIENTO_IMPORTACION): no pasó en ninguna PC, y los 45
+        # socios importados de una vez tapaban todo lo demás del panel.
         for fila in conexion.execute("""
             SELECT m.fecha AS fecha, m.tipo AS tipo, m.minutos AS minutos,
                    mi.nombre AS miembro_nombre, e.nombre AS estacion_nombre, v.total AS monto
