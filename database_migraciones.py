@@ -109,12 +109,15 @@ def _migrar_columnas_actualizacion_estaciones(conexion: sqlite3.Connection):
     (el texto que manda la PC). Arrancan vacías: cada PC las completa en su próxima
     consulta. `version_bajada` (2026-10-19): la versión que la PC está copiando o ya
     copió y todavía no puso, para no confundir una vieja con la que le toca.
+    `numero_version_cliente` (2026-10-19): el número de versión que manda la PC ("1.2" =
+    V1.2; NULL = un Cliente PC armado antes de la V1), el que ve el dueño.
     """
     _agregar_columna_si_falta(conexion, "estaciones", "version_cliente", "INTEGER")
     _agregar_columna_si_falta(conexion, "estaciones", "carpeta_cliente", "TEXT")
     _agregar_columna_si_falta(conexion, "estaciones", "estado_actualizacion", "TEXT")
     _agregar_columna_si_falta(conexion, "estaciones", "detalle_actualizacion", "TEXT")
     _agregar_columna_si_falta(conexion, "estaciones", "version_bajada", "INTEGER")
+    _agregar_columna_si_falta(conexion, "estaciones", "numero_version_cliente", "TEXT")
     conexion.commit()
 
 

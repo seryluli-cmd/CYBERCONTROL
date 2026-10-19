@@ -8,6 +8,8 @@ Actualizar el Cliente PC de las PCs desde acá (pedido del dueño, 2026-10-18):
 - `servidor_red.py`: `cliente_version` y el reporte en `GET /estado`, `GET /cliente_pc` y
   `GET /cliente_pc/exe` (con el servidor real).
 - La pantalla "Actualizar el Cliente PC de las PCs..." y su botón en Gestionar Estaciones.
+- El número de versión (V1, V1.1...; 2026-10-19): leerlo del exe, lo que manda cada PC y cómo se
+  ve en la pantalla.
 
 Con una clave de firma de PRUEBA generada en cada corrida: la del dueño vive fuera de los repos
 y ningún test la toca.
@@ -22,6 +24,8 @@ import hashlib
 import http.client
 import json
 import os
+import shutil
+import struct
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -50,10 +54,21 @@ PUBLICA_DE_PRUEBA = base64.b64encode(CLAVE_DE_PRUEBA.public_key().public_bytes(
     serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode()
 
 
-def exe_de_cliente(texto=b"version de prueba") -> bytes:
+def datos_de_version(entero: int, decimo: int) -> bytes:
+    """Lo que graba PyInstaller en el exe con el número de versión (lo que Windows muestra en
+    Propiedades -> Detalles): el principio de la estructura VS_VERSION_INFO."""
+    return (struct.pack("<HHH", 0, 52, 0) + "VS_VERSION_INFO\0".encode("utf-16-le") + b"\0\0"
+            + struct.pack("<IIIIII", 0xFEEF04BD, 0x00010000, (entero << 16) | decimo, 0, (entero << 16) | decimo, 0))
+
+
+def exe_de_cliente(texto=b"version de prueba", v=None) -> bytes:
     """Lo que tiene un PCcliente.exe para el repo: empieza como un exe y, al final, la lista de
-    PyInstaller con el programa principal (cliente_pc)."""
-    return b"MZ" + texto * 200 + b"...pyiboot01_bootstrap...cliente_pc...MEI"
+    PyInstaller con el programa principal (cliente_pc). Con `v` ("1.2"), trae ese número de versión."""
+    adelante = b""
+    if v:
+        entero, _punto, decimo = v.partition(".")
+        adelante = b"\0" * 300 + datos_de_version(int(entero), int(decimo or 0))
+    return b"MZ" + adelante + texto * 200 + b"...pyiboot01_bootstrap...cliente_pc...MEI"
 
 
 class _ConClaveDePrueba(BaseConBaseTemporal):
@@ -271,6 +286,103 @@ class TestAlcanceYReporte(_ConClaveDePrueba):
         self.assertEqual(repo.texto_version(None), "")
 
 
+class TestNumeroDeVersion(_ConClaveDePrueba):
+    """El número de versión que ve el dueño (V1, V1.1 ... V1.9, V2): el que trae el exe y el que
+    manda cada PC."""
+
+    def setUp(self):
+        super().setUp()
+        self.pc1, self.pc2 = pcs_repo.crear_estacion("PC1"), pcs_repo.crear_estacion("PC2")
+
+    def test_lo_lee_del_exe(self):
+        leer = repo.numero_de_version_del_exe
+        self.assertEqual(leer(exe_de_cliente(v="1.2")), "1.2")
+        self.assertEqual(leer(exe_de_cliente(v="2")), "2")              # 2.0 es la V2
+        self.assertIsNone(leer(exe_de_cliente()))                       # uno armado antes de la V1
+        self.assertIsNone(leer(b"MZ" + datos_de_version(1, 10)))        # "1.10" no existe
+        self.assertIsNone(leer(b"MZ" + datos_de_version(0, 5)))
+        self.assertIsNone(leer(b"MZ" + "VS_VERSION_INFO\0".encode("utf-16-le") + b"\0" * 40))   # sin la marca
+
+    def test_lo_lee_de_un_exe_de_verdad(self):
+        # El exe chiquito de PyInstaller con el número grabado como lo graba PCcliente.spec.
+        try:
+            import PyInstaller
+            from PyInstaller.utils.win32 import versioninfo as vi
+        except ImportError:
+            self.skipTest("hace falta PyInstaller")
+        original = Path(PyInstaller.__file__).parent / "bootloader" / "Windows-64bit-intel" / "runw.exe"
+        if not original.exists():
+            self.skipTest(f"no está {original}")
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        exe = Path(carpeta.name) / "PCcliente.exe"
+        shutil.copyfile(original, exe)
+        self.assertIsNone(repo.numero_de_version_del_exe(exe.read_bytes()))
+
+        vi.write_version_info_to_executable(str(exe), vi.VSVersionInfo(
+            ffi=vi.FixedFileInfo(filevers=(1, 3, 0, 0), prodvers=(1, 3, 0, 0)),
+            kids=[vi.StringFileInfo([vi.StringTable("0C0A04B0", [vi.StringStruct("ProductVersion", "V1.3")])]),
+                  vi.VarFileInfo([vi.VarStruct("Translation", [0x0C0A, 1200])])]))
+
+        self.assertEqual(repo.numero_de_version_del_exe(exe.read_bytes()), "1.3")
+
+    def test_como_se_escribe_y_cual_es_mas_vieja(self):
+        self.assertEqual([repo.numero_de_version_valido(x) for x in ("1", "1.2", " 2.9 ", "1.0", "1.10", "V1", "", None, "0")],
+                         ["1", "1.2", "2.9", None, None, None, None, None, None])
+        self.assertEqual((repo.nombre_de_version("1.2"), repo.nombre_de_version(None)), ("V1.2", ""))
+        self.assertTrue(repo.es_mas_vieja("1.9", "2"))
+        self.assertTrue(repo.es_mas_vieja("1.2", "1.3"))
+        self.assertFalse(repo.es_mas_vieja("2", "1.9"))
+        self.assertFalse(repo.es_mas_vieja("1.2", "1.2"))
+
+    def test_va_firmado_en_el_manifiesto_y_las_pcs_lo_ignoran(self):
+        manifiesto = repo.publicar(exe_de_cliente(v="1.2"))
+
+        self.assertEqual(manifiesto["v"], "1.2")
+        self.assertEqual(self.verificar(repo.paquete()), manifiesto)
+        self.assertEqual(repo.paquete()["v"], "1.2")
+
+    def test_un_exe_sin_numero_se_carga_igual(self):
+        manifiesto = repo.publicar(exe_de_cliente())
+
+        self.assertNotIn("v", manifiesto)
+        self.assertIsNone(repo.paquete()["v"])
+
+    def test_guarda_el_que_manda_la_pc_aunque_no_tenga_lanzador(self):
+        repo.registrar_reporte(self.pc1, {"estacion": "PC1", "v": "1.2"})                 # sin lanzador
+        repo.registrar_reporte(self.pc2, {"estacion": "PC2", "v": "2", "version": "5", "carpeta": "C:\\c"})
+
+        self.assertEqual(pcs_repo.obtener_estacion(self.pc1)["numero_version_cliente"], "1.2")
+        self.assertIsNone(pcs_repo.obtener_estacion(self.pc1)["carpeta_cliente"])   # lo demás no se toca
+        self.assertEqual(pcs_repo.obtener_estacion(self.pc2)["numero_version_cliente"], "2")
+
+    def test_si_vuelve_a_uno_sin_numero_o_manda_cualquier_cosa_queda_sin_numero(self):
+        repo.registrar_reporte(self.pc1, {"v": "1.2"})
+        repo.registrar_reporte(self.pc1, {})
+        self.assertIsNone(pcs_repo.obtener_estacion(self.pc1)["numero_version_cliente"])
+        repo.registrar_reporte(self.pc1, {"v": "1.2'; DROP TABLE estaciones;--"})
+        self.assertIsNone(pcs_repo.obtener_estacion(self.pc1)["numero_version_cliente"])
+
+    def test_solo_escribe_si_cambio(self):
+        repo.registrar_reporte(self.pc1, {"v": "1.2"})
+        with database.conexion_db() as conexion:     # alguien lo cambia por fuera
+            conexion.execute("UPDATE estaciones SET numero_version_cliente = 'x' WHERE id = ?", (self.pc1,))
+
+        repo.registrar_reporte(self.pc1, {"v": "1.2"})
+        self.assertEqual(pcs_repo.obtener_estacion(self.pc1)["numero_version_cliente"], "x")
+        repo.registrar_reporte(self.pc1, {"v": "1.3"})
+        self.assertEqual(pcs_repo.obtener_estacion(self.pc1)["numero_version_cliente"], "1.3")
+
+    def test_en_el_estado_de_las_pcs(self):
+        repo.publicar(exe_de_cliente(v="1.3"))
+        repo.guardar_seleccion([self.pc1])
+        repo.registrar_reporte(self.pc1, {"v": "1.2"})
+
+        pcs = {pc["nombre"]: pc for pc in repo.estado_de_las_pcs()}
+        self.assertEqual((pcs["PC1"]["v"], pcs["PC1"]["v_le_toca"]), ("1.2", "1.3"))
+        self.assertEqual((pcs["PC2"]["v"], pcs["PC2"]["v_le_toca"]), (None, None))   # sin marcar
+
+
 class TestSituacion(unittest.TestCase):
     """Cómo está cada PC con la versión cargada: lo que dice la pantalla, en palabras."""
 
@@ -379,6 +491,11 @@ class TestServidorRedActualizacion(test_control_pcs._ConServidorRed):
         self.assertEqual((fila["version_cliente"], fila["carpeta_cliente"], fila["estado_actualizacion"],
                           fila["detalle_actualizacion"], fila["version_bajada"]),
                          (20261018193005, "C:\\cliente", "bajando", "Bajando", 20261019120000))
+
+    def test_la_consulta_de_estado_guarda_el_numero_de_version(self):
+        self._get("/estado?estacion=PC1&v=1.2")
+
+        self.assertEqual(pcs_repo.obtener_estacion(self.pc1)["numero_version_cliente"], "1.2")
 
     def test_una_instalada_a_mano_manda_la_version_vacia_y_cuenta_igual(self):
         self._get("/estado?estacion=PC1&version=&carpeta=C%3A%5Ccliente&act=&act_detalle=")
@@ -552,9 +669,64 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         self.assertEqual(texto({**base, "estado": "fallo", "detalle": "La versión 20261018005701 se cerró"}),
                          "Falló al arrancar: La versión 18/10/2026 00:57 se cerró")
         version = pcs_actualizacion_dialogo.texto_de_la_version
-        self.assertEqual(version({"version": 20261018193005, "carpeta": "C:\\c"}), "18/10/2026 19:30")
-        self.assertEqual(version({"version": None, "carpeta": "C:\\c"}), "a mano (sin versión)")
-        self.assertEqual(version({"version": None, "carpeta": ""}), "")
+        self.assertEqual(version({"v": "1.2", "version": 20261018193005, "carpeta": "C:\\c"}), "V1.2")
+        self.assertEqual(version({"v": "2", "version": None, "carpeta": "", "ultima_conexion": "2026-10-19T12:00:00"}), "V2")
+        # Se conectó y no manda número: un Cliente PC armado antes de la V1 (con lanzador o sin él).
+        self.assertEqual(version({"v": None, "version": 20261018193005, "carpeta": "C:\\c"}), "anterior a la V1")
+        self.assertEqual(version({"v": None, "version": None, "carpeta": "", "ultima_conexion": "2026-10-19T12:00:00"}),
+                         "anterior a la V1")
+        self.assertEqual(version({"v": None, "version": None, "carpeta": "", "ultima_conexion": None}), "")
+
+    def test_con_numero_de_version_dice_cual(self):
+        texto = pcs_actualizacion_dialogo.texto_del_estado
+        base = {"estado": "", "detalle": "", "carpeta": "C:\\c", "le_toca": 20261019120000, "version": 4,
+                "version_bajada": None, "ultima_conexion": "2026-10-19T12:00:00", "conectada": True,
+                "seleccionada": True, "v": "1.2", "v_le_toca": "1.3"}
+        self.assertEqual(texto({**base, "version": 20261019120000}), "Funcionando con la V1.3")
+        self.assertEqual(texto({**base, "estado": "fallo", "detalle": "La versión 20261019120000 se cerró"}),
+                         "Falló al arrancar: La versión V1.3 se cerró")
+        # Otra versión que no es la que le toca, o la cargada sin número: por la fecha.
+        self.assertEqual(texto({**base, "estado": "fallo", "detalle": "La versión 20261018005701 se cerró"}),
+                         "Falló al arrancar: La versión 18/10/2026 00:57 se cerró")
+        self.assertEqual(texto({**base, "v_le_toca": None, "estado": "fallo", "detalle": "La versión 20261019120000 se cerró"}),
+                         "Falló al arrancar: La versión 19/10/2026 12:00 se cerró")
+
+    def test_la_version_cargada_con_su_numero(self):
+        cargada = pcs_actualizacion_dialogo.texto_de_la_version_cargada
+        self.assertEqual(cargada({"version": 20261019092300, "v": "1.2"}), "V1.2 (cargada el 19/10/2026 09:23)")
+        self.assertEqual(cargada({"version": 20261019092300, "v": None}),
+                         "19/10/2026 09:23 (sin número: armada antes de la V1)")
+
+    def test_cargar_una_con_numero_lo_dice_y_avisa_si_es_mas_vieja(self):
+        preguntas = []
+        with open(self.ruta_elegida, "wb") as archivo:
+            archivo.write(exe_de_cliente(v="1.3"))
+        with mock.patch.object(pcs_actualizacion_dialogo, "confirmar",
+                               side_effect=lambda *a, **k: preguntas.append(a[2]) or True):
+            d = self.dialogo()
+            d._cargar_version()
+            self.assertIn("(V1.3)", preguntas[-1])
+            self.assertNotIn("más vieja", preguntas[-1])
+            self.assertTrue(d.etiqueta_version.text().startswith("Versión cargada: V1.3 (cargada el "))
+            self.assertTrue(self.infos[-1].startswith("V1.3 cargada y firmada."))
+
+            with open(self.ruta_elegida, "wb") as archivo:
+                archivo.write(exe_de_cliente(v="1.2"))
+            d._cargar_version()
+            self.assertIn("la V1.2 es más vieja que la V1.3", preguntas[-1])
+
+            with open(self.ruta_elegida, "wb") as archivo:
+                archivo.write(exe_de_cliente())
+            d._cargar_version()
+            self.assertIn("No tiene número de versión", preguntas[-1])
+
+    def test_la_columna_muestra_el_numero_que_manda_cada_pc(self):
+        repo.registrar_reporte(self.pc1, {"v": "1.2"})
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE estaciones SET ultima_conexion = '2026-10-19T12:00:00' WHERE id = ?", (self.pc2,))
+        d = self.dialogo()
+
+        self.assertEqual([d.tabla.item(f, 3).text() for f in range(d.tabla.rowCount())], ["V1.2", "anterior a la V1"])
 
     def test_el_resumen_dice_cuantas_estan_listas_y_que_les_falta(self):
         resumen = pcs_actualizacion_dialogo.texto_del_resumen

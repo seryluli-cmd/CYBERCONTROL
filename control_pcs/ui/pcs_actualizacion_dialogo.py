@@ -7,6 +7,10 @@ maqueta "A": una tabla con casillas): antes había PCs "de prueba" y "Mandarla a
 resultaba claro qué hacer ni cómo quedaba cada PC. Se refresca sola cada pocos segundos, así el
 "Actualizada con éxito" aparece sin tocar nada. Se abre desde Gestionar Estaciones. Las reglas
 -firmar, qué versión le toca a cada PC, cómo está cada una- son de `actualizacion_cliente_repo`.
+
+Las versiones se muestran con su número (V1, V1.1...: pedido del dueño, 2026-10-19), el que trae
+cada PCcliente.exe desde la V1. Uno armado antes no tiene: se lo muestra por la fecha en que se
+cargó.
 """
 
 import re
@@ -52,26 +56,43 @@ _POR_QUE_FALTA = {
 _NUMERO_DE_VERSION = re.compile(r"\b20\d{12}\b")
 
 
-def _con_fechas(texto: str) -> str:
-    """El texto que manda la PC, con cada número de versión como fecha ("18/10/2026 19:30")."""
-    return _NUMERO_DE_VERSION.sub(lambda m: repo.texto_version(m.group()), texto)
+def _con_fechas(texto: str, pc: dict) -> str:
+    """El texto que manda la PC, con cada número de versión como fecha ("18/10/2026 19:30"), o
+    como "V1.2" si es la que le toca y tiene número."""
+    def reemplazo(encontrado):
+        if pc.get("v_le_toca") and str(pc.get("le_toca")) == encontrado.group():
+            return repo.nombre_de_version(pc["v_le_toca"])
+        return repo.texto_version(encontrado.group())
+    return _NUMERO_DE_VERSION.sub(reemplazo, texto)
 
 
 def texto_de_la_version(pc: dict) -> str:
-    if pc["version"] is None:
-        return "a mano (sin versión)" if pc["carpeta"] else ""
-    return repo.texto_version(pc["version"])
+    """La columna "Versión en uso": el número que manda la PC (V1, V1.1...). Una que se conectó
+    y no manda ninguno tiene un Cliente PC armado antes de la V1."""
+    if pc.get("v"):
+        return repo.nombre_de_version(pc["v"])
+    return "anterior a la V1" if pc.get("ultima_conexion") or pc.get("carpeta") else ""
+
+
+def texto_de_la_version_cargada(paquete: dict) -> str:
+    """"V1.2 (cargada el 19/10/2026 09:23)"; sin número, la fecha y que es de antes de la V1."""
+    cuando = repo.texto_version(paquete["version"])
+    if paquete.get("v"):
+        return f"{repo.nombre_de_version(paquete['v'])} (cargada el {cuando})"
+    return f"{cuando} (sin número: armada antes de la V1)"
 
 
 def texto_del_estado(pc: dict) -> str:
     """Cómo va la actualización de una PC, en palabras, para la tabla."""
     situacion = repo.situacion(pc)
-    detalle = _con_fechas(pc["detalle"])
+    detalle = _con_fechas(pc["detalle"], pc)
+    funcionando = (f"Funcionando con la {repo.nombre_de_version(pc['v_le_toca'])}" if pc.get("v_le_toca")
+                   else "Funcionando con la versión nueva")
     return {
         repo.NUNCA_CONECTADA: "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)",
         repo.INSTALACION_VIEJA: "Instalación vieja: hay que reinstalarla con el pendrive (preparar_pc.bat)",
         repo.NO_SELECCIONADA: "No seleccionada",
-        repo.FUNCIONANDO: "Funcionando con la versión nueva",
+        repo.FUNCIONANDO: funcionando,
         repo.LISTA: "Actualizada con éxito · se aplica en el próximo reinicio",
         repo.FALLO: f"Falló al arrancar: {detalle}",   # el detalle ya dice "volvió a la anterior"
         repo.APAGADA: "Apagada / sin conexión · se actualiza sola al prenderla",
@@ -170,8 +191,7 @@ class DialogoActualizarCliente(QDialog):
             self.etiqueta_version.setText("Todavía no cargaste ninguna versión.")
         else:
             megas = f"{paquete['tamano'] / 1024 / 1024:.1f}".replace(".", ",")
-            self.etiqueta_version.setText(
-                f"Versión cargada: {repo.texto_version(paquete['version'])} ({megas} MB)")
+            self.etiqueta_version.setText(f"Versión cargada: {texto_de_la_version_cargada(paquete)} · {megas} MB")
         self._hay_version = paquete is not None
         self._mostrar(conservar_casillas=False)
         self._guardado = self._ids_marcados()
@@ -245,17 +265,31 @@ class DialogoActualizarCliente(QDialog):
             return
         with open(ruta, "rb") as archivo:
             datos = archivo.read()
-        if not confirmar(
-            self, "Cargar versión nueva",
-            "¿Cargar este PCcliente.exe como la versión nueva de las PCs?\n\n"
-            "No va a ninguna PC hasta que las marques y toques «Actualizar las seleccionadas»."
-        ):
+        if not confirmar(self, "Cargar versión nueva", self._pregunta_para_cargar(datos)):
             return
         manifiesto = repo.publicar(datos)
         self._cargar()
+        cual = (repo.nombre_de_version(manifiesto["v"]) if manifiesto.get("v")
+                else f"Versión {repo.texto_version(manifiesto['version'])}")
         mostrar_info(self, "Versión cargada",
-                     f"Versión {repo.texto_version(manifiesto['version'])} cargada y firmada.\n\n"
-                     "Ahora marcá las PCs y tocá «Actualizar las seleccionadas».")
+                     f"{cual} cargada y firmada.\n\nAhora marcá las PCs y tocá «Actualizar las seleccionadas».")
+
+    @staticmethod
+    def _pregunta_para_cargar(datos: bytes) -> str:
+        """Qué versión es la que se va a cargar y, si es más vieja que la cargada, que lo sepa."""
+        numero = repo.numero_de_version_del_exe(datos)
+        if not numero:
+            pregunta = ("¿Cargar este PCcliente.exe como la versión nueva de las PCs?\n\n"
+                        "No tiene número de versión: es uno armado antes de la V1.")
+        else:
+            nuevo = repo.nombre_de_version(numero)
+            pregunta = f"¿Cargar este PCcliente.exe ({nuevo}) como la versión nueva de las PCs?"
+            cargada = repo.paquete()
+            if cargada and cargada["v"] and repo.es_mas_vieja(numero, cargada["v"]):
+                actual = repo.nombre_de_version(cargada["v"])
+                pregunta += (f"\n\nOjo: la {nuevo} es más vieja que la {actual} que está cargada ahora. "
+                             f"Las PCs que marques y ya tengan la {actual} van a volver a la {nuevo}.")
+        return pregunta + "\n\nNo va a ninguna PC hasta que las marques y toques «Actualizar las seleccionadas»."
 
     @manejar_errores
     def _actualizar_seleccionadas(self):

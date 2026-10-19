@@ -26,6 +26,11 @@ firma), como el fondo de pantalla: fuera de la base y de git. Si se pierde `data
 cargar la versión. La versión es un número que sale de la fecha y hora en que se cargó
 (AAAAMMDDhhmmss) y siempre crece: para volver a una versión vieja, se la carga de nuevo.
 
+Ese número es el que comparan las PCs, pero el dueño ve otro (pedido del 2026-10-19): el
+"número de versión" de cada PCcliente.exe, V1, V1.1 ... V1.9, V2 (CLIENTE PC/version_cliente.py).
+Se lee del exe al cargarlo (`numero_de_version_del_exe`) y cada PC lo manda como `v` en cada
+consulta (`registrar_reporte`). Un exe armado antes de la V1 no lo tiene.
+
 Lo leen los hilos del servidor de red y lo escribe la pantalla, en el mismo programa: un candado
 evita leer a medio cambiar y lo leído se guarda en memoria (con la fecha y el tamaño de los
 archivos) para no abrir el disco en cada consulta de cada PC.
@@ -35,6 +40,8 @@ import base64
 import hashlib
 import json
 import os
+import re
+import struct
 import threading
 import time
 from datetime import datetime
@@ -58,6 +65,14 @@ TAMANO_MAXIMO_EXE = 150 * 1024 * 1024
 # de elegir otro exe (CyberBios.exe, Lanzador.exe): las PCs lo abrirían en lugar del Cliente PC.
 _MARCA_DEL_CLIENTE = b"cliente_pc"
 _FINAL_A_REVISAR = 512 * 1024
+# El número de versión que PCcliente.spec graba en el exe (lo que Windows muestra en Propiedades ->
+# Detalles): una estructura que empieza con el nombre "VS_VERSION_INFO" y, dos bytes después, una
+# marca fija seguida de los números. Va en la parte de adelante del exe, antes de lo comprimido.
+_NOMBRE_DATOS_DE_VERSION = "VS_VERSION_INFO\0".encode("utf-16-le")
+_MARCA_DATOS_DE_VERSION = struct.pack("<I", 0xFEEF04BD)
+_PRINCIPIO_A_REVISAR = 4 * 1024 * 1024
+# Cómo se escribe un número de versión: "1", "1.1" ... "1.9", "2" (como CLIENTE PC/version_cliente.py).
+_FORMATO_NUMERO_DE_VERSION = re.compile(r"[1-9]\d{0,3}(\.[1-9])?")
 
 _CLAVE_ALCANCE = "actualizacion_cliente_alcance"
 _TOPE_CARPETA = 260
@@ -69,6 +84,8 @@ _ultimo = {"clave": None, "paquete": None, "exe": None}
 # Lo último que contó cada PC (estacion_id -> tupla), para escribir en la base solo si cambió:
 # cada PC consulta cada 5 s.
 _reportes = {}
+# Lo mismo para el número de versión que manda cada PC (estacion_id -> "1.2" o None).
+_numeros_de_version = {}
 _candado_reportes = threading.Lock()
 
 
@@ -92,6 +109,41 @@ def _ruta(nombre: str) -> str:
 def es_un_cliente_pc(datos: bytes) -> bool:
     """¿`datos` es un PCcliente.exe (armado con PCcliente.spec) y no otro programa?"""
     return datos[:2] == b"MZ" and _MARCA_DEL_CLIENTE in datos[-_FINAL_A_REVISAR:]
+
+
+def numero_de_version_del_exe(datos: bytes):
+    """El número de versión ("1.2" = V1.2) grabado en un PCcliente.exe, o None si no tiene (los
+    armados antes de la V1)."""
+    principio = datos[:_PRINCIPIO_A_REVISAR]
+    nombre = principio.find(_NOMBRE_DATOS_DE_VERSION)
+    if nombre < 0:
+        return None
+    despues = nombre + len(_NOMBRE_DATOS_DE_VERSION)
+    marca = principio.find(_MARCA_DATOS_DE_VERSION, despues, despues + 8)
+    if marca < 0 or len(principio) < marca + 12:
+        return None
+    _marca, _estructura, numeros = struct.unpack_from("<III", principio, marca)
+    entero, decimo = numeros >> 16, numeros & 0xFFFF
+    return numero_de_version_valido(str(entero) if decimo == 0 else f"{entero}.{decimo}")
+
+
+def numero_de_version_valido(valor):
+    """`valor` si es un número de versión bien escrito ("1", "1.2"), o None."""
+    texto = str(valor or "").strip()
+    return texto if _FORMATO_NUMERO_DE_VERSION.fullmatch(texto) else None
+
+
+def nombre_de_version(numero) -> str:
+    """"V1.2" para "1.2"; vacío si no hay número."""
+    return f"V{numero}" if numero else ""
+
+
+def es_mas_vieja(numero, otro) -> bool:
+    """¿La versión `numero` es anterior a `otro`? ("1.9" es anterior a "2")."""
+    def partes(texto):
+        entero, _punto, decimo = texto.partition(".")
+        return int(entero), int(decimo or 0)
+    return partes(numero) < partes(otro)
 
 
 def _cargar_clave_privada():
@@ -136,13 +188,17 @@ def publicar(datos_exe: bytes, ahora: datetime = None) -> dict:
             "CLIENTE PC\\dist\\PCcliente.exe.")
     privada = _cargar_clave_privada()
     ahora = ahora or datetime.now()
+    numero = numero_de_version_del_exe(datos_exe)
     with _candado:
         anterior = _leer_del_disco()
         version = _version_nueva(ahora, anterior["paquete"]["version"] if anterior["paquete"] else None)
-        manifiesto = json.dumps({
+        datos_del_manifiesto = {
             "programa": PROGRAMA, "version": version, "sha256": hashlib.sha256(datos_exe).hexdigest(),
             "tamano": len(datos_exe), "creado": ahora.isoformat(timespec="seconds"),
-        }, sort_keys=True)
+        }
+        if numero:   # las PCs no lo miran: es para mostrar
+            datos_del_manifiesto["v"] = numero
+        manifiesto = json.dumps(datos_del_manifiesto, sort_keys=True)
         firma = base64.b64encode(privada.sign(manifiesto.encode("utf-8"))).decode()
         os.makedirs(_carpeta(), exist_ok=True)
         # Primero el exe y después el manifiesto: una PC que pide justo en el medio recibe un exe
@@ -192,7 +248,7 @@ def _leer_del_disco() -> dict:
             contenido = json.loads(guardado["manifiesto"])
             paquete = {"manifiesto": guardado["manifiesto"], "firma": guardado["firma"],
                        "version": int(contenido["version"]), "tamano": int(contenido["tamano"]),
-                       "creado": contenido.get("creado", "")}
+                       "creado": contenido.get("creado", ""), "v": numero_de_version_valido(contenido.get("v"))}
             with open(_ruta(NOMBRE_EXE), "rb") as archivo:
                 exe = archivo.read()
         except (OSError, ValueError, KeyError, TypeError):
@@ -202,7 +258,8 @@ def _leer_del_disco() -> dict:
 
 
 def paquete():
-    """La versión cargada: {"manifiesto", "firma", "version", "tamano", "creado"}, o None."""
+    """La versión cargada: {"manifiesto", "firma", "version", "tamano", "creado", "v"}, o None
+    ("v": su número de versión, "1.2" = V1.2, o None si es un exe armado antes de la V1)."""
     with _candado:
         return _leer_del_disco()["paquete"]
 
@@ -258,7 +315,10 @@ def registrar_reporte(estacion_id: int, parametros: dict):
     """Guarda lo que contó la PC en su GET /estado (`parametros`: los de la consulta, ya de a uno):
     `version`, `carpeta`, `act`, `act_detalle` y `act_version` (la que está copiando o ya copió;
     un Cliente PC de antes del 2026-10-19 no la manda). Un Cliente PC sin actualización automática
-    no manda nada y no se toca nada. Solo escribe en la base si cambió algo."""
+    no manda nada de eso y no se toca nada. Aparte, `v`: su número de versión (lo manda desde la
+    V1, con lanzador o sin él; ver `_registrar_numero_de_version`). Solo escribe en la base si
+    cambió algo."""
+    _registrar_numero_de_version(estacion_id, parametros.get("v"))
     if "version" not in parametros:
         return
     version = _numero(parametros.get("version"))
@@ -284,6 +344,19 @@ def registrar_reporte(estacion_id: int, parametros: dict):
         _reportes[estacion_id] = nuevo
 
 
+def _registrar_numero_de_version(estacion_id: int, valor):
+    """El número de versión que mandó la PC ("1.2" = V1.2), o NULL si no mandó ninguno (un Cliente
+    PC armado antes de la V1: también si una PC volvió a uno así). Solo escribe si cambió."""
+    numero = numero_de_version_valido(valor)
+    with _candado_reportes:
+        if estacion_id in _numeros_de_version and _numeros_de_version[estacion_id] == numero:
+            return
+    with conexion_db() as conexion:
+        conexion.execute("UPDATE estaciones SET numero_version_cliente = ? WHERE id = ?", (numero, estacion_id))
+    with _candado_reportes:
+        _numeros_de_version[estacion_id] = numero
+
+
 def _numero(valor):
     texto = str(valor or "").strip()
     return int(texto) if texto.isdigit() else None
@@ -293,14 +366,17 @@ def olvidar_reportes():
     """Que la próxima consulta de cada PC se vuelva a escribir (para los tests)."""
     with _candado_reportes:
         _reportes.clear()
+        _numeros_de_version.clear()
 
 
 def estado_de_las_pcs(ahora: datetime = None) -> list:
     """Una fila por estación activa, en el orden de siempre: lo que contó su Cliente PC, si está
-    marcada, qué versión le toca, si se conectó hace poco y si tiene una sesión en curso."""
+    marcada, qué versión le toca, si se conectó hace poco y si tiene una sesión en curso. `v` es
+    el número de versión que mandó la PC y `v_le_toca`, el de la versión que le toca."""
     from control_pcs.repositories import pcs_repo   # aquí: pcs_repo no depende de este repo
     seleccion = obtener_seleccion()
-    publicada = version_publicada()
+    cargada = paquete()
+    publicada = cargada["version"] if cargada else None
     ahora = ahora or datetime.now()
     with conexion_db() as conexion:
         ocupadas = {fila["estacion_id"] for fila in conexion.execute(
@@ -313,10 +389,12 @@ def estado_de_las_pcs(ahora: datetime = None) -> list:
             "version": estacion["version_cliente"], "carpeta": estacion["carpeta_cliente"] or "",
             "estado": estacion["estado_actualizacion"] or "", "detalle": estacion["detalle_actualizacion"] or "",
             "version_bajada": estacion["version_bajada"],
+            "v": estacion["numero_version_cliente"],
             "ultima_conexion": estacion["ultima_conexion"],
             "conectada": _conectada(estacion["ultima_conexion"], ahora, pcs_repo.UMBRAL_ENLACE_SEGUNDOS),
             "seleccionada": seleccionada,
             "le_toca": publicada if publicada is not None and seleccionada else None,
+            "v_le_toca": cargada["v"] if cargada and seleccionada else None,
             "ocupada": estacion["id"] in ocupadas,
         })
     return filas
