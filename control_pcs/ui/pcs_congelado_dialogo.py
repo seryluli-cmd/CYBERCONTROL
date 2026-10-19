@@ -5,7 +5,8 @@ Congelar y descongelar PCs con Shadow Defender (clic derecho en una PC de
 Control de PCs -> "Congelar / descongelar...", solo Admin; pedido del dueño,
 2026-10-18). Se eligen las PCs (arranca marcada la del clic), se escribe la
 clave de Shadow Defender y se manda: ver cómo están, descongelar (reinicia) o
-congelar (en el acto). Cada PC contesta en su renglón.
+congelar (en el acto). Cada PC contesta en su renglón; las que tienen un
+cliente se saltean y lo dicen ahí.
 
 Las reglas viven en congelado_repo; acá solo se elige y se muestra. La clave
 vive solo en el campo de esta ventana: no se guarda, y al cerrar se borra de
@@ -47,8 +48,9 @@ class DialogoCongelado(QDialog):
 
         explicacion = QLabel(
             "Descongelar reinicia la PC: vuelve a arrancar descongelada y, desde ahí, lo que se "
-            "instale queda guardado. Congelar es en el acto. Las PCs con un cliente no se pueden "
-            "descongelar. La clave de Shadow Defender no se guarda."
+            "instale queda guardado. Congelar es en el acto. A las PCs con un cliente no se les "
+            "manda nada: no se pueden descongelar, y Congelar y Ver cómo están las saltean. "
+            "La clave de Shadow Defender no se guarda."
         )
         explicacion.setWordWrap(True)
 
@@ -166,12 +168,21 @@ class DialogoCongelado(QDialog):
             ):
                 return
         enviados = congelado_repo.pedir(elegidas, tipo, self.campo_clave.text(), self.campo_discos.text())
-        for estacion_id in self._filas:
-            if estacion_id in enviados:
-                self._poner_respuesta(estacion_id, "Esperando que la PC conteste...")
+        # Las elegidas que no están en `enviados` tenían un cliente (pedir las saltea).
+        salteadas = [estacion_id for estacion_id in elegidas if estacion_id not in enviados]
+        for estacion_id in enviados:
+            self._poner_respuesta(estacion_id, "Esperando que la PC conteste...")
+        for estacion_id in salteadas:
+            self._poner_respuesta(estacion_id, congelado_repo.texto_salteada(), False)
+        if not enviados:
+            self.etiqueta_estado.setText("No se mandó nada: todas las PCs elegidas tienen un cliente.")
+            return
+        aviso = f" {len(salteadas)} salteada(s) por tener un cliente." if salteadas else ""
         self._esperando = dict(enviados)
         self._segundos_esperados = 0
-        self.etiqueta_estado.setText(f"Mandado a {len(enviados)} PC(s). Cada una contesta en su renglón.")
+        self.etiqueta_estado.setText(
+            f"Mandado a {len(enviados)} PC(s). Cada una contesta en su renglón.{aviso}"
+        )
         self._timer.start()
 
     @manejar_errores

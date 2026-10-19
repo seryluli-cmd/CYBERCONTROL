@@ -220,7 +220,7 @@ abra no alcanza si los tests no pasan.
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `filtro_palabras_repo.obtener()` · `.guardar(...)` · `.registrar_bloqueo(...)` | se lee y se cambia el filtro de palabras de las PCs ("protección antiporno", pedido del dueño 2026-10-17: prendido, lista y mensaje, como JSON en `configuracion`; su versión viaja en `GET /estado` como `filtro_version`) y se anota cada página que cerró una PC (`bloqueos_filtro_pc`). Buscar las palabras en los títulos es tarea de cada Cliente PC (`CLIENTE PC/filtro_palabras.py`), no de este repo |
 | `actualizacion_cliente_repo.publicar(datos)` · `.version_para_estacion(id)` · `.registrar_reporte(id, parametros)` · `.estado_de_las_pcs()` | se carga y FIRMA una versión del Cliente PC (`data/cliente_pc/`), se decide qué versión le toca a cada PC (las de prueba o todas; viaja en `GET /estado` como `cliente_version`), se guarda lo que cuenta cada PC (versión, carpeta, cómo va) y se arma lo que muestra "Actualizar el Cliente PC de las PCs..." (pedido del dueño, 2026-10-18) |
-| `congelado_repo.pedir(estacion_ids, tipo, clave, discos)` · `.esta_ocupada(item)` · `.interpretar_respuesta(texto)` | se manda congelar, descongelar o ver cómo está Shadow Defender en las PCs (pedido del dueño, 2026-10-18; clic derecho en una PC, solo Admin): con la clave de Shadow Defender, que no se guarda; descongelar reinicia, así que nunca a una PC con cliente. Lo hace cada Cliente PC con CmdTool.exe (`CLIENTE PC/shadow_defender.py`) |
+| `congelado_repo.pedir(estacion_ids, tipo, clave, discos)` · `.esta_ocupada(item)` · `.interpretar_respuesta(texto)` | se manda congelar, descongelar o ver cómo está Shadow Defender en las PCs (pedido del dueño, 2026-10-18; clic derecho en una PC, solo Admin): con la clave de Shadow Defender, que no se guarda; nunca a una PC con cliente (descongelar no manda nada si se eligió alguna; congelar y ver cómo está la saltean y la ventana lo avisa en su renglón, `.texto_salteada()`). Lo hace cada Cliente PC con CmdTool.exe (`CLIENTE PC/shadow_defender.py`) |
 | `admin_remoto_repo.esta_activo()` · `.activar(...)` · `.entrar(nombre, clave, ip)` · `.exigir_admin_habilitado(id)` | se decide quién administra desde otra PC del local: viene apagado, solo un ADMIN activo, cada ingreso en `sesiones.desde_ip` (pedido del dueño, 2026-10-18) |
 | `admin_remoto.lista_blanca.FUNCIONES` · `.ACTOR` · `.huella()` | qué funciones de los repos se pueden pedir desde otra PC, qué parámetro es "quién lo hizo" (lo completa el mostrador) y la huella que tienen que compartir las dos copias del .exe |
 | `admin_remoto.modo.direccion_del_mostrador()` · `.es_copia_remota()` | se decide si esta copia es la del mostrador o una abierta por la red (y a qué PC le habla), y las pantallas esconden lo que solo se hace en el mostrador |
@@ -490,8 +490,11 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   servidor de red. No la guardes en `configuracion` "para no tipearla": cualquiera con
   `data/kiosko.db` la leería, y las cuentas de Windows de las PCs son de Administrador (tampoco va
   guardada allá). Descongelar reinicia la PC: `congelado_repo.pedir` no lo manda a una PC con cliente
-  (y el Cliente PC lo vuelve a revisar). Para que CmdTool arranque, la tarea del Cliente PC corre
-  elevada (`HighestAvailable`, ver `CLIENTE PC/win32_utils.configurar_inicio_automatico`).
+  (y el Cliente PC lo vuelve a revisar). Congelar y ver cómo está tampoco (pedido del dueño,
+  2026-10-19): la clave viajaría a una PC donde el cliente es Administrador y podría leerla en la línea
+  de comandos de CmdTool; se saltean esas PCs y se hacen las demás. Para que CmdTool arranque, la
+  tarea del Cliente PC corre elevada (`HighestAvailable`, ver
+  `CLIENTE PC/win32_utils.configurar_inicio_automatico`).
 - **El servidor de red no debe tocar Qt.** Usa conexiones SQLite propias desde
   sus hilos y registra fallos inesperados con `errores.registrar_error`, sin
   incluir claves ni el cuerpo de los pedidos en el contexto del log.
@@ -726,4 +729,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-776 pruebas al 2026-10-18 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas y congelar/descongelar PCs con Shadow Defender).
+778 pruebas al 2026-10-19 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas y congelar/descongelar PCs con Shadow Defender).

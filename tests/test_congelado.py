@@ -9,14 +9,22 @@ en la base. Lo que hace cada PC con su CmdTool se prueba en el Cliente PC
 """
 
 import json
+import os
 from datetime import datetime, timedelta
 
-import dominio
-from control_pcs.repositories import comandos_pc_repo, congelado_repo, pcs_repo
-from database import conexion_db
-from repositories import usuarios_repo
-from base import BaseConBaseTemporal
-from test_control_pcs import _ConServidorRed
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtWidgets import QApplication  # noqa: E402
+
+import dominio  # noqa: E402
+from control_pcs.repositories import comandos_pc_repo, congelado_repo, pcs_repo  # noqa: E402
+from control_pcs.ui.pcs_congelado_dialogo import COLUMNA_RESPUESTA, DialogoCongelado  # noqa: E402
+from database import conexion_db  # noqa: E402
+from repositories import usuarios_repo  # noqa: E402
+from base import BaseConBaseTemporal  # noqa: E402
+from test_control_pcs import _ConServidorRed  # noqa: E402
+
+_app = QApplication.instance() or QApplication([])
 
 CLAVE = "clave-de-shadow-defender"
 
@@ -68,10 +76,24 @@ class TestPedir(BaseConBaseTemporal):
 
         self.assertIsNone(comandos_pc_repo.proximo_comando_pendiente(self.pc1))
 
-    def test_congelar_y_ver_estado_si_con_un_cliente(self):
+    def test_congelar_y_ver_estado_saltean_la_pc_con_un_cliente_y_hacen_las_demas(self):
+        # Pedido del dueño (2026-10-19): la clave no viaja a una PC donde el
+        # cliente es Administrador de Windows.
         ocupar(self.pc1)
         for tipo in (congelado_repo.CONGELAR, congelado_repo.ESTADO):
-            self.assertIn(self.pc1, congelado_repo.pedir([self.pc1], tipo, CLAVE))
+            with self.subTest(tipo=tipo):
+                enviados = congelado_repo.pedir([self.pc1, self.pc2], tipo, CLAVE)
+
+                self.assertEqual(set(enviados), {self.pc2})
+                self.assertIsNone(comandos_pc_repo.proximo_comando_pendiente(self.pc1))
+
+    def test_si_todas_tienen_un_cliente_no_manda_nada_ni_se_queja(self):
+        ocupar(self.pc1)
+        ocupar(self.pc2)
+
+        self.assertEqual(congelado_repo.pedir([self.pc1, self.pc2], congelado_repo.CONGELAR, CLAVE), {})
+        for estacion_id in (self.pc1, self.pc2):
+            self.assertIsNone(comandos_pc_repo.proximo_comando_pendiente(estacion_id))
 
     def test_sin_clave_sin_pcs_o_con_discos_raros_no_manda_nada(self):
         for estacion_ids, clave, discos in (
@@ -98,6 +120,37 @@ class TestPedir(BaseConBaseTemporal):
     def test_discos(self):
         self.assertEqual(congelado_repo.normalizar_discos("c"), "C")
         self.assertEqual(congelado_repo.normalizar_discos(" C, d: c "), "CD")
+
+
+class TestVentana(BaseConBaseTemporal):
+    """La ventana avisa en su renglón la PC que se salteó por tener un cliente."""
+
+    def test_congelar_con_todas_marcadas_avisa_la_salteada(self):
+        pc1 = pcs_repo.crear_estacion("PC1")
+        pc2 = pcs_repo.crear_estacion("PC2")
+        ocupar(pc1)
+        estados = pcs_repo.estado_estaciones()
+        elegida = next(item["estacion"] for item in estados if item["estacion"]["id"] == pc1)
+        dialogo = DialogoCongelado(elegida, estados)
+        self.addCleanup(dialogo.deleteLater)
+
+        def respuesta(estacion_id):
+            fila, _item = dialogo._filas[estacion_id]
+            return dialogo.tabla.item(fila, COLUMNA_RESPUESTA).text()
+
+        # Se cierra dentro de la prueba (y no con addCleanup, que corre después de
+        # borrar la base temporal): al cerrar, la ventana toca la base.
+        try:
+            dialogo._marcar(lambda _item: True)
+            dialogo.campo_clave.setText(CLAVE)
+            dialogo.boton_congelar.click()
+
+            self.assertEqual(respuesta(pc1), congelado_repo.texto_salteada())
+            self.assertEqual(respuesta(pc2), "Esperando que la PC conteste...")
+            self.assertEqual(set(dialogo._esperando), {pc2})
+            self.assertIn("1 salteada", dialogo.etiqueta_estado.text())
+        finally:
+            dialogo.close()
 
 
 class TestLaClaveNoQuedaGuardada(BaseConBaseTemporal):

@@ -14,10 +14,13 @@ Reglas:
   MINUTOS_VIGENCIA_CON_CLAVE. Sin la clave correcta CmdTool no hace nada, así
   que una empleada que abra la ventana no puede descongelar.
 - **Descongelar reinicia la PC** (Shadow Defender suelta el disco recién al
-  reiniciar): no se le manda a una PC con un cliente usándola. El Cliente PC lo
-  vuelve a revisar por las dudas.
-- Congelar es en el acto y sin reiniciar; ver cómo está no cambia nada: los dos
-  se pueden con la PC ocupada.
+  reiniciar): no se le manda a una PC con un cliente usándola, y si se eligió
+  alguna no se manda nada. El Cliente PC lo vuelve a revisar por las dudas.
+- **Congelar y ver cómo está tampoco van a una PC con un cliente**, aunque no
+  reinician: la clave viajaría a una PC donde el cliente es Administrador de
+  Windows y podría verla (CmdTool la lleva en su línea de comandos). Esas PCs
+  se saltean y las demás se hacen igual; la ventana lo avisa en su renglón
+  (pedido del dueño, 2026-10-19).
 """
 
 import json
@@ -63,9 +66,10 @@ def pedir(estacion_ids, tipo: str, clave: str, discos: str = DISCOS_DE_SIEMPRE) 
     """
     Le manda `tipo` (DESCONGELAR, CONGELAR o ESTADO) a cada PC de
     `estacion_ids`. Devuelve {estacion_id: comando_id} para esperar las
-    respuestas. Levanta ValueError (con un texto para la pantalla) sin mandar
-    nada si falta la clave, los discos están mal, alguna PC no existe o, para
-    descongelar, alguna tiene un cliente.
+    respuestas; una PC elegida que no está ahí se salteó porque tiene un
+    cliente (CONGELAR y ESTADO, ver texto_salteada). Levanta ValueError (con un
+    texto para la pantalla) sin mandar nada si falta la clave, los discos están
+    mal, alguna PC no existe o, para descongelar, alguna tiene un cliente.
     """
     if tipo not in dominio.COMANDOS_CON_CLAVE:
         raise ValueError(f"Pedido desconocido: {tipo}")
@@ -80,19 +84,19 @@ def pedir(estacion_ids, tipo: str, clave: str, discos: str = DISCOS_DE_SIEMPRE) 
     faltan = [estacion_id for estacion_id in estacion_ids if estacion_id not in por_id]
     if faltan:
         raise ValueError("Alguna de las PCs elegidas ya no está activa. Cerrá y volvé a abrir la ventana.")
-    if tipo == DESCONGELAR:
-        ocupadas = [por_id[estacion_id]["estacion"]["nombre"] for estacion_id in estacion_ids
-                    if esta_ocupada(por_id[estacion_id])]
-        if ocupadas:
-            raise ValueError(
-                "Descongelar reinicia la PC, y estas tienen un cliente usándolas: "
-                f"{', '.join(ocupadas)}. Descongelalas cuando estén libres."
-            )
+    ocupadas = [estacion_id for estacion_id in estacion_ids if esta_ocupada(por_id[estacion_id])]
+    if tipo == DESCONGELAR and ocupadas:
+        nombres = [por_id[estacion_id]["estacion"]["nombre"] for estacion_id in ocupadas]
+        raise ValueError(
+            "Descongelar reinicia la PC, y estas tienen un cliente usándolas: "
+            f"{', '.join(nombres)}. Descongelalas cuando estén libres."
+        )
 
     payload = json.dumps({"clave": clave, "discos": discos})
     return {
         estacion_id: comandos_pc_repo.encolar_comando(estacion_id, tipo, payload)
         for estacion_id in estacion_ids
+        if estacion_id not in ocupadas
     }
 
 
@@ -107,6 +111,11 @@ def interpretar_respuesta(resultado):
     if resultado.startswith("ERROR:"):
         return False, resultado[6:].strip()
     return False, resultado
+
+
+def texto_salteada() -> str:
+    """Qué decir de una PC elegida a la que `pedir` no le mandó nada por tener un cliente."""
+    return "Salteada: tiene un cliente usándola. Probá de nuevo cuando esté libre."
 
 
 def texto_sin_respuesta() -> str:
