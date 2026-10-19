@@ -736,7 +736,10 @@ class TestCopiaRemota(unittest.TestCase):
             barra = [boton.text() for boton in ventana.findChildren(QPushButton)]
             self.assertIsNone(ventana.panel_pcs)
             self.assertIsNone(ventana.boton_cierre_turno)
-            self.assertFalse(any("Vender" in texto or "Trámites" in texto or "Miembros" in texto for texto in barra))
+            self.assertFalse(any(
+                "Vender" in texto or "Impresiones" in texto or "Trámites" in texto or "Miembros" in texto
+                for texto in barra
+            ))
             self.assertIn("Sin caja abierta", ventana.etiqueta_caja.text())
 
             pantallas = [

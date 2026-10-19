@@ -114,13 +114,16 @@ NOMBRE_ORIGEN_VENTA = {
 }
 
 # IMPRESIONES es un artículo más del kiosko (se vende por el mismo
-# mostrador, con `origen` KIOSKO), pero es el producto Nº 1 y el dueño lo
-# quiere ver como renglón propio en Reportes (Totales y Resumen del Día),
-# separado del resto de lo que se vende en Kiosko. Se lo reconoce por el
-# código del artículo, que es la clave primaria y no se puede cambiar una
-# vez creado. Si este artículo no existe (o se creó con otro código), esas
-# columnas simplemente muestran $0.
-CODIGO_ARTICULO_IMPRESIONES = "1"
+# mostrador, con `origen` KIOSKO), pero es el producto que más se vende y el
+# dueño lo quiere ver como renglón propio en Reportes (Totales y Resumen del
+# Día), en Caja y en Cierre de Turno, separado del resto de lo que se vende en
+# Kiosko; también tiene su propio botón en la barra de arriba
+# (ui/impresiones_window.py). Se lo reconoce por el código del artículo, que es
+# la clave primaria y no se puede cambiar una vez creado. Si este artículo no
+# existe (o se creó con otro código), esas columnas simplemente muestran $0.
+# Es el 4 desde la base nueva de octubre de 2026 (dato del dueño, 2026-10-19);
+# en la base anterior era el 1, y hasta ese día el programa seguía buscando el 1.
+CODIGO_ARTICULO_IMPRESIONES = "4"
 
 
 # --------------------------------------------------------------------

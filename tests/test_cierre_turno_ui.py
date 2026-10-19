@@ -2,8 +2,8 @@
 tests/test_cierre_turno_ui.py
 ===============================
 La pantalla de Cierre de Turno es el resumen que las empleadas le mandan al dueño
-(se prueba sin abrir ninguna ventana, plataforma "offscreen" de Qt): que muestre lo
-vendido en Impresiones, que el cambio fijo se llame "Cambio Fijo" (nunca "fondo") y
+(se prueba sin abrir ninguna ventana, plataforma "offscreen" de Qt): que muestre
+Kiosko, Impresiones y Trámites separados (pedido del dueño, 2026-10-19), que el cambio fijo se llame "Cambio Fijo" (nunca "fondo") y
 que el aviso al cerrar también lo diga así. La cuenta de fondo está en
 tests/test_kiosko.py (TestResumenDelDia).
 
@@ -47,15 +47,15 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.addCleanup(ventana.deleteLater)
         return ventana
 
-    def test_muestra_lo_vendido_en_impresiones_sin_sacarlo_de_kiosko(self):
+    def test_muestra_las_impresiones_aparte_de_kiosko(self):
         self._vender(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", 3, 150.0)  # $450
         self._vender("COD9", "Producto", 1, 10.0)
 
         ventana = self._abrir()
 
-        self.assertEqual(ventana.valor_impresiones.text(), "$ 450,00")
-        # Siguen dentro de Kiosko y del efectivo a retirar: no es un monto extra.
-        self.assertIn("$ 460,00 ef.", ventana.valor_kiosko.text())
+        self.assertEqual(ventana.valor_impresiones.text(), "$ 450,00 ef. + $ 0,00 dig.")
+        self.assertEqual(ventana.valor_kiosko.text(), "$ 10,00 ef. + $ 0,00 dig.")
+        # El efectivo a retirar sigue siendo todo: separarlas es solo cómo se muestra.
         self.assertEqual(ventana.valor_retirar.text(), "$ 460,00")
 
     def test_muestra_efectivo_digital_y_total_sin_duplicar_las_impresiones(self):
@@ -85,14 +85,14 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
 
         ventana = self._abrir()
 
-        self.assertEqual(ventana.valor_tramites.text(), "$ 2.500,00")
-        self.assertIn("$ 2.510,00 ef.", ventana.valor_kiosko.text())   # el trámite sigue dentro de Kiosko
-        self.assertEqual(ventana.valor_total.text(), "$ 2.510,00")      # y cuenta una sola vez
+        self.assertEqual(ventana.valor_tramites.text(), "$ 2.500,00 ef. + $ 0,00 dig.")
+        self.assertEqual(ventana.valor_kiosko.text(), "$ 10,00 ef. + $ 0,00 dig.")
+        self.assertEqual(ventana.valor_total.text(), "$ 2.510,00")      # cuenta una sola vez
 
     def test_sin_impresiones_muestra_cero(self):
         self._vender("COD9", "Producto", 1, 10.0)
 
-        self.assertEqual(self._abrir().valor_impresiones.text(), "$ 0,00")
+        self.assertEqual(self._abrir().valor_impresiones.text(), "$ 0,00 ef. + $ 0,00 dig.")
 
     def test_el_cambio_fijo_no_se_llama_fondo_en_ningun_texto_de_la_pantalla(self):
         textos = [etiqueta.text() for etiqueta in self._abrir().findChildren(QLabel)]

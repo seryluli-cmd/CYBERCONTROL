@@ -117,3 +117,58 @@ def _vendido_aparte_entre(conexion, desde: str, hasta: str, cierre_grabado: bool
         (*parametros_vigente, desde, hasta),
     ).fetchone()["total"]
     return {"impresiones": impresiones, "tramites": tramites}
+
+
+def _aparte_por_metodo(conexion, desde: str, hasta: str) -> dict:
+    """
+    {"impresiones": {metodo: monto}, "tramites": {metodo: monto}}: lo mismo que
+    `_vendido_aparte_entre` (ventas confirmadas de la ventana), pero repartido
+    entre efectivo y digital, para que Caja y Cierre de Turno muestren Kiosko,
+    Impresiones y Trámites cada uno con su "ef. + dig." (pedido del dueño,
+    2026-10-19: eligió ver Kiosko sin impresiones).
+
+    El reparto se hace venta por venta con los pagos de ESA venta: un trámite o
+    unas impresiones cobradas solas (el botón Impresiones) quedan exactas; si las
+    impresiones iban en un carrito con otras cosas y se pagó una parte en cada
+    medio, se reparten en la misma proporción que se pagó. Las dos partes de una
+    venta suman siempre su importe de impresiones/trámite, así que Kiosko menos
+    esto da justo lo demás: el efectivo del cajón no se toca.
+    """
+    filas = conexion.execute(
+        """
+        SELECT
+            (SELECT COALESCE(SUM(venta_detalle.subtotal), 0) FROM venta_detalle
+              WHERE venta_detalle.venta_id = ventas.id
+                AND venta_detalle.articulo_codigo = ?) AS impresiones,
+            CASE WHEN EXISTS (SELECT 1 FROM tramites_venta WHERE tramites_venta.venta_id = ventas.id)
+                 THEN ventas.total ELSE 0 END AS tramites,
+            (SELECT COALESCE(SUM(venta_pagos.monto), 0) FROM venta_pagos
+              WHERE venta_pagos.venta_id = ventas.id AND venta_pagos.metodo = ?) AS efectivo,
+            (SELECT COALESCE(SUM(venta_pagos.monto), 0) FROM venta_pagos
+              WHERE venta_pagos.venta_id = ventas.id AND venta_pagos.metodo = ?) AS digital
+        FROM ventas
+        WHERE ventas.estado = ?
+          AND ventas.origen = ?
+          AND ventas.fecha > ?
+          AND ventas.fecha <= ?
+          AND (EXISTS (SELECT 1 FROM venta_detalle
+                        WHERE venta_detalle.venta_id = ventas.id AND venta_detalle.articulo_codigo = ?)
+               OR EXISTS (SELECT 1 FROM tramites_venta WHERE tramites_venta.venta_id = ventas.id))
+        """,
+        (dominio.CODIGO_ARTICULO_IMPRESIONES, dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL,
+         dominio.VENTA_CONFIRMADA, dominio.ORIGEN_KIOSKO, desde, hasta, dominio.CODIGO_ARTICULO_IMPRESIONES),
+    ).fetchall()
+
+    sumas = {linea: {metodo: 0.0 for metodo in dominio.METODOS_PAGO} for linea in _LINEAS_APARTE}
+    for fila in filas:
+        pagado = fila["efectivo"] + fila["digital"]
+        if pagado <= 0:
+            continue  # sin pagos tampoco sumó nada en Kiosko: no hay qué restarle
+        for linea in _LINEAS_APARTE:
+            monto = fila[linea]
+            if not monto:
+                continue
+            parte_efectivo = monto * fila["efectivo"] / pagado
+            sumas[linea][dominio.PAGO_EFECTIVO] += parte_efectivo
+            sumas[linea][dominio.PAGO_DIGITAL] += monto - parte_efectivo
+    return sumas

@@ -41,7 +41,8 @@ from repositories.control_cierres_repo import (  # noqa: F401 (API de las pantal
     verificar_cierre,
 )
 from repositories.turnos_ventas_repo import (
-    _LINEAS_APARTE, _contar_ventas_entre, _sumar_ventas_por_origen_y_metodo, _vendido_aparte_entre,
+    _LINEAS_APARTE, _aparte_por_metodo, _contar_ventas_entre, _sumar_ventas_por_origen_y_metodo,
+    _vendido_aparte_entre,
 )
 
 
@@ -177,10 +178,15 @@ def resumen_turno_actual():
     cierre, y cuánto debería haber ahora mismo en el cajón.
 
     "impresiones" (lo vendido del artículo IMPRESIONES) y "tramites" (lo cobrado
-    por trámites) en esta ventana son datos informativos para el Cierre de
-    Turno: YA están sumados dentro de kiosko_efectivo/kiosko_digital, no se les
-    resta, porque esos dos importes llevan el desglose por medio de pago y estas
-    dos líneas se cuentan por renglón de venta, no por medio de pago.
+    por trámites) en esta ventana YA están sumados dentro de
+    kiosko_efectivo/kiosko_digital: esos dos son los que se graban en el cierre
+    y con los que cierra el cajón, y no cambian. Para mostrar Kiosko por
+    separado (pedido del dueño, 2026-10-19) vienen además
+    "impresiones_efectivo"/"impresiones_digital", "tramites_efectivo"/
+    "tramites_digital" (repartidos con los pagos de cada venta, ver
+    turnos_ventas_repo._aparte_por_metodo) y "kiosko_solo_efectivo"/
+    "kiosko_solo_digital": Kiosko sin impresiones ni trámites. Los tres suman
+    justo kiosko_efectivo/kiosko_digital.
 
     Con una caja abierta trae también "caja_numero" y "responsable" (si no,
     None), y "cambio_inicial" es el cambio con que arrancó esa caja (lo que se
@@ -200,7 +206,7 @@ def _resumen_en_curso(conexion, ahora_dt=None) -> dict:
     desglose = _desglose_de_totales(
         _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
     )
-    aparte = _vendido_aparte_entre(conexion, ventana["desde"], ventana["hasta"])
+    aparte = _separar_de_kiosko(desglose, _aparte_por_metodo(conexion, ventana["desde"], ventana["hasta"]))
 
     fondo_cambio = obtener_fondo_cambio()
     caja = ventana["caja"]
@@ -211,8 +217,7 @@ def _resumen_en_curso(conexion, ahora_dt=None) -> dict:
         "turno_actual_label": etiqueta_turno(ventana["dia"], ventana["turno"]),
         "fondo_cambio": fondo_cambio,
         **desglose,
-        "impresiones": round(aparte["impresiones"], 2),
-        "tramites": round(aparte["tramites"], 2),
+        **aparte,
         # Todo lo cobrado en el turno (efectivo + digital de todos los negocios).
         # Las impresiones y los trámites no se suman: ya están dentro de Kiosko.
         "ventas_total": round(desglose["ventas_efectivo"] + desglose["ventas_digital"], 2),
@@ -223,6 +228,30 @@ def _resumen_en_curso(conexion, ahora_dt=None) -> dict:
         "desde": ventana["desde"],
         "hasta": ventana["hasta"],
     }
+
+
+def _separar_de_kiosko(desglose: dict, por_metodo: dict) -> dict:
+    """
+    Las claves de resumen_turno_actual que separan Impresiones y Trámites de
+    Kiosko (ver ahí), a partir del desglose del turno y de
+    turnos_ventas_repo._aparte_por_metodo. Se redondea cada parte una sola vez
+    y Kiosko sale por resta, así los tres renglones suman exactamente lo que
+    dice Kiosko en el cierre, al centavo.
+    """
+    resultado = {}
+    resto = {"efectivo": desglose["kiosko_efectivo"], "digital": desglose["kiosko_digital"]}
+    for linea in _LINEAS_APARTE:
+        total = round(por_metodo[linea][dominio.PAGO_EFECTIVO] + por_metodo[linea][dominio.PAGO_DIGITAL], 2)
+        efectivo = round(por_metodo[linea][dominio.PAGO_EFECTIVO], 2)
+        digital = round(total - efectivo, 2)
+        resultado[linea] = total
+        resultado[f"{linea}_efectivo"] = efectivo
+        resultado[f"{linea}_digital"] = digital
+        resto["efectivo"] -= efectivo
+        resto["digital"] -= digital
+    resultado["kiosko_solo_efectivo"] = round(resto["efectivo"], 2)
+    resultado["kiosko_solo_digital"] = round(resto["digital"], 2)
+    return resultado
 
 
 def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):

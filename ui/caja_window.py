@@ -36,6 +36,22 @@ def _texto_desglose(efectivo: float, digital: float) -> str:
     return f"{formato_pesos(efectivo)} ef. + {formato_pesos(digital)} dig."
 
 
+def _mostrar_desglose_por_negocio(pantalla, resumen):
+    """Los renglones de cada negocio, iguales en Caja y en Cierre de Turno:
+    Kiosko (sin impresiones ni trámites), Impresiones, Trámites, Alquiler de
+    PCs y PlayStation 5, cada uno con su efectivo y digital (ver
+    turnos_repo.resumen_turno_actual)."""
+    pantalla.valor_kiosko.setText(_texto_desglose(resumen["kiosko_solo_efectivo"], resumen["kiosko_solo_digital"]))
+    pantalla.valor_impresiones.setText(
+        _texto_desglose(resumen["impresiones_efectivo"], resumen["impresiones_digital"])
+    )
+    pantalla.valor_tramites.setText(_texto_desglose(resumen["tramites_efectivo"], resumen["tramites_digital"]))
+    pantalla.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
+    pantalla.valor_playstation.setText(
+        _texto_desglose(resumen["playstation_efectivo"], resumen["playstation_digital"])
+    )
+
+
 def _titulo_de_la_caja(resumen) -> str:
     """"Caja Nº 12 de Lucía · " si hay una caja abierta (ver
     turnos_repo.resumen_turno_actual); si no, nada."""
@@ -103,7 +119,7 @@ class CajaWindow(_PantallaDeCaja):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Caja")
-        self.resize(460, 430)
+        self.resize(460, 450)
         self._armar_interfaz()
         self._refrescar()
 
@@ -120,6 +136,8 @@ class CajaWindow(_PantallaDeCaja):
         layout_kiosko, self.valor_kiosko = _etiqueta_dato(
             f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO]}", ""
         )
+        layout_impresiones, self.valor_impresiones = _etiqueta_dato("VENTAS — Impresiones", "")
+        layout_tramites, self.valor_tramites = _etiqueta_dato("VENTAS — Trámites", "")
         layout_pcs, self.valor_pcs = _etiqueta_dato(
             f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS]}", ""
         )
@@ -138,8 +156,10 @@ class CajaWindow(_PantallaDeCaja):
 
         self._armar_cuerpo(
             [(layout_fondo, layout_actual), (layout_ventas, layout_digital),
-             (layout_kiosko, layout_pcs), (layout_playstation, QVBoxLayout())],
-            "La Caja Actual suma solo el EFECTIVO; no incluye lo cobrado por Digital.",
+             (layout_kiosko, layout_impresiones), (layout_tramites, QVBoxLayout()),
+             (layout_pcs, layout_playstation)],
+            "La Caja Actual suma solo el EFECTIVO; no incluye lo cobrado por Digital. "
+            "Kiosko no incluye Impresiones ni Trámites: cada uno va en su renglón.",
             botones,
         )
 
@@ -153,11 +173,7 @@ class CajaWindow(_PantallaDeCaja):
         self.valor_actual.setText(formato_pesos(resumen["caja_actual"]))
         self.valor_ventas.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
-        self.valor_kiosko.setText(_texto_desglose(resumen["kiosko_efectivo"], resumen["kiosko_digital"]))
-        self.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
-        self.valor_playstation.setText(
-            _texto_desglose(resumen["playstation_efectivo"], resumen["playstation_digital"])
-        )
+        _mostrar_desglose_por_negocio(self, resumen)
 
 
 class CierreTurnoWindow(_PantallaDeCaja):
@@ -172,7 +188,7 @@ class CierreTurnoWindow(_PantallaDeCaja):
         # saber si corresponde volver sola al Login (ver ese método).
         self.turno_cerrado = False
         self.setWindowTitle("Cierre de Turno")
-        self.resize(460, 470)
+        self.resize(460, 490)
         self._armar_interfaz()
         self._refrescar_vista_previa()
 
@@ -183,8 +199,8 @@ class CierreTurnoWindow(_PantallaDeCaja):
         layout_fondo, self.valor_fondo = _etiqueta_dato("Cambio Fijo", "")
         layout_efectivo, self.valor_efectivo = _etiqueta_dato("Efectivo", "")
         layout_digital, self.valor_digital = _etiqueta_dato("Digital", "")
-        # Efectivo + Digital de Kiosko, PCs y PlayStation 5; las impresiones no se
-        # suman aparte porque ya están dentro de Kiosko.
+        # Efectivo + Digital de todo lo cobrado (Kiosko, Impresiones, Trámites,
+        # PCs y PlayStation 5).
         layout_total, self.valor_total = _etiqueta_dato("TOTAL", "", destacado=True)
         layout_retirar, self.valor_retirar = _etiqueta_dato("A RETIRAR EN EFECTIVO", "")
         layout_kiosko, self.valor_kiosko = _etiqueta_dato(
@@ -196,12 +212,12 @@ class CierreTurnoWindow(_PantallaDeCaja):
         layout_playstation, self.valor_playstation = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION], ""
         )
-        # Las impresiones no son un origen aparte: ya están sumadas dentro de
-        # Kiosko (y de su "ef. + dig."), por eso el título lo aclara -- así nadie
-        # las cuenta dos veces al sumar los renglones a mano.
-        layout_impresiones, self.valor_impresiones = _etiqueta_dato("Impresiones (incluidas en Kiosko)", "")
-        # Igual con los trámites: se cobran como una venta de Kiosko, ya están en el TOTAL.
-        layout_tramites, self.valor_tramites = _etiqueta_dato("Trámites (incluidos en Kiosko)", "")
+        # Kiosko, Impresiones y Trámites van separados, cada uno con su "ef. +
+        # dig." (pedido del dueño, 2026-10-19: antes Impresiones y Trámites eran
+        # renglones "incluidos en Kiosko"). Sumados dan lo que se graba como
+        # Kiosko en el cierre.
+        layout_impresiones, self.valor_impresiones = _etiqueta_dato("Impresiones", "")
+        layout_tramites, self.valor_tramites = _etiqueta_dato("Trámites", "")
 
         boton_cerrar_turno = QPushButton("Confirmar Cierre de Turno")
         aplicar_clase(boton_cerrar_turno, "primario")
@@ -217,8 +233,8 @@ class CierreTurnoWindow(_PantallaDeCaja):
         self._armar_cuerpo(
             [(layout_fondo, layout_retirar), (layout_efectivo, layout_digital),
              (layout_total, QVBoxLayout()),
-             (layout_kiosko, layout_pcs), (layout_playstation, layout_impresiones),
-             (layout_tramites, QVBoxLayout())],
+             (layout_kiosko, layout_impresiones), (layout_tramites, QVBoxLayout()),
+             (layout_pcs, layout_playstation)],
             "Retirá el efectivo indicado y guardalo en el sobre. Dejá el cambio "
             "fijo en el cajón para que arranque el próximo turno.",
             botones,
@@ -233,13 +249,7 @@ class CierreTurnoWindow(_PantallaDeCaja):
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
         self.valor_total.setText(formato_pesos(resumen["ventas_total"]))
         self.valor_retirar.setText(formato_pesos(resumen["ventas_efectivo"]))
-        self.valor_kiosko.setText(_texto_desglose(resumen["kiosko_efectivo"], resumen["kiosko_digital"]))
-        self.valor_pcs.setText(_texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
-        self.valor_playstation.setText(
-            _texto_desglose(resumen["playstation_efectivo"], resumen["playstation_digital"])
-        )
-        self.valor_impresiones.setText(formato_pesos(resumen["impresiones"]))
-        self.valor_tramites.setText(formato_pesos(resumen["tramites"]))
+        _mostrar_desglose_por_negocio(self, resumen)
 
     @manejar_errores
     def _cerrar_turno(self):

@@ -105,33 +105,40 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     pequeños errores de redondeo de punto flotante no se vayan
     acumulando venta tras venta a lo largo de los años.
     """
-    ahora = datetime.now()
-
     with conexion_db() as conexion:
-        venta_id = _insertar_cabecera_venta(
-            conexion, ahora, usuario_id, total_carrito(lineas), dominio.ORIGEN_KIOSKO
+        return _grabar_venta_kiosko(conexion, usuario_id, lineas, pagos)
+
+
+def _grabar_venta_kiosko(conexion, usuario_id: int, lineas: list, pagos: list) -> int:
+    """
+    Núcleo de confirmar_venta sobre una conexión YA ABIERTA: lo usa también
+    impresiones_repo.cobrar_impresiones, que lee el precio del artículo en la
+    misma transacción en que graba la venta. Único lugar donde se hace el
+    INSERT INTO venta_detalle y se descuenta el stock por una venta.
+    """
+    venta_id = _insertar_cabecera_venta(
+        conexion, datetime.now(), usuario_id, total_carrito(lineas), dominio.ORIGEN_KIOSKO
+    )
+
+    for linea in lineas:
+        conexion.execute(
+            """
+            INSERT INTO venta_detalle
+                (venta_id, articulo_codigo, descripcion, cantidad, precio_unitario, subtotal)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (venta_id, linea["codigo"], linea["descripcion"], linea["cantidad"],
+             round(linea["precio_unitario"], 2), round(subtotal_linea(linea), 2)),
+        )
+        # Restamos el stock. Se permite que quede en negativo (ver
+        # database.py / articulos_repo.py para la explicación completa).
+        conexion.execute(
+            "UPDATE articulos SET stock = stock - ? WHERE codigo = ?",
+            (linea["cantidad"], linea["codigo"]),
         )
 
-        for linea in lineas:
-            conexion.execute(
-                """
-                INSERT INTO venta_detalle
-                    (venta_id, articulo_codigo, descripcion, cantidad, precio_unitario, subtotal)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (venta_id, linea["codigo"], linea["descripcion"], linea["cantidad"],
-                 round(linea["precio_unitario"], 2), round(subtotal_linea(linea), 2)),
-            )
-            # Restamos el stock. Se permite que quede en negativo (ver
-            # database.py / articulos_repo.py para la explicación completa).
-            conexion.execute(
-                "UPDATE articulos SET stock = stock - ? WHERE codigo = ?",
-                (linea["cantidad"], linea["codigo"]),
-            )
-
-        _insertar_pagos(conexion, venta_id, pagos)
-
-        return venta_id
+    _insertar_pagos(conexion, venta_id, pagos)
+    return venta_id
 
 
 def _anular_venta(conexion, venta_id: int, usuario_admin_id: int, motivo: str):

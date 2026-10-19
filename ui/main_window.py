@@ -5,7 +5,8 @@ Ventana principal: aparece después del login y muestra de entrada la
 grilla de "Control de PCs" (`control_pcs/ui/pcs_window.py:PanelControlPcs`) — es lo
 que se usa todo el día en el mostrador, así que es la pantalla misma, no
 una opción más de un menú. Desde la barra de arriba se llega a Vender
-(kiosko), a "Trámites" (servicios con monto libre, ej. sacar una boleta de
+(kiosko), a "Impresiones" (cobro rápido del artículo de impresiones, sin
+entrar a Vender), a "Trámites" (servicios con monto libre, ej. sacar una boleta de
 luz), a "Miembros" (alta/carga de saldo de socios) y, para
 "encargados", a "Administrar Kiosko" (el resto de las pantallas de
 gestión) y, solo para Admin, a "Configuración ADMIN". Qué se ve depende
@@ -13,8 +14,8 @@ del rol y los permisos:
 
 - Cualquiera logueado: operar la grilla de PCs (asignar un bono ya
   creado, abrir con Miembro, finalizar sesión — es una venta más, como
-  Vender), Vender, cobrar un Trámite, Caja, Cierre de Turno, y Cambiar mi
-  Clave. La PlayStation 5, que está en esa misma grilla, la ve cualquiera pero
+  Vender), Vender, cobrar Impresiones o un Trámite, Caja, Cierre de Turno, y
+  Cambiar mi Clave. La PlayStation 5, que está en esa misma grilla, la ve cualquiera pero
   solo la opera (vender sus bonos, liberarla) quien tenga `permiso_control_pcs`
   (o sea Admin).
 - Con `permiso_control_pcs` (o Admin): además ve "Miembros" (alta,
@@ -58,11 +59,12 @@ from PySide6.QtCore import Qt, QTimer
 import dominio
 from admin_remoto import modo as modo_remoto
 from errores import registrar_error
-from repositories import relevo_repo, usuarios_repo
+from repositories import impresiones_repo, relevo_repo, usuarios_repo
 from ui.accesos_admin_window import AccesosAdminWindow
 from ui.admin_remoto_dialogo import DialogoEntrarDesdeOtraPC
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
+from ui.impresiones_window import DialogoImpresiones
 from ui.ventas_window import VentasWindow
 from ui.consulta_ventas_window import ConsultaVentasWindow
 from ui.limpieza_dialogo import DialogoLimpiarBase
@@ -77,7 +79,7 @@ from control_pcs.ui.pcs_gestion_dialogos import (
 )
 from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
 from ui.ingreso_caja import mensaje_del_sobre
-from ui.utils import aplicar_clase, mostrar_info, sin_boton_por_defecto
+from ui.utils import aplicar_clase, mostrar_error, mostrar_info, sin_boton_por_defecto
 
 # Cada cuánto se mira cómo está la caja (si tiene que titilar el botón, o si ya
 # toca el cierre forzoso). Es una consulta chica, con su índice.
@@ -190,6 +192,8 @@ class MainWindow(QMainWindow):
         apretarlo sin querer)."""
         if not self._remota:
             self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
+            # Cobro rápido de impresiones, sin entrar a Vender (pedido del dueño, 2026-10-19).
+            self._agregar_boton_barra(layout_barra, "🖨️  Impresiones", self._abrir_impresiones)
             self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
             if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"):
                 # Una sola carita (2026-10-18): el emoji de "dos personas" de antes,
@@ -341,6 +345,13 @@ class MainWindow(QMainWindow):
 
     def _abrir_ventas(self):
         VentasWindow(self.usuario, self).exec()
+
+    def _abrir_impresiones(self):
+        articulo = impresiones_repo.articulo_impresiones()
+        if articulo is None:
+            mostrar_error(self, "Falta el artículo", impresiones_repo.mensaje_sin_articulo())
+            return
+        DialogoImpresiones(self.usuario, articulo, self).exec()
 
     def _abrir_tramites(self):
         DialogoTramites(self.usuario, self).exec()

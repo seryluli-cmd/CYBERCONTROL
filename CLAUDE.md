@@ -243,8 +243,10 @@ abra no alcanza si los tests no pasan.
 | `dominio.cuenta_del_cobro(total, efectivo, digital, paga_con)` · `.lo_que_falta_para(total, monto)` | se calcula el cobro: la parte en efectivo y la digital, el billete que da el cliente, el vuelto, lo que falta y los pagos que quedan en la caja (netos de vuelto); y lo que completa el otro medio al escribir en uno |
 | `ui.dialogo_pago.cobrar(parent, monto)` | se cobra todo lo que no es una venta de kiosko con la ventana de cobro de Ventas (medio de pago, reparto y vuelto): el bono de PC, PCSTREAM o PlayStation 5 del botón "Cobrar" de Control de PCs, la carga de saldo de un socio y un trámite. Devuelve los pagos netos de vuelto, o None si se canceló |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
-| `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
-| `turnos_ventas_repo._vendido_aparte_entre(...)` (lo usa `turnos_repo`) | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día (y las impresiones, como renglón informativo, en Cierre de Turno vía `resumen_turno_actual()["impresiones"]`) |
+| `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el código "4" en la base del dueño; hasta el 2026-10-19 el programa buscaba el "1", el de la base anterior, y las impresiones salían en $0), para mostrarlo como renglón propio en Reportes, Caja y Cierre de Turno |
+| `impresiones_repo.cobrar_impresiones(...)` · `.articulo_impresiones()` | se cobran impresiones desde el botón de la barra (pedido del dueño, 2026-10-19): venta de kiosko común del artículo, con el precio leído en la misma transacción (`ventas_repo._grabar_venta_kiosko`, el núcleo de `confirmar_venta`) |
+| `turnos_ventas_repo._vendido_aparte_entre(...)` (lo usa `turnos_repo`) | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día |
+| `turnos_ventas_repo._aparte_por_metodo(...)` · `turnos_repo._separar_de_kiosko(...)` | se reparte lo de impresiones y trámites del turno en curso entre efectivo y digital (venta por venta, con sus pagos) y se arma Kiosko sin ellos para Caja y Cierre de Turno (`resumen_turno_actual()["kiosko_solo_*"]`, `["impresiones_*"]`, `["tramites_*"]`) |
 | `tramites_repo.registrar_tramite(...)` | se cobra un trámite de mostrador (monto libre): venta KIOSKO sin detalle + vínculo en `tramites_venta` |
 | `main.aplicar_estilo(app)` | se fija el aspecto de TODO el programa: estilo Fusion, esquema de color CLARO y la hoja de estilos (`HOJA_DE_ESTILOS`) |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
@@ -588,17 +590,20 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 - **Un cierre guarda una foto de lo cobrado.** En Resumen del Día, si una venta
   se anula después de cerrar, el desglose de Impresiones y Trámites debe seguir
   conciliando con ese cierre; ver `turnos_ventas_repo._vendido_aparte_entre`.
-- **En Cierre de Turno, Impresiones es un renglón informativo: no se le resta a
-  Kiosko.** Esa pantalla es el resumen que las empleadas le mandan al dueño.
-  Kiosko lleva su desglose efectivo/digital (lo que se guarda en el cierre y con
-  lo que cierra el cajón), pero las impresiones se cuentan por renglón de venta y
-  no por medio de pago: restarlas obligaría a repartirlas entre efectivo y
-  digital con una cuenta aproximada. Por eso el título dice "incluidas en
-  Kiosko" (el Resumen del Día y Reportes sí las muestran aparte, ahí Kiosko es un
-  solo importe). Si el dueño pide Kiosko sin impresiones, primero hay que decidir
-  cómo repartirlas por medio de pago. Los trámites van igual: renglón informativo
-  "incluidos en Kiosko" (`resumen["tramites"]`), ya están en el TOTAL, no se
-  suman dos veces.
+- **En Caja y Cierre de Turno, Kiosko se muestra SIN impresiones ni trámites,
+  pero se GRABA entero** (lo eligió el dueño el 2026-10-19 entre dos opciones; hasta
+  ese día eran renglones "incluidos en Kiosko"). Esa pantalla es el resumen que las
+  empleadas le mandan al dueño. Lo que se guarda en `cierres_turno`
+  (`kiosko_efectivo`/`kiosko_digital`), el efectivo a retirar y el TOTAL no
+  cambiaron: separarlos es solo cómo se muestra. Las impresiones se cuentan por
+  renglón de venta y no por medio de pago, así que se reparten venta por venta con
+  los pagos de esa venta (`turnos_ventas_repo._aparte_por_metodo`): exacto si se
+  cobraron solas (el botón Impresiones) o si el carrito se pagó en un solo medio, en
+  proporción si iban con otras cosas y se pagó una parte en cada medio. Kiosko sale
+  por resta, con los centavos redondeados una sola vez (`turnos_repo._separar_de_kiosko`),
+  así Kiosko + Impresiones + Trámites da justo lo grabado. No guardes estos importes
+  repartidos en el cierre como si fueran exactos. Control de Cierres sigue mostrando
+  Kiosko entero (lo grabado).
 - **En pantalla, el fondo de cambio se llama "Cambio Fijo" en TODOS lados**
   (Caja, Cierre de Turno, Control de Cierres, Usuarios; pedido del dueño,
   2026-10-10). Por dentro sigue siendo `fondo_cambio` (columnas, repos, claves):
@@ -725,10 +730,10 @@ Estos puntos todavía no están construidos:
 
 ## Estado actual
 
-El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y PlayStation 5.
+El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCSTREAM), Miembros, Trámites y PlayStation 5.
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-779 pruebas al 2026-10-19 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender y la barra oscura de arriba).
+800 pruebas al 2026-10-19 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba y el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).

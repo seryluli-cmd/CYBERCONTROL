@@ -489,3 +489,18 @@ a crear, y el alta pedía usuario, clave, nombre, DNI y teléfono.
   "+" de adelante si lo tenía), también cuando los carga el mostrador.
 556 tests (24 nuevos en `tests/test_primer_ingreso_socio.py`: alta, primer ingreso, migración y
 servidor real).
+
+**2026-10-19:** **botón Impresiones y Kiosko sin impresiones en Caja y Cierre de Turno.** Pedido del
+dueño: "entre Vender y Trámites quiero el botón Impresiones, es el artículo número 4".
+- **Código 4:** en la base con la que trabaja, IMPRESIONES es el artículo código 4, pero
+  `dominio.CODIGO_ARTICULO_IMPRESIONES` seguía en "1" (el de la base anterior): las impresiones salían
+  en $0 en Reportes, Resumen del Día y Cierre de Turno. Pasó a "4"; los días ya trabajados con esta
+  base se recalculan solos (se busca el código en cada consulta).
+- **Botón "Impresiones"** en la barra, entre Vender y Trámites (`ui/impresiones_window.py`,
+  `repositories/impresiones_repo.py`): cantidad, ventana de cobro de siempre y venta de kiosko común
+  del artículo. `confirmar_venta` se partió en `_grabar_venta_kiosko` para leer el precio en la misma
+  transacción. No aparece desde otra PC.
+- **Caja y Cierre de Turno:** Kiosko, Impresiones y Trámites en renglones separados, cada uno con su
+  efectivo y digital (el dueño eligió esta opción entre dos). Lo grabado en el cierre, el efectivo a
+  retirar y el TOTAL no cambian.
+800 tests (21 nuevos en `tests/test_impresiones.py`).

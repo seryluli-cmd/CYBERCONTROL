@@ -283,14 +283,23 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   `DialogoPago` combina Efectivo + Digital: Digital nunca puede superar lo
   que falta pagar (no da "vuelto" en digital); Efectivo sí puede pasarse y
   ahí se calcula `vuelto`. Confirmar llama a `ventas_repo.confirmar_venta`.
+- **Impresiones** (`impresiones_window.py`, `DialogoImpresiones`) — botón de
+  la barra entre "Vender" y "Trámites" (pedido del dueño, 2026-10-19): cobro
+  rápido del artículo de impresiones (`dominio.CODIGO_ARTICULO_IMPRESIONES`,
+  el código 4) sin entrar a Vender. Se escribe la cantidad (arranca en 1),
+  Enter abre la ventana de cobro de siempre (`DialogoPago`) y otro Enter
+  cobra. Se graba con `impresiones_repo.cobrar_impresiones` como una venta de
+  kiosko común del artículo (descuenta stock, entra en la caja abierta, sale en
+  el Detalle del Día); si alguien cambió el precio mientras se cobraba, no
+  graba nada. Si el artículo no está cargado con ese código, avisa y no abre.
 - **Trámites** (`tramites_window.py`, `DialogoTramites`) — botón de la
-  barra entre "Vender" y "Miembros". Se elige un trámite del catálogo, se
+  barra entre "Impresiones" y "Miembros". Se elige un trámite del catálogo, se
   tipea el monto (libre, en $) y "Cobrar" abre la misma ventana de cobro
   que Ventas (`dialogo_pago.cobrar`, igual que Cargar Saldo de un socio y
   los bonos de Control de PCs; antes había un combo "Medio de pago") y se
   graba con
-  `tramites_repo.registrar_tramite`. En Caja y Cierre de Turno cuenta como
-  **Kiosko** (no tiene origen propio); en Reportes sale en columna aparte
+  `tramites_repo.registrar_tramite`. No tiene origen propio (se graba como
+  **Kiosko**), pero en Caja y Cierre de Turno va en su renglón; en Reportes sale en columna aparte
   (Totales y Resumen del Día) y en el Ranking de Ventas. El Admin ve además
   "Gestionar trámites" (`DialogoGestionTramites`: Nuevo / Modificar /
   Desactivar), que también está en Configuración ADMIN. En Consulta de
@@ -314,7 +323,8 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   turno en curso vía `turnos_repo.resumen_turno_actual()` (número de caja y
   responsable, caja inicial = el cambio con que arrancó la caja, caja actual =
   caja inicial + efectivo, ventas efectivo/digital, y el desglose Kiosko /
-  Alquiler de PCs / PlayStation 5). La caja actual
+  Impresiones / Trámites / Alquiler de PCs / PlayStation 5, cada uno con su
+  efectivo y digital). La caja actual
   excluye a propósito lo cobrado en digital.
 - **Cierre de Turno** (`caja_window.py`, `CierreTurnoWindow`) — cualquiera
   cierra su propio turno. Muestra preview y, al confirmar, llama a
@@ -325,10 +335,15 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   mandan al dueño. En pantalla el fondo de cambio se llama **"Cambio Fijo"**
   en todos lados (pedido del dueño; por dentro sigue siendo `fondo_cambio`).
   Muestra Efectivo, Digital y **TOTAL** (`resumen["ventas_total"]`: todo lo
-  cobrado, sin sumar aparte impresiones ni trámites). Acá se agregan
-  **Trámites** (`resumen["tramites"]`) e **Impresiones**
-  (`resumen["impresiones"]`), informativos: ya están sumados dentro de
-  Kiosko, no son un monto extra.
+  cobrado, sin sumar aparte impresiones ni trámites). **Kiosko, Impresiones
+  y Trámites van en renglones separados**, cada uno con su efectivo y digital
+  (pedido del dueño, 2026-10-19; antes Impresiones y Trámites eran renglones
+  "incluidos en Kiosko"): `resumen["kiosko_solo_*"]`, `["impresiones_*"]` y
+  `["tramites_*"]`. Los tres suman lo que se graba como Kiosko en el cierre
+  (`kiosko_efectivo`/`kiosko_digital`, que no cambian); el reparto entre
+  efectivo y digital se hace venta por venta con sus pagos
+  (`turnos_ventas_repo._aparte_por_metodo`): exacto si las impresiones se
+  cobraron solas, en proporción si iban en un carrito pagado en los dos medios.
 
 **Administrar Kiosko:** Artículos, Compras, Consulta de Ventas, Reportes y
 Control de Cierres pueden delegarse por permiso individual a una empleada.
@@ -365,7 +380,7 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   facturó de Kiosko, de Impresiones, de Trámites, de Alquiler de PCs y de
   PlayStation 5 — ver
   `dominio.ORIGENES_VENTA`, `dominio.CODIGO_ARTICULO_IMPRESIONES` y
-  `tramites_repo`; las impresiones (el producto Nº 1) y los trámites (ganancia
+  `tramites_repo`; las impresiones (el artículo código 4, el que más se vende) y los trámites (ganancia
   pura) salen en columna aparte y NO están sumados en Kiosko —, con un
   combo para agrupar por Turno/Día/Semana o el total del rango completo;
   agrega una fila TOTAL al pie cuando hay más de un período listado) y
