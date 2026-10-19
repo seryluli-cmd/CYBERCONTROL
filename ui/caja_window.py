@@ -52,6 +52,22 @@ def _mostrar_desglose_por_negocio(pantalla, resumen):
     )
 
 
+def _texto_nota_caja(resumen) -> str:
+    """El texto de abajo de la pantalla Caja: la Suma Total (Efectivo +
+    Digital, SIN el Cambio -- el dueño pidió dejar eso bien claro porque a
+    simple vista se podía confundir con la Caja Actual, que sí lo incluye),
+    en negrita y azul. Es HTML (QLabel con rich text) solo para poder
+    remarcarla así. Antes seguía acá la aclaración sobre qué suma la Caja
+    Actual y qué no incluye Kiosko; el dueño pidió sacarla (2026-10-19)."""
+    suma_total = resumen["ventas_efectivo"] + resumen["ventas_digital"]
+    return (
+        '<span style="color: #2F6FED; font-weight: bold; font-style: normal;">'
+        f"Suma Total: Efectivo + Digital = {formato_pesos(suma_total)}<br>"
+        "(sin tener en cuenta el Cambio)."
+        "</span>"
+    )
+
+
 def _titulo_de_la_caja(resumen) -> str:
     """"Caja Nº 12 de Lucía · " si hay una caja abierta (ver
     turnos_repo.resumen_turno_actual); si no, nada."""
@@ -60,19 +76,28 @@ def _titulo_de_la_caja(resumen) -> str:
     return f"Caja Nº {resumen['caja_numero']} de {resumen['responsable']} · "
 
 
-def _etiqueta_dato(titulo, valor_texto, destacado=False):
+def _etiqueta_dato(titulo, valor_texto, destacado=False, color_titulo=None, color_valor=None, negrita_titulo=False):
     """Un dato de las pantallas de caja: título gris arriba y valor grande
-    abajo (en azul si `destacado`, como el TOTAL). Devuelve (layout,
-    etiqueta_del_valor) para poder actualizarla."""
+    abajo (en azul si `destacado`, como el TOTAL). `color_titulo`/
+    `color_valor` pintan cada etiqueta aparte y `negrita_titulo` pone el
+    título en negrita (ej. la Caja Actual: título negro y negrita, valor
+    verde -- pedido del dueño). Devuelve (layout, etiqueta_del_valor) para
+    poder actualizarla."""
     contenedor = QVBoxLayout()
     titulo_lbl = QLabel(titulo)
-    titulo_lbl.setStyleSheet("color: #6B7585;")
     valor_lbl = QLabel(valor_texto)
-    fuente = QFont()
-    fuente.setPointSize(14)
-    fuente.setBold(True)
-    valor_lbl.setFont(fuente)
-    if destacado:
+    fuente_valor = QFont()
+    fuente_valor.setPointSize(14)
+    fuente_valor.setBold(True)
+    valor_lbl.setFont(fuente_valor)
+    if negrita_titulo:
+        fuente_titulo = QFont()
+        fuente_titulo.setBold(True)
+        titulo_lbl.setFont(fuente_titulo)
+    titulo_lbl.setStyleSheet(f"color: {color_titulo or '#6B7585'};")
+    if color_valor:
+        valor_lbl.setStyleSheet(f"color: {color_valor};")
+    elif destacado:
         valor_lbl.setStyleSheet("color: #2F6FED;")
     contenedor.addWidget(titulo_lbl)
     contenedor.addWidget(valor_lbl)
@@ -98,6 +123,7 @@ class _PantallaDeCaja(QDialog):
         nota = QLabel(texto_nota)
         nota.setWordWrap(True)
         nota.setStyleSheet("color: gray; font-style: italic;")
+        self.nota = nota
 
         layout = QVBoxLayout()
         layout.addWidget(self.titulo)
@@ -130,7 +156,10 @@ class CajaWindow(_PantallaDeCaja):
 
     def _armar_interfaz(self):
         layout_fondo, self.valor_fondo = _etiqueta_dato("CAJA INICIAL (Cambio Fijo)", "")
-        layout_actual, self.valor_actual = _etiqueta_dato("CAJA ACTUAL (solo efectivo)", "")
+        layout_actual, self.valor_actual = _etiqueta_dato(
+            "CAJA ACTUAL (solo efectivo)", "",
+            color_titulo="#000000", negrita_titulo=True, color_valor="#2FB457",
+        )
         layout_ventas, self.valor_ventas = _etiqueta_dato("VENTAS (efectivo)", "")
         layout_digital, self.valor_digital = _etiqueta_dato("VENTAS POR MEDIO DIGITAL", "")
         layout_kiosko, self.valor_kiosko = _etiqueta_dato(
@@ -158,10 +187,12 @@ class CajaWindow(_PantallaDeCaja):
             [(layout_fondo, layout_actual), (layout_ventas, layout_digital),
              (layout_kiosko, layout_impresiones), (layout_tramites, QVBoxLayout()),
              (layout_pcs, layout_playstation)],
-            "La Caja Actual suma solo el EFECTIVO; no incluye lo cobrado por Digital. "
-            "Kiosko no incluye Impresiones ni Trámites: cada uno va en su renglón.",
+            "",  # se completa en _refrescar con _texto_nota_caja
             botones,
         )
+        # Letra un 15% más grande que el resto de la pantalla (13px -> 15px) para
+        # que la Suma Total se note más, pedido del dueño.
+        self.nota.setStyleSheet("font-size: 15px;")
 
     @manejar_errores
     def _refrescar(self):
@@ -174,6 +205,7 @@ class CajaWindow(_PantallaDeCaja):
         self.valor_ventas.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
         _mostrar_desglose_por_negocio(self, resumen)
+        self.nota.setText(_texto_nota_caja(resumen))
 
 
 class CierreTurnoWindow(_PantallaDeCaja):
