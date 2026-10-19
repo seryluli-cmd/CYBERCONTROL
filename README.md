@@ -304,6 +304,19 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   "Gestionar trámites" (`DialogoGestionTramites`: Nuevo / Modificar /
   Desactivar), que también está en Configuración ADMIN. En Consulta de
   Ventas el trámite se ve como una fila "Trámite: <nombre>".
+- **Miembros → Importar de Excel** (`control_pcs/ui/miembros_importar_dialogo.py`,
+  solo Admin; pedido del dueño, 2026-10-19) — trae de una vez los socios del
+  programa de cyber anterior desde una planilla .xlsx con los títulos
+  "Usuario", "Contraseña" y, si están, "Nombre" y "Tiempo" (fracción de día,
+  como la guarda Excel, o "h:mm:ss"). Antes de confirmar muestra quiénes se
+  crean y con cuánto tiempo, a quiénes no se les entiende el tiempo (entran con
+  0), quiénes quedan con menos de 30 minutos y quiénes ya existen (no se tocan:
+  importar dos veces no duplica nada). El tiempo va en minutos enteros, sin
+  redondear para arriba, y queda en `movimientos_saldo_miembro` como
+  `IMPORTACION`, sin venta (no entra en la caja ni en los reportes, ni en el
+  panel de actividad). Todo en una transacción. El DNI se lo pide la PC a cada
+  socio en su primer ingreso. Ver `importar_miembros_repo.importar_planilla`;
+  la planilla se lee con la biblioteca estándar (sin openpyxl).
 - **PlayStation 5** (`control_pcs/ui/pcs_window.py` + `pcs_detalle.py`) — es
   el primer monitor del mosaico de Control de PCs, antes de las PCs, con el
   nombre fijo "PLAYSTATION 5" (no se edita, no se da de baja, no tiene menú de
@@ -590,7 +603,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-753 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+821 tests al 2026-10-19. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,

@@ -2207,18 +2207,11 @@ class TestMigracionCheckTipoEnMovimientosSaldoMiembro(BaseConBaseTemporal):
                 "VALUES (?, 'CONSUMO', ?, ?)",
                 (miembro_id, 45, "2026-01-01T10:00:00"),
             ).lastrowid
-            conexion.execute("""
-                CREATE TABLE movimientos_saldo_miembro (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    miembro_id  INTEGER NOT NULL REFERENCES miembros(id),
-                    tipo        TEXT NOT NULL CHECK (tipo IN ('CARGA', 'CONSUMO', 'REINTEGRO', 'ANULACION')),
-                    minutos     INTEGER NOT NULL,
-                    fecha       TEXT NOT NULL,
-                    venta_id    INTEGER REFERENCES ventas(id),
-                    bono_id     INTEGER REFERENCES bonos_miembro(id),
-                    sesion_id   INTEGER REFERENCES sesiones_pc(id)
-                )
-            """)
+            # Con los tipos de HOY, como la recrea el arranque: escrita a mano,
+            # quedó vieja el día que se sumó IMPORTACION (2026-10-19).
+            conexion.execute(database._sql_tabla_movimientos_saldo_miembro(
+                database._TIPOS_MOVIMIENTO_SALDO, "bonos_miembro(id)"
+            ))
 
             database._migrar_check_tipo_en_movimientos_saldo_miembro(conexion)
 

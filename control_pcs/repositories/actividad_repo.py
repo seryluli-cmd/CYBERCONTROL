@@ -1,5 +1,6 @@
 """Feed de actividad de PCs y PlayStation para el panel del mostrador."""
 
+import dominio
 from database import conexion_db
 from control_pcs.repositories import accesos_admin_pc_repo, filtro_palabras_repo, playstation_repo
 
@@ -56,6 +57,9 @@ def actividad_reciente(limite: int = 30):
                                  "estacion_nombre": fila["estacion_nombre"],
                                  "bono_nombre": fila["bono_nombre"], "precio": fila["precio"]})
 
+        # Sin el tiempo traído del programa anterior (importar_miembros_repo):
+        # no pasó en ninguna PC, y una importación de 45 socios taparía todo
+        # lo demás del panel.
         for fila in conexion.execute("""
             SELECT m.fecha AS fecha, m.tipo AS tipo, m.minutos AS minutos,
                    mi.nombre AS miembro_nombre, e.nombre AS estacion_nombre, v.total AS monto
@@ -64,8 +68,9 @@ def actividad_reciente(limite: int = 30):
             LEFT JOIN sesiones_pc s ON s.id = m.sesion_id
             LEFT JOIN estaciones e ON e.id = s.estacion_id
             LEFT JOIN ventas v ON v.id = m.venta_id
+            WHERE m.tipo <> ?
             ORDER BY m.fecha DESC LIMIT ?
-        """, (limite,)).fetchall():
+        """, (dominio.MOVIMIENTO_IMPORTACION, limite)).fetchall():
             eventos.append({"fecha": fila["fecha"], "tipo": fila["tipo"],
                              "miembro_nombre": fila["miembro_nombre"],
                              "estacion_nombre": fila["estacion_nombre"],

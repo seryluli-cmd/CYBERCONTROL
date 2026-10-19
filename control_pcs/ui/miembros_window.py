@@ -30,6 +30,7 @@ import dominio
 from repositories import config_repo
 from control_pcs.repositories import miembros_repo, bonos_miembro_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
+from control_pcs.ui.miembros_importar_dialogo import importar_de_excel
 from ui.dialogo_pago import cobrar
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, confirmar, manejar_errores,
@@ -63,6 +64,12 @@ class MiembrosWindow(QDialog):
         aplicar_clase(boton_desactivar, "peligro")
         boton_desactivar.clicked.connect(self._desactivar_miembro)
         botones = [boton_nuevo, boton_modificar, boton_cargar_saldo, boton_desactivar]
+        # Traer los socios del programa anterior les da tiempo sin cobrar nada:
+        # solo el Administrador (el repo lo vuelve a exigir).
+        if dominio.es_admin(self.usuario_operador):
+            boton_importar = QPushButton("Importar de Excel")
+            boton_importar.clicked.connect(self._importar_de_excel)
+            botones.append(boton_importar)
         boton_salir = QPushButton("Salir")
         boton_salir.clicked.connect(self.close)
         botones.append(boton_salir)
@@ -132,6 +139,11 @@ class MiembrosWindow(QDialog):
         if miembro is None:
             return
         if DialogoCargarSaldo(self.usuario_operador, miembro, self).exec():
+            self._cargar_grilla()
+
+    @manejar_errores
+    def _importar_de_excel(self):
+        if importar_de_excel(self, self.usuario_operador):
             self._cargar_grilla()
 
     @manejar_errores

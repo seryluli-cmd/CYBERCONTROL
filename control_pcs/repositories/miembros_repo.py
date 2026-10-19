@@ -162,16 +162,24 @@ def crear_miembro(usuario: str, clave: str, nombre: str = "", dni: str = "", tel
     ahora = datetime.now().isoformat(timespec="seconds")
     with _usuario_de_socio_unico(datos["usuario"]):
         with conexion_db() as conexion:
-            _exigir_dni_libre(conexion, datos["dni"])
-            cursor = conexion.execute(
-                """
-                INSERT INTO miembros (usuario, clave_hash, nombre, dni, telefono, whatsapp, email, fecha_creacion)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (datos["usuario"], hash_clave(clave), datos["nombre"], datos["dni"],
-                 datos["telefono"], datos["whatsapp"], datos["email"], ahora),
-            )
-            return cursor.lastrowid
+            return _insertar_miembro(conexion, datos, clave, ahora)
+
+
+def _insertar_miembro(conexion, datos: dict, clave: str, fecha_creacion: str) -> int:
+    """El alta de un socio (saldo 0) con datos ya validados por
+    _datos_de_miembro, dentro de una conexión ya abierta. Aparte de
+    crear_miembro para que importar_miembros_repo dé de alta muchos socios en
+    UNA sola transacción. Devuelve el id."""
+    _exigir_dni_libre(conexion, datos["dni"])
+    cursor = conexion.execute(
+        """
+        INSERT INTO miembros (usuario, clave_hash, nombre, dni, telefono, whatsapp, email, fecha_creacion)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (datos["usuario"], hash_clave(clave), datos["nombre"], datos["dni"],
+         datos["telefono"], datos["whatsapp"], datos["email"], fecha_creacion),
+    )
+    return cursor.lastrowid
 
 
 def modificar_miembro(miembro_id: int, usuario: str, nombre: str, dni: str, telefono: str,
