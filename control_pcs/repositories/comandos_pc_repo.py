@@ -23,11 +23,21 @@ Qué devuelve cada comando:
   diferencia de reiniciar/apagar, cambiar de módem sí puede fallar del lado
   de la PC (adaptador no encontrado, sin permisos) y el mostrador tiene que
   enterarse sin ir hasta ahí a revisar.
+- DESCONGELAR / CONGELAR / ESTADO_CONGELADO (Shadow Defender, ver
+  congelado_repo): un texto "OK: ..." o "ERROR: ...", igual que CAMBIAR_RED.
+
+Los comandos de Shadow Defender (`dominio.COMANDOS_CON_CLAVE`) llevan en el
+payload la clave de Shadow Defender, que NO puede quedar guardada en la base
+(cualquiera con el archivo `data/kiosko.db` la leería): se borra apenas viaja a
+la PC (`marcar_entregado`) y, si la PC no la pide en
+MINUTOS_VIGENCIA_CON_CLAVE, se da por vencida y se borra igual
+(`descartar_clave_de_pendientes`). Así tampoco llega a una PC horas después,
+cuando nadie se acuerda de haberla mandado.
 """
 
 import base64
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import database
 import dominio
@@ -40,6 +50,15 @@ TIPO_MENSAJE = dominio.COMANDO_MENSAJE
 TIPO_SCREENSHOT = dominio.COMANDO_SCREENSHOT
 TIPO_CAMBIAR_RED = dominio.COMANDO_CAMBIAR_RED
 TIPO_VOLUMEN = dominio.COMANDO_VOLUMEN
+TIPO_DESCONGELAR = dominio.COMANDO_DESCONGELAR
+TIPO_CONGELAR = dominio.COMANDO_CONGELAR
+TIPO_ESTADO_CONGELADO = dominio.COMANDO_ESTADO_CONGELADO
+
+# Cuánto espera un comando con la clave de Shadow Defender a que su PC lo pida.
+# Una PC prendida lo pide en 5 s; la ventana de congelar deja de esperar
+# respuesta antes de esto (congelado_repo.SEGUNDOS_ESPERA_RESPUESTA).
+MINUTOS_VIGENCIA_CON_CLAVE = 2
+RESULTADO_VENCIDO = "ERROR: La PC no lo pidió a tiempo (¿apagada o sin conexión?). La clave no quedó guardada."
 
 
 def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
@@ -69,10 +88,53 @@ def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
     return comando_id
 
 
+def _vencer_con_clave(conexion, comando_ids=None, estacion_id=None, todos=False):
+    """Da por terminados los comandos con clave todavía pendientes: los de
+    `comando_ids`, todos (`todos`), o los que pasaron MINUTOS_VIGENCIA_CON_CLAVE
+    (de `estacion_id`, o de todas). Les borra la clave y les deja
+    RESULTADO_VENCIDO para que la ventana de congelar no se quede esperando."""
+    condiciones = [
+        "estado = ?",
+        f"tipo IN ({', '.join('?' * len(dominio.COMANDOS_CON_CLAVE))})",
+    ]
+    parametros = [dominio.ESTADO_COMANDO_PENDIENTE, *dominio.COMANDOS_CON_CLAVE]
+    if comando_ids is not None:
+        if not comando_ids:
+            return
+        condiciones.append(f"id IN ({', '.join('?' * len(comando_ids))})")
+        parametros.extend(comando_ids)
+    elif not todos:
+        limite = datetime.now() - timedelta(minutes=MINUTOS_VIGENCIA_CON_CLAVE)
+        condiciones.append("fecha_creacion < ?")
+        parametros.append(limite.isoformat(timespec="seconds"))
+    if estacion_id is not None:
+        condiciones.append("estacion_id = ?")
+        parametros.append(estacion_id)
+    conexion.execute(
+        "UPDATE comandos_pc SET estado = ?, payload = NULL, resultado = COALESCE(resultado, ?) "
+        f"WHERE {' AND '.join(condiciones)}",
+        (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_VENCIDO, *parametros),
+    )
+
+
+def descartar_clave_de_pendientes(comando_ids=None, todos=False):
+    """Borra la clave de Shadow Defender de los comandos que todavía no viajaron:
+    los de `comando_ids` (la ventana de congelar al cerrarse, para que no lleguen
+    a una PC cuando ya nadie espera); con `todos`, todos (al arrancar el programa:
+    los que hubiera son de la vez anterior, que se cerró con la ventana abierta);
+    o, sin nada, los vencidos de todas las PCs (al abrir la ventana)."""
+    with conexion_db() as conexion:
+        _vencer_con_clave(conexion, comando_ids=None if comando_ids is None else list(comando_ids), todos=todos)
+
+
 def proximo_comando_pendiente(estacion_id: int):
     """El comando pendiente más viejo para esta estación, o None. Lo
-    llama servidor_red.py en cada `GET /estado` de esa estación."""
+    llama servidor_red.py en cada `GET /estado` de esa estación. Antes
+    vence los comandos con clave de esa PC que esperaron demasiado (ver el
+    docstring del módulo): con el índice por estación y estado, no recorre
+    el historial."""
     with conexion_db() as conexion:
+        _vencer_con_clave(conexion, estacion_id=estacion_id)
         return conexion.execute(
             """
             SELECT * FROM comandos_pc WHERE estacion_id = ? AND estado = ?
@@ -88,10 +150,19 @@ def marcar_entregado(comando_id: int):
     (mismo criterio de simpleza que el resto de este protocolo: si la
     respuesta no llega a destino por un problema de red, el Operador
     simplemente vuelve a mandar la acción, no hay nada crítico en juego
-    como para justificar un mecanismo de reintento más elaborado)."""
+    como para justificar un mecanismo de reintento más elaborado).
+
+    Si el comando lleva la clave de Shadow Defender, se borra acá: quien lo
+    entrega ya leyó la fila con la clave adentro (servidor_red)."""
     with conexion_db() as conexion:
         conexion.execute(
-            "UPDATE comandos_pc SET estado = ? WHERE id = ?", (dominio.ESTADO_COMANDO_ENTREGADO, comando_id)
+            f"""
+            UPDATE comandos_pc SET estado = ?,
+                payload = CASE WHEN tipo IN ({', '.join('?' * len(dominio.COMANDOS_CON_CLAVE))})
+                          THEN NULL ELSE payload END
+            WHERE id = ?
+            """,
+            (dominio.ESTADO_COMANDO_ENTREGADO, *dominio.COMANDOS_CON_CLAVE, comando_id),
         )
 
 
@@ -99,6 +170,19 @@ def obtener_comando(comando_id: int):
     """La fila de un comando (para saber si ya le llegó un resultado), o None."""
     with conexion_db() as conexion:
         return conexion.execute("SELECT * FROM comandos_pc WHERE id = ?", (comando_id,)).fetchone()
+
+
+def obtener_comandos(comando_ids) -> dict:
+    """{id: fila} de varios comandos de una (la ventana de congelar espera
+    la respuesta de muchas PCs a la vez y revisa cada segundo)."""
+    comando_ids = list(comando_ids)
+    if not comando_ids:
+        return {}
+    with conexion_db() as conexion:
+        filas = conexion.execute(
+            f"SELECT * FROM comandos_pc WHERE id IN ({', '.join('?' * len(comando_ids))})", comando_ids
+        ).fetchall()
+    return {fila["id"]: fila for fila in filas}
 
 
 def guardar_screenshot(comando_id: int, imagen_base64: str) -> str:

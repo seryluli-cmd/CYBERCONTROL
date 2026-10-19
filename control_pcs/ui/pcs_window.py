@@ -32,6 +32,8 @@ vive al lado:
   finalizar) y el login de socio.
 - `pcs_comandos_dialogos.py`: los diálogos del menú contextual (captura,
   cambiar red, intercambiar de máquina, volumen).
+- `pcs_congelado_dialogo.py`: congelar y descongelar PCs con Shadow Defender
+  (también del menú contextual, solo para el Admin).
 - `pcs_gestion_dialogos.py`: administrar el catálogo de Estaciones y de
   Bonos de Tiempo (solo se abren desde Configuración ADMIN, no desde acá).
 """
@@ -49,6 +51,7 @@ from control_pcs.repositories import comandos_pc_repo, pcs_repo, playstation_rep
 from control_pcs.ui.pcs_comandos_dialogos import (
     DialogoCambiarRed, DialogoCaptura, DialogoTrasladarSesion, DialogoVolumen,
 )
+from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
 from control_pcs.ui.pcs_actividad import PanelActividad
 from control_pcs.ui.pcs_detalle import PanelDetalleEstacion, es_playstation
 from control_pcs.ui.pcs_mosaico import (
@@ -466,6 +469,12 @@ class PanelControlPcs(QWidget):
         menu.addSeparator()
         accion_cambiar_red = menu.addAction("🌐 Cambiar red...")
         accion_volumen = menu.addAction("🔊 Ajustar volumen...")
+        # Shadow Defender: solo el Admin lo ve. Igual pide su clave, que las
+        # empleadas no tienen; así no les aparece algo que no pueden usar.
+        accion_congelar = None
+        if dominio.es_admin(self.usuario):
+            menu.addSeparator()
+            accion_congelar = menu.addAction("🧊 Congelar / descongelar...")
 
         # menu.exec() abre un bucle de eventos anidado: mientras el menú
         # sigue abierto, el timer de refresco (cada 5s) puede disparar
@@ -508,6 +517,8 @@ class PanelControlPcs(QWidget):
             DialogoCambiarRed(estacion, self).exec()
         elif elegida == accion_volumen:
             DialogoVolumen(estacion, self).exec()
+        elif accion_congelar is not None and elegida == accion_congelar:
+            DialogoCongelado(estacion, self._estados, self).exec()
 
     @manejar_errores
     def _cerrar_sesion_y_reiniciar(self, estacion, sesion, segundos_restantes):

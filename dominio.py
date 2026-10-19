@@ -137,10 +137,17 @@ COMANDO_MENSAJE = "MENSAJE"
 COMANDO_SCREENSHOT = "SCREENSHOT"
 COMANDO_CAMBIAR_RED = "CAMBIAR_RED"
 COMANDO_VOLUMEN = "VOLUMEN"
+# Shadow Defender (pedido del dueño, 2026-10-18; ver congelado_repo): llevan
+# la clave de Shadow Defender en el payload. Tienen que coincidir con los de
+# CLIENTE PC/shadow_defender.py.
+COMANDO_DESCONGELAR = "DESCONGELAR"
+COMANDO_CONGELAR = "CONGELAR"
+COMANDO_ESTADO_CONGELADO = "ESTADO_CONGELADO"
+COMANDOS_CON_CLAVE = (COMANDO_DESCONGELAR, COMANDO_CONGELAR, COMANDO_ESTADO_CONGELADO)
 TIPOS_COMANDO_PC = (
     COMANDO_REINICIAR, COMANDO_APAGAR, COMANDO_MENSAJE,
     COMANDO_SCREENSHOT, COMANDO_CAMBIAR_RED, COMANDO_VOLUMEN,
-)
+) + COMANDOS_CON_CLAVE
 
 # En qué está cada comando de la cola (`comandos_pc.estado`): PENDIENTE hasta
 # que viaja en la respuesta de `GET /estado` de su PC, ENTREGADO después (ver

@@ -670,6 +670,14 @@ def iniciar_servidor():
     except OSError as error:
         registrar_error(error, "Servidor de red: abrir puerto")
         return None
+    # Un pedido de congelar/descongelar que quedó en la cola de la vez anterior
+    # (el programa se cerró con esa ventana abierta) no viaja: nadie espera su
+    # respuesta y lleva la clave de Shadow Defender. Recién acá, con el puerto
+    # ya tomado: si hay otra copia abierta, la cola es de ella.
+    try:
+        comandos_pc_repo.descartar_clave_de_pendientes(todos=True)
+    except Exception as error:
+        registrar_error(error, "Servidor de red: borrar claves de Shadow Defender pendientes")
     hilo = threading.Thread(target=_servidor.serve_forever, daemon=True)
     hilo.start()
     return _servidor
