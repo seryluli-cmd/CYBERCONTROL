@@ -188,13 +188,13 @@ class TestAlcanceYReporte(_ConClaveDePrueba):
 
     def test_guarda_lo_que_cuenta_la_pc(self):
         repo.registrar_reporte(self.pc1, {"estacion": "PC1", "version": "20261018193005",
-                                          "carpeta": "C:\\Program Files\\aaaaa\\cliente",
+                                          "carpeta": "C:\\Program Files\\AAAAA26\\cliente",
                                           "act": "descargada", "act_detalle": "Se pone en el próximo reinicio."})
 
         fila = self.estacion(self.pc1)
         self.assertEqual((fila["version_cliente"], fila["carpeta_cliente"], fila["estado_actualizacion"],
                           fila["detalle_actualizacion"]),
-                         (20261018193005, "C:\\Program Files\\aaaaa\\cliente", "descargada",
+                         (20261018193005, "C:\\Program Files\\AAAAA26\\cliente", "descargada",
                           "Se pone en el próximo reinicio."))
 
     def test_un_cliente_pc_viejo_no_manda_nada_y_no_se_toca_nada(self):
