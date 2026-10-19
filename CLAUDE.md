@@ -387,9 +387,9 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   "Configuración ADMIN" (`ui/main_window.ConfiguracionAdminWindow` —
   pedido explícito del dueño, 2026-09-28: editar el catálogo es tarea de
   super admin; *usar* un bono ya creado (cargarle saldo a un socio con
-  "Bono fijo") abre para cualquier operador desde "Miembros", pedido del
-  dueño 2026-10-19; el de la PlayStation 5 sigue pidiendo
-  `permiso_control_pcs`). No fusionar estos catálogos "para simplificar":
+  "Bono fijo", o vender el de la PlayStation 5) abre para cualquier
+  operador, pedido del dueño 2026-10-19). No fusionar estos catálogos
+  "para simplificar":
   son dos negocios distintos con reglas de negocio propias, aunque ahora
   compartan el mismo nivel de permiso para editarlos.
 - **La PlayStation 5 NO es una "estación" y no se debe volver una.** Es una
@@ -432,13 +432,17 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   aparte del refresco de 5s). Si alguna vez se hace que esa sesión se libere sola,
   se pierde el aviso: no lo hagas sin que el dueño lo pida.
 - **Permisos de la PlayStation 5: se hacen cumplir en el repo, no solo en la
-  pantalla.** Vender un bono y liberarla: ADMIN o `permiso_control_pcs`
-  ("Operar PCs y Miembros"); crear/modificar/dar de baja sus bonos: solo ADMIN
-  (`playstation_repo` levanta `PermissionError`, que `ui.utils.manejar_errores`
-  muestra como mensaje). Se vuelve a leer el usuario de la base en cada operación,
-  así que un permiso quitado o un usuario desactivado corta el acceso en el acto.
-  Ojo con la asimetría, es pedido del dueño: las **PCs** siguen abiertas a
-  cualquier usuario logueado (no piden permiso), la consola no.
+  pantalla.** Vender un bono y liberarla: cualquier operador logueado; crear,
+  modificar o dar de baja sus bonos: solo ADMIN (`playstation_repo` levanta
+  `PermissionError`, que `ui.utils.manejar_errores` muestra como mensaje). Se
+  vuelve a leer el usuario de la base en cada operación, así que un usuario
+  desactivado corta el acceso en el acto. Hasta el 2026-10-19 vender/liberar
+  pedía además el permiso `permiso_control_pcs` ("Operar PCs y Miembros") —
+  la misma asimetría que tenía Miembros con el resto de la barra (las PCs
+  ya estaban abiertas a cualquier logueado) — y se sacó el mismo día por el
+  mismo motivo. Ese permiso sigue existiendo en `usuarios_repo.PERMISOS_EMPLEADA`
+  (todavía cuenta para que a alguien se lo considere "encargada"), pero ya no
+  gobierna nada de esto.
 - **Sumar un origen de venta nuevo toca la caja, no solo `dominio.py`.** Si un
   origen no figura en `turnos_repo._PREFIJO_COLUMNAS_POR_ORIGEN` (y en las
   columnas de `cierres_turno`), su plata desaparece del efectivo esperado en el
@@ -742,7 +746,7 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-843 pruebas al 2026-10-19 (con los cortes de las PCs, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+841 pruebas al 2026-10-19 (con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

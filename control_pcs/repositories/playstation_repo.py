@@ -21,18 +21,21 @@ y `dominio.fin_al_sumar_minutos`, las mismas que usa `pcs_repo`), la venta
 (`ventas_repo.registrar_venta_sin_detalle`, con origen PLAYSTATION) y, en la
 pantalla, el cobro (`ui.dialogo_pago.cobrar`).
 
-Quién puede qué (se pregunta con `usuarios_repo.tiene_permiso`, nunca
-comparando el rol a mano):
+Quién puede qué:
 - Crear, modificar y dar de baja los bonos: solo ADMIN (como los demás
   catálogos, ver ui/main_window.ConfiguracionAdminWindow).
-- Vender un bono y liberar la consola: ADMIN o quien tenga el permiso
-  operativo `permiso_control_pcs` ("Operar PCs y Miembros"), que no deja
-  administrar nada.
+- Vender un bono y liberar la consola: cualquier operador logueado (pedido
+  del dueño, 2026-10-19: hasta ese día pedía el permiso operativo
+  `permiso_control_pcs` -- "Operar PCs y Miembros" --, la misma asimetría
+  que tenía Miembros con el resto de la barra, y se sacó por el mismo
+  motivo). Ese permiso sigue existiendo en usuarios_repo.PERMISOS_EMPLEADA
+  (cuenta para que a alguien se lo considere "encargada"), pero ya no
+  gobierna nada acá.
 Estas reglas se hacen cumplir ACÁ y no solo en la pantalla: una pantalla que
 se olvide de esconder un botón no puede darle a nadie un poder que no tiene.
 Se lee el usuario de la base en cada operación (no se confía en la fila que
-quedó guardada al loguearse), así que un permiso quitado o un usuario
-desactivado corta el acceso en el acto.
+quedó guardada al loguearse), así que un usuario desactivado corta el
+acceso en el acto.
 
 La sesión de la consola NO se da de baja sola al llegar a cero -- a diferencia de
 una PC, que se bloquea y se libera -- porque acá el aviso es para una persona:
@@ -49,8 +52,9 @@ from database import conexion_db
 from repositories import usuarios_repo, ventas_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 
-# El permiso operativo que habilita vender bonos y liberar la consola (es el de
-# usuarios_repo.PERMISOS_EMPLEADA etiquetado "Operar PCs y Miembros").
+# Ya no gobierna la PlayStation 5 (ver el docstring del módulo): queda el
+# nombre porque usuarios_repo.PERMISOS_EMPLEADA todavía lo usa como clave
+# para "Operar PCs y Miembros" (cuenta para ser "encargada").
 PERMISO_OPERAR = "permiso_control_pcs"
 
 
@@ -59,18 +63,16 @@ PERMISO_OPERAR = "permiso_control_pcs"
 # ---------------------------------------------------------------------
 
 def puede_operar(usuario) -> bool:
-    """True si `usuario` (la fila de la tabla usuarios, p. ej. la del login)
-    puede vender bonos de la PlayStation 5 y liberarla. La pantalla lo usa para
-    decidir qué habilitar; las operaciones de abajo lo vuelven a exigir."""
-    return usuarios_repo.tiene_permiso(usuario, PERMISO_OPERAR)
+    """True siempre: cualquier operador logueado puede vender bonos de la
+    PlayStation 5 y liberarla (pedido del dueño, 2026-10-19). Queda la función
+    porque la pantalla la sigue llamando para decidir qué habilitar."""
+    return True
 
 
 def _exigir_operador(usuario_id: int):
-    if not puede_operar(usuarios_repo.usuario_habilitado(usuario_id)):
-        raise PermissionError(
-            "No tenés permiso para operar la PlayStation 5. "
-            "Pedile al Admin el permiso \"Operar PCs y Miembros\"."
-        )
+    """Solo valida que el usuario siga activo (ver usuarios_repo.usuario_habilitado):
+    quien quedó con una sesión abierta y fue dado de baja no puede seguir operando."""
+    usuarios_repo.usuario_habilitado(usuario_id)
 
 
 def _exigir_admin(usuario_id: int):
@@ -196,10 +198,11 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list) -> int:
     `pagos` es una lista de {"metodo", "monto"} -- ver
     ui.dialogo_pago.cobrar -- y tiene que cubrir el precio.
 
-    Requiere ADMIN o `permiso_control_pcs` (PermissionError si no). Venta,
-    sesión y vínculo con el bono se graban en la misma transacción (regla 8 de
-    CLAUDE.md); la venta se registra con origen PLAYSTATION, así Caja, Cierre de
-    Turno y Reportes la muestran aparte de Kiosko y de Alquiler de PCs.
+    Cualquier operador logueado puede vender (PermissionError si el usuario
+    está desactivado). Venta, sesión y vínculo con el bono se graban en la
+    misma transacción (regla 8 de CLAUDE.md); la venta se registra con origen
+    PLAYSTATION, así Caja, Cierre de Turno y Reportes la muestran aparte de
+    Kiosko y de Alquiler de PCs.
     """
     _exigir_operador(usuario_id)
     bono = obtener_bono(bono_id)
@@ -252,7 +255,7 @@ def finalizar_sesion(usuario_id: int):
     Como un bono de PC, lo que no se usó NO se reintegra: es un consumible.
     No hace nada si no hay sesión (apretar dos veces no rompe nada).
 
-    Requiere ADMIN o `permiso_control_pcs`, igual que vender.
+    Cualquier operador logueado puede liberarla, igual que vender.
     """
     _exigir_operador(usuario_id)
     with conexion_db() as conexion:

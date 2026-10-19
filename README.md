@@ -315,10 +315,9 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   cada segundo; al llegar a cero su monitor **titila en rojo** hasta que el
   operador avise a los clientes y la libere ("Ya avisé: liberar la consola")
   o venda otro bono — no se da de baja sola como una PC. Vender un bono y
-  liberarla pide ser Admin o tener `permiso_control_pcs` ("Operar PCs y
-  Miembros"); crear/modificar/dar de baja sus bonos es solo del Admin, desde
-  Configuración ADMIN → "Gestionar Bonos de PlayStation 5". Ver
-  `playstation_repo.vender_bono`.
+  liberarla lo puede hacer cualquier operador logueado; crear/modificar/dar
+  de baja sus bonos es solo del Admin, desde Configuración ADMIN →
+  "Gestionar Bonos de PlayStation 5". Ver `playstation_repo.vender_bono`.
 - **Caja** (`caja_window.py`, `CajaWindow`) — solo lectura, resumen del
   turno en curso vía `turnos_repo.resumen_turno_actual()` (número de caja y
   responsable, caja inicial = el cambio con que arrancó la caja, caja actual =
@@ -552,9 +551,10 @@ parámetro a cada ventana que se abre.
 `rol` es `ADMIN` o `EMPLEADA`. Una empleada puede recibir permisos para
 Artículos, Compras, Consulta de Ventas (sin anular), Reportes, Control de
 Cierres y operación de PCs/Miembros; la lista única está en
-`usuarios_repo.PERMISOS_EMPLEADA`. Usuarios, Configuración ADMIN y Anular
-Venta permanecen exclusivos del Admin. La grilla de PCs es visible para todo
-usuario logueado; operar la PlayStation pide Admin o `permiso_control_pcs`.
+`usuarios_repo.PERMISOS_EMPLEADA` (ese último permiso ya no gobierna nada
+funcional desde el 2026-10-19: Miembros y la PlayStation 5 abren para
+cualquier operador logueado, igual que la grilla de PCs). Usuarios,
+Configuración ADMIN y Anular Venta permanecen exclusivos del Admin.
 
 ⚠️ No hay cifrado de la base ni protección contra acceso directo al
 archivo `data/kiosko.db` con otra herramienta — la seguridad es a nivel de

@@ -126,9 +126,9 @@ class PanelDetalleEstacion(QFrame):
       solo de esa: no hay un camino que cruce dos listas. Abre la misma ventana
       de cobro que una venta de kiosko (`ui.dialogo_pago.cobrar`, pedido del
       dueño 2026-10-18), donde se elige el medio y se ve el vuelto.
-    La PlayStation 5 además exige el permiso operativo (ver
-    playstation_repo.puede_operar): sin él, ve la consola pero no puede vender ni
-    liberar. PCSTREAM no se abre con Miembro (los socios no la pueden usar).
+    La PlayStation 5 la opera cualquier operador logueado (pedido del dueño,
+    2026-10-19; ver playstation_repo.puede_operar). PCSTREAM no se abre con
+    Miembro (los socios no la pueden usar).
     """
 
     def __init__(self, usuario, avisar_cambio, parent=None):

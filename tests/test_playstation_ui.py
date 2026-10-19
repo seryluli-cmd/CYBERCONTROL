@@ -150,35 +150,19 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
         self.assertEqual(panel.lista_pc.etiqueta.text(), "Bonos de PC:")
         self.assertEqual(panel.lista_playstation.etiqueta.text(), "Bonos de PlayStation 5:")
 
-    def test_sin_el_permiso_operativo_la_consola_se_ve_pero_no_se_opera(self):
-        panel = self._panel(self.empleada_id)
+    def test_cualquier_operador_opera_la_consola(self):
+        """Pedido del dueño, 2026-10-19: igual que con Miembros, ya no hace falta
+        el permiso permiso_control_pcs para vender un bono de la consola ni para
+        liberarla -- cualquier operador logueado puede (antes `empleada_id`, sin
+        ese permiso, la veía pero no podía tocarla)."""
+        for usuario_id in (self.admin_id, self.operadora_id, self.empleada_id):
+            panel = self._panel(usuario_id)
 
-        panel.mostrar(playstation_repo.estado())
+            panel.mostrar(playstation_repo.estado())
 
-        self.assertFalse(any(self._habilitados(panel.lista_playstation)))
-        self.assertFalse(any(self._habilitados(panel.lista_pc)))
-        self.assertFalse(panel.boton_cobrar.isEnabled())
-        self.assertFalse(panel.boton_finalizar.isEnabled())
-        self.assertIn("Sin permiso", panel.etiqueta_estado.text())
-
-    def test_el_admin_opera_la_consola(self):
-        panel = self._panel(self.admin_id)
-
-        panel.mostrar(playstation_repo.estado())
-
-        self.assertTrue(all(self._habilitados(panel.lista_playstation)))
-        self.assertTrue(panel.boton_cobrar.isEnabled())
-
-    def test_aunque_se_fuerce_el_boton_sin_permiso_el_repo_lo_frena(self):
-        panel = self._panel(self.empleada_id)
-        panel.mostrar(playstation_repo.estado())
-
-        with mock.patch("control_pcs.ui.pcs_detalle.cobrar", return_value=_efectivo(3000.0)):
-            panel._cobrar_bono()  # lo que haría el clic si el botón no estuviera apagado
-
-        self.assertEqual(ventas_repo.listar_ventas_recientes(), [])
-        self.assertEqual(len(self.errores), 1)
-        self.assertIn("permiso", self.errores[0])
+            self.assertTrue(all(self._habilitados(panel.lista_playstation)), usuario_id)
+            self.assertTrue(panel.boton_cobrar.isEnabled(), usuario_id)
+            self.assertNotIn("Sin permiso", panel.etiqueta_estado.text())
 
 
 class TestCobrarDesdeElPanel(_ConPantalla):

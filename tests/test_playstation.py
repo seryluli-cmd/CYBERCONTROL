@@ -49,7 +49,10 @@ def _contar(tabla):
 
 class _ConPlaystation(BaseConBaseTemporal):
     """Un Admin, una operadora con el permiso de operar PCs y una empleada sin
-    ningún permiso, más un bono de "1 hora" ($3.000) en el catálogo de la consola."""
+    ningún permiso (ese permiso ya no distingue nada para la PlayStation 5, ver
+    TestPermisosDeLaPlaystation, pero sigue usándose para vender desde las
+    demás pruebas de este archivo), más un bono de "1 hora" ($3.000) en el
+    catálogo de la consola."""
 
     HORA = datetime(2026, 1, 5, 10, 0, 0)
 
@@ -118,26 +121,21 @@ class TestPermisosDeLaPlaystation(_ConPlaystation):
         admin.desactivar_bono(bono_id)
         self.assertEqual([b["id"] for b in admin.listar_bonos()], [self.bono_id])
 
-    def test_quien_tiene_el_permiso_operativo_vende_y_libera_pero_no_administra(self):
-        self._vender(self.HORA, usuario_id=self.operadora_id)
-        self.assertIsNotNone(self._estado(self.HORA)["sesion"])
+    def test_cualquier_operador_vende_y_libera_pero_no_administra(self):
+        """Pedido del dueño, 2026-10-19: igual que con Miembros, cualquier
+        operador logueado vende un bono y libera la consola -- ya no hace
+        falta el permiso permiso_control_pcs (antes, `empleada_id`, sin ese
+        permiso, no podía). Administrar el catálogo sigue siendo solo del Admin."""
+        for usuario_id in (self.operadora_id, self.empleada_id):
+            self._vender(self.HORA, usuario_id=usuario_id)
+            self.assertIsNotNone(self._estado(self.HORA)["sesion"])
 
-        with _reloj(self.HORA):
-            playstation_repo.finalizar_sesion(self.operadora_id)
-        self.assertIsNone(self._estado(self.HORA)["sesion"])
+            with _reloj(self.HORA):
+                playstation_repo.finalizar_sesion(usuario_id)
+            self.assertIsNone(self._estado(self.HORA)["sesion"])
 
-        with self.assertRaises(PermissionError):
-            playstation_repo.crear_bono(self.operadora_id, "2 horas", 120, 5000)
-
-    def test_una_empleada_sin_el_permiso_no_vende_ni_libera(self):
-        with self.assertRaises(PermissionError):
-            self._vender(self.HORA, usuario_id=self.empleada_id)
-        self.assertEqual((_contar("ventas"), _contar("sesiones_playstation")), (0, 0))
-
-        self._vender(self.HORA, usuario_id=self.operadora_id)
-        with self.assertRaises(PermissionError):
-            playstation_repo.finalizar_sesion(self.empleada_id)
-        self.assertIsNotNone(self._estado(self.HORA)["sesion"])  # sigue corriendo
+            with self.assertRaises(PermissionError):
+                playstation_repo.crear_bono(usuario_id, "2 horas", 120, 5000)
 
     def test_el_admin_opera_sin_necesitar_el_permiso_marcado(self):
         # tiene_permiso deja pasar siempre a un Admin, aunque su columna esté en 0.
@@ -146,20 +144,21 @@ class TestPermisosDeLaPlaystation(_ConPlaystation):
         with _reloj(self.HORA):
             playstation_repo.finalizar_sesion(self.admin_id)
 
-    def test_puede_operar_se_pregunta_con_la_fila_del_usuario(self):
-        self.assertTrue(playstation_repo.puede_operar(usuarios_repo.obtener_usuario(self.admin_id)))
-        self.assertTrue(playstation_repo.puede_operar(usuarios_repo.obtener_usuario(self.operadora_id)))
-        self.assertFalse(playstation_repo.puede_operar(usuarios_repo.obtener_usuario(self.empleada_id)))
+    def test_puede_operar_es_siempre_true(self):
+        """Pedido del dueño, 2026-10-19: ya no depende del permiso. Queda la
+        función porque la pantalla la sigue llamando para decidir qué habilitar."""
+        for usuario_id in (self.admin_id, self.operadora_id, self.empleada_id):
+            self.assertTrue(playstation_repo.puede_operar(usuarios_repo.obtener_usuario(usuario_id)))
 
-    def test_un_permiso_quitado_corta_el_acceso_en_el_acto(self):
-        # La operadora sigue "logueada" con la fila que tenía al entrar; el Admin
-        # le saca el permiso: la próxima venta se rechaza igual.
+    def test_sacarle_el_permiso_ya_no_corta_el_acceso(self):
+        """Hasta el 2026-10-19 esto sí cortaba el acceso en el acto; el permiso
+        ya no gobierna la PlayStation 5 (sigue contando para "encargada", ver
+        usuarios_repo.PERMISOS_EMPLEADA)."""
         self._vender(self.HORA, usuario_id=self.operadora_id)
         usuarios_repo.modificar_usuario(self.operadora_id, "Operadora", dominio.ROL_EMPLEADA, permisos={})
 
-        with self.assertRaises(PermissionError):
-            self._vender(self.HORA, usuario_id=self.operadora_id)
-        self.assertEqual(_contar("sesion_playstation_bonos"), 1)
+        self._vender(self.HORA, usuario_id=self.operadora_id)
+        self.assertEqual(_contar("sesion_playstation_bonos"), 2)
 
     def test_un_usuario_desactivado_o_inexistente_no_opera(self):
         usuarios_repo.desactivar_usuario(self.operadora_id)
