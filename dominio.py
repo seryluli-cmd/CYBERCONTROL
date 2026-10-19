@@ -69,20 +69,10 @@ PAGO_DIGITAL = "DIGITAL"
 
 METODOS_PAGO = (PAGO_EFECTIVO, PAGO_DIGITAL)
 
-# MIXTO nunca se guarda en venta_pagos (por eso no está en METODOS_PAGO
-# ni en el CHECK del esquema): es una opción de pantalla para Control de
-# PCs (bono, carga de saldo) que dispara el mismo DialogoPago que ya usa
-# Ventas para repartir el cobro entre Efectivo y Digital, y termina
-# grabando esas dos filas reales — igual que un pago combinado de
-# kiosko. Así Caja y Cierre de Turno nunca ven un tercer balde "mixto"
-# sin desglosar (ver control_pcs/ui/pcs_detalle.py y miembros_window.py).
-PAGO_MIXTO = "MIXTO"
-
 # Cómo se le muestra cada método a la usuaria.
 NOMBRE_METODO_PAGO = {
     PAGO_EFECTIVO: "Efectivo",
     PAGO_DIGITAL: "Digital (Mercado Pago / Transferencia)",
-    PAGO_MIXTO: "Mixto (Efectivo + Digital)",
 }
 
 

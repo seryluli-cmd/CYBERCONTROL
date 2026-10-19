@@ -30,7 +30,7 @@ import dominio
 from repositories import config_repo
 from control_pcs.repositories import miembros_repo, bonos_miembro_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
-from ui.dialogo_pago import resolver_pagos
+from ui.dialogo_pago import cobrar
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar,
@@ -294,10 +294,6 @@ class DialogoCargarSaldo(QDialog):
         self.paginas.addWidget(pagina_monto)
         self.paginas.addWidget(pagina_bono)
 
-        self.combo_metodo = QComboBox()
-        for metodo in (dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL, dominio.PAGO_MIXTO):
-            self.combo_metodo.addItem(dominio.NOMBRE_METODO_PAGO[metodo], metodo)
-
         botones = fila_guardar_cancelar(self, self._confirmar, texto_guardar="Cobrar y cargar saldo")
 
         layout = QVBoxLayout()
@@ -305,16 +301,15 @@ class DialogoCargarSaldo(QDialog):
         layout.addWidget(QLabel("Forma de carga:"))
         layout.addWidget(self.combo_modo)
         layout.addWidget(self.paginas)
-        layout.addWidget(QLabel("Medio de pago:"))
-        layout.addWidget(self.combo_metodo)
         layout.addLayout(botones)
         self.setLayout(layout)
         # Enter pasa al siguiente campo, como Tab: de la forma de carga al
-        # monto o al bono (según cuál se ve), de ahí al medio de pago, y ahí
-        # cobra.
+        # monto o al bono (según cuál se ve), y ahí abre la ventana de cobro
+        # (la misma de una venta de kiosko: medio de pago, reparto y vuelto;
+        # pedido del dueño, 2026-10-18: antes había un combo "Medio de pago").
         encadenar_enter(self.combo_modo, accion_final=self._ir_al_monto_o_al_bono)
-        encadenar_enter(self.spin_monto, self.combo_metodo, accion_final=self._confirmar)
-        encadenar_enter(self.combo_bono, self.combo_metodo)
+        encadenar_enter(self.spin_monto, accion_final=self._confirmar)
+        encadenar_enter(self.combo_bono, accion_final=self._confirmar)
         sin_boton_por_defecto(self)
         self._actualizar_preview_monto()
 
@@ -340,11 +335,10 @@ class DialogoCargarSaldo(QDialog):
 
     @manejar_errores
     def _confirmar(self):
-        metodo = self.combo_metodo.currentData()
         if self.combo_modo.currentData() == "MONTO":
             monto = self.spin_monto.value()
             miembros_repo.validar_monto_de_carga(self.tramos_tarifa, monto)
-            pagos = resolver_pagos(self, metodo, monto)
+            pagos = cobrar(self, monto)
             if pagos is None:
                 return
             miembros_repo.cargar_saldo_por_monto(
@@ -358,7 +352,7 @@ class DialogoCargarSaldo(QDialog):
                 return
             bono_id = self.combo_bono.currentData()
             bono = next(b for b in self.bonos if b["id"] == bono_id)
-            pagos = resolver_pagos(self, metodo, bono["precio"])
+            pagos = cobrar(self, bono["precio"])
             if pagos is None:
                 return
             miembros_repo.cargar_saldo_por_bono(

@@ -82,7 +82,7 @@ desde ahí, nunca escritos a mano:
 |---|---|
 | Rol | `ROL_ADMIN`, `ROL_EMPLEADA`, `ROLES` — y `dominio.es_admin(usuario)` |
 | Estado de venta | `VENTA_CONFIRMADA`, `VENTA_ANULADA`, `ESTADOS_VENTA` |
-| Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` — y `PAGO_MIXTO`, que NUNCA se guarda (ver más abajo) |
+| Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` (no hay "mixto": ver más abajo) |
 | Turno | `TURNO_MANANA`, `TURNO_TARDE`, `TURNO_NOCHE`, `TURNOS` |
 | Origen de una venta | `ORIGEN_KIOSKO`, `ORIGEN_ALQUILER_PCS`, `ORIGEN_PLAYSTATION`, `ORIGENES_VENTA` |
 | Equipo que se alquila por tiempo / estado de su sesión | `DISPOSITIVO_PC`, `DISPOSITIVO_PLAYSTATION`, `NOMBRE_PLAYSTATION`, `NOMBRE_PCSTREAM`, `SESION_ACTIVA`, `SESION_FINALIZADA` |
@@ -238,9 +238,9 @@ abra no alcanza si los tests no pasan.
 | `bonos_miembro_repo.listar_bonos()` / `.obtener_bono(id)` | catálogo de bonos EXCLUSIVO de socios (no confundir con `pcs_repo`) |
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo (y, con `pedir_datos`, completa sus datos del primer ingreso) |
 | `miembros_repo.normalizar_dni(...)` · `.tiene_dni(miembro)` · `.normalizar_telefono(...)` | se valida y se guarda el DNI (solo números, 7 u 8 cifras), el celular y el WhatsApp de un socio, y se decide si a un socio le falta el DNI (el Cliente PC se lo pide; Miembros lo marca "Falta DNI") |
-| `dominio.carga_minima_de_saldo(tramos)` · `miembros_repo.validar_monto_de_carga(...)` | se decide cuánto es lo mínimo que un socio puede cargar con un monto libre (el monto del tramo más bajo de la Tarifa por Hora para Socios; pedido del dueño, 2026-10-17) y se rechaza una carga menor: la pantalla la valida antes de pedir el medio de pago, el repo de nuevo al cobrar |
+| `dominio.carga_minima_de_saldo(tramos)` · `miembros_repo.validar_monto_de_carga(...)` | se decide cuánto es lo mínimo que un socio puede cargar con un monto libre (el monto del tramo más bajo de la Tarifa por Hora para Socios; pedido del dueño, 2026-10-17) y se rechaza una carga menor: la pantalla la valida antes de abrir la ventana de cobro, el repo de nuevo al cobrar |
 | `dominio.cuenta_del_cobro(total, efectivo, digital, paga_con)` · `.lo_que_falta_para(total, monto)` | se calcula el cobro: la parte en efectivo y la digital, el billete que da el cliente, el vuelto, lo que falta y los pagos que quedan en la caja (netos de vuelto); y lo que completa el otro medio al escribir en uno |
-| `ui.dialogo_pago.cobrar(parent, monto)` | se cobra un monto fijo con la ventana de cobro de Ventas (medio de pago, reparto y vuelto): el bono de PC, PCSTREAM o PlayStation 5 del botón "Cobrar" de Control de PCs, y el Mixto de `resolver_pagos`. Devuelve los pagos netos de vuelto, o None si se canceló |
+| `ui.dialogo_pago.cobrar(parent, monto)` | se cobra todo lo que no es una venta de kiosko con la ventana de cobro de Ventas (medio de pago, reparto y vuelto): el bono de PC, PCSTREAM o PlayStation 5 del botón "Cobrar" de Control de PCs, la carga de saldo de un socio y un trámite. Devuelve los pagos netos de vuelto, o None si se canceló |
 | `ventas_repo.registrar_venta_sin_detalle(...)` | se arma una venta sin artículo real de por medio (bono de PC, carga de saldo) |
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el producto Nº 1), para mostrarlo como renglón propio en Reportes |
 | `turnos_ventas_repo._vendido_aparte_entre(...)` (lo usa `turnos_repo`) | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día (y las impresiones, como renglón informativo, en Cierre de Turno vía `resumen_turno_actual()["impresiones"]`) |
@@ -344,19 +344,17 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   PCs/PlayStation 5 de Caja y Cierre de Turno queda mal. El dueño pidió este desglose
   explícitamente para poder auditar la caja (sospecha de faltantes), así
   que un error acá no es solo un bug visual.
-- **`dominio.PAGO_MIXTO` no es un método de pago real: nunca llega a
-  `venta_pagos`.** Es una opción del combo de Cargar Saldo de un socio y de
-  Trámites, que abre `ui.dialogo_pago.DialogoPago` para repartir el monto
-  entre Efectivo y Digital — termina grabando una o dos filas reales de
-  `PAGO_EFECTIVO`/`PAGO_DIGITAL`, igual que un pago combinado de una venta
-  de kiosko. Por eso no está en `METODOS_PAGO` ni en el `CHECK` de
-  `venta_pagos.metodo`: agregarlo ahí rompería el desglose Efectivo/Digital
-  de Caja y Cierre de Turno, que no sabría de dónde sacar el
-  Efectivo/Digital de un pago "mixto" sin desglosar. Ver
-  `ui.dialogo_pago.resolver_pagos`, que usan `DialogoCargarSaldo`
-  (miembros_window.py) y `DialogoTramites` (tramites_window.py). Los bonos de
-  Control de PCs ya no tienen combo: el botón "Cobrar" del panel abre directo
-  `DialogoPago` (`ui.dialogo_pago.cobrar`, pedido del dueño 2026-10-18).
+- **Todo se cobra con la misma ventana de cobro, nunca con un combo "Medio de
+  pago"** (pedido del dueño, 2026-10-18: "a todo"). Ventas abre
+  `ui.dialogo_pago.DialogoPago`; los bonos de Control de PCs (PC, PCSTREAM,
+  PlayStation 5), Cargar Saldo de un socio y Trámites la abren con
+  `ui.dialogo_pago.cobrar`. Así las empleadas aprenden un solo cobro y siempre
+  ven el vuelto. Una pantalla nueva que cobre tiene que usar `cobrar`. Un pago
+  repartido entre los dos medios se graba como dos filas reales de
+  `PAGO_EFECTIVO`/`PAGO_DIGITAL`: no existe un método "mixto" (hasta ese día había
+  un `PAGO_MIXTO` de pantalla). No lo sumes a `METODOS_PAGO` ni al `CHECK` de
+  `venta_pagos.metodo`: Caja y Cierre de Turno no sabrían cuánto de un pago
+  "mixto" quedó en el cajón.
 - **`ventas_repo.registrar_venta_sin_detalle` recibe `pagos` (lista), no
   un único método.** El `monto`/total de la venta se pasa aparte y se
   graba tal cual en `ventas.total` — nunca se lo deduce sumando `pagos`,
@@ -608,8 +606,8 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   con una parte en cada medio: el reparto ya está a la vista en los dos campos); con vuelto se
   frena en Confirmar: la empleada tiene que ver el vuelto antes de cobrar. No saques esa
   frenada "para ahorrar un Enter". Los bonos de PCs,
-  PCSTREAM y PlayStation 5 (botón "Cobrar" del panel, siempre) y el Mixto de socios y trámites
-  usan el mismo cuadro y arrancan igual (elegido por el dueño).
+  PCSTREAM y PlayStation 5 (botón "Cobrar" del panel), Cargar Saldo de un socio y Trámites
+  (Enter en el monto o en el bono) usan el mismo cuadro y arrancan igual (elegido por el dueño).
   Ventas: escanear, Enter con el código vacío (abre el cobro) y Enter. Un Enter que queda
   apretado no cobra: `encadenar_enter` descarta la repetición del teclado y los atajos de
   Confirmar no se repiten (`tests/test_dialogo_pago.py`, `tests/test_enter_como_tab.py`).
@@ -707,4 +705,4 @@ El programa integra kiosko, Control de PCs (con PCSTREAM), Miembros, Trámites y
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-738 pruebas al 2026-10-18 (con las cajas con número, administrar desde otra PC, el detalle del día y el cobro nuevo).
+744 pruebas al 2026-10-18 (con las cajas con número, administrar desde otra PC, el detalle del día y el cobro nuevo en todas las pantallas).

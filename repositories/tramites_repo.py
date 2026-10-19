@@ -83,7 +83,7 @@ def registrar_tramite(usuario_id: int, tramite_id: int, monto: float, pagos: lis
     """
     Cobra un trámite por `monto` (libre, lo tipea quien atiende) y devuelve
     el id de la venta generada. `pagos` es una lista de {"metodo", "monto"},
-    ver ui.dialogo_pago.resolver_pagos.
+    los que devuelve la ventana de cobro (ui.dialogo_pago.cobrar).
 
     Venta, pagos y vínculo con el trámite se graban en la misma transacción:
     o queda todo o no queda nada (CLAUDE.md, regla 8). El `monto` se graba

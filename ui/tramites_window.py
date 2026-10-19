@@ -6,7 +6,9 @@ imprimir una boleta de luz o gas, trámites online, turnos...) y se cobran
 con un monto libre en $. Se cobra el servicio, no la boleta. Dos pantallas:
 
 - `DialogoTramites`: la que usa cualquiera que atiende. Se elige el trámite
-  de la lista, se escribe el monto, se elige el medio de pago y se cobra.
+  de la lista, se escribe el monto y "Cobrar" abre la misma ventana de cobro
+  que una venta de kiosko (`ui.dialogo_pago.cobrar`: medio de pago, reparto y
+  vuelto; pedido del dueño, 2026-10-18: antes había un combo "Medio de pago").
   Si el usuario es Admin, desde acá mismo puede abrir la gestión del catálogo.
 - `DialogoGestionTramites` / `DialogoTramite`: alta, edición y baja de los
   trámites del catálogo. Solo Admin (también se abre desde "Configuración
@@ -23,7 +25,7 @@ from PySide6.QtWidgets import (
 
 import dominio
 from repositories import tramites_repo
-from ui.dialogo_pago import resolver_pagos
+from ui.dialogo_pago import cobrar
 from ui.utils import (
     aplicar_clase, confirmar, crear_tabla, encadenar_enter, fila_guardar_cancelar, formato_pesos,
     manejar_errores, mostrar_error, mostrar_info, sin_boton_por_defecto,
@@ -38,7 +40,7 @@ class DialogoTramites(QDialog):
         self.usuario = usuario
         self.es_admin = dominio.es_admin(usuario)
         self.setWindowTitle("Trámites")
-        self.resize(400, 320)
+        self.resize(400, 240)
         self._armar_interfaz()
         self._cargar_tramites()
 
@@ -53,10 +55,6 @@ class DialogoTramites(QDialog):
         self.spin_monto.setMaximum(99_999_999)
         self.spin_monto.setPrefix("$ ")
 
-        self.combo_metodo = QComboBox()
-        for metodo in (dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL, dominio.PAGO_MIXTO):
-            self.combo_metodo.addItem(dominio.NOMBRE_METODO_PAGO[metodo], metodo)
-
         botones = fila_guardar_cancelar(self, self._cobrar, texto_guardar="Cobrar")
 
         layout = QVBoxLayout()
@@ -65,15 +63,13 @@ class DialogoTramites(QDialog):
         layout.addWidget(self.etiqueta_vacio)
         layout.addWidget(QLabel("Monto:"))
         layout.addWidget(self.spin_monto)
-        layout.addWidget(QLabel("Medio de pago:"))
-        layout.addWidget(self.combo_metodo)
         layout.addLayout(botones)
         if self.es_admin:
             boton_gestionar = QPushButton("⚙️  Gestionar trámites")
             boton_gestionar.clicked.connect(self._gestionar)
             layout.addWidget(boton_gestionar)
         self.setLayout(layout)
-        encadenar_enter(self.combo_tramite, self.spin_monto, self.combo_metodo, accion_final=self._cobrar)
+        encadenar_enter(self.combo_tramite, self.spin_monto, accion_final=self._cobrar)
         sin_boton_por_defecto(self)
         self.spin_monto.setFocus()
 
@@ -95,6 +91,8 @@ class DialogoTramites(QDialog):
             )
         else:
             self.etiqueta_vacio.setText("")
+        # Vacía no ocupa lugar: si no, deja un hueco entre el trámite y el monto.
+        self.etiqueta_vacio.setVisible(bool(self.etiqueta_vacio.text()))
 
     def _gestionar(self):
         DialogoGestionTramites(self).exec()
@@ -111,7 +109,7 @@ class DialogoTramites(QDialog):
             mostrar_error(self, "Monto inválido", "Ingresá un monto mayor a cero.")
             return
 
-        pagos = resolver_pagos(self, self.combo_metodo.currentData(), monto)
+        pagos = cobrar(self, monto)
         if pagos is None:
             return
         tramites_repo.registrar_tramite(self.usuario["id"], tramite_id, monto, pagos)

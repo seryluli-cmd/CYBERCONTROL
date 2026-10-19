@@ -285,8 +285,10 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   ahí se calcula `vuelto`. Confirmar llama a `ventas_repo.confirmar_venta`.
 - **Trámites** (`tramites_window.py`, `DialogoTramites`) — botón de la
   barra entre "Vender" y "Miembros". Se elige un trámite del catálogo, se
-  tipea el monto (libre, en $) y el medio de pago (Efectivo / Digital /
-  Mixto, mismo `resolver_pagos` que Cargar Saldo) y se cobra con
+  tipea el monto (libre, en $) y "Cobrar" abre la misma ventana de cobro
+  que Ventas (`dialogo_pago.cobrar`, igual que Cargar Saldo de un socio y
+  los bonos de Control de PCs; antes había un combo "Medio de pago") y se
+  graba con
   `tramites_repo.registrar_tramite`. En Caja y Cierre de Turno cuenta como
   **Kiosko** (no tiene origen propio); en Reportes sale en columna aparte
   (Totales y Resumen del Día) y en el Ranking de Ventas. El Admin ve además
@@ -568,7 +570,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-738 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+744 tests al 2026-10-18. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,

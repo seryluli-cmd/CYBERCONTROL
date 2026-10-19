@@ -63,7 +63,9 @@ VENTAS Y CAJA
   todo de un lado. Si pagan con un billete más grande, escribilo en
   Efectivo o en "Paga con" (sirve también cuando una parte va por
   digital): muestra el VUELTO y Enter frena en Confirmar para que lo
-  veas; otro Enter cobra.
+  veas; otro Enter cobra. Es la misma ventana para todo lo que se
+  cobra: kiosko, bonos de PCs, PCSTREAM, PlayStation 5, carga de saldo
+  de un socio y trámites.
 - Trámites: cobrá el servicio que hizo el local, no el importe de la
   boleta del cliente. El Admin administra el catálogo de trámites.
 - Caja: muestra el efectivo esperado del turno y el desglose de ventas.

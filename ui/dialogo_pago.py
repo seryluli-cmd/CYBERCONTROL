@@ -17,9 +17,9 @@ caja) es dominio.cuenta_del_cobro; esta pantalla solo la muestra.
 
 Está separado de ventas_window.py a propósito: una arma el carrito y esta
 cobra, así se puede tocar la forma de cobrar sin riesgo de romper el
-escaneo, y al revés (ver CLAUDE.md, regla 12). También lo reutilizan el
-cobro de un bono en Control de PCs, vía `cobrar`, y el Mixto de Cargar
-Saldo y Trámites, vía `resolver_pagos` (más abajo).
+escaneo, y al revés (ver CLAUDE.md, regla 12). Todo lo demás que se cobra
+lo reutiliza vía `cobrar` (más abajo): los bonos de Control de PCs, la carga
+de saldo de un socio y los trámites.
 """
 
 from PySide6.QtWidgets import (
@@ -313,33 +313,14 @@ def cobrar(parent, monto):
     """
     Abre este cuadro de cobro por `monto` y devuelve los pagos (netos de
     vuelto, listos para mandarle al repo), o None si se canceló (el llamador
-    no debe seguir). Así se cobra un bono en Control de PCs -- PC, PCSTREAM
-    y PlayStation 5 --, igual que una venta de kiosko (pedido del dueño,
-    2026-10-18: antes se elegía el medio en un combo del panel). También lo
-    usa el Mixto de `resolver_pagos`.
+    no debe seguir). Así se cobra todo lo que no es una venta de kiosko,
+    igual que una venta de kiosko: un bono en Control de PCs -- PC, PCSTREAM
+    y PlayStation 5 --, la carga de saldo de un socio y un trámite (pedido
+    del dueño, 2026-10-18: antes se elegía el medio en un combo de cada
+    pantalla, y esta ventana solo se abría con "Mixto").
     """
     dialogo = DialogoPago(parent, monto)
     if not dialogo.exec():
         return None
     return dialogo.pagos
 
-
-def resolver_pagos(parent, metodo, monto):
-    """
-    Único lugar donde se resuelve "qué método eligió la usuaria" a una
-    lista de pagos lista para mandarle al repo. Si el medio elegido es
-    Mixto, abre este mismo DialogoPago para repartir el monto entre
-    Efectivo y Digital -- no existe un tercer método "MIXTO" en la base,
-    siempre termina siendo una o dos filas reales de Efectivo/Digital.
-    Devuelve None si se canceló ese cuadro (el llamador no debe seguir).
-
-    Compartido entre control_pcs/ui/miembros_window.py (cargar saldo de un
-    socio) y ui/tramites_window.py (cobrar un trámite), para no repetir
-    esta lógica (CLAUDE.md, regla 2). `monto <= 0` no abre el
-    cuadro (no tiene sentido cobrar un total en cero): el llamador que
-    permite un monto libre en $ (Cargar Saldo) ya valida eso aparte antes
-    de llegar a grabar nada.
-    """
-    if metodo == dominio.PAGO_MIXTO and monto > 0:
-        return cobrar(parent, monto)
-    return [{"metodo": metodo, "monto": monto}]
