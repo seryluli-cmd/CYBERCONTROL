@@ -409,7 +409,7 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         d._guardar()
 
         self.assertEqual(repo.obtener_alcance(), {"para_todas": False, "prueba": {self.pc2}})
-        self.assertEqual(d.tabla.item(1, 3).text(), "Sin actualización automática (instalación vieja)")
+        self.assertEqual(d.tabla.item(1, 3).text(), "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
 
     def test_mandarla_a_todas_pide_confirmacion(self):
         d = self.dialogo()
@@ -425,10 +425,13 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
 
     def test_el_estado_de_cada_pc_en_palabras(self):
         texto = pcs_actualizacion_dialogo.texto_del_estado
-        base = {"estado": "", "detalle": "", "carpeta": "C:\\c", "le_toca": 5, "version": 5}
+        base = {"estado": "", "detalle": "", "carpeta": "C:\\c", "le_toca": 5, "version": 5,
+                "ultima_conexion": "2026-10-18T22:39:00"}
         self.assertEqual(texto(base), "Al día")
         self.assertEqual(texto({**base, "version": 4}), "Pendiente")
-        self.assertEqual(texto({**base, "le_toca": None}), "")
+        self.assertEqual(texto({**base, "le_toca": None}), "Lista: espera que cargues una versión")
+        self.assertEqual(texto({**base, "carpeta": "", "ultima_conexion": None}),
+                         "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
         self.assertEqual(texto({**base, "estado": "descargada"}), "Bajada: se pone en el próximo reinicio")
         self.assertEqual(texto({**base, "estado": "fallo", "detalle": "x"}), "FALLÓ: x")
         self.assertEqual(texto({**base, "estado": "error", "detalle": "sin red"}), "No la pudo bajar: sin red")

@@ -49,10 +49,14 @@ def texto_del_estado(pc: dict) -> str:
         return f"No la pudo bajar: {_con_fechas(pc['detalle'])}"
     if pc["estado"] == dominio.ACTUALIZACION_FALLO:
         return f"FALLÓ: {_con_fechas(pc['detalle'])}"
+    # Sin ninguna conexión, no se sabe qué tiene instalado: decir "instalación vieja"
+    # hacía creer que el Cliente PC nuevo no había quedado (2026-10-18).
+    if not pc["ultima_conexion"]:
+        return "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)"
     if not pc["carpeta"]:
         return "Sin actualización automática (instalación vieja)"
     if pc["le_toca"] is None:
-        return ""
+        return "Lista: espera que cargues una versión"
     if pc["version"] == pc["le_toca"]:
         return "Al día"
     return "Pendiente"
