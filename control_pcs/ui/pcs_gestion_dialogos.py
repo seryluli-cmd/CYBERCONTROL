@@ -4,8 +4,9 @@ pcs_gestion_dialogos.py
 Diálogos para ADMINISTRAR los catálogos de Estaciones (las PCs del local, su
 IP y la contraseña de admin de los Clientes PC) y de Bonos de Tiempo de walk-ins (mismo
 espíritu que "Gestionar Rubros" en Artículos), más los de la PlayStation 5 y los
-de PCSTREAM. Solo se abren desde `ConfiguracionAdminWindow` (ui/main_window.py),
-exclusiva de ADMIN. Los bonos exclusivos de socios se gestionan aparte, en
+de PCSTREAM. Solo se abren desde `ConfiguracionAdminWindow` (ui/main_window.py):
+los de bonos, solo un ADMIN; Gestionar Estaciones, también un Operador (pedido
+del dueño, 2026-10-19). Los bonos exclusivos de socios se gestionan aparte, en
 miembros_window.py.
 """
 

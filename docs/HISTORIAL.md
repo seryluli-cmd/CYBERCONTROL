@@ -514,3 +514,14 @@ medio, grafito, azul noche como la barra, todo oscuro).
 - Las reglas van con `>` (solo hijos directos): el cobro, el login del socio y los avisos tienen al panel
   como padre y con un selector común heredaban las letras claras.
 802 tests (1 nuevo en `tests/test_estilo_ui.py`, que falla si se saca el `>`).
+
+**2026-10-19:** **la barra de arriba con todos los botones para todos, y Config ADMIN para el
+Operador.** Pedido del dueño: "que para todos los usuarios aparezcan todos los botones... los que no
+tienen acceso, que no haga nada; si no, queda muy vacío". Después: "cuando el usuario es Operador,
+CONFIG ADMIN solo muestre disponible Gestionar Estaciones, las demás en gris".
+- `MainWindow._agregar_boton_barra(..., habilitado=...)`: Miembros y Admin Kiosko se ven siempre; sin
+  permiso no se conectan (se ven iguales, no grises). Config ADMIN abre para todos.
+- `ConfiguracionAdminWindow`: un no Admin solo puede usar Gestionar Estaciones (`_armar_botones(...,
+  habilitados=...)`); el resto queda en gris. Gestionar Estaciones no exige Admin en ningún repo: el
+  Operador también usa lo de adentro (contraseña de PC clientes, fondo, filtro, actualizar el Cliente PC).
+811 tests (9 nuevos en `tests/test_barra_para_todos.py`).

@@ -9,8 +9,9 @@ una opción más de un menú. Desde la barra de arriba se llega a Vender
 entrar a Vender), a "Trámites" (servicios con monto libre, ej. sacar una boleta de
 luz), a "Miembros" (alta/carga de saldo de socios) y, para
 "encargados", a "Administrar Kiosko" (el resto de las pantallas de
-gestión) y, solo para Admin, a "Configuración ADMIN". Qué se ve depende
-del rol y los permisos:
+gestión) y a "Configuración ADMIN". Todos ven todos los
+botones (pedido del dueño, 2026-10-19); qué abre cada uno depende del rol y
+los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
 
 - Cualquiera logueado: operar la grilla de PCs (asignar un bono ya
   creado, abrir con Miembro, finalizar sesión — es una venta más, como
@@ -18,15 +19,17 @@ del rol y los permisos:
   Cambiar mi Clave. La PlayStation 5, que está en esa misma grilla, la ve cualquiera pero
   solo la opera (vender sus bonos, liberarla) quien tenga `permiso_control_pcs`
   (o sea Admin).
-- Con `permiso_control_pcs` (o Admin): además ve "Miembros" (alta,
+- Con `permiso_control_pcs` (o Admin): además abre "Miembros" (alta,
   modificar datos, cargar saldo, desactivar — usa la tarifa y los bonos
   ya definidos, no los edita).
 - "Encargado" (ADMIN, o EMPLEADA con al menos uno de los permisos de
-  usuarios_repo.PERMISOS_EMPLEADA): además ve "Administrar Kiosko", que
+  usuarios_repo.PERMISOS_EMPLEADA): además abre "Administrar Kiosko", que
   agrupa Artículos/Compras/Consulta de Ventas/Reportes/Control de
   Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos).
-- Solo ADMIN, sin excepción: "Configuración ADMIN" — Gestionar
-  Estaciones (agregar/quitar/renombrar PC), Gestionar Bonos (catálogo de
+- "Configuración ADMIN": la abre cualquiera, pero un Operador solo usa
+  Gestionar Estaciones (agregar/quitar/renombrar PC; pedido del dueño,
+  2026-10-19) y ve el resto en gris. Lo demás es solo de ADMIN, sin
+  excepción: Gestionar Bonos (catálogo de
   walk-ins), Gestionar Bonos de PlayStation 5, Gestionar Bonos de PCSTREAM (la
   PC de streaming), Tarifa por Hora de Socios,
   Gestionar Bonos de Socios, Gestionar Trámites, Accesos de Admin (registro
@@ -89,7 +92,8 @@ INTERVALO_PARPADEO_MS = 600
 
 
 class MainWindow(QMainWindow):
-    """Barra de botones (según rol y permisos) y, debajo, la grilla de PCs."""
+    """Barra de botones (los mismos para todos; qué abren, según rol y
+    permisos) y, debajo, la grilla de PCs."""
 
     def __init__(self, usuario, al_cerrar_sesion):
         """
@@ -102,8 +106,8 @@ class MainWindow(QMainWindow):
         self.es_admin = dominio.es_admin(usuario)
         # "Encargado" no es un rol propio en la base — es un Admin, o una
         # Empleada con al menos uno de los permisos de administración de
-        # usuarios_repo.PERMISOS_EMPLEADA. Decide si se ve el botón
-        # "Administrar Kiosko".
+        # usuarios_repo.PERMISOS_EMPLEADA. Decide si el botón "Administrar
+        # Kiosko" abre algo (se ve siempre).
         self._es_encargado = self.es_admin or any(
             usuarios_repo.tiene_permiso(usuario, clave_permiso)
             for clave_permiso, _ in usuarios_repo.PERMISOS_EMPLEADA
@@ -195,16 +199,19 @@ class MainWindow(QMainWindow):
             # Cobro rápido de impresiones, sin entrar a Vender (pedido del dueño, 2026-10-19).
             self._agregar_boton_barra(layout_barra, "🖨️  Impresiones", self._abrir_impresiones)
             self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
-            if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"):
-                # Una sola carita (2026-10-18): el emoji de "dos personas" de antes,
-                # en el Windows del mostrador, se veía como tres caras sueltas.
-                self._agregar_boton_barra(layout_barra, "🧑  Miembros", self._abrir_miembros)
+            # Una sola carita (2026-10-18): el emoji de "dos personas" de antes,
+            # en el Windows del mostrador, se veía como tres caras sueltas.
+            self._agregar_boton_barra(
+                layout_barra, "🧑  Miembros", self._abrir_miembros,
+                habilitado=self.es_admin or usuarios_repo.tiene_permiso(self.usuario, "permiso_control_pcs"),
+            )
         # Nombres cortos en la barra (pedido del dueño, 2026-10-18); las ventanas
         # que abren siguen con su nombre entero.
-        if self._es_encargado:
-            self._agregar_boton_barra(layout_barra, "🛠️  Admin Kiosko", self._abrir_administrar_kiosko)
-        if self.es_admin:
-            self._agregar_boton_barra(layout_barra, "⚙️  Config ADMIN", self._abrir_configuracion_admin)
+        self._agregar_boton_barra(
+            layout_barra, "🛠️  Admin Kiosko", self._abrir_administrar_kiosko, habilitado=self._es_encargado
+        )
+        # Abre para todos: un Operador solo usa Gestionar Estaciones (ver ConfiguracionAdminWindow).
+        self._agregar_boton_barra(layout_barra, "⚙️  Config ADMIN", self._abrir_configuracion_admin)
         self._agregar_boton_barra(layout_barra, "💵  Caja", self._abrir_caja)
         self.boton_cierre_turno = None
         if not self._remota:
@@ -215,15 +222,21 @@ class MainWindow(QMainWindow):
         layout_barra.addStretch()
         self._agregar_boton_barra(layout_barra, "Cerrar sesión", self._cerrar_sesion, clase="peligro")
 
-    def _agregar_boton_barra(self, layout, texto, funcion, clase=None):
+    def _agregar_boton_barra(self, layout, texto, funcion, clase=None, habilitado=True):
         """Botón de la barra superior: alto fijo, ancho según el texto
-        (van en fila, así que no hace falta que midan todos igual)."""
+        (van en fila, así que no hace falta que midan todos igual).
+
+        Todos ven todos los botones (pedido del dueño, 2026-10-19: con solo los
+        suyos la barra de una empleada quedaba muy vacía). Uno sin `habilitado`
+        se ve igual que los demás pero no hace nada al apretarlo: no se lo
+        apaga con setEnabled(False) porque se vería gris, distinto del resto."""
         boton = QPushButton(texto)
         boton.setFixedHeight(38)
         # Los que no son ni "primario" ni "peligro" son teclas oscuras con relieve
         # (clase "barra", ver la hoja de estilos de main.py).
         aplicar_clase(boton, clase or "barra")
-        boton.clicked.connect(funcion)
+        if habilitado:
+            boton.clicked.connect(funcion)
         layout.addWidget(boton)
         return boton
 
@@ -419,9 +432,11 @@ class _VentanaDeBotones(QDialog):
         self.setWindowTitle(titulo)
         self.resize(360, alto)
 
-    def _armar_botones(self, botones: list):
+    def _armar_botones(self, botones: list, habilitados=None):
         """`botones`: lista de (texto, función) o (texto, función, clase), en el
-        orden en que se ven. La clase ("peligro", "primario") le da el color."""
+        orden en que se ven. La clase ("peligro", "primario") le da el color.
+        `habilitados`: las funciones que se pueden usar (None = todas); los
+        demás botones se ven en gris y no se pueden apretar."""
         layout = QVBoxLayout()
         layout.setContentsMargins(24, 24, 24, 24)
 
@@ -432,7 +447,8 @@ class _VentanaDeBotones(QDialog):
         layout.addSpacing(16)
 
         for texto, funcion, *clase in botones:
-            self._agregar_boton(layout, texto, funcion, *clase)
+            boton = self._agregar_boton(layout, texto, funcion, *clase)
+            boton.setEnabled(habilitados is None or funcion in habilitados)
 
         layout.addStretch()
         self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
@@ -452,7 +468,7 @@ class _VentanaDeBotones(QDialog):
 class AdministrarKioskoWindow(_VentanaDeBotones):
     """
     Agrupa las pantallas de gestión del kiosko detrás de un único acceso
-    ("Administrar Kiosko"), visible solo para encargados (ver
+    ("Administrar Kiosko"), que solo abren los encargados (ver
     MainWindow._es_encargado). Un Admin las ve todas; una Empleada solo las
     que tenga habilitadas en usuarios_repo.PERMISOS_EMPLEADA.
     """
@@ -508,10 +524,12 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     Tiempo (walk-in), Bonos de PlayStation 5, Bonos de PCSTREAM, Tarifa por Hora
     de Socios, Bonos de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
     de administrador, ver ui/accesos_admin_window.py) y, en el mostrador, "Entrar desde
-    otra PC" (ui/admin_remoto_dialogo.py) y "Limpiar base de datos". Exclusiva de ADMIN, sin
-    excepción: no hay permiso delegable para esto (ver
-    MainWindow._armar_interfaz). Recibe el `usuario` porque el catálogo de la
-    PlayStation 5 vuelve a exigir en el repo que quien lo edita sea Admin.
+    otra PC" (ui/admin_remoto_dialogo.py) y "Limpiar base de datos". La abre
+    cualquiera, pero un Operador solo puede usar Gestionar Estaciones (pedido del
+    dueño, 2026-10-19); el resto se ve en gris y es de ADMIN, sin excepción: no
+    hay permiso delegable para esto. Recibe el `usuario` para eso y porque el
+    catálogo de la PlayStation 5 vuelve a exigir en el repo que quien lo edita
+    sea Admin.
 
     *Usar* esos catálogos (asignarle un bono ya creado a una PC o a la
     PlayStation 5, cargar saldo con la tarifa ya fijada) sigue abierto a
@@ -542,7 +560,9 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
                 # plata y el historial de ventas, deja los catálogos. Ver limpieza_repo.
                 ("🧹  Limpiar base de datos", self._limpiar_base, "peligro"),
             ]
-        self._armar_botones(botones)
+        # Un Operador entra pero solo usa Gestionar Estaciones; lo demás se ve en
+        # gris (pedido del dueño, 2026-10-19).
+        self._armar_botones(botones, habilitados=None if dominio.es_admin(usuario) else [self._abrir_estaciones])
 
     def _abrir_estaciones(self):
         DialogoGestionEstaciones(self).exec()

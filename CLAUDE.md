@@ -523,7 +523,7 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   historial.
 - **Una PC se reconoce por su nombre y, si no, por su IP asentada** (pedido del
   dueño, 2026-10-17). `estaciones.ip_asentada` es la IP del PRIMER enlace y no se
-  pisa sola (`ultima_ip` sí, en cada conexión); solo la borra el Admin desde
+  pisa sola (`ultima_ip` sí, en cada conexión); solo se borra a mano desde
   Gestionar Estaciones y se vuelve a asentar en la próxima conexión por nombre. La IP
   sale del socket (`self.client_address`), nunca de un dato que mande el Cliente PC,
   y se mira DESPUÉS de la clave de Clientes PC. El nombre siempre gana; una IP
@@ -742,8 +742,10 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-802 pruebas al 2026-10-19 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno y el panel gris del costado).
+811 pruebas al 2026-10-19 (con las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
+
+La barra muestra los mismos botones a todos (pedido del dueño 2026-10-19: con solo los suyos la de una empleada quedaba muy vacía). Los que alguien no tiene habilitados (Miembros, Admin Kiosko) se ven igual pero no hacen nada al apretarlos: no se apagan con `setEnabled(False)` porque se verían grises. Config ADMIN la abre cualquiera, pero un Operador solo usa Gestionar Estaciones y ve el resto en gris (`ConfiguracionAdminWindow`, mismo día). Ojo: Gestionar Estaciones no exige Admin en ningún repo, así que un Operador también usa lo que hay adentro (contraseña de PC clientes, fondo, filtro de palabras, actualizar el Cliente PC). Lo cuida `tests/test_barra_para_todos.py`.
 
 El panel del costado de Control de PCs (`#panelDetalle`, los bonos y Cobrar) es gris medio (pedido del dueño 2026-10-19, eligió esta entre cinco maquetas). Sus reglas en `main.py` van con `>` (solo hijos directos del panel y de `#contenedorBonos`) a propósito: el cobro, el login del socio y los avisos se abren con el panel como padre, y con un selector común quedarían con letras claras sobre su fondo claro (lo cuida `test_estilo_ui`).
