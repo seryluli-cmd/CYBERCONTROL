@@ -3,8 +3,9 @@ main.py
 ========
 Punto de entrada del programa. Al ejecutar este archivo:
 1. Se verifica que no haya otra copia abierta en la misma PC.
-2. Se prepara la base de datos (si es la primera vez, se crea) y se hace
-   el backup automático del día.
+2. Se prepara la base de datos (si es la primera vez, se crea) y arrancan
+   las copias de seguridad automáticas (repositories/copias_repo.py: después
+   de cada Cierre de Turno y cada 8 horas, con el programa abierto).
 3. Se levanta el servidor de red que consultan las PCs cliente
    (servidor_red.py).
 4. Se muestra la pantalla de Login.
@@ -31,7 +32,8 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
 from admin_remoto import cliente as cliente_remoto, modo as modo_remoto
-from database import inicializar_base_de_datos, hacer_backup_automatico
+from database import inicializar_base_de_datos
+from repositories import copias_repo
 from servidor_red import iniciar_servidor
 from ui.ingreso_caja import resolver_caja_al_entrar
 from ui.login_window import LoginWindow
@@ -771,7 +773,7 @@ def main():
         sys.exit(app.exec())
 
     inicializar_base_de_datos()
-    hacer_backup_automatico()
+    copias_repo.iniciar_copias_automaticas()
     # Corre todo el tiempo que Kiosko esté abierto, sin importar quién
     # esté logueado -- es lo que consultan las PCs bloqueadas del local
     # (ver servidor_red.py y la carpeta hermana "CLIENTE PC").

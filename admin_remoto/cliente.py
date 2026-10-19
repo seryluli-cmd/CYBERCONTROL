@@ -212,7 +212,6 @@ def instalar(conexion: ConexionConElMostrador):
     carpeta = _carpeta_local()
     _cambiar(database, "DATA_DIR", carpeta)
     _cambiar(database, "DB_PATH", os.path.join(carpeta, "sin_base_en_esta_pc.db"))
-    _cambiar(database, "BACKUPS_DIR", os.path.join(carpeta, "backups"))
 
     # La base de esta PC, cerrada: en database y en cada módulo que ya se haya
     # traído su propia referencia con `from database import conexion_db`.

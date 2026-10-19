@@ -52,7 +52,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
 | [assets/](assets/) | Ícono de la app (`icono.ico`/`.png`). |
-| [data/backups/](data/backups/) | Copias diarias automáticas de la base (últimos 30 días) + copias manuales. |
+| [data/backups/](data/backups/) | Copias automáticas de la base (después de cada Cierre de Turno y cada 8 horas; todas las de 3 días y una por día hasta 30) + las de antes de una migración o de Limpiar base. |
 
 ## Modelo de datos (SQLite, `database_esquema.py`)
 
@@ -211,10 +211,17 @@ Nº 1) / clave 1234** con rol ADMIN (login muestra un aviso para cambiarla
 mientras siga siendo la default). Si no existe la clave `fondo_cambio`, la crea en `50000`. Si
 no corrió antes, siembra los 4 rubros default.
 
-**Backups**: `hacer_backup_automatico()` copia `data/kiosko.db` →
-`data/backups/kiosko_YYYY-MM-DD.db` una vez por día (al primer arranque
-del día), conserva los últimos 30 archivos. Copia manual a cualquier
-carpeta desde Usuarios → "Copia de Seguridad" (`database.copiar_backup_a`).
+**Backups** (`repositories/copias_repo.py`, desde el 2026-10-19): un hilo que
+arranca `main.py` en el mostrador revisa cada minuto y copia `data/kiosko.db` →
+`data/backups/kiosko_AAAA-MM-DD_HHMMSS.db` en caliente (Online Backup API de
+SQLite) después de cada Cierre de Turno (manual, en ausencia o forzoso: se mira
+`MAX(cierres_turno.fecha_cierre)`) y, si no hubo ninguno, cada 8 horas. Cada copia
+va además a las "otras carpetas" que elige el Admin (otro disco, una carpeta
+compartida de otra PC; usuario y clave de red se le pasan a Windows con `cmdkey`,
+no se guardan); si una no está, la copia llega cuando vuelve. Quedan todas las de
+los últimos 3 días con copias y una por día hasta 30. Pantalla: Usuarios →
+"Copias de Seguridad" (`ui/copias_dialogo.py`), con "Hacer copia de seguridad ahora" y una
+copia suelta a un pendrive (`database.copiar_backup_a`).
 
 ## Pantallas (`ui/` y `control_pcs/ui/`)
 
@@ -456,7 +463,7 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   desactivarlo en su lugar con `desactivar_usuario`, soft-delete que no
   libera el número), check "Mostrar inactivos" (para poder encontrar y
   borrar del todo a alguien ya desactivado), "Configurar Cambio Fijo"
-  (`config_repo`), "Copia de Seguridad" (`database.copiar_backup_a`).
+  (`config_repo`), "Copias de Seguridad" (`ui/copias_dialogo.py`, ver Backups).
   También `DialogoCambiarClave` (accesible para cualquier rol desde el
   menú principal, no desde esta pantalla) — cambia la clave propia
   pidiendo la actual como confirmación (`usuarios_repo.cambiar_clave`).
@@ -521,7 +528,7 @@ y decisiones en [docs/ADMIN_REMOTO.md](docs/ADMIN_REMOTO.md).
   el "quién lo hizo" (`lista_blanca.ACTOR`) lo pone el mostrador.
 - **Qué no se puede desde otra PC:** vender, cobrar, abrir/cerrar cajas y
   turnos, la grilla de PCs, Miembros, Limpiar base de datos, Actualizar el
-  Cliente PC y la Copia de Seguridad (las pantallas lo esconden con
+  Cliente PC y las Copias de Seguridad (las pantallas lo esconden con
   `modo.es_copia_remota()`, y la lista blanca lo rechaza igual). El cierre
   forzoso de la caja lo hace solo el mostrador.
 - **Las dos copias tienen que ser el mismo .exe:** `lista_blanca.huella()`

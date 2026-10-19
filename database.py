@@ -23,7 +23,7 @@ import os
 import secrets
 import sys
 from contextlib import contextmanager
-from datetime import datetime, date
+from datetime import datetime
 
 import dominio
 
@@ -38,8 +38,6 @@ BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) \
     else os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "kiosko.db")
-BACKUPS_DIR = os.path.join(DATA_DIR, "backups")
-MAX_BACKUPS_AUTOMATICOS = 30
 
 
 def hash_clave(texto_plano: str, salt: str = None) -> str:
@@ -149,36 +147,6 @@ def _backup_consistente(destino: str):
         origen.close()
 
 
-def hacer_backup_automatico():
-    """
-    Guarda una copia de la base de datos en data/backups/ una vez por
-    día (la primera vez que se abre el programa ese día). Antes la
-    única forma de tener una copia era que alguien se acordara de
-    copiar el archivo a mano; esto pasa a hacerse solo, sin pedir nada.
-    Se conservan como máximo los últimos MAX_BACKUPS_AUTOMATICOS
-    archivos — los más viejos se van borrando solos para no llenar el
-    disco con años de copias diarias.
-    """
-    if not os.path.exists(DB_PATH):
-        return  # primera vez que se usa el sistema, todavía no hay nada que respaldar
-
-    os.makedirs(BACKUPS_DIR, exist_ok=True)
-    destino = os.path.join(BACKUPS_DIR, f"kiosko_{date.today().isoformat()}.db")
-    if os.path.exists(destino):
-        return  # ya se hizo el backup de hoy
-
-    _backup_consistente(destino)
-
-    backups_existentes = sorted(
-        f for f in os.listdir(BACKUPS_DIR) if f.startswith("kiosko_") and f.endswith(".db")
-    )
-    for viejo in backups_existentes[:-MAX_BACKUPS_AUTOMATICOS]:
-        try:
-            os.remove(os.path.join(BACKUPS_DIR, viejo))
-        except OSError:
-            pass  # si no se puede borrar uno viejo, no es motivo para frenar el arranque
-
-
 def copiar_backup_a(carpeta_destino: str) -> str:
     """
     Copia la base de datos actual a la carpeta que elija la usuaria
@@ -268,10 +236,10 @@ def inicializar_base_de_datos():
 def _respaldar_antes_de_migrar(motivo: str):
     """
     Copia de seguridad de la base ANTES de una migración que reconstruye una
-    tabla con plata adentro (ver _migrar_check_origen_en_ventas). A propósito
-    NO usa BACKUPS_DIR (se resuelve al importar el módulo): la carpeta sale de
-    DATA_DIR al momento de llamar, así los tests, que apuntan DATA_DIR a una
-    carpeta temporal, nunca escriben en los backups reales.
+    tabla con plata adentro (ver _migrar_check_origen_en_ventas). La carpeta
+    sale de DATA_DIR al momento de llamar (no al importar el módulo), así los
+    tests, que apuntan DATA_DIR a una carpeta temporal, nunca escriben en los
+    backups reales.
 
     Es un extra, no un requisito: la migración es una sola transacción y se
     deshace sola si falla, así que si no se puede escribir la copia (disco

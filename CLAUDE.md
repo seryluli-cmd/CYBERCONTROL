@@ -170,7 +170,7 @@ sobra; uno que explica por qué esa línea es así vale oro.
 ### Cómo se verifica
 
 **14. Regla de negocio nueva, test nuevo.**
-`tests/` cubre turnos, stock, cierres, cajas con número, administrar desde otra PC, PCs, PCSTREAM, Miembros, PlayStation y totales.
+`tests/` cubre turnos, stock, cierres, cajas con número, administrar desde otra PC, PCs, PCSTREAM, Miembros, PlayStation, totales y copias de seguridad.
 Todo lo que se calcule con plata, fechas o
 turnos entra ahí antes de darse por terminado. La UI se prueba a mano;
 la lógica, no.
@@ -258,6 +258,7 @@ abra no alcanza si los tests no pasan.
 | `detalle_dia_repo.detalle_del_dia(dia)` | se arma el detalle venta por venta de un día (hora, turno, operador, rubro y qué se vendió de kiosko, trámites, PCs con la PC al momento de vender, PCSTREAM, PlayStation 5 y socios), con los renglones de cada venta tal cual se cobraron (`lineas`, con el código), lo vendido por producto y por operador (Reportes > Resumen del Día, pedido del dueño 2026-10-18) |
 | `ui.imprimir.html_del_listado(...)` · `.vista_previa(parent, html, nombre)` | se imprime un listado: HTML en hojas A4 con los títulos de las columnas repetidos en cada hoja y vista previa (desde ahí se imprime o se guarda en PDF). Lo usa el "Renglón por renglón" del Detalle del Día |
 | `limpieza_repo.limpiar_base(usuario_id)` | se borra la plata y el historial de ventas para volver a probar (qué tablas, en `_TABLAS_A_VACIAR`; devuelve el stock de las ventas confirmadas y deja a los socios con saldo 0). Una tabla nueva que guarde plata o ventas tiene que sumarse ahí |
+| `copias_repo.copia_automatica_si_corresponde()` · `.toca_copia(...)` · `.nombres_a_borrar(...)` · `.agregar_carpeta_extra(...)` | se decide cuándo se hace una copia de seguridad (después de cada Cierre de Turno y cada `HORAS_ENTRE_COPIAS`, con el programa abierto; lo corre el hilo de `iniciar_copias_automaticas`), cuántas quedan y en qué otras carpetas se guarda (otro disco, carpeta compartida de otra PC); pedido del dueño, 2026-10-19. La pantalla es `ui/copias_dialogo.py` (Usuarios > "Copias de Seguridad") |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
 | `ui.utils.encadenar_enter(...)` | se arma el salto de campo en campo con Enter, como Tab, y la acción del último campo (pedido del dueño, 2026-10-18: todo formulario lo usa). Descarta el Enter repetido de una tecla que quedó apretada. Ojo: en un QSpinBox/QDoubleSpinBox/QDateEdit/QComboBox editable el Enter del teclado le llega al campo de AFUERA, no a su `lineEdit()`; una prueba que le manda el Enter al `lineEdit()` pasa aunque en el mostrador no ande (pasó hasta el 2026-10-18: ningún importe respondía al Enter). Ver `TestDondeLlegaElEnter` |
@@ -522,6 +523,25 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   de comandos de CmdTool; se saltean esas PCs y se hacen las demás. Para que CmdTool arranque, la
   tarea del Cliente PC corre elevada (`HighestAvailable`, ver
   `CLIENTE PC/win32_utils.configurar_inicio_automatico`).
+- **Las copias de seguridad se hacen en caliente, desde un hilo propio, y nunca
+  pueden frenar el mostrador** (pedido del dueño, 2026-10-19: el programa queda
+  abierto días seguidos y hasta ese día la única copia automática se hacía al
+  abrirlo). `copias_repo` copia a `data/backups` después de cada Cierre de Turno
+  (todos pasan por `turnos_repo.cerrar_turno`: se compara `MAX(fecha_cierre)` con
+  la última copia) y cada 8 horas, y lleva la última a cada "otra carpeta" en cada
+  revisión. Reglas que no hay que romper: (1) una copia se graba como `.parcial` y
+  se renombra al final, para que una a medias nunca parezca la última ni viaje a
+  otra carpeta; (2) solo se borran archivos con nombre de copia automática
+  (`kiosko_AAAA-MM-DD[_HHMMSS].db`): nunca los `antes_de_*` ni las manuales; (3) las
+  copias cuentan días CON copias, no días del calendario (un reloj que salta no
+  borra todo); (4) una carpeta de otra PC se pregunta primero con
+  `_que_conteste` (3 s al puerto 445): con esa PC apagada Windows tarda ~50 s
+  (medido) y el hilo o la pantalla quedaban esperando; (5) el usuario y la clave de
+  una carpeta de red se le pasan a Windows con `cmdkey` y NO se guardan en la base
+  ni en un log (este repo es público: nunca escribas la clave real en un test o un
+  doc); (6) las copias nunca crean una carpeta que falta (solo "Agregar carpeta"
+  crea la de un disco de esta PC). La pantalla lee lo que pasó de `_estado`, en
+  memoria, y no mira las carpetas: una de red apagada la congelaría.
 - **El servidor de red no debe tocar Qt.** Usa conexiones SQLite propias desde
   sus hilos y registra fallos inesperados con `errores.registrar_error`, sin
   incluir claves ni el cuerpo de los pedidos en el contexto del log.
@@ -605,7 +625,7 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   repo, va a `admin_remoto/lista_blanca.py` (con su `ACTOR` si recibe quién lo
   hace) — `tests/test_admin_remoto.py` lo vigila; (3) lo que solo se hace en el
   mostrador (vender, cobrar, cajas y turnos, la grilla de PCs, Miembros, Limpiar
-  base, Actualizar el Cliente PC, Copia de Seguridad) se esconde con
+  base, Actualizar el Cliente PC, Copias de Seguridad) se esconde con
   `modo.es_copia_remota()` y NO entra en la lista; (4) el cierre forzoso de la
   caja lo hace solo el mostrador; (5) una consulta de reporte lenta frena las
   ventas del mostrador mientras dura (SQLite no deja grabar mientras otro lee):
@@ -760,7 +780,7 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-857 pruebas al 2026-10-19 (el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+903 pruebas al 2026-10-19 (las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

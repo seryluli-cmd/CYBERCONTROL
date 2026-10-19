@@ -15,9 +15,14 @@ DATOS Y COPIAS
 --------------
 La información del negocio está en data/kiosko.db, junto al programa.
 No borres ni reemplaces esa carpeta al actualizar el ejecutable.
-Se guarda una copia automática diaria en data/backups (hasta 30 copias).
-El Admin puede hacer una copia adicional desde Usuarios > Copia de
-Seguridad, por ejemplo a un pendrive.
+El programa guarda solo una copia de la base, sin cerrarse: después de
+cada Cierre de Turno y, si no hubo ninguno, cada 8 horas. Quedan en
+data/backups (todas las de los últimos 3 días y una por día hasta 30 días).
+En Usuarios > Copias de Seguridad el Admin ve la última copia, agrega
+otras carpetas donde se guarda cada copia (por ejemplo D:\BACKUPS o la
+carpeta compartida de otra PC, con su usuario y clave: se los pasa a
+Windows, no quedan en el programa), hace una copia en el momento o guarda
+una suelta en un pendrive.
 Configuración ADMIN > Limpiar base de datos es solo para la etapa de
 pruebas: borra todas las ventas, los cierres de turno, las sesiones de PCs
 y de la PlayStation 5 y el saldo de los socios, y deja todo lo cargado

@@ -3,20 +3,20 @@ usuarios_window.py
 =====================
 Administración de Usuarios: alta, edición y baja de usuarios (Admin o
 Empleada), la configuración del Cambio Fijo (fondo de cambio) que se usa en los
-cierres de turno y la copia de seguridad manual. Es exclusivo del rol ADMIN
+cierres de turno y las copias de seguridad (ui/copias_dialogo.py). Es exclusivo del rol ADMIN
 (no se delega con ningún permiso), con una excepción: DialogoCambiarClave,
 que vive acá pero la usa cualquier usuario para su propia clave.
 """
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
-    QComboBox, QFormLayout, QDoubleSpinBox, QFileDialog, QCheckBox, QGroupBox,
+    QComboBox, QFormLayout, QDoubleSpinBox, QCheckBox, QGroupBox,
 )
 
 import dominio
-import database
 from admin_remoto import modo as modo_remoto
 from repositories import usuarios_repo, config_repo
+from ui.copias_dialogo import DialogoCopiasDeSeguridad
 from ui.utils import (
     mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase,
     encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar, crear_tabla,
@@ -25,7 +25,7 @@ from ui.utils import (
 
 class UsuariosWindow(QDialog):
     """Grilla de usuarios con alta/modificación/baja, Cambio Fijo y
-    backup. `usuario_actual` es quien está logueado (no puede borrarse a
+    copias de seguridad. `usuario_actual` es quien está logueado (no puede borrarse a
     sí mismo)."""
 
     def __init__(self, usuario_actual, parent=None):
@@ -46,21 +46,19 @@ class UsuariosWindow(QDialog):
         boton_borrar.clicked.connect(self._borrar_usuario)
         boton_fondo = QPushButton("Configurar Cambio Fijo")
         boton_fondo.clicked.connect(self._configurar_fondo)
-        boton_backup = QPushButton("Copia de Seguridad")
+        boton_backup = QPushButton("Copias de Seguridad")
         boton_backup.setToolTip(
-            "Copia el archivo de la base de datos a una carpeta a elección "
-            "(por ejemplo, un pendrive). El sistema ya guarda una copia "
-            "automática por día en data/backups, pero esto sirve para "
-            "sacar una copia extra fuera de esta PC."
+            "Cuándo se hacen solas las copias de la base, cuál es la última, la "
+            "carpeta de Google Drive y una copia suelta a un pendrive."
         )
-        boton_backup.clicked.connect(self._hacer_backup)
+        boton_backup.clicked.connect(self._abrir_copias)
         boton_salir = QPushButton("Salir")
         boton_salir.clicked.connect(self.close)
         aplicar_clase(boton_nuevo, "primario")
         aplicar_clase(boton_borrar, "peligro")
         botones = [boton_nuevo, boton_modificar, boton_borrar, boton_fondo, boton_backup, boton_salir]
-        # La copia de seguridad copia el archivo de la base de ESTA PC: desde otra
-        # PC (admin_remoto/) no hay ninguno, se hace en el mostrador.
+        # Las copias son del archivo de la base de ESTA PC: desde otra PC
+        # (admin_remoto/) no hay ninguno, se hacen en el mostrador.
         if modo_remoto.es_copia_remota():
             botones.remove(boton_backup)
             boton_backup.deleteLater()
@@ -151,13 +149,8 @@ class UsuariosWindow(QDialog):
             config_repo.actualizar_fondo_cambio(dialogo.spin_monto.value())
             mostrar_info(self, "Guardado", "Se actualizó el cambio fijo.")
 
-    @manejar_errores
-    def _hacer_backup(self):
-        carpeta = QFileDialog.getExistingDirectory(self, "Elegí dónde guardar la copia de seguridad")
-        if not carpeta:
-            return
-        ruta_final = database.copiar_backup_a(carpeta)
-        mostrar_info(self, "Copia guardada", f"Se guardó la copia de seguridad en:\n{ruta_final}")
+    def _abrir_copias(self):
+        DialogoCopiasDeSeguridad(self.usuario_actual, self).exec()
 
 
 class DialogoUsuario(QDialog):
