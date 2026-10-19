@@ -319,10 +319,21 @@ HOJA_DE_ESTILOS = """
         border: 1px solid #E1E4EA;
         border-radius: 14px;
     }
+    /* Barra de arriba oscura, estilo cyber, haciendo juego con el mosaico de PCs
+       (pedido del dueño, 2026-10-19: "no parecen ni botones"). */
     #encabezadoInicio {
-        background-color: #FFFFFF;
-        border: 1px solid #E1E4EA;
+        background-color: #1E2330;
+        border: 1px solid #2B3242;
         border-radius: 12px;
+    }
+    QLabel#nombreEncabezado {
+        font-size: 15px;
+        font-weight: 700;
+        color: #F1F4F9;
+    }
+    QLabel#cajaEncabezado {
+        font-size: 13px;
+        color: #9AA4B5;
     }
 
     /* Mosaico de PCs (control_pcs/ui/pcs_mosaico.py): fondo oscuro para que
@@ -353,35 +364,85 @@ HOJA_DE_ESTILOS = """
 
     /* --- Pulido visual (2026-10-10) --- */
 
-    /* Botones de la barra de arriba: sin borde hasta que se les pasa el mouse, así
-       la barra no se ve como una hilera de cajitas. Vender (primario) y Cerrar
-       sesión (peligro) siguen destacando. */
+    /* Botones de la barra oscura de arriba (2026-10-19): cada uno es una tecla con
+       relieve (el borde de abajo, más grueso y oscuro) que se prende en azul al
+       pasarle el mouse y se hunde al apretarla (baja 2 px y pierde el relieve).
+       Vender (primario) en azul lleno y Cerrar sesión (peligro) con borde rojo,
+       lejos de los demás. */
     QPushButton[clase="barra"] {
-        background-color: transparent;
-        border: 1px solid transparent;
-        color: #2B3445;
-        font-weight: 500;
-        padding: 9px 11px;
+        background-color: #2C3345;
+        border: 1px solid #3A4358;
+        border-top-color: #4B5570;
+        border-bottom: 3px solid #0B0D12;
+        color: #E6EAF2;
+        font-weight: 600;
+        padding: 7px 12px;
     }
     QPushButton[clase="barra"]:hover {
-        background-color: #EEF1F6;
-        border-color: #E1E5EC;
+        background-color: #323B50;
+        border-color: #4C8DFF;
+        border-bottom-color: #1D48A0;
+        color: #FFFFFF;
+    }
+    QPushButton[clase="barra"]:pressed,
+    QPushButton[clase="alerta"]:pressed,
+    #encabezadoInicio QPushButton[clase="primario"]:pressed,
+    #encabezadoInicio QPushButton[clase="peligro"]:pressed {
+        border-bottom-width: 1px;
+        margin-top: 2px;
     }
     QPushButton[clase="barra"]:pressed {
-        background-color: #E1E6EE;
+        background-color: #252B3A;
+    }
+    #encabezadoInicio QPushButton[clase="primario"] {
+        background-color: #2F6FED;
+        border: 1px solid #4C8DFF;
+        border-top-color: #7AAAFF;
+        border-bottom: 3px solid #173A85;
+        color: #FFFFFF;
+        font-weight: 600;
+        padding: 7px 16px;
+    }
+    #encabezadoInicio QPushButton[clase="primario"]:hover {
+        background-color: #3D7BFF;
+        border-color: #7AAAFF;
+        border-bottom-color: #173A85;
+    }
+    #encabezadoInicio QPushButton[clase="primario"]:pressed {
+        background-color: #255BC7;
+    }
+    #encabezadoInicio QPushButton[clase="peligro"] {
+        background-color: transparent;
+        border: 1px solid #8A3A42;
+        border-bottom: 3px solid #4A1A1F;
+        color: #FF8A93;
+        font-weight: 600;
+        padding: 7px 16px;
+    }
+    #encabezadoInicio QPushButton[clase="peligro"]:hover {
+        background-color: #3A2328;
+        border-color: #C24B57;
+        border-bottom-color: #4A1A1F;
+        color: #FFB3B9;
+    }
+    #encabezadoInicio QPushButton[clase="peligro"]:pressed {
+        background-color: #2E1C20;
     }
     /* Cierre de Turno cuando toca cerrar la caja (desde 5 minutos antes del fin
        del turno, pedido del dueño 2026-10-18): titila alternando este rojo lleno
-       con el estilo "barra" (ver MainWindow._parpadear). */
+       con el estilo "barra" (ver MainWindow._parpadear). Mismos bordes, relleno y
+       letra que "barra", para que el botón no cambie de tamaño al titilar. */
     QPushButton[clase="alerta"] {
         background-color: #D92D3A;
-        border: 1px solid #B42330;
+        border: 1px solid #FF5A66;
+        border-top-color: #FF8A93;
+        border-bottom: 3px solid #6E141C;
         color: #FFFFFF;
-        font-weight: 700;
-        padding: 9px 11px;
+        font-weight: 600;
+        padding: 7px 12px;
     }
     QPushButton[clase="alerta"]:hover {
-        background-color: #C42532;
+        background-color: #E5404C;
     }
 
     QLabel#tituloSeccion {

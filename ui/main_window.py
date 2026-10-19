@@ -134,7 +134,7 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"CyberBIOS - {self.usuario['nombre']} ({self.usuario['rol']})")
         self.resize(980, 680)
 
-        # Tarjeta blanca "#encabezadoInicio" (estilo en la hoja de estilos
+        # Barra oscura "#encabezadoInicio" (estilo en la hoja de estilos
         # global de main.py), en dos renglones (pedido del dueño, 2026-10-18: en
         # la pantalla del mostrador, de 1366 de ancho, todo en una sola fila no
         # entraba y se cortaban los textos): arriba quién está y la caja, abajo
@@ -149,12 +149,14 @@ class MainWindow(QMainWindow):
         # como "Operador: TOBY", sin saludo y sin la palabra "EMPLEADA" (el rol
         # por dentro sigue siendo EMPLEADA). El Admin se sigue distinguiendo.
         cargo = "Administrador" if self.es_admin else "Operador"
+        # Letra clara sobre la barra oscura: "#nombreEncabezado" y "#cajaEncabezado"
+        # en la hoja de estilos de main.py.
         titulo = QLabel(f"{cargo}: {self.usuario['nombre']}")
-        titulo.setStyleSheet("font-size: 15px; font-weight: 700; color: #1B2233;")
+        titulo.setObjectName("nombreEncabezado")
         # La caja abierta, al lado del nombre: "Caja Nº 12 · Mañana" (ver
         # _actualizar_estado_de_la_caja).
         self.etiqueta_caja = QLabel()
-        self.etiqueta_caja.setStyleSheet("font-size: 13px; color: #4A5568;")
+        self.etiqueta_caja.setObjectName("cajaEncabezado")
         self.etiqueta_caja.hide()
         renglon_nombre = QHBoxLayout()
         renglon_nombre.setSpacing(10)
@@ -214,8 +216,8 @@ class MainWindow(QMainWindow):
         (van en fila, así que no hace falta que midan todos igual)."""
         boton = QPushButton(texto)
         boton.setFixedHeight(38)
-        # Los que no son ni "primario" ni "peligro" van sin borde (clase "barra",
-        # ver la hoja de estilos de main.py).
+        # Los que no son ni "primario" ni "peligro" son teclas oscuras con relieve
+        # (clase "barra", ver la hoja de estilos de main.py).
         aplicar_clase(boton, clase or "barra")
         boton.clicked.connect(funcion)
         layout.addWidget(boton)

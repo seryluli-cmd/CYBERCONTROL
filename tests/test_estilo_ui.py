@@ -5,7 +5,8 @@ El aspecto del programa (se prueba sin abrir ninguna ventana, plataforma "offscr
 de Qt): que se le pida a Qt el esquema de color CLARO aunque Windows esté en modo
 oscuro (si no, los cuadros que la hoja de estilos no pinta, como el log de "Actividad
 reciente", salen negros con la letra oscura encima), que las tablas no muestren la
-numeración de filas y que la barra de arriba use los botones sin borde.
+numeración de filas y que la barra oscura de arriba use sus teclas (y que Cierre de
+Turno no cambie de tamaño al titilar).
 
 Se ejecutan con:
 
@@ -31,6 +32,13 @@ from control_pcs.ui.miembros_window import DialogoTramosTarifaMiembro  # noqa: E
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
+
+
+def _regla(selector: str) -> dict:
+    """Las propiedades de `selector { ... }` en la hoja de estilos del programa."""
+    cuerpo = programa.HOJA_DE_ESTILOS.split(selector + " {", 1)[1].split("}", 1)[0]
+    propiedades = (linea.strip().rstrip(";").split(":", 1) for linea in cuerpo.splitlines() if ":" in linea)
+    return {nombre.strip(): valor.strip() for nombre, valor in propiedades}
 
 
 class TestAspectoDelPrograma(BaseConBaseTemporal):
@@ -72,7 +80,7 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
 
         self.assertEqual(ventana.windowTitle(), f"CyberBIOS - Admin ({dominio.ROL_ADMIN})")
 
-    def test_la_barra_de_arriba_usa_botones_sin_borde_salvo_vender_y_cerrar_sesion(self):
+    def test_la_barra_de_arriba_usa_teclas_de_barra_salvo_vender_y_cerrar_sesion(self):
         admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
         ventana = MainWindow(admin, lambda: None)
         self.addCleanup(ventana.deleteLater)
@@ -85,6 +93,20 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         self.assertEqual(clases["🛒  Vender"], "primario")
         otros = [clase for texto, clase in clases.items() if texto not in ("Cerrar sesión", "🛒  Vender")]
         self.assertTrue(otros and all(clase == "barra" for clase in otros), clases)
+
+    def test_cierre_de_turno_no_cambia_de_tamano_al_titilar(self):
+        # Barra oscura (2026-10-19): el rojo de "alerta" lleva los mismos bordes,
+        # relleno y letra que "barra". Antes la letra pasaba a negrita y el botón
+        # crecía 4 px y empujaba a los de al lado cada vez que titilaba (medido con la
+        # pantalla real de Windows; acá, sin pantalla, las letras miden lo mismo en
+        # negrita, así que se comparan las reglas de la hoja de estilos).
+        barra = _regla('QPushButton[clase="barra"]')
+        alerta = _regla('QPushButton[clase="alerta"]')
+
+        self.assertEqual(alerta["font-weight"], barra["font-weight"])
+        self.assertEqual(alerta["padding"], barra["padding"])
+        self.assertEqual(alerta["border"].split()[0], barra["border"].split()[0])
+        self.assertEqual(alerta["border-bottom"].split()[0], barra["border-bottom"].split()[0])
 
     def test_la_barra_de_arriba_dice_operador_y_el_nombre_sin_saludo_ni_rol(self):
         # Pedido del dueño (2026-10-16): "Operador: TOBY", no "Hola, TOBY · EMPLEADA".
