@@ -33,7 +33,7 @@ from base import BaseConBaseTemporal  # noqa: E402
 _app = QApplication.instance() or QApplication([])
 
 # Una caja de un lunes viejo: a la hora real de la prueba ya pasó su fin y sus
-# 15 minutos de gracia (titila y toca el cierre forzoso).
+# minutos de gracia (titila y toca el cierre forzoso).
 _HACE_TIEMPO = datetime(2026, 1, 5, 5, 55)
 
 
@@ -170,6 +170,7 @@ class TestVentanaPrincipalConCaja(BaseConBaseTemporal):
             ventana._revisar_la_caja()
 
         self.assertIn("se cerró sola", aviso.call_args[0][2])
+        self.assertIn("pasaron 30 minutos del fin del turno", aviso.call_args[0][2])
         volvio_al_ingreso.assert_called_once()
         self.assertTrue(turnos_repo.listar_cierres()[0]["cierre_forzoso"])
 
@@ -222,7 +223,7 @@ class TestDetalleDeUnCierreHecho(BaseConBaseTemporal):
         return dialogo
 
     def test_un_cierre_forzoso_se_ve_como_la_pantalla_cierre_de_turno(self):
-        relevo_repo.cierre_forzoso_si_corresponde(_HACE_TIEMPO.replace(hour=14, minute=15))
+        relevo_repo.cierre_forzoso_si_corresponde(_HACE_TIEMPO.replace(hour=14, minute=30))
 
         tarjeta = self._detalle().tarjeta
 
@@ -236,7 +237,8 @@ class TestDetalleDeUnCierreHecho(BaseConBaseTemporal):
         self.assertEqual(tarjeta.valor_total.text(), "$ 3.000,00")
         self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000,00")
         # En vez de "Retirá el efectivo...", cómo se cerró, en rojo como en la tabla.
-        self.assertIn("Se cerró sola a las 14:15", tarjeta.nota.text())
+        self.assertIn("Se cerró sola a las 14:30", tarjeta.nota.text())
+        self.assertIn("pasaron 30 minutos", tarjeta.nota.text())
         self.assertIn("red", tarjeta.nota.styleSheet())
 
     def test_un_cierre_comun_dice_quien_lo_cerro_en_gris(self):

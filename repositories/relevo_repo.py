@@ -20,7 +20,8 @@ Qué pasa con la caja cuando alguien entra al programa, y el cierre forzoso
 - El Admin (el dueño, que entra a cargar mercadería o cambiar precios) no abre
   caja: entra directo. Lo que cobre va a nombre de la responsable de la caja
   abierta (cajas_repo._quien_vende).
-- A los 15 minutos del fin del turno la caja se cierra sola (cierre forzoso):
+- A los 30 minutos del fin del turno (turnos.MINUTOS_PARA_CIERRE_FORZOSO) la
+  caja se cierra sola (cierre forzoso):
   lo dispara la pantalla principal (ver cierre_forzoso_si_corresponde), o el
   ingreso de la propia responsable si el programa estuvo cerrado.
 
@@ -251,7 +252,7 @@ def estado_de_la_caja(ahora: datetime = None):
     """
     Para la pantalla principal (cada pocos segundos): la caja abierta con
     "titilar" (desde 5 minutos antes del fin del turno: el botón Cierre de Turno
-    titila en rojo) y "vencida" (pasaron los 15 minutos de gracia: toca el
+    titila en rojo) y "vencida" (pasaron los minutos de gracia: toca el
     cierre forzoso), o None si no hay caja abierta.
     """
     ahora = ahora or datetime.now()
@@ -267,7 +268,7 @@ def estado_de_la_caja(ahora: datetime = None):
 
 def cierre_forzoso_si_corresponde(ahora: datetime = None):
     """
-    Si la caja abierta pasó los 15 minutos de gracia, la cierra a nombre de su
+    Si la caja abierta pasó los minutos de gracia, la cierra a nombre de su
     responsable, como cierre forzoso, y devuelve lo mismo que
     turnos_repo.cerrar_turno. Si no hay caja o todavía no venció, None. La
     pantalla principal lo llama solo cuando no hay un cobro a medias (ver

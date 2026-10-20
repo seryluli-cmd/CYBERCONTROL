@@ -17,6 +17,7 @@ from datetime import datetime
 from PySide6.QtWidgets import QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from repositories import relevo_repo
+from turnos import MINUTOS_PARA_CIERRE_FORZOSO
 from ui.utils import (
     aplicar_clase, confirmar, encadenar_enter, formato_pesos, manejar_errores, mostrar_info,
     sin_boton_por_defecto,
@@ -200,7 +201,7 @@ def _cerrar_la_propia_vencida(parent, usuario, situacion) -> bool:
     mostrar_info(
         parent, "Cierre forzoso",
         f"Tu caja Nº {resultado['caja_numero']} ({situacion['turno_label']}) se cerró sola: pasaron "
-        "15 minutos del fin del turno.\n\n"
+        f"{MINUTOS_PARA_CIERRE_FORZOSO} minutos del fin del turno.\n\n"
         f"{mensaje_del_sobre(resultado)}\n\n"
         "Si seguís atendiendo, entrás con una caja nueva.",
     )

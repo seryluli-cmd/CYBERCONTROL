@@ -181,8 +181,8 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   22:05 (`TestCerrarCaja` en `tests/test_cajas.py`).
 - **`turnos.turno_vencimiento(dia, turno)`** — momento en que un turno
   de un día dado queda vencido: su fin (`turnos.fin_del_turno`) +
-  `MINUTOS_PARA_CIERRE_FORZOSO` (15 min, pedido del dueño 2026-10-18; antes
-  40). A esa hora la caja se cierra sola (cierre forzoso) y el turno pasa a
+  `MINUTOS_PARA_CIERRE_FORZOSO` (30 min, pedido del dueño 2026-10-20; del
+  2026-10-18 a ese día eran 15, y antes 40). A esa hora la caja se cierra sola (cierre forzoso) y el turno pasa a
   contar como sin cerrar. El botón Cierre de Turno titila desde
   `turnos.inicio_del_aviso_de_cierre` (5 min antes del fin). **`turnos_repo.turnos_del_mes_actual()`**
   arma la grilla de turnos esperados del mes en curso (día 1 a hoy,
@@ -271,7 +271,7 @@ responsable de la caja abierta, con `ventas_caja.cargada_por` (pedido del dueño
 **En la ventana principal**, al lado del nombre se ve la caja ("Caja Nº 12 ·
 Mañana"). Cada 10 s `MainWindow._revisar_la_caja` mira `relevo_repo.estado_de_la_caja`:
 desde 5 minutos antes del fin del turno el botón **Cierre de Turno titila en
-rojo** (clase `alerta` de la hoja de estilos) y a los 15 minutos del fin hace el
+rojo** (clase `alerta` de la hoja de estilos) y a los 30 minutos del fin hace el
 **cierre forzoso** (`relevo_repo.cierre_forzoso_si_corresponde`) y vuelve al
 ingreso (el Admin se queda). Si hay un cobro a medias (una pantalla abierta
 encima), espera; Ventas con el carrito vacío y Caja se cierran solas
@@ -460,7 +460,7 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   columna Turno con la etiqueta de `etiqueta_turno` (incluye "Domingo T1"/"T2"),
   Caja ("Nº 12" o "sin caja"), Responsable (quien la abrió → quien la recibió),
   Apertura ("05:55 · contó $ 50.000,00 (coincide)") y Cierre ("A horario 14:00",
-  "Forzoso 14:15" o "Gaby, en ausencia de Lucía", estos dos en rojo); resalta en
+  "Forzoso 14:30" o "Gaby, en ausencia de Lucía", estos dos en rojo); resalta en
   rojo si `|diferencia| > 0.01`. "Cargar monto contado" (visible solo para el
   Admin; el repo también lo exige) abre `QInputDialog` y llama a
   `turnos_repo.verificar_cierre`, que guarda cada conteo en

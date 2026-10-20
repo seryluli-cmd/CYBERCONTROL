@@ -35,7 +35,7 @@ def crear_tablas_de_cajas(cursor, valores_sql):
     #   no llegó): arranca con lo que ella misma dejó.
     # - responsable_id: quién la tiene AHORA. Cambia con un relevo.
     # - cierre_id: NULL mientras está abierta. Solo puede haber una abierta.
-    # - cierre_forzoso: 1 si la cerró el programa solo, a los 15 minutos del
+    # - cierre_forzoso: 1 si la cerró el programa solo, a los 30 minutos del
     #   fin del turno (turnos.MINUTOS_PARA_CIERRE_FORZOSO).
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS cajas (

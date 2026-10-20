@@ -45,8 +45,9 @@ ventana.
 
 La caja (pedido del dueño, 2026-10-18; reglas en repositories/relevo_repo.py):
 al lado del nombre se ve la caja abierta. Desde 5 minutos antes del fin del
-turno el botón Cierre de Turno titila en rojo, y a los 15 minutos del fin el
-programa cierra la caja solo (cierre forzoso, ver _revisar_la_caja).
+turno el botón Cierre de Turno titila en rojo, y a los 30 minutos del fin
+(turnos.MINUTOS_PARA_CIERRE_FORZOSO) el programa cierra la caja solo (cierre
+forzoso, ver _revisar_la_caja).
 
 Desde otra PC del local (la copia para administrar, ver admin_remoto/): solo
 Administrar Kiosko, Configuración ADMIN, Caja (para mirar) y Clave. Vender,
@@ -64,6 +65,7 @@ import dominio
 from admin_remoto import modo as modo_remoto
 from errores import registrar_error
 from repositories import impresiones_repo, relevo_repo, usuarios_repo
+from turnos import MINUTOS_PARA_CIERRE_FORZOSO
 from ui.accesos_admin_window import AccesosAdminWindow
 from ui.admin_remoto_dialogo import DialogoEntrarDesdeOtraPC
 from ui.articulos_window import ArticulosWindow
@@ -313,7 +315,7 @@ class MainWindow(QMainWindow):
     def _revisar_la_caja(self):
         """
         Cada INTERVALO_REVISION_CAJA_MS: actualiza el número de caja y el
-        titileo, y si pasaron los 15 minutos de gracia hace el cierre forzoso
+        titileo, y si pasaron los minutos de gracia hace el cierre forzoso
         (pedido del dueño: "el programa aprieta solo Cierre de Turno"). Después,
         quien atiende vuelve a la pantalla de ingreso como con un cierre normal;
         el Admin se queda donde estaba (no estaba atendiendo esa caja).
@@ -339,14 +341,14 @@ class MainWindow(QMainWindow):
             mostrar_info(
                 self, "Cierre forzoso",
                 f"La caja Nº {resultado['caja_numero']} de {resultado['responsable']} "
-                f"({resultado['turno_label']}) se cerró sola: pasaron 15 minutos del fin del turno.\n\n"
+                f"({resultado['turno_label']}) se cerró sola: pasaron {MINUTOS_PARA_CIERRE_FORZOSO} minutos del fin del turno.\n\n"
                 f"{resultado['responsable']} tiene que armar el sobre. {mensaje_del_sobre(resultado)}",
             )
             return
         mostrar_info(
             self, "Cierre forzoso",
             f"Tu caja Nº {resultado['caja_numero']} ({resultado['turno_label']}) se cerró sola: pasaron "
-            "15 minutos del fin del turno.\n\n"
+            f"{MINUTOS_PARA_CIERRE_FORZOSO} minutos del fin del turno.\n\n"
             f"{mensaje_del_sobre(resultado)}\n\n"
             "Ahora volvés a la pantalla de ingreso. Si tu reemplazo no llegó, volvé a entrar con tu "
             "usuario y seguí vendiendo: no hace falta contar el Cambio Fijo.",

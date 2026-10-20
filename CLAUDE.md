@@ -199,7 +199,7 @@ abra no alcanza si los tests no pasan.
 | `turnos.limites_de_los_dias(desde, hasta)` · `turnos.sql_dia_del_local(columna)` | se filtra y se agrupa por día en un reporte de ventas: días de 06:00 a 06:00, con la Noche entera en el día en que empezó (pedido del dueño, 2026-10-17) |
 | `turnos.dia_del_turno_que_arranca_tras_un_cierre(momento)` | se decide con qué DÍA queda anotado lo que sigue a un cierre (misma tolerancia que el turno): lo usa `turnos_repo._desde_y_turno_en_curso` |
 | `ui.utils.hoy_del_local()` | se decide qué es "hoy" en los reportes de ventas (hasta las 06:00, el día anterior) |
-| `turnos.turno_vencimiento(dia, turno)` | se decide si un turno ya debería estar cerrado: su fin + `MINUTOS_PARA_CIERRE_FORZOSO` (15 min, pedido del dueño 2026-10-18). Es también la hora del cierre forzoso de la caja |
+| `turnos.turno_vencimiento(dia, turno)` | se decide si un turno ya debería estar cerrado: su fin + `MINUTOS_PARA_CIERRE_FORZOSO` (30 min, pedido del dueño 2026-10-20; desde el 2026-10-18 eran 15). Es también la hora del cierre forzoso de la caja. Los carteles que nombran esos minutos leen la constante |
 | `turnos.fin_del_turno(dia, turno)` · `.inicio_del_aviso_de_cierre(dia, turno)` | se decide a qué hora termina un turno (Mañana 14, Tarde 22, Noche 06; domingo 18 y 06) y desde cuándo titila el botón Cierre de Turno (`MINUTOS_AVISO_ANTES_DEL_FIN`, 5 min antes) |
 | `turnos.turno_que_arranca_tras_un_cierre(momento)` | se decide con qué turno queda anotado lo que sigue a un cierre (la hora del cierre + `TURNO_GRACIA_MIN`); la usa `turnos_repo._desde_y_turno_en_curso`, que es lo que ven Caja y Cierre de Turno y lo que graba `cerrar_turno`. Con la misma regla `relevo_repo.abrir_caja` decide el turno de una caja que se abre |
 | `relevo_repo.situacion_al_entrar(usuario_id)` · `.abrir_caja` · `.recibir_caja` · `.cerrar_para_entrar` | se decide qué pasa con la caja cuando alguien entra (abrirla contando, recibirla contando todo el cajón, cerrar la de quien se fue, cerrar aparte las ventas sin caja; el Admin entra sin caja). La pantalla es `ui/ingreso_caja.py` |
@@ -606,7 +606,7 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   `turnos_repo._ventana_en_curso`): sin eso, una caja abierta a las 07:00 después de
   una noche sin uso quedaba anotada como la Noche anterior. `TURNO_GRACIA_MIN` (40)
   es SOLO esa tolerancia: lo que tarda en cerrarse sola una caja es
-  `MINUTOS_PARA_CIERRE_FORZOSO` (15), no los mezcles.
+  `MINUTOS_PARA_CIERRE_FORZOSO` (30), no los mezcles.
 - **Cajas con número (pedido del dueño, 2026-10-18; reglas en `relevo_repo`).** Una
   empleada no entra sin caja y nunca hay dos abiertas. La caja es de UNA persona por
   vez: si el reemplazo llega tarde, quien cubrió cierra a horario y vuelve a entrar
