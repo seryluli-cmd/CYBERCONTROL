@@ -39,6 +39,9 @@ from ui.utils import (
     crear_tabla, fila_agregar_quitar,
 )
 
+# Alto de la lista de socios (ver MiembrosWindow).
+ALTO_DE_LA_VENTANA = 960
+
 
 class MiembrosWindow(QDialog):
     """Grilla de socios con alta, modificación, carga de saldo y baja."""
@@ -47,7 +50,12 @@ class MiembrosWindow(QDialog):
         super().__init__(parent)
         self.usuario_operador = usuario_operador
         self.setWindowTitle("Administración de Miembros")
-        self.resize(860, 480)
+        # Alta, para ver unos 28 socios sin bajar (pedido del dueño, 2026-10-20:
+        # con 480 se veían 11). No más alta que la pantalla.
+        alto = ALTO_DE_LA_VENTANA
+        if self.screen() is not None:
+            alto = min(alto, self.screen().availableGeometry().height() - 80)
+        self.resize(860, alto)
         self._armar_interfaz()
         self._cargar_grilla()
 
@@ -75,6 +83,21 @@ class MiembrosWindow(QDialog):
         self.check_inactivos = QCheckBox("Mostrar inactivos")
         self.check_inactivos.stateChanged.connect(self._cargar_grilla)
 
+        # La lupa: filtra por usuario mientras se escribe (pedido del dueño, 2026-10-20).
+        lupa = QLabel("🔍")
+        lupa.setStyleSheet("font-size: 20px;")
+        self.campo_buscar = QLineEdit()
+        self.campo_buscar.setPlaceholderText("Buscar por usuario...")
+        self.campo_buscar.setClearButtonEnabled(True)
+        self.campo_buscar.setMinimumWidth(320)
+        self.campo_buscar.textChanged.connect(self._cargar_grilla)
+        fila_buscar = QHBoxLayout()
+        fila_buscar.addWidget(lupa)
+        fila_buscar.addWidget(self.campo_buscar)
+        fila_buscar.addSpacing(16)
+        fila_buscar.addWidget(self.check_inactivos)
+        fila_buscar.addStretch()
+
         self.tabla = crear_tabla(
             ["Usuario", "Nombre", "DNI", "Celular", "WhatsApp", "Saldo", "Estado"],
             estirar=1, por_filas=True,
@@ -83,14 +106,20 @@ class MiembrosWindow(QDialog):
 
         layout = QVBoxLayout()
         layout.addLayout(barra_botones)
-        layout.addWidget(self.check_inactivos)
+        layout.addLayout(fila_buscar)
         layout.addWidget(self.tabla)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
+        # Se abre escribiendo el usuario: casi siempre se busca a alguien.
+        self.campo_buscar.setFocus()
 
     @manejar_errores
-    def _cargar_grilla(self):
-        self.miembros = miembros_repo.listar_miembros(incluir_inactivos=self.check_inactivos.isChecked())
+    def _cargar_grilla(self, _=None):
+        # El "_=None" absorbe lo que mandan textChanged y stateChanged (ver
+        # ArticulosWindow._cargar_grilla).
+        self.miembros = miembros_repo.listar_miembros(
+            incluir_inactivos=self.check_inactivos.isChecked(), texto_busqueda=self.campo_buscar.text(),
+        )
         self.tabla.setRowCount(0)
         for miembro in self.miembros:
             fila = self.tabla.rowCount()

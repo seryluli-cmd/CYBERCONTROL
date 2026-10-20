@@ -199,12 +199,24 @@ def desactivar_miembro(miembro_id: int):
         conexion.execute("UPDATE miembros SET activo = 0 WHERE id = ?", (miembro_id,))
 
 
-def listar_miembros(incluir_inactivos: bool = False):
-    """Los socios ordenados por nombre; por defecto solo los activos."""
+def listar_miembros(incluir_inactivos: bool = False, texto_busqueda: str = ""):
+    """Los socios en orden alfabético por usuario, sin importar mayúsculas
+    (pedido del dueño, 2026-10-20: antes iban por nombre); por defecto solo
+    los activos. Con `texto_busqueda`, solo los que lo tienen en el usuario
+    (la lupa de Miembros, mismo día), sin importar mayúsculas."""
+    condiciones, parametros = [], []
+    if not incluir_inactivos:
+        condiciones.append("activo = 1")
+    texto = texto_busqueda.strip().lower()
+    if texto:
+        # instr y no LIKE: un "_" o un "%" del usuario se busca tal cual.
+        condiciones.append("instr(lower(usuario), ?) > 0")
+        parametros.append(texto)
+    donde = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
     with conexion_db() as conexion:
-        if incluir_inactivos:
-            return conexion.execute("SELECT * FROM miembros ORDER BY nombre").fetchall()
-        return conexion.execute("SELECT * FROM miembros WHERE activo = 1 ORDER BY nombre").fetchall()
+        return conexion.execute(
+            f"SELECT * FROM miembros{donde} ORDER BY usuario COLLATE NOCASE", parametros
+        ).fetchall()
 
 
 def obtener_miembro(miembro_id: int):
