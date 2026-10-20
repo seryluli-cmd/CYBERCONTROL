@@ -277,9 +277,9 @@ class CierreTurnoWindow(_PantallaDeCaja):
         botones.addWidget(boton_cerrar_turno)
 
         self._armar_cuerpo(
-            # Digital arriba a la derecha, y el TOTAL con "A RETIRAR EN EFECTIVO" en la última
-            # línea, después del desglose por negocio (pedido del dueño, 2026-10-20).
-            [(layout_fondo, layout_digital), (layout_efectivo, QVBoxLayout()),
+            # Efectivo y Digital en la misma línea, y el TOTAL con "A RETIRAR EN EFECTIVO" en la
+            # última línea, después del desglose por negocio (pedido del dueño, 2026-10-20).
+            [(layout_fondo, QVBoxLayout()), (layout_efectivo, layout_digital),
              (layout_kiosko, layout_impresiones), (layout_tramites, layout_playstation),
              (layout_pcs, QVBoxLayout()),
              (layout_total, layout_retirar)],
