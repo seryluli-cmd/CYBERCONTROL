@@ -3,8 +3,9 @@ articulos_window.py
 =====================
 Pantalla de Artículos: la grilla con todos los productos, y el cuadro de
 alta/edición. La usa el Admin o una Empleada con `permiso_articulos`.
-Importante: acá NUNCA se edita el stock a mano — el stock solo se mueve
-desde Compras (ver compras_window.py).
+Importante: el alta/edición NUNCA toca el stock — el stock se carga desde
+Compras (ver compras_window.py) y solo se corrige a mano con ORDENAR Stock
+(ordenar_stock_window.py: solo Admin, con contraseña).
 """
 
 from PySide6.QtWidgets import (
@@ -13,20 +14,25 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QDate
 
+import dominio
 from repositories import articulos_repo
+from ui.articulos_tabla import COLUMNA_CODIGO, crear_tabla_de_articulos, llenar_tabla_de_articulos
+from ui.ordenar_stock_window import OrdenarStockWindow
 from ui.utils import (
-    formato_pesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase,
+    mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase,
     encadenar_enter, armar_filtro_por_fechas, sin_boton_por_defecto, fila_guardar_cancelar,
-    crear_tabla, rango_de_fechas, mostrar_columna_entera,
+    crear_tabla, rango_de_fechas,
 )
 
 
 class ArticulosWindow(QDialog):
     """Grilla de artículos con buscador; desde acá se abre el alta/edición,
-    los movimientos de stock y la gestión de rubros."""
+    los movimientos de stock, la gestión de rubros y, para el Admin, ORDENAR
+    Stock (`usuario` es quien la abrió; sin él no aparece ese botón)."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, usuario=None):
         super().__init__(parent)
+        self.usuario = usuario
         self.setWindowTitle("Artículos")
         self.resize(950, 550)
         self._armar_interfaz()
@@ -39,9 +45,11 @@ class ArticulosWindow(QDialog):
         self.boton_borrar = QPushButton("Borrar")
         self.boton_movimientos = QPushButton("Movimientos")
         self.boton_rubros = QPushButton("Gestionar Rubros")
+        self.boton_ordenar_stock = QPushButton("ORDENAR Stock")
         self.boton_salir = QPushButton("Salir")
         for boton in (self.boton_nuevo, self.boton_modificar, self.boton_borrar,
-                      self.boton_movimientos, self.boton_rubros, self.boton_salir):
+                      self.boton_movimientos, self.boton_rubros, self.boton_ordenar_stock,
+                      self.boton_salir):
             barra_botones.addWidget(boton)
         barra_botones.addStretch()
 
@@ -52,19 +60,17 @@ class ArticulosWindow(QDialog):
         self.boton_borrar.clicked.connect(self._borrar_articulo)
         self.boton_movimientos.clicked.connect(self._ver_movimientos)
         self.boton_rubros.clicked.connect(self._gestionar_rubros)
+        self.boton_ordenar_stock.clicked.connect(self._ordenar_stock)
         self.boton_salir.clicked.connect(self.close)
+        # Solo lo ve un Admin (pedido del dueño, 2026-10-20); una empleada con
+        # permiso de Artículos no. El repo lo vuelve a exigir en cada cambio.
+        self.boton_ordenar_stock.setVisible(dominio.es_admin(self.usuario))
 
         self.campo_buscar = QLineEdit()
         self.campo_buscar.setPlaceholderText("Buscar por código o descripción...")
         self.campo_buscar.textChanged.connect(self._cargar_grilla)
 
-        self.tabla = crear_tabla(
-            ["Código", "Descripción", "Marca", "Rubro", "Precio Venta",
-             "Precio Compra", "Stock", "Stock Mínimo"],
-            estirar=1, por_filas=True, una_sola=True,
-        )
-        # Clickeando el título de una columna se ordena la grilla por ella.
-        self.tabla.setSortingEnabled(True)
+        self.tabla = crear_tabla_de_articulos()
         self.tabla.doubleClicked.connect(self._modificar_articulo)
 
         layout = QVBoxLayout()
@@ -80,33 +86,14 @@ class ArticulosWindow(QDialog):
         # (ver ControlCierresWindow._ver_detalle en caja_window.py, que
         # explica por qué hace falta con @manejar_errores).
         texto = self.campo_buscar.text().strip()
-        articulos = articulos_repo.listar_articulos(texto)
-        self.tabla.setSortingEnabled(False)
-        self.tabla.setRowCount(0)
-        for fila_datos in articulos:
-            fila = self.tabla.rowCount()
-            self.tabla.insertRow(fila)
-            self.tabla.setItem(fila, 0, QTableWidgetItem(fila_datos["codigo"]))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(fila_datos["descripcion"]))
-            self.tabla.setItem(fila, 2, QTableWidgetItem(fila_datos["marca"] or ""))
-            self.tabla.setItem(fila, 3, QTableWidgetItem(fila_datos["rubro"] or ""))
-            self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(fila_datos["precio_venta"])))
-            self.tabla.setItem(fila, 5, QTableWidgetItem(formato_pesos(fila_datos["precio_compra"])))
-
-            item_stock = QTableWidgetItem(str(fila_datos["stock"]))
-            if fila_datos["stock"] < fila_datos["stock_minimo"]:
-                item_stock.setForeground(Qt.red)
-            self.tabla.setItem(fila, 6, item_stock)
-            self.tabla.setItem(fila, 7, QTableWidgetItem(str(fila_datos["stock_minimo"])))
-        self.tabla.setSortingEnabled(True)
-        mostrar_columna_entera(self.tabla, 0)
+        llenar_tabla_de_articulos(self.tabla, articulos_repo.listar_articulos(texto))
 
     def _codigo_seleccionado(self):
         fila = self.tabla.currentRow()
         if fila < 0:
             mostrar_aviso(self, "Nada seleccionado", "Elegí primero un artículo de la lista.")
             return None
-        return self.tabla.item(fila, 0).text()
+        return self.tabla.item(fila, COLUMNA_CODIGO).text()
 
     def _nuevo_articulo(self):
         dialogo = DialogoArticulo(self)
@@ -143,6 +130,19 @@ class ArticulosWindow(QDialog):
 
     def _gestionar_rubros(self):
         DialogoGestionRubros(self).exec()
+
+    @manejar_errores
+    def _ordenar_stock(self):
+        clave, aceptado = QInputDialog.getText(
+            self, "ORDENAR Stock", "Contraseña de ORDENAR Stock:", QLineEdit.Password
+        )
+        if not aceptado:
+            return
+        # Una contraseña equivocada (o un usuario que dejó de ser Admin) levanta
+        # PermissionError y @manejar_errores lo muestra: la pantalla no se abre.
+        articulos_repo.comprobar_clave_para_ordenar_stock(self.usuario["id"], clave)
+        OrdenarStockWindow(self, self.usuario["id"], clave).exec()
+        self._cargar_grilla()
 
 
 class DialogoArticulo(QDialog):

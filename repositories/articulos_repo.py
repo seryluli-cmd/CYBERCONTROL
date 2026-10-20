@@ -3,17 +3,27 @@ articulos_repo.py
 ==================
 Funciones para leer y escribir artículos, marcas y rubros.
 
-Importante: ninguna función de este archivo modifica el "stock" de un
-artículo. Esto es a propósito: el stock solo se mueve a través de una
-Compra (compras_repo.registrar_compra) o de una Venta
-(ventas_repo.confirmar_venta / anular_venta), nunca editando el artículo a
-mano, para que el historial de "Movimientos" siempre sea confiable.
+Importante: el alta y la edición de un artículo NO tocan su "stock". Esto
+es a propósito: el stock se mueve con una Compra
+(compras_repo.registrar_compra), con una Venta (ventas_repo.confirmar_venta /
+anular_venta) o con ORDENAR Stock (ajustar_stock, abajo, que deja cada
+corrección anotada en ajustes_stock), para que el historial de
+"Movimientos" siempre sea confiable.
 """
 
 import sqlite3
 from datetime import datetime
 import dominio
-from database import conexion_db
+from database import conexion_db, verificar_clave
+from repositories import usuarios_repo
+
+# La contraseña de ORDENAR Stock: la eligió el dueño (2026-10-20) y es fija.
+# Acá está solo su hash con salt (database.hash_clave), nunca en claro: este
+# repo es público. Para cambiarla, reemplazar este valor por el de
+# database.hash_clave("la nueva").
+CLAVE_ORDENAR_STOCK = (
+    "34ba9a714dd183b754678099a9475e88$62dec9603a6d7096e44ce25ea3514cf37dd523679fc7835e919c428e2835fc9a"
+)
 
 
 # ---------------------------------------------------------------------
@@ -199,28 +209,95 @@ def modificar_articulo(codigo, descripcion, marca_id, rubro_id, precio_venta, pr
 
 def borrar_articulo(codigo):
     """
-    Borra un artículo. Si ya tiene compras o ventas registradas, la
-    base de datos rechaza el borrado (para no perder el rastro de esos
-    movimientos): en vez de dejar pasar el error de SQLite tal cual —
-    que rompería la pantalla con una traza de Python — lo convertimos
-    en un mensaje claro para que se le pueda mostrar a la usuaria.
+    Borra un artículo. Si ya tiene compras, ventas o ajustes de stock
+    registrados, la base de datos rechaza el borrado (para no perder el
+    rastro de esos movimientos): en vez de dejar pasar el error de SQLite
+    tal cual — que rompería la pantalla con una traza de Python — lo
+    convertimos en un mensaje claro para que se le pueda mostrar a la usuaria.
     """
     try:
         with conexion_db() as conexion:
             conexion.execute("DELETE FROM articulos WHERE codigo = ?", (codigo,))
     except sqlite3.IntegrityError:
         raise ValueError(
-            f"No se puede borrar el artículo {codigo}: ya tiene compras o ventas "
-            "registradas. Si no se usa más, se puede dejar en stock 0 en vez de borrarlo."
+            f"No se puede borrar el artículo {codigo}: ya tiene compras, ventas o ajustes "
+            "de stock registrados. Si no se usa más, se puede dejar en stock 0 en vez de borrarlo."
         )
+
+
+# ---------------------------------------------------------------------
+# ORDENAR Stock (pedido del dueño, 2026-10-20)
+# ---------------------------------------------------------------------
+# Al empezar a usar el programa en el local hubo demasiados desarreglos de
+# stock: un Admin, con la contraseña de ORDENAR Stock, escribe cuántos hay de
+# verdad. Se controla acá y no solo en la pantalla (como en playstation_repo):
+# se relee el usuario de la base en cada cambio, así un Admin dado de baja con
+# la ventana abierta no sigue corrigiendo.
+
+def comprobar_clave_para_ordenar_stock(usuario_id: int, clave: str):
+    """PermissionError con el motivo si `usuario_id` no es un Admin activo o
+    `clave` no es la de ORDENAR Stock. Es lo que pregunta el botón antes de
+    abrir la pantalla; ajustar_stock lo vuelve a preguntar en cada cambio."""
+    usuarios_repo.exigir_admin(usuario_id, "ordenar el stock")
+    if not verificar_clave(clave or "", CLAVE_ORDENAR_STOCK):
+        raise PermissionError("La contraseña de ORDENAR Stock no es correcta.")
+
+
+def _stock_contado(valor) -> int:
+    """El stock que se escribió (número o texto, como llega de la grilla), o
+    ValueError si no es un entero de 0 para arriba. Acá no se acepta un
+    negativo: es lo que hay contado en el estante (que el stock pueda quedar
+    negativo es para no frenar una venta, ver database_esquema)."""
+    texto = "" if valor is None or isinstance(valor, bool) else str(valor).strip()
+    # isascii: "²" o "٣" también son "dígitos" para Python.
+    if not (texto.isascii() and texto.isdigit()):
+        escrito = f' (se escribió "{texto}")' if texto else ""
+        raise ValueError(f"El stock tiene que ser un número entero, de 0 para arriba{escrito}.")
+    return int(texto)
+
+
+def ajustar_stock(usuario_id: int, codigo: str, stock_nuevo, clave: str) -> dict:
+    """
+    Deja el stock de `codigo` en `stock_nuevo` (lo contado) y lo anota en
+    ajustes_stock con lo que había, quién y cuándo. No toca precios, costos,
+    ventas ni la caja. Devuelve {"stock_anterior", "stock_nuevo"}; si ya
+    tenía ese número no anota nada.
+
+    "Lo que había" se lee de la base en la misma transacción, no de la
+    pantalla: si se vendió algo mientras la grilla estaba abierta, el ajuste
+    anotado es el real. PermissionError (ver comprobar_clave_para_ordenar_stock)
+    o ValueError (número mal escrito, artículo que ya no existe).
+    """
+    comprobar_clave_para_ordenar_stock(usuario_id, clave)
+    stock_nuevo = _stock_contado(stock_nuevo)
+    ahora = datetime.now().isoformat(timespec="seconds")
+    with conexion_db() as conexion:
+        # Toma el permiso de escritura de entrada: una venta no puede cambiar el
+        # stock entre la lectura de "lo que había" y la corrección.
+        conexion.execute("BEGIN IMMEDIATE")
+        fila = conexion.execute("SELECT stock FROM articulos WHERE codigo = ?", (codigo,)).fetchone()
+        if fila is None:
+            raise ValueError("Ese artículo ya no existe. Actualizá la lista e intentá de nuevo.")
+        stock_anterior = fila["stock"]
+        if stock_anterior != stock_nuevo:
+            conexion.execute("UPDATE articulos SET stock = ? WHERE codigo = ?", (stock_nuevo, codigo))
+            conexion.execute(
+                """
+                INSERT INTO ajustes_stock (articulo_codigo, fecha, usuario_id, stock_anterior, stock_nuevo)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (codigo, ahora, usuario_id, stock_anterior, stock_nuevo),
+            )
+    return {"stock_anterior": stock_anterior, "stock_nuevo": stock_nuevo}
 
 
 def obtener_movimientos(codigo: str, desde: str, hasta: str):
     """
     Arma el historial de "Movimientos" de un artículo: junta las líneas
-    de Compras (suman stock) y las líneas de Ventas confirmadas (restan
-    stock) dentro de un rango de fechas, y las devuelve ordenadas por
-    fecha. Las ventas anuladas no aparecen: ya repusieron su stock.
+    de Compras (suman stock), las líneas de Ventas confirmadas (restan
+    stock) y los ajustes de ORDENAR Stock (lo que sumó o restó cada uno)
+    dentro de un rango de fechas, y las devuelve ordenadas por fecha. Las
+    ventas anuladas no aparecen: ya repusieron su stock.
     """
     with conexion_db() as conexion:
         return conexion.execute(
@@ -240,7 +317,17 @@ def obtener_movimientos(codigo: str, desde: str, hasta: str):
               AND ventas.estado = ?
               AND date(ventas.fecha) BETWEEN date(?) AND date(?)
 
-            ORDER BY fecha
+            UNION ALL
+
+            SELECT fecha, 'ajuste de stock' AS comprobante, id AS numero,
+                   stock_nuevo - stock_anterior AS cantidad
+            FROM ajustes_stock
+            WHERE articulo_codigo = ? AND date(fecha) BETWEEN date(?) AND date(?)
+
+            -- El número desempata lo que pasó en el mismo segundo (dos ajustes
+            -- seguidos del mismo artículo): sin él, podían salir al revés.
+            ORDER BY fecha, numero
             """,
-            (codigo, desde, hasta, codigo, dominio.VENTA_CONFIRMADA, desde, hasta),
+            (codigo, desde, hasta, codigo, dominio.VENTA_CONFIRMADA, desde, hasta,
+             codigo, desde, hasta),
         ).fetchall()

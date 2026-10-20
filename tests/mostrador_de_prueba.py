@@ -28,6 +28,8 @@ import dominio  # noqa: E402
 CLAVE_ADMIN = "1234"      # la de fábrica del primer Administrador (database._cargar_datos_iniciales)
 CLAVE_EMPLEADA = "4321"
 CODIGO_ALFAJOR = "7790001"
+# Reemplaza a la contraseña real de ORDENAR Stock, que no se escribe en el repo.
+CLAVE_ORDENAR_STOCK = "clave-de-prueba"
 
 
 def preparar_base(carpeta: str):
@@ -37,6 +39,7 @@ def preparar_base(carpeta: str):
 
     from repositories import admin_remoto_repo, articulos_repo, turnos_repo, usuarios_repo, ventas_repo
 
+    articulos_repo.CLAVE_ORDENAR_STOCK = database.hash_clave(CLAVE_ORDENAR_STOCK)
     admin = usuarios_repo.listar_usuarios()[0]
     admin_remoto_repo.activar(admin["id"], True)
     usuarios_repo.crear_usuario("LUCIA", CLAVE_EMPLEADA, dominio.ROL_EMPLEADA)

@@ -68,11 +68,13 @@ _MODULOS = {
 _CATALOGO_DE_BONOS = ("listar_bonos", "crear_bono", "modificar_bono", "desactivar_bono")
 
 FUNCIONES = {
-    # Administrar Kiosko > Artículos (y la búsqueda F5/F6/F7 de Compras)
+    # Administrar Kiosko > Artículos (y la búsqueda F5/F6/F7 de Compras), con
+    # ORDENAR Stock
     "articulos_repo": (
         "listar_articulos", "buscar_por_codigo", "buscar_por_descripcion", "buscar_por_marca",
         "crear_articulo", "modificar_articulo", "borrar_articulo", "obtener_movimientos",
         "listar_marcas", "listar_rubros", "crear_rubro", "renombrar_rubro", "borrar_rubro",
+        "comprobar_clave_para_ordenar_stock", "ajustar_stock",
     ),
     # Compras
     "compras_repo": ("proximo_numero_compra", "registrar_compra"),
@@ -120,6 +122,8 @@ FUNCIONES = {
 
 # (repo, función) -> el parámetro que dice quién lo hace (ver el comentario del módulo).
 ACTOR = {
+    ("articulos_repo", "comprobar_clave_para_ordenar_stock"): "usuario_id",
+    ("articulos_repo", "ajustar_stock"): "usuario_id",
     ("compras_repo", "registrar_compra"): "usuario_id",
     ("ventas_repo", "anular_venta"): "usuario_admin_id",
     ("miembros_repo", "anular_carga"): "usuario_admin_id",

@@ -266,6 +266,8 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.sin_boton_por_defecto(ventana)` | se evita que Enter en un campo active el primer botón de un diálogo (llamarla al final de `_armar_interfaz`) |
 | `ui.utils.crear_tabla(titulos, ...)` | se arma una tabla de solo lectura (filas alternadas, columna que se estira, selección por filas) |
 | `ui.utils.mostrar_columna_entera(tabla, columna)` | se ensancha una columna para que su texto no se corte con "..." (la de códigos de barras, en las seis tablas que la muestran: llamarla después de llenar la tabla). Con 100 px un EAN-13 se veía "77981133010…" y parecía guardado con dos dígitos menos (2026-10-18) |
+| `articulos_repo.ajustar_stock(usuario_id, codigo, stock_nuevo, clave)` · `.comprobar_clave_para_ordenar_stock(...)` | se corrige el stock de un artículo a mano (ORDENAR Stock, pedido del dueño 2026-10-20): solo Admin activo con la contraseña de `CLAVE_ORDENAR_STOCK`, entero de 0 para arriba, anotado en `ajustes_stock` y visible en Movimientos. Es la única forma de mover el stock aparte de Compras y Ventas |
+| `ui.articulos_tabla.llenar_tabla_de_articulos(...)` · `.poner_stock(...)` | se arma la grilla de artículos (columnas y stock en rojo bajo el mínimo): la usan Artículos y ORDENAR Stock |
 | `ui.buscar_articulo.avisar_codigo_no_encontrado(ventana, codigo)` | se avisa en Ventas y Compras que lo escaneado no es ningún artículo, con cuántos dígitos llegaron (para comparar con el código cargado) |
 | `ui.utils.crear_selector_de_fecha(...)` | se crea un campo de fecha con calendario (sin sábado/domingo en rojo; usarlo siempre, nunca un `QDateEdit` a mano) |
 | `ui.utils.armar_filtro_por_fechas(...)` · `rango_de_fechas(...)` · `fecha_iso(...)` | se arma la fila Desde/Hasta con "Buscar" y se leen sus fechas como `"YYYY-MM-DD"` (el formato con que hablan los repos) |
@@ -310,6 +312,18 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 - **El stock puede quedar negativo a propósito.** No agregues una
   validación que lo impida: prefieren vender y corregir después antes que
   frenar la cola en el mostrador.
+- **El stock se corrige a mano SOLO con ORDENAR Stock** (botón de Artículos,
+  pedido del dueño 2026-10-20: al arrancar en el local hubo demasiados
+  desarreglos). Lo ve solo el Admin y pide una contraseña fija que eligió el
+  dueño; en el código está solo su hash con salt (`articulos_repo.CLAVE_ORDENAR_STOCK`,
+  el repo es público: nunca la escribas en claro, tampoco en un test). El repo
+  vuelve a exigir Admin activo y contraseña en cada cambio, y cada cambio queda
+  en `ajustes_stock` (antes, después, quién, cuándo) y en Movimientos como
+  "ajuste de stock": no lo saques "para simplificar", es lo que deja auditar un
+  faltante de mercadería. Solo cambia `articulos.stock`: ni precios, ni costos,
+  ni ventas, ni la caja. Ahí sí se rechaza un número negativo (es lo que hay
+  contado en el estante); lo de arriba vale para vender. El alta/edición de un
+  artículo sigue sin tocar el stock.
 - **El carrito de una venta vive solo en memoria** hasta que se cobra. No
   lo persistas "por las dudas": es lo que permite borrar un renglón mal
   escaneado sin dejar basura en la base.
@@ -780,7 +794,7 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-903 pruebas al 2026-10-19 (las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+932 pruebas al 2026-10-20 (ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

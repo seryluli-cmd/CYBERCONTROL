@@ -365,7 +365,20 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   `renombrar_rubro` / `borrar_rubro` — este último rechaza el borrado con
   `ValueError` si todavía hay artículos usando ese rubro). `DialogoMovimientos`
   muestra historial de un artículo (`articulos_repo.obtener_movimientos`,
-  compras en positivo, ventas confirmadas en negativo/rojo).
+  compras en positivo, ventas confirmadas en negativo/rojo, y los "ajuste de
+  stock" con lo que sumaron o restaron). La grilla (columnas, rojo bajo el
+  mínimo) vive en `ui/articulos_tabla.py`, compartida con ORDENAR Stock.
+- **ORDENAR Stock** (`ordenar_stock_window.py`, `OrdenarStockWindow`; pedido
+  del dueño 2026-10-20) — botón de Artículos que solo ve el Admin y que pide
+  una contraseña fija (en el código está solo su hash con salt,
+  `articulos_repo.CLAVE_ORDENAR_STOCK`; este repo es público). Abre la misma
+  grilla con la columna Stock para escribir (fondo amarillo): Enter guarda y
+  pasa al de abajo; con la pistola, escanear en el buscador y, si queda un solo
+  artículo, el Enter abre su stock. Cada cambio pasa por
+  `articulos_repo.ajustar_stock(usuario_id, codigo, stock_nuevo, clave)`, que
+  vuelve a exigir Admin activo y contraseña, toma el stock "antes" de la base
+  (no de la pantalla), acepta solo enteros de 0 para arriba y anota cada cambio
+  en `ajustes_stock`. No toca precios, costos ni la caja.
 - **Compras** (`compras_window.py`, `ComprasWindow`) — carga de mercadería
   por escaneo (mismos F5/F6/F7 que Ventas). Al escanear pide cantidad y
   costo (precargado con el `precio_compra` actual) por `QInputDialog`.

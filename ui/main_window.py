@@ -501,7 +501,7 @@ class AdministrarKioskoWindow(_VentanaDeBotones):
         self._armar_botones(botones)
 
     def _abrir_articulos(self):
-        ArticulosWindow(self).exec()
+        ArticulosWindow(self, self.usuario).exec()
 
     def _abrir_compras(self):
         ComprasWindow(self.usuario, self).exec()

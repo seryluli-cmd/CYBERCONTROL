@@ -110,9 +110,10 @@ def inicializar_base_de_datos():
     # -------------------------------------------------------------------
     # COMPRAS (ingreso de mercadería)
     # -------------------------------------------------------------------
-    # Es la ÚNICA forma de modificar el stock de un artículo (aparte de las
-    # ventas). Cada compra tiene una cabecera (fecha, quién la cargó) y
-    # varias líneas de detalle, una por artículo ingresado.
+    # Es la forma de cargar stock a un artículo (aparte de las ventas, que lo
+    # bajan, y de ORDENAR Stock, que lo corrige: ver ajustes_stock). Cada
+    # compra tiene una cabecera (fecha, quién la cargó) y varias líneas de
+    # detalle, una por artículo ingresado.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS compras (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,6 +130,24 @@ def inicializar_base_de_datos():
             costo_unitario   REAL NOT NULL,
             stock_antes      INTEGER NOT NULL,
             stock_despues    INTEGER NOT NULL
+        )
+    """)
+
+    # -------------------------------------------------------------------
+    # AJUSTES DE STOCK ("ORDENAR Stock", pedido del dueño 2026-10-20)
+    # -------------------------------------------------------------------
+    # Cada vez que un Admin corrige a mano el stock de un artículo (lo que hay
+    # contado en el estante): cuánto decía el programa, cuánto quedó, quién y
+    # cuándo. Sin plata: no es una compra ni una venta. Es lo que muestra
+    # Movimientos como "ajuste de stock" (articulos_repo.ajustar_stock).
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ajustes_stock (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            articulo_codigo  TEXT NOT NULL REFERENCES articulos(codigo),
+            fecha            TEXT NOT NULL,
+            usuario_id       INTEGER NOT NULL REFERENCES usuarios(id),
+            stock_anterior   INTEGER NOT NULL,
+            stock_nuevo      INTEGER NOT NULL
         )
     """)
 
@@ -615,6 +634,7 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_venta_detalle_articulo ON venta_detalle(articulo_codigo)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_articulo ON compra_detalle(articulo_codigo)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_compra ON compra_detalle(compra_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ajustes_stock_articulo ON ajustes_stock(articulo_codigo, fecha)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_fecha ON sesiones(fecha_hora)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_estacion ON sesiones_pc(estacion_id, estado)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_saldo_miembro ON movimientos_saldo_miembro(miembro_id)")

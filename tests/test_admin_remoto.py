@@ -499,6 +499,8 @@ class TestPorLaRed(_ConServidor):
 # (archivo, clases que se abren desde otra PC; None = el archivo entero)
 _PANTALLAS_DE_OTRA_PC = [
     ("ui/articulos_window.py", None),
+    ("ui/articulos_tabla.py", None),
+    ("ui/ordenar_stock_window.py", None),
     ("ui/buscar_articulo.py", None),
     ("ui/compras_window.py", None),
     ("ui/consulta_ventas_window.py", None),
@@ -685,6 +687,19 @@ class TestCopiaRemota(unittest.TestCase):
         self.assertEqual(compra["usuario_id"], self.usuario["id"])
         self.assertEqual(despues["stock"], antes["stock"] + 10)
 
+    def test_ordenar_stock_desde_aca_queda_en_el_mostrador_a_nombre_del_que_entro(self):
+        from repositories import articulos_repo
+        codigo = mostrador_de_prueba.CODIGO_ALFAJOR
+        with self.assertRaises(PermissionError):
+            articulos_repo.ajustar_stock(99999, codigo, 50, "otra")
+        articulos_repo.ajustar_stock(99999, codigo, 50, mostrador_de_prueba.CLAVE_ORDENAR_STOCK)
+
+        base = self._base_del_mostrador()
+        stock = base.execute("SELECT stock FROM articulos WHERE codigo = ?", (codigo,)).fetchone()
+        ajuste = base.execute("SELECT usuario_id, stock_nuevo FROM ajustes_stock ORDER BY id DESC").fetchone()
+        self.assertEqual(stock["stock"], 50)
+        self.assertEqual((ajuste["usuario_id"], ajuste["stock_nuevo"]), (self.usuario["id"], 50))
+
     def test_anular_una_venta_y_cargar_el_sobre(self):
         from repositories import turnos_repo
         venta = ventas_repo.listar_ventas_recientes(1)[0]
@@ -722,6 +737,7 @@ class TestCopiaRemota(unittest.TestCase):
         from ui.consulta_ventas_window import ConsultaVentasWindow
         from ui.login_window import LoginWindow
         from ui.main_window import AdministrarKioskoWindow, ConfiguracionAdminWindow, MainWindow
+        from ui.ordenar_stock_window import OrdenarStockWindow
         from ui.reportes_window import ReportesWindow
         from ui.tramites_window import DialogoGestionTramites
         from ui.usuarios_window import DialogoCambiarClave, UsuariosWindow
@@ -755,6 +771,8 @@ class TestCopiaRemota(unittest.TestCase):
                 DialogoTramosTarifaMiembro(ventana), DialogoGestionBonosMiembro(ventana),
                 DialogoGestionTramites(ventana), AccesosAdminWindow(ventana),
                 DialogoFiltroPalabras(ventana), DialogoFondoPantalla(ventana),
+                ArticulosWindow(ventana, self.usuario),
+                OrdenarStockWindow(ventana, self.usuario["id"], mostrador_de_prueba.CLAVE_ORDENAR_STOCK),
             ]
             for pantalla in pantallas:
                 self.addCleanup(pantalla.deleteLater)
