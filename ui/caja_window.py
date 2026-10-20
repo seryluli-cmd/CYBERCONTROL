@@ -272,10 +272,10 @@ class CierreTurnoWindow(_PantallaDeCaja):
         botones.addWidget(boton_cerrar_turno)
 
         self._armar_cuerpo(
-            # Digital arriba a la derecha y "A RETIRAR EN EFECTIVO" abajo, al lado del Efectivo
-            # (pedido del dueño, 2026-10-20).
-            [(layout_fondo, layout_digital), (layout_efectivo, layout_retirar),
-             (layout_total, QVBoxLayout()),
+            # Digital arriba a la derecha y "A RETIRAR EN EFECTIVO" en la misma línea que el
+            # TOTAL (pedido del dueño, 2026-10-20).
+            [(layout_fondo, layout_digital), (layout_efectivo, QVBoxLayout()),
+             (layout_total, layout_retirar),
              (layout_kiosko, layout_impresiones), (layout_tramites, QVBoxLayout()),
              (layout_pcs, layout_playstation)],
             "Retirá el efectivo indicado y guardalo en el sobre. Dejá el cambio "
