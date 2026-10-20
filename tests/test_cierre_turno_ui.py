@@ -54,10 +54,10 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
 
         ventana = self._abrir()
 
-        self.assertEqual(ventana.valor_impresiones.text(), "$ 450,00 ef. + $ 0,00 dig.")
-        self.assertEqual(ventana.valor_kiosko.text(), "$ 10,00 ef. + $ 0,00 dig.")
+        self.assertEqual(ventana.tarjeta.valor_impresiones.text(), "$ 450,00 ef. + $ 0,00 dig.")
+        self.assertEqual(ventana.tarjeta.valor_kiosko.text(), "$ 10,00 ef. + $ 0,00 dig.")
         # El efectivo a retirar sigue siendo todo: separarlas es solo cómo se muestra.
-        self.assertEqual(ventana.valor_retirar.text(), "$ 460,00")
+        self.assertEqual(ventana.tarjeta.valor_retirar.text(), "$ 460,00")
 
     def test_muestra_efectivo_digital_y_total_sin_duplicar_las_impresiones(self):
         self._vender(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", 3, 150.0)  # $450 efectivo
@@ -70,9 +70,9 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         ventana = self._abrir()
         textos = [e.text() for e in ventana.findChildren(QLabel)]
 
-        self.assertEqual(ventana.valor_efectivo.text(), "$ 450,00")
-        self.assertEqual(ventana.valor_digital.text(), "$ 10,00")
-        self.assertEqual(ventana.valor_total.text(), "$ 460,00")
+        self.assertEqual(ventana.tarjeta.valor_efectivo.text(), "$ 450,00")
+        self.assertEqual(ventana.tarjeta.valor_digital.text(), "$ 10,00")
+        self.assertEqual(ventana.tarjeta.valor_total.text(), "$ 460,00")
         self.assertTrue({"Efectivo", "Digital", "TOTAL (EFECTIVO + DIGITAL)"} <= set(textos), textos)
 
     def test_muestra_los_tramites_sin_duplicarlos_en_el_total(self):
@@ -86,14 +86,14 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
 
         ventana = self._abrir()
 
-        self.assertEqual(ventana.valor_tramites.text(), "$ 2.500,00 ef. + $ 0,00 dig.")
-        self.assertEqual(ventana.valor_kiosko.text(), "$ 10,00 ef. + $ 0,00 dig.")
-        self.assertEqual(ventana.valor_total.text(), "$ 2.510,00")      # cuenta una sola vez
+        self.assertEqual(ventana.tarjeta.valor_tramites.text(), "$ 2.500,00 ef. + $ 0,00 dig.")
+        self.assertEqual(ventana.tarjeta.valor_kiosko.text(), "$ 10,00 ef. + $ 0,00 dig.")
+        self.assertEqual(ventana.tarjeta.valor_total.text(), "$ 2.510,00")      # cuenta una sola vez
 
     def test_sin_impresiones_muestra_cero(self):
         self._vender("COD9", "Producto", 1, 10.0)
 
-        self.assertEqual(self._abrir().valor_impresiones.text(), "$ 0,00 ef. + $ 0,00 dig.")
+        self.assertEqual(self._abrir().tarjeta.valor_impresiones.text(), "$ 0,00 ef. + $ 0,00 dig.")
 
     def test_el_cambio_fijo_no_se_llama_fondo_en_ningun_texto_de_la_pantalla(self):
         textos = [etiqueta.text() for etiqueta in self._abrir().findChildren(QLabel)]
@@ -135,8 +135,8 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
 
         self.assertTrue(titulo.font().bold())
         self.assertIn("#000000", titulo.styleSheet())
-        self.assertTrue(ventana.valor_retirar.font().bold())
-        self.assertIn("#2FB457", ventana.valor_retirar.styleSheet())
+        self.assertTrue(ventana.tarjeta.valor_retirar.font().bold())
+        self.assertIn("#2FB457", ventana.tarjeta.valor_retirar.styleSheet())
 
     def test_el_total_dice_que_suma_y_va_en_negrita_con_el_monto_azul(self):
         ventana = self._abrir()
@@ -145,8 +145,8 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
 
         self.assertTrue(titulo.font().bold())
         self.assertIn("#000000", titulo.styleSheet())
-        self.assertTrue(ventana.valor_total.font().bold())
-        self.assertIn("#2F6FED", ventana.valor_total.styleSheet())
+        self.assertTrue(ventana.tarjeta.valor_total.font().bold())
+        self.assertIn("#2F6FED", ventana.tarjeta.valor_total.styleSheet())
 
     def test_la_pantalla_caja_se_parece_al_cierre_y_aclara_que_la_caja_actual_incluye_el_cambio(self):
         """Pedido del dueño (2026-10-20): Caja con los mismos renglones que el Cierre de Turno,

@@ -206,7 +206,7 @@ abra no alcanza si los tests no pasan.
 | `relevo_repo.estado_de_la_caja()` · `.cierre_forzoso_si_corresponde()` | se decide si el botón Cierre de Turno titila y si toca el cierre forzoso (lo dispara `MainWindow._revisar_la_caja`, que espera si hay un cobro a medias) |
 | `cajas_repo._quien_vende(conexion, usuario_id)` | se decide a nombre de quién y en qué caja queda una venta (lo que cobra el Admin va a nombre de la responsable de la caja abierta, con `ventas_caja.cargada_por`); lo usa `ventas_repo._insertar_cabecera_venta` |
 | `cajas_repo.cambio_inicial(caja)` | se decide con cuánto cambio arrancó una caja (lo contado, o lo esperado si no se contó): es lo que queda en el cajón al cerrarla y lo que se espera en la siguiente |
-| `control_cierres_repo.listar_cierres()` · `.detalle_cierre(id)` · `.verificar_cierre(...)` | se arma lo que muestra Control de Cierres (cada cierre con su caja, responsables, relevos, si se cerró sola o en ausencia) y se carga lo contado del sobre (solo Admin, cada conteo en `verificaciones_cierre`). `turnos_repo` los reexporta con el mismo nombre |
+| `control_cierres_repo.listar_cierres()` · `.detalle_cierre(id)` · `.verificar_cierre(...)` | se arma lo que muestra Control de Cierres (cada cierre con su caja, responsables, relevos, si se cerró sola o en ausencia; y en `detalle_cierre(id)["resumen"]` el cierre con las mismas claves que `resumen_turno_actual`, ver `_resumen_del_cierre`) y se carga lo contado del sobre (solo Admin, cada conteo en `verificaciones_cierre`). `turnos_repo` los reexporta con el mismo nombre |
 | `turnos_repo._cerrado_pasado_su_vencimiento(dia, turno, cerrado_a)` | se decide si un turno se cerró "tarde" (pasado su vencimiento): lo usan el aviso y el "Cerrado el dd/mm" del Resumen del Día |
 | `dominio.es_admin(usuario)` | se pregunta si alguien es Administrador |
 | `dominio.nombre_metodo(metodo)` | se arma el nombre corto de un método de pago |
@@ -248,7 +248,7 @@ abra no alcanza si los tests no pasan.
 | `dominio.CODIGO_ARTICULO_IMPRESIONES` | se decide qué artículo de kiosko es "Impresiones" (el código "4" en la base del dueño; hasta el 2026-10-19 el programa buscaba el "1", el de la base anterior, y las impresiones salían en $0), para mostrarlo como renglón propio en Reportes, Caja y Cierre de Turno |
 | `impresiones_repo.cobrar_impresiones(...)` · `.articulo_impresiones()` | se cobran impresiones desde el botón de la barra (pedido del dueño, 2026-10-19): venta de kiosko común del artículo, con el precio leído en la misma transacción (`ventas_repo._grabar_venta_kiosko`, el núcleo de `confirmar_venta`) |
 | `turnos_ventas_repo._vendido_aparte_entre(...)` (lo usa `turnos_repo`) | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día |
-| `turnos_ventas_repo._aparte_por_metodo(...)` · `turnos_repo._separar_de_kiosko(...)` | se reparte lo de impresiones y trámites del turno en curso entre efectivo y digital (venta por venta, con sus pagos) y se arma Kiosko sin ellos para Caja y Cierre de Turno (`resumen_turno_actual()["kiosko_solo_*"]`, `["impresiones_*"]`, `["tramites_*"]`) |
+| `turnos_ventas_repo._aparte_por_metodo(...)` · `turnos_ventas_repo._separar_de_kiosko(...)` | se reparte lo de impresiones y trámites del turno en curso (o de un cierre ya hecho, con `cierre_grabado=True`) entre efectivo y digital (venta por venta, con sus pagos) y se arma Kiosko sin ellos para Caja, Cierre de Turno y el detalle de Control de Cierres (`resumen_turno_actual()["kiosko_solo_*"]`, `["impresiones_*"]`, `["tramites_*"]`). `turnos_repo` la importa con el mismo nombre |
 | `tramites_repo.registrar_tramite(...)` | se cobra un trámite de mostrador (monto libre): venta KIOSKO sin detalle + vínculo en `tramites_venta` |
 | `main.aplicar_estilo(app)` | se fija el aspecto de TODO el programa: estilo Fusion, esquema de color CLARO y la hoja de estilos (`HOJA_DE_ESTILOS`) |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
@@ -275,6 +275,7 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.fila_agregar_quitar(tabla, ...)` | se arman los botones Agregar/Quitar de una tabla que se edita a mano |
 | `ui.buscar_articulo.armar_botones_de_busqueda(ventana, ...)` | se arman los botones F5/F6/F7 y sus atajos (Ventas y Compras) |
 | `ui.detalle_venta.VentanaConDetalleDeVenta` | lista de ventas + artículos de la elegida (Consulta de Ventas y Detalle de un cierre) |
+| `ui.tarjeta_cierre.TarjetaCierreDeTurno` | se dibuja el resumen de un Cierre de Turno (Cambio Fijo, Efectivo/Digital, cada negocio, TOTAL y A RETIRAR): la pantalla Cierre de Turno (turno en curso) y "Ver Detalle" de Control de Cierres (cualquier cierre ya hecho, también el forzoso; pedido del dueño 2026-10-20). Un cambio de diseño del Cierre de Turno se hace ahí y se ve en las dos |
 | `control_pcs.repositories.catalogo_bonos.CatalogoDeBonos(tabla)` | se hace el alta/edición/baja de un catálogo de bonos (`pcs_repo` para walk-ins, `bonos_miembro_repo` para socios, `playstation_repo` para la consola, `pcstream_repo` para la PC de streaming: cuatro tablas distintas, un solo código) |
 | `database._reconstruir_tabla(...)` · `_admite_todos_los_tipos(lista)` | se reconstruye una tabla para cambiar un CHECK/REFERENCES, y se decide si un CHECK de tipos ya está al día |
 | `database._sql_tabla_ventas(...)` · `_migrar_check_origen_en_ventas(...)` | se escribe el CREATE de `ventas` (el CHECK de `origen` sale de `dominio.ORIGENES_VENTA`) y se reconstruye una base vieja SIN romper las tablas que la referencian (ver "Trampas conocidas") |
@@ -665,10 +666,15 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   los pagos de esa venta (`turnos_ventas_repo._aparte_por_metodo`): exacto si se
   cobraron solas (el botón Impresiones) o si el carrito se pagó en un solo medio, en
   proporción si iban con otras cosas y se pagó una parte en cada medio. Kiosko sale
-  por resta, con los centavos redondeados una sola vez (`turnos_repo._separar_de_kiosko`),
+  por resta, con los centavos redondeados una sola vez (`turnos_ventas_repo._separar_de_kiosko`),
   así Kiosko + Impresiones + Trámites da justo lo grabado. No guardes estos importes
-  repartidos en el cierre como si fueran exactos. Control de Cierres sigue mostrando
-  Kiosko entero (lo grabado).
+  repartidos en el cierre como si fueran exactos. La tabla de Control de Cierres sigue
+  mostrando Kiosko entero (lo grabado); su "Ver Detalle" muestra cada cierre con la
+  tarjeta del Cierre de Turno (`ui/tarjeta_cierre.py`), con impresiones y trámites
+  recalculados de las ventas de esa ventana contadas como estaban al cerrar (una venta
+  anulada después sigue contando, igual que en el Resumen del Día:
+  `turnos_ventas_repo._condicion_vigente`). Así un cierre forzoso, que no vio nadie, se
+  ve igual que si lo hubiera cerrado la empleada (pedido del dueño, 2026-10-20).
 - **En pantalla, el fondo de cambio se llama "Cambio Fijo" en TODOS lados**
   (Caja, Cierre de Turno, Control de Cierres, Usuarios; pedido del dueño,
   2026-10-10). Por dentro sigue siendo `fondo_cambio` (columnas, repos, claves):
@@ -794,7 +800,7 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-932 pruebas al 2026-10-20 (ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+939 pruebas al 2026-10-20 (el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

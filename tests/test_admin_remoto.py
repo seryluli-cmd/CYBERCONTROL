@@ -511,6 +511,7 @@ _PANTALLAS_DE_OTRA_PC = [
     ("ui/reportes_operador.py", None),
     ("ui/reportes_pcstream.py", None),
     ("ui/control_cierres_window.py", None),
+    ("ui/tarjeta_cierre.py", None),
     ("ui/caja_window.py", {"CajaWindow", "_PantallaDeCaja"}),
     ("ui/usuarios_window.py", None),
     ("ui/accesos_admin_window.py", None),

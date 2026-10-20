@@ -21,8 +21,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialog  # noqa: E402
 
 import dominio  # noqa: E402
-from repositories import relevo_repo, turnos_repo, usuarios_repo  # noqa: E402
+from database import conexion_db  # noqa: E402
+from repositories import relevo_repo, turnos_repo, usuarios_repo, ventas_repo  # noqa: E402
 from ui import ingreso_caja  # noqa: E402
+from ui.caja_window import CierreTurnoWindow  # noqa: E402
+from ui.control_cierres_window import DialogoDetalleCierre  # noqa: E402
 from ui.ingreso_caja import DialogoContarPlata, resolver_caja_al_entrar  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
@@ -195,6 +198,63 @@ class TestVentanaPrincipalConCaja(BaseConBaseTemporal):
 
         aviso.assert_not_called()
         self.assertEqual(turnos_repo.listar_cierres(), [])
+
+
+class TestDetalleDeUnCierreHecho(BaseConBaseTemporal):
+    """Pedido del dueño (2026-10-20): "Ver Detalle" de Control de Cierres muestra
+    cada cierre como la pantalla Cierre de Turno, también el forzoso. Los números
+    se prueban en tests/test_cajas.py (TestUnCierreHechoSeVeComoAlCerrarlo)."""
+
+    def setUp(self):
+        super().setUp()
+        self.lucia = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Lucia", "1234", dominio.ROL_EMPLEADA))
+        self.gaby = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Gaby", "1234", dominio.ROL_EMPLEADA))
+        relevo_repo.abrir_caja(self.lucia["id"], 50000.0, _HACE_TIEMPO)
+        with conexion_db() as conexion:
+            ventas_repo.registrar_venta_sin_detalle(
+                conexion, self.lucia["id"], 3000.0, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 3000.0}],
+                dominio.ORIGEN_ALQUILER_PCS, _HACE_TIEMPO.replace(hour=9),
+            )
+
+    def _detalle(self):
+        dialogo = DialogoDetalleCierre(turnos_repo.listar_cierres()[0])
+        self.addCleanup(dialogo.deleteLater)
+        return dialogo
+
+    def test_un_cierre_forzoso_se_ve_como_la_pantalla_cierre_de_turno(self):
+        relevo_repo.cierre_forzoso_si_corresponde(_HACE_TIEMPO.replace(hour=14, minute=15))
+
+        tarjeta = self._detalle().tarjeta
+
+        # La misma tarjeta que la pantalla de todos los días, no una copia que se desactualice.
+        cierre_de_turno = CierreTurnoWindow(self.gaby)
+        self.addCleanup(cierre_de_turno.deleteLater)
+        self.assertIs(type(tarjeta), type(cierre_de_turno.tarjeta))
+        self.assertEqual(tarjeta.titulo.text(), "Cierre de Turno — Caja Nº 1 de Lucia · Mañana")
+        self.assertEqual(tarjeta.valor_fondo.text(), "$ 50.000,00")
+        self.assertEqual(tarjeta.valor_pcs.text(), "$ 3.000,00 ef. + $ 0,00 dig.")
+        self.assertEqual(tarjeta.valor_total.text(), "$ 3.000,00")
+        self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000,00")
+        # En vez de "Retirá el efectivo...", cómo se cerró, en rojo como en la tabla.
+        self.assertIn("Se cerró sola a las 14:15", tarjeta.nota.text())
+        self.assertIn("red", tarjeta.nota.styleSheet())
+
+    def test_un_cierre_comun_dice_quien_lo_cerro_en_gris(self):
+        turnos_repo.cerrar_turno(self.lucia["id"], ahora_dt=_HACE_TIEMPO.replace(hour=14, minute=12))
+
+        tarjeta = self._detalle().tarjeta
+
+        self.assertEqual(tarjeta.nota.text(), "La cerró Lucia: 14:12 (12 min después).")
+        self.assertIn("gray", tarjeta.nota.styleSheet())
+        self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000,00")
+
+    def test_un_cierre_en_ausencia_dice_quien_lo_cerro_en_lugar_de_quien(self):
+        turnos_repo.cerrar_turno(self.gaby["id"], ahora_dt=_HACE_TIEMPO.replace(hour=14, minute=5))
+
+        tarjeta = self._detalle().tarjeta
+
+        self.assertEqual(tarjeta.nota.text(), "La cerró Gaby, en ausencia de Lucia · 14:05.")
+        self.assertIn("red", tarjeta.nota.styleSheet())
 
 
 if __name__ == "__main__":

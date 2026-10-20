@@ -453,10 +453,10 @@ class TestPantallasDeLaPlata(_ConPantalla):
         cierre = self._abrir(CierreTurnoWindow(self._usuario(self.operadora_id)))
 
         self.assertIn("$ 3.000,00 ef.", caja.valor_playstation.text())
-        self.assertIn("$ 3.000,00 ef.", cierre.valor_playstation.text())
+        self.assertIn("$ 3.000,00 ef.", cierre.tarjeta.valor_playstation.text())
         # Y lo suma al efectivo del cajón, que es lo que se retira.
         self.assertEqual(caja.valor_ventas.text(), "$ 3.000,00")
-        self.assertEqual(cierre.valor_retirar.text(), "$ 3.000,00")
+        self.assertEqual(cierre.tarjeta.valor_retirar.text(), "$ 3.000,00")
 
     def test_control_de_cierres_trae_una_columna_para_la_consola(self):
         from repositories import turnos_repo

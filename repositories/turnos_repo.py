@@ -41,7 +41,7 @@ from repositories.control_cierres_repo import (  # noqa: F401 (API de las pantal
     verificar_cierre,
 )
 from repositories.turnos_ventas_repo import (
-    _LINEAS_APARTE, _aparte_por_metodo, _contar_ventas_entre, _sumar_ventas_por_origen_y_metodo,
+    _LINEAS_APARTE, _aparte_por_metodo, _contar_ventas_entre, _separar_de_kiosko, _sumar_ventas_por_origen_y_metodo,
     _vendido_aparte_entre,
 )
 
@@ -228,30 +228,6 @@ def _resumen_en_curso(conexion, ahora_dt=None) -> dict:
         "desde": ventana["desde"],
         "hasta": ventana["hasta"],
     }
-
-
-def _separar_de_kiosko(desglose: dict, por_metodo: dict) -> dict:
-    """
-    Las claves de resumen_turno_actual que separan Impresiones y Trámites de
-    Kiosko (ver ahí), a partir del desglose del turno y de
-    turnos_ventas_repo._aparte_por_metodo. Se redondea cada parte una sola vez
-    y Kiosko sale por resta, así los tres renglones suman exactamente lo que
-    dice Kiosko en el cierre, al centavo.
-    """
-    resultado = {}
-    resto = {"efectivo": desglose["kiosko_efectivo"], "digital": desglose["kiosko_digital"]}
-    for linea in _LINEAS_APARTE:
-        total = round(por_metodo[linea][dominio.PAGO_EFECTIVO] + por_metodo[linea][dominio.PAGO_DIGITAL], 2)
-        efectivo = round(por_metodo[linea][dominio.PAGO_EFECTIVO], 2)
-        digital = round(total - efectivo, 2)
-        resultado[linea] = total
-        resultado[f"{linea}_efectivo"] = efectivo
-        resultado[f"{linea}_digital"] = digital
-        resto["efectivo"] -= efectivo
-        resto["digital"] -= digital
-    resultado["kiosko_solo_efectivo"] = round(resto["efectivo"], 2)
-    resultado["kiosko_solo_digital"] = round(resto["digital"], 2)
-    return resultado
 
 
 def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):

@@ -19,7 +19,8 @@ from datetime import datetime
 
 from database import conexion_db
 from repositories import cajas_repo, usuarios_repo
-from turnos import fin_del_turno
+from repositories.turnos_ventas_repo import _aparte_por_metodo, _separar_de_kiosko
+from turnos import etiqueta_turno, fin_del_turno
 
 
 # Desde cuándo cuenta la ventana del primer turno de la historia (todavía no
@@ -71,6 +72,9 @@ def _datos_de_la_caja(conexion, cierre) -> dict:
     - "cierre_forzoso": la cerró el programa solo.
     - "abierta_en", "cambio_esperado", "cambio_contado" y "relevos": la
       apertura y los relevos de la caja (vacío si no hay caja).
+    - "cambio_inicial": con cuánto cambio arrancó (cajas_repo.cambio_inicial);
+      sin caja, el Cambio Fijo que tenía el cierre. Es el "Cambio Fijo" que
+      muestra la pantalla Cierre de Turno.
     - "minutos_despues_del_fin": ver _minutos_despues_del_fin.
     """
     caja = cajas_repo._caja_del_cierre(conexion, cierre["id"])
@@ -83,6 +87,7 @@ def _datos_de_la_caja(conexion, cierre) -> dict:
             "caja_numero": None, "responsable": quien_cerro, "responsables": [quien_cerro],
             "cerrada_en_ausencia": False, "cierre_forzoso": False,
             "abierta_en": None, "cambio_esperado": None, "cambio_contado": None, "relevos": [],
+            "cambio_inicial": cierre["fondo_cambio"],
         })
         return datos
 
@@ -101,8 +106,39 @@ def _datos_de_la_caja(conexion, cierre) -> dict:
         "cambio_esperado": caja["cambio_esperado"],
         "cambio_contado": caja["cambio_contado"],
         "relevos": relevos,
+        "cambio_inicial": cajas_repo.cambio_inicial(caja),
     })
     return datos
+
+
+def _resumen_del_cierre(conexion, cierre, desde: str, caja: dict) -> dict:
+    """
+    Un cierre ya hecho con las mismas claves que turnos_repo.resumen_turno_actual:
+    lo que mostraba la pantalla Cierre de Turno al cerrarlo, para verlo igual
+    desde Control de Cierres, sea un cierre común, forzoso o en ausencia (pedido
+    del dueño, 2026-10-20: el forzoso lo hace el programa solo y nadie veía ese
+    resumen). `caja` es lo de _datos_de_la_caja.
+
+    Casi todo sale tal cual de lo guardado en el cierre (efectivo, digital y cada
+    negocio): son los mismos números con que se cerró. Lo único que se recalcula
+    es cuánto de Kiosko fue impresiones y trámites (no se guarda aparte), con
+    las ventas de su ventana contadas como estaban al cerrar (ver
+    turnos_ventas_repo._condicion_vigente).
+    """
+    guardado = dict(cierre)
+    por_metodo = _aparte_por_metodo(conexion, desde, cierre["fecha_cierre"], cierre_grabado=True)
+    return {
+        **guardado,
+        **_separar_de_kiosko(guardado, por_metodo),
+        "turno_actual": cierre["turno"],
+        "turno_actual_label": etiqueta_turno(cierre["fecha"], cierre["turno"]),
+        "ventas_total": round(cierre["ventas_efectivo"] + cierre["ventas_digital"], 2),
+        "cambio_inicial": caja["cambio_inicial"],
+        "caja_numero": caja["caja_numero"],
+        "responsable": caja["responsable"],
+        "desde": desde,
+        "hasta": cierre["fecha_cierre"],
+    }
 
 
 def listar_cierres(limite: int = 100) -> list:
@@ -144,8 +180,10 @@ def detalle_cierre(cierre_id: int):
     (mismo criterio que Consulta de Ventas), nunca se ocultan.
 
     Cada venta trae "cargada_por_nombre" si la cobró otra persona (el Admin)
-    a nombre de la responsable. Además devuelve "caja" (ver _datos_de_la_caja)
-    y "verificaciones" (todos los conteos del sobre, del primero al último).
+    a nombre de la responsable. Además devuelve "caja" (ver _datos_de_la_caja),
+    "verificaciones" (todos los conteos del sobre, del primero al último) y
+    "resumen": el cierre como lo mostraba la pantalla Cierre de Turno (ver
+    _resumen_del_cierre).
     """
     with conexion_db() as conexion:
         cierre = _cierre_o_error(conexion, cierre_id)
@@ -179,8 +217,12 @@ def detalle_cierre(cierre_id: int):
             """,
             (cierre_id,),
         ).fetchall()
+        resumen = _resumen_del_cierre(conexion, cierre, desde, caja)
 
-    return {"cierre": cierre, "desde": desde, "ventas": ventas, "caja": caja, "verificaciones": verificaciones}
+    return {
+        "cierre": cierre, "desde": desde, "ventas": ventas, "caja": caja, "verificaciones": verificaciones,
+        "resumen": resumen,
+    }
 
 
 def verificar_cierre(cierre_id: int, monto_contado: float, usuario_admin_id: int):

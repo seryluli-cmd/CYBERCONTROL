@@ -6,10 +6,11 @@ Las pantallas para controlar los cierres después (Admin, o una Empleada con
 - ControlCierresWindow: historial de cierres (uno por caja cerrada) con
   los totales de cada sobre, y para cargar lo que realmente se contó (solo
   el Admin).
-- DialogoDetalleCierre: el detalle de un cierre puntual -- venta por
-  venta (ver turnos_repo.detalle_cierre), para entender cómo se llegó a
-  esos totales sin tener que ir a buscarlas por separado en Consulta de
-  Ventas.
+- DialogoDetalleCierre: el detalle de un cierre puntual -- el cierre como
+  lo mostraba la pantalla Cierre de Turno (también el forzoso, que nadie
+  vio) y venta por venta (ver turnos_repo.detalle_cierre), para entender
+  cómo se llegó a esos totales sin tener que ir a buscarlas por separado en
+  Consulta de Ventas.
 
 Se separaron de caja_window.py el 2026-10-18, cuando las cajas con número le
 sumaron columnas (caja, responsable, apertura, cómo se cerró) y ese archivo
@@ -25,10 +26,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 import dominio
-from turnos import MINUTOS_AVISO_ANTES_DEL_FIN, etiqueta_turno
+from turnos import MINUTOS_AVISO_ANTES_DEL_FIN, MINUTOS_PARA_CIERRE_FORZOSO, etiqueta_turno
 from repositories import turnos_repo
 from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta
 from ui.ingreso_caja import texto_de_la_diferencia
+from ui.tarjeta_cierre import TarjetaCierreDeTurno
 from ui.utils import (
     formato_pesos, mostrar_error, manejar_errores, aplicar_clase, sin_boton_por_defecto, crear_tabla,
     mostrar_columna_entera,
@@ -65,6 +67,22 @@ def texto_del_cierre(cierre) -> str:
     if minutos < -MINUTOS_AVISO_ANTES_DEL_FIN:
         return f"{hora} ({-minutos} min antes)"
     return f"A horario {hora}"
+
+
+def nota_del_cierre(cierre) -> str:
+    """
+    Lo que va abajo de la tarjeta del Cierre de Turno en el detalle de un cierre
+    ya hecho, en vez de "Retirá el efectivo...": cómo se cerró. `cierre` es una
+    fila de turnos_repo.listar_cierres.
+    """
+    if cierre["cierre_forzoso"]:
+        return (
+            f"Se cerró sola a las {_hora(cierre['fecha_cierre'])}: nadie la cerró y pasaron "
+            f"{MINUTOS_PARA_CIERRE_FORZOSO} minutos del fin del turno (cierre forzoso)."
+        )
+    if cierre["cerrada_en_ausencia"]:
+        return f"La cerró {texto_del_cierre(cierre)}."
+    return f"La cerró {cierre['empleada']}: {texto_del_cierre(cierre)}."
 
 
 def texto_de_la_apertura(cierre) -> str:
@@ -270,14 +288,19 @@ class ControlCierresWindow(QDialog):
 
 class DialogoDetalleCierre(VentanaConDetalleDeVenta):
     """
-    Detalle de un cierre puntual: la lista de ventas que cayeron dentro
-    de ese turno (ver turnos_repo.detalle_cierre), para que el Admin
-    pueda ver venta por venta cómo se llegó al total del sobre en vez de
-    confiar solo en los números agregados de la tabla de Control de
-    Cierres. Mismo patrón maestro-detalle que ConsultaVentasWindow: al
-    seleccionar una venta, abajo aparecen sus artículos -- una venta sin
-    detalle real (bono de PC, bono de la PlayStation 5, carga de saldo de
-    Miembro) simplemente deja esa tabla vacía, no hace falta un caso especial.
+    Detalle de un cierre puntual. A la izquierda, el cierre tal como lo
+    mostraba la pantalla Cierre de Turno (la misma TarjetaCierreDeTurno, con
+    los números de turnos_repo.detalle_cierre()["resumen"]), sea un cierre
+    común, forzoso o en ausencia: pedido del dueño (2026-10-20), porque el
+    cierre forzoso lo hace el programa solo y nadie veía ese resumen. Abajo de
+    la tarjeta, en vez de "Retirá el efectivo...", dice cómo se cerró.
+
+    A la derecha, la lista de ventas que cayeron dentro de ese turno, para
+    que el Admin pueda ver venta por venta cómo se llegó al total del sobre.
+    Mismo patrón maestro-detalle que ConsultaVentasWindow: al seleccionar una
+    venta, abajo aparecen sus artículos -- una venta sin detalle real (bono de
+    PC, bono de la PlayStation 5, carga de saldo de Miembro) simplemente deja
+    esa tabla vacía, no hace falta un caso especial.
     """
 
     def __init__(self, cierre, parent=None):
@@ -286,11 +309,20 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
         self.setWindowTitle(
             f"Detalle — Turno {etiqueta_turno(cierre['fecha'], cierre['turno'])} del {cierre['fecha']}"
         )
-        self.resize(820, 560)
+        self.resize(1280, 600)
         self._armar_interfaz()
         self._cargar()
 
     def _armar_interfaz(self):
+        # La tarjeta va a la izquierda con el ancho de la pantalla Cierre de Turno
+        # (460) y no arriba: arriba, con la lista de ventas debajo, la ventana no
+        # entraba en una pantalla común.
+        self.tarjeta = TarjetaCierreDeTurno()
+        self.tarjeta.setFixedWidth(440)
+        columna_tarjeta = QVBoxLayout()
+        columna_tarjeta.addWidget(self.tarjeta)
+        columna_tarjeta.addStretch()
+
         self.encabezado = QLabel()
         self.encabezado.setWordWrap(True)
         self.encabezado.setStyleSheet("font-weight: 600;")
@@ -309,14 +341,22 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
         botones.addStretch()
         botones.addWidget(boton_cerrar)
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.encabezado)
-        layout.addWidget(QLabel("Ventas del turno:"))
-        layout.addWidget(self.tabla)
-        layout.addWidget(QLabel(
+        columna_ventas = QVBoxLayout()
+        columna_ventas.addWidget(self.encabezado)
+        columna_ventas.addWidget(QLabel("Ventas del turno:"))
+        columna_ventas.addWidget(self.tabla)
+        columna_ventas.addWidget(QLabel(
             "Artículos de la venta seleccionada (vacío si es bono de PC, de PlayStation o carga de saldo):"
         ))
-        layout.addWidget(self.tabla_detalle)
+        columna_ventas.addWidget(self.tabla_detalle)
+
+        columnas = QHBoxLayout()
+        columnas.addLayout(columna_tarjeta)
+        columnas.addSpacing(16)
+        columnas.addLayout(columna_ventas, 1)
+
+        layout = QVBoxLayout()
+        layout.addLayout(columnas)
         layout.addLayout(botones)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
@@ -325,6 +365,9 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
     def _cargar(self):
         resultado = turnos_repo.detalle_cierre(self.cierre["id"])
         self.ventas = resultado["ventas"]
+        self.tarjeta.mostrar(resultado["resumen"])
+        caja = {**self.cierre, **resultado["caja"]}
+        self.tarjeta.poner_nota(nota_del_cierre(caja), alerta=caja["cierre_forzoso"] or caja["cerrada_en_ausencia"])
         self.encabezado.setText(self._texto_del_encabezado(resultado))
 
         self.tabla.setRowCount(0)
@@ -351,14 +394,14 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
 
     def _texto_del_encabezado(self, resultado) -> str:
         """La caja del cierre en pocas líneas: quién la tuvo, cómo se abrió, los
-        relevos, cómo se cerró, lo que había que retirar y los conteos del sobre."""
+        relevos y los conteos del sobre. Lo que había que retirar y cómo se cerró
+        ya están en la tarjeta del Cierre de Turno, al lado."""
         caja = resultado["caja"]
         # "desde" y "fecha_cierre" son ISO "YYYY-MM-DDTHH:MM:SS" -- solo se
         # muestra la hora acá, la fecha ya está en el título.
         lineas = [
             f"Responsable: {' → '.join(caja['responsables'])}   ·   "
-            f"Rango: {resultado['desde'][11:16]} → {self.cierre['fecha_cierre'][11:16]}   ·   "
-            f"A retirar: {formato_pesos(self.cierre['monto_a_retirar'])}"
+            f"Rango: {resultado['desde'][11:16]} → {self.cierre['fecha_cierre'][11:16]}"
         ]
         if caja["caja_numero"] is not None:
             lineas.append(f"Caja Nº {caja['caja_numero']}   ·   Abrió: {texto_de_la_apertura(caja)}")
@@ -369,7 +412,6 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
                     f"(tenía que haber {formato_pesos(relevo['monto_esperado'])}: "
                     f"{texto_de_la_diferencia(relevo['diferencia'])})"
                 )
-        lineas.append(f"Cierre: {texto_del_cierre({**self.cierre, **caja})}")
         for verificacion in resultado["verificaciones"]:
             lineas.append(
                 f"Sobre contado el {verificacion['fecha'][8:10]}/{verificacion['fecha'][5:7]} "

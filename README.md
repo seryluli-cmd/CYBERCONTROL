@@ -338,7 +338,9 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   vendido en efectivo (el cambio con que arrancó la caja se queda en el cajón
   para el turno siguiente; `cambio_que_queda`). Si quien cierra no es la
   responsable de la caja (el Admin), queda anotado como cerrada en su ausencia. Esta pantalla es el resumen que las empleadas le
-  mandan al dueño. En pantalla el fondo de cambio se llama **"Cambio Fijo"**
+  mandan al dueño; se dibuja con `ui/tarjeta_cierre.py` (`TarjetaCierreDeTurno`),
+  la misma tarjeta con que "Ver Detalle" de Control de Cierres muestra después
+  cada cierre ya hecho, también el forzoso. En pantalla el fondo de cambio se llama **"Cambio Fijo"**
   en todos lados (pedido del dueño; por dentro sigue siendo `fondo_cambio`).
   Muestra Efectivo, Digital y **TOTAL** (`resumen["ventas_total"]`: todo lo
   cobrado, sin sumar aparte impresiones ni trámites). **Kiosko, Impresiones
@@ -462,8 +464,12 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   rojo si `|diferencia| > 0.01`. "Cargar monto contado" (visible solo para el
   Admin; el repo también lo exige) abre `QInputDialog` y llama a
   `turnos_repo.verificar_cierre`, que guarda cada conteo en
-  `verificaciones_cierre`. El detalle de un cierre muestra la caja, los relevos,
-  los conteos del sobre y, en cada venta, quién la cargó si fue el Admin. Arriba de la
+  `verificaciones_cierre`. El detalle de un cierre muestra, a la izquierda, el
+  cierre tal como lo mostraba la pantalla Cierre de Turno (la misma tarjeta,
+  `ui/tarjeta_cierre.py`, con `detalle_cierre()["resumen"]`; también el cierre
+  forzoso, que no vio nadie) y abajo cómo se cerró (en rojo si fue forzoso o en
+  ausencia); a la derecha, la caja, los relevos, los conteos del sobre y la lista
+  de ventas con, en cada una, quién la cargó si fue el Admin. Arriba de la
   tabla, un aviso rojo (oculto si no hay nada que avisar) lista los
   turnos del mes en curso ya vencidos sin cerrar, vía
   `turnos_repo.turnos_faltantes()`.

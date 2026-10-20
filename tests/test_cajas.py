@@ -19,7 +19,8 @@ from unittest import mock
 import dominio
 from database import conexion_db
 from repositories import (
-    articulos_repo, compras_repo, limpieza_repo, relevo_repo, turnos_repo, usuarios_repo, ventas_repo,
+    articulos_repo, compras_repo, limpieza_repo, relevo_repo, tramites_repo, turnos_repo, usuarios_repo,
+    ventas_repo,
 )
 from base import BaseConBaseTemporal
 
@@ -362,6 +363,116 @@ class TestSobreLoCargaSoloElAdmin(_BaseDeCajas):
         self.assertEqual([v["diferencia"] for v in detalle["verificaciones"]], [-100.0, 0.0])
         guardado = turnos_repo.listar_cierres()[0]
         self.assertEqual((guardado["monto_contado"], guardado["diferencia"]), (1000.0, 0.0))
+
+
+# Lo que muestra la tarjeta del Cierre de Turno (ui/tarjeta_cierre.py).
+_LO_QUE_SE_VE_AL_CERRAR = (
+    "turno_actual_label", "caja_numero", "responsable", "cambio_inicial",
+    "ventas_efectivo", "ventas_digital", "ventas_total",
+    "kiosko_solo_efectivo", "kiosko_solo_digital", "impresiones_efectivo", "impresiones_digital",
+    "tramites_efectivo", "tramites_digital", "pcs_efectivo", "pcs_digital",
+    "playstation_efectivo", "playstation_digital",
+)
+
+
+class TestUnCierreHechoSeVeComoAlCerrarlo(_BaseDeCajas):
+    """
+    Pedido del dueño (2026-10-20): en Control de Cierres cada cierre se ve como
+    la pantalla Cierre de Turno al cerrarlo, también el forzoso (lo hace el
+    programa solo y nadie veía ese resumen). detalle_cierre()["resumen"] tiene
+    que dar lo mismo que resumen_turno_actual() justo antes de cerrar.
+    """
+
+    def setUp(self):
+        super().setUp()
+        articulos_repo.crear_articulo(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None, 150.0, 0.0, 0)
+        self.tramite_id = tramites_repo.crear_tramite("Boleta de luz")
+
+    def _vender_impresiones(self, momento, cantidad=3):
+        with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = momento
+            return ventas_repo.confirmar_venta(
+                self.lucia_id,
+                [{"codigo": dominio.CODIGO_ARTICULO_IMPRESIONES, "descripcion": "IMPRESIONES",
+                  "cantidad": cantidad, "precio_unitario": 150.0}],
+                [{"metodo": dominio.PAGO_EFECTIVO, "monto": cantidad * 150.0}],
+            )
+
+    def _turno_de_lucia(self):
+        """Caja de Lucía (contó $500 de menos) con un poco de todo: kiosko en
+        efectivo y digital, impresiones, un trámite y un bono de PC."""
+        relevo_repo.abrir_caja(self.lucia_id, 49500.0, _a_las(5, 55))
+        self._vender(self.lucia_id, _a_las(8), 1000.0)
+        self._vender(self.lucia_id, _a_las(9), 600.0, dominio.PAGO_DIGITAL)
+        self.venta_impresiones = self._vender_impresiones(_a_las(10))          # $450 en efectivo
+        with mock.patch("repositories.tramites_repo.datetime") as datetime_mock:
+            datetime_mock.now.return_value = _a_las(11)
+            tramites_repo.registrar_tramite(
+                self.lucia_id, self.tramite_id, 2500.0, [{"metodo": dominio.PAGO_DIGITAL, "monto": 2500.0}]
+            )
+        with conexion_db() as conexion:
+            ventas_repo.registrar_venta_sin_detalle(
+                conexion, self.lucia_id, 3000.0, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 3000.0}],
+                dominio.ORIGEN_ALQUILER_PCS, _a_las(12),
+            )
+
+    def _en_pantalla_al_cerrar(self, momento):
+        """Lo que mostraba la pantalla Cierre de Turno a esa hora."""
+        with conexion_db() as conexion:
+            return turnos_repo._resumen_en_curso(conexion, momento)
+
+    def _se_ve(self, resumen):
+        return {clave: resumen[clave] for clave in _LO_QUE_SE_VE_AL_CERRAR}
+
+    def test_un_cierre_comun_se_ve_igual_que_al_cerrarlo(self):
+        self._turno_de_lucia()
+        al_cerrar = self._en_pantalla_al_cerrar(_a_las(14, 0))
+
+        cierre = turnos_repo.cerrar_turno(self.lucia_id, ahora_dt=_a_las(14, 0))
+        resumen = turnos_repo.detalle_cierre(cierre["id"])["resumen"]
+
+        self.assertEqual(self._se_ve(resumen), self._se_ve(al_cerrar))
+        self.assertEqual(
+            (resumen["cambio_inicial"], resumen["kiosko_solo_efectivo"], resumen["kiosko_solo_digital"],
+             resumen["impresiones_efectivo"], resumen["tramites_digital"], resumen["pcs_efectivo"],
+             resumen["ventas_total"]),
+            (49500.0, 1000.0, 600.0, 450.0, 2500.0, 3000.0, 7550.0),
+        )
+
+    def test_un_cierre_forzoso_se_ve_igual_que_si_lo_hubiera_cerrado_ella(self):
+        self._turno_de_lucia()
+        al_cerrar = self._en_pantalla_al_cerrar(_a_las(14, 15))
+
+        cierre = relevo_repo.cierre_forzoso_si_corresponde(_a_las(14, 15))
+        resumen = turnos_repo.detalle_cierre(cierre["id"])["resumen"]
+
+        self.assertTrue(cierre["forzoso"])
+        self.assertEqual(self._se_ve(resumen), self._se_ve(al_cerrar))
+        self.assertEqual(
+            (resumen["turno_actual_label"], resumen["caja_numero"], resumen["responsable"]),
+            ("Mañana", 1, "Lucia"),
+        )
+
+    def test_una_venta_anulada_despues_del_cierre_se_sigue_viendo_como_al_cerrar(self):
+        # La plata del cierre es una foto: la venta anulada sigue sumada en el Kiosko guardado,
+        # así que tiene que seguir figurando como impresiones (y no pasar a Kiosko).
+        self._turno_de_lucia()
+        al_cerrar = self._en_pantalla_al_cerrar(_a_las(14, 0))
+        cierre = turnos_repo.cerrar_turno(self.lucia_id, ahora_dt=_a_las(14, 0))
+
+        ventas_repo.anular_venta(self.venta_impresiones, self.admin_id, "se cobró de más")
+        resumen = turnos_repo.detalle_cierre(cierre["id"])["resumen"]
+
+        self.assertEqual(self._se_ve(resumen), self._se_ve(al_cerrar))
+
+    def test_un_cierre_sin_caja_muestra_el_cambio_fijo(self):
+        self._vender(self.admin_id, _a_las(2, 36), 1500.0)   # el Admin, sin nadie en el mostrador
+        cierre = relevo_repo.cerrar_para_entrar(self.lucia_id, relevo_repo.SITUACION_VENTAS_SIN_CAJA, _a_las(5, 55))
+
+        resumen = turnos_repo.detalle_cierre(cierre["id"])["resumen"]
+
+        self.assertIsNone(resumen["caja_numero"])
+        self.assertEqual((resumen["cambio_inicial"], resumen["ventas_efectivo"]), (50000.0, 1500.0))
 
 
 class TestLimpiarBaseConCajas(_BaseDeCajas):
