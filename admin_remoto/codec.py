@@ -21,7 +21,7 @@ no le hacen falta y no tienen por qué andar por la red.
 """
 
 import base64
-import sqlite3
+from motor_sql import sqlite3
 from datetime import date, datetime
 
 # Columnas que nunca salen del mostrador, aunque una función devuelva la fila

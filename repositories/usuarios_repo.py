@@ -8,7 +8,7 @@ escribir SQL directamente, así si algún día cambia cómo se guardan los
 usuarios, solo hay que tocar este archivo.
 """
 
-import sqlite3
+from motor_sql import sqlite3
 from datetime import datetime
 import dominio
 from database import conexion_db, hash_clave, verificar_clave

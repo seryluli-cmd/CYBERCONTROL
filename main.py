@@ -32,7 +32,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
 from admin_remoto import cliente as cliente_remoto, modo as modo_remoto
-from database import inicializar_base_de_datos
+from database import ErrorDeCifrado, inicializar_base_de_datos
 from repositories import copias_repo
 from servidor_red import iniciar_servidor
 from ui.ingreso_caja import resolver_caja_al_entrar
@@ -772,7 +772,17 @@ def main():
         Aplicacion(conexion_remota)
         sys.exit(app.exec())
 
-    inicializar_base_de_datos()
+    try:
+        inicializar_base_de_datos()
+    except ErrorDeCifrado as error:
+        # La base está cifrada con otra clave, o no se la pudo cifrar: no se sigue ni se crea
+        # una base vacía al lado (se perderían de vista las ventas). Ver database.preparar_cifrado.
+        QMessageBox.critical(
+            None, "No se puede abrir la base de datos",
+            f"{error}\n\nLa base de datos no se modificó y no se perdió nada. "
+            "Cerrá el programa y avisá a quien lo mantiene."
+        )
+        sys.exit(1)
     copias_repo.iniciar_copias_automaticas()
     # Corre todo el tiempo que Kiosko esté abierto, sin importar quién
     # esté logueado -- es lo que consultan las PCs bloqueadas del local

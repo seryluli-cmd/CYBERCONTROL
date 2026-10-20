@@ -23,7 +23,7 @@ import ast
 import json
 import os
 import socket
-import sqlite3
+from motor_sql import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -221,7 +221,7 @@ class TestMigracionDesdeIp(unittest.TestCase):
             database.inicializar_base_de_datos()
             database.inicializar_base_de_datos()  # dos veces: no pasa nada
 
-        conexion = sqlite3.connect(ruta)
+        conexion = database.abrir_archivo(ruta)
         columnas = [fila[1] for fila in conexion.execute("PRAGMA table_info(sesiones)")]
         filas = conexion.execute("SELECT usuario_id, desde_ip FROM sesiones").fetchall()
         conexion.close()
@@ -613,7 +613,7 @@ class TestCopiaRemota(unittest.TestCase):
         cls._carpeta_local.cleanup()
 
     def _base_del_mostrador(self):
-        conexion = sqlite3.connect(f"file:{self.ruta_base_mostrador}?mode=ro", uri=True)
+        conexion = database.abrir_archivo(self.ruta_base_mostrador, solo_lectura=True)
         self.addCleanup(conexion.close)
         conexion.row_factory = sqlite3.Row
         return conexion

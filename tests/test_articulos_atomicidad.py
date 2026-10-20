@@ -1,6 +1,6 @@
 """Una marca creada al guardar un artículo debe compartir su transacción."""
 
-import sqlite3
+from motor_sql import sqlite3
 
 from base import BaseConBaseTemporal
 from database import conexion_db

@@ -17,10 +17,12 @@ función, ir a buscarla puntualmente (está indexada acá por nombre y archivo).
 - **Python 3.10+**, sin build ni empaquetado en desarrollo (se corre
   directo con `python main.py`).
 - **PySide6** (Qt) para toda la UI — ventanas/diálogos, sin HTML/web.
-- **SQLite** (`sqlite3` de la librería estándar) como única base de datos,
-  un solo archivo `data/kiosko.db`. Todo acceso pasa por el context manager
-  `conexion_db()` en `database.py` (commit al salir bien, rollback si hay
-  excepción, siempre cierra) y con `PRAGMA foreign_keys = ON`.
+- **SQLite cifrado con SQLCipher** (módulo `sqlcipher3`, elegido en
+  `motor_sql.py`; si no está instalado cae al `sqlite3` común, que no cifra)
+  como única base de datos, un solo archivo `data/kiosko.db`. Todo acceso
+  pasa por el context manager `conexion_db()` en `database.py` (commit al
+  salir bien, rollback si hay excepción, siempre cierra) y con
+  `PRAGMA foreign_keys = ON`. Ver "La base va cifrada" más abajo.
 - **PyInstaller** (`Kiosko.spec`) para armar el `.exe` final — empaqueta
   `main.py` + `assets/`; la carpeta `data/` (con la base) **no** se
   empaqueta, queda al lado del `.exe` real (`database.py` detecta
@@ -563,9 +565,41 @@ funcional desde el 2026-10-19: Miembros y la PlayStation 5 abren para
 cualquier operador logueado, igual que la grilla de PCs). Usuarios,
 Configuración ADMIN y Anular Venta permanecen exclusivos del Admin.
 
-⚠️ No hay cifrado de la base ni protección contra acceso directo al
-archivo `data/kiosko.db` con otra herramienta — la seguridad es a nivel de
-la app (login), no del archivo.
+### La base va cifrada (pedido del dueño, 2026-10-19)
+
+El archivo `data/kiosko.db` —y todas sus copias de seguridad— está cifrado con
+SQLCipher (AES-256): quien lo copie (de esta PC, de la carpeta compartida de las
+copias, de un pendrive) no lo puede abrir con DB Browser ni con nada, ni ve los
+nombres o DNI de los socios en el archivo. El programa le pone la clave solo, sin
+pedírsela a nadie.
+
+- **La clave** son 256 bits al azar y vive en `clave_base.py`, que **no está en git**
+  (el repo es público; `.gitignore` lo ignora). Se guarda en
+  `C:\Users\CyberBIOS\ClaveBaseCyberControl\` y la receta de armado la copia a la
+  carpeta del build: PyInstaller la mete adentro del `CyberBios.exe`. Sin ese
+  archivo el programa corre con la base común, como antes (así andan las pruebas y
+  `python main.py` en una PC de desarrollo). El `.exe` avisa en el armado si falta.
+- **Qué protege y qué no:** protege el ARCHIVO. No protege contra alguien que tenga
+  el `.exe` y sepa desarmarlo (la clave está adentro; mismo trato que la clave de
+  los Clientes PC). Las contraseñas de los usuarios siguen hasheadas con sal.
+- **Primer arranque con el `.exe` nuevo:** si la base es común (la de hasta hoy), se
+  cifra sola, con todos sus datos: deja una copia común en
+  `data/backups/antes_de_cifrar_*.db`, escribe la versión cifrada aparte, la abre
+  con la clave y la compara con la original (tablas, cantidad de filas, esquema,
+  números automáticos, integridad) y recién ahí la reemplaza. Si algo falla, la
+  base queda como estaba y el programa avisa. Código: `database.preparar_cifrado`.
+- **Copias de seguridad:** salen cifradas con la misma clave (`_backup_consistente`).
+  Las copias que ya existían (`data/backups`, `D:\BACKUPS`, la carpeta compartida)
+  quedan comunes hasta que se borren: no se tocan solas.
+- **Si se pierde la clave** (y todos los `.exe` armados con ella) la base y las
+  copias no se pueden abrir nunca más. Hay que guardar una copia de `clave_base.py`
+  aparte (pendrive, administrador de claves).
+- **Para tocar la base desde código** nunca `sqlite3.connect(...)` a mano:
+  `database.abrir_archivo(ruta)`. Y los repos importan `from motor_sql import
+  sqlite3` (los errores de `sqlcipher3` son otras clases que los de `sqlite3`).
+- **Pruebas:** `python -m unittest discover tests` (base común) y, para correr TODO
+  con la base cifrada, `set CYBERCONTROL_PRUEBAS_CIFRADAS=1` antes
+  (`tests/cifrado_de_prueba.py`). Las propias del cifrado: `tests/test_base_cifrada.py`.
 
 ## Manejo de errores y logging
 

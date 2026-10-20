@@ -30,7 +30,7 @@ pedir (`tiene_dni`). Un DNI no puede estar en dos cuentas activas.
 """
 
 import re
-import sqlite3
+from motor_sql import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 import dominio

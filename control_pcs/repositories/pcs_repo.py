@@ -32,7 +32,7 @@ propio catálogo de bonos en pcstream_repo.py.
 """
 
 import re
-import sqlite3
+from motor_sql import sqlite3
 from datetime import datetime
 import dominio
 from database import conexion_db

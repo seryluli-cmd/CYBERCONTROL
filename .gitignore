@@ -8,3 +8,6 @@ dist/
 *.log
 # El .exe armado se copia al lado de data/ para que use la base real; no va a git.
 *.exe
+# La clave con que se cifra la base de datos. NUNCA en git (el repo es público): vive en
+# ~/ClaveBaseCyberControl/ y la receta de armado la copia a la carpeta del build.
+clave_base.py

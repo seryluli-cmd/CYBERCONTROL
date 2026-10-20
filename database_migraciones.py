@@ -1,6 +1,6 @@
 """Migraciones idempotentes de bases SQLite existentes."""
 
-import sqlite3
+from motor_sql import sqlite3
 
 import dominio
 import database
