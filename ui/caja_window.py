@@ -52,22 +52,6 @@ def _mostrar_desglose_por_negocio(pantalla, resumen):
     )
 
 
-def _texto_nota_caja(resumen) -> str:
-    """El texto de abajo de la pantalla Caja: la Suma Total (Efectivo +
-    Digital, SIN el Cambio -- el dueño pidió dejar eso bien claro porque a
-    simple vista se podía confundir con la Caja Actual, que sí lo incluye),
-    en negrita y azul. Es HTML (QLabel con rich text) solo para poder
-    remarcarla así. Antes seguía acá la aclaración sobre qué suma la Caja
-    Actual y qué no incluye Kiosko; el dueño pidió sacarla (2026-10-19)."""
-    suma_total = resumen["ventas_efectivo"] + resumen["ventas_digital"]
-    return (
-        '<span style="color: #2F6FED; font-weight: bold; font-style: normal;">'
-        f"Suma Total: Efectivo + Digital = {formato_pesos(suma_total)}<br>"
-        "(sin tener en cuenta el Cambio)."
-        "</span>"
-    )
-
-
 def _titulo_de_la_caja(resumen) -> str:
     """"Caja Nº 12 de Lucía · " si hay una caja abierta (ver
     turnos_repo.resumen_turno_actual); si no, nada."""
@@ -155,24 +139,37 @@ class CajaWindow(_PantallaDeCaja):
         return True
 
     def _armar_interfaz(self):
+        # Parecida al Cierre de Turno (pedido del dueño, 2026-10-20: eligió la opción 1 entre
+        # tres maquetas): mismos renglones y orden, y al final TOTAL | CAJA ACTUAL. Se sacó el
+        # cartel azul de "Suma Total": el TOTAL ya está en la última línea.
         layout_fondo, self.valor_fondo = _etiqueta_dato("CAJA INICIAL (Cambio Fijo)", "")
         layout_actual, self.valor_actual = _etiqueta_dato(
             "CAJA ACTUAL (solo efectivo)", "",
             color_titulo="#000000", negrita_titulo=True, color_valor="#2FB457",
         )
-        layout_ventas, self.valor_ventas = _etiqueta_dato("VENTAS (efectivo)", "")
-        layout_digital, self.valor_digital = _etiqueta_dato("VENTAS POR MEDIO DIGITAL", "")
-        layout_kiosko, self.valor_kiosko = _etiqueta_dato(
-            f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO]}", ""
+        # Debajo del monto, para que no se confunda con el TOTAL (la Caja Actual SÍ suma el
+        # Cambio, el TOTAL no): mismo gris itálico que la nota del Cierre de Turno.
+        aclaracion = QLabel("Incluye el cambio")
+        aclaracion.setStyleSheet("color: gray; font-style: italic;")
+        layout_actual.addWidget(aclaracion)
+        layout_ventas, self.valor_ventas = _etiqueta_dato("Efectivo", "")
+        layout_digital, self.valor_digital = _etiqueta_dato("Digital", "")
+        layout_total, self.valor_total = _etiqueta_dato(
+            "TOTAL (EFECTIVO + DIGITAL)", "", destacado=True, color_titulo="#000000", negrita_titulo=True,
         )
-        layout_impresiones, self.valor_impresiones = _etiqueta_dato("VENTAS — Impresiones", "")
-        layout_tramites, self.valor_tramites = _etiqueta_dato("VENTAS — Trámites", "")
-        layout_pcs, self.valor_pcs = _etiqueta_dato(
-            f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS]}", ""
-        )
+        layout_kiosko, self.valor_kiosko = _etiqueta_dato(dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO], "")
+        layout_impresiones, self.valor_impresiones = _etiqueta_dato("Impresiones", "")
+        layout_tramites, self.valor_tramites = _etiqueta_dato("Trámites", "")
+        layout_pcs, self.valor_pcs = _etiqueta_dato(dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS], "")
         layout_playstation, self.valor_playstation = _etiqueta_dato(
-            f"VENTAS — {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION]}", ""
+            dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION], ""
         )
+        # La última línea con más aire arriba, igual que en el Cierre de Turno (ver ahí).
+        for ultima_linea in (layout_total, layout_actual):
+            ultima_linea.setContentsMargins(0, 28, 0, 0)
+        # El lado de la Caja Actual tiene un renglón más ("Incluye el cambio"): sin esto el TOTAL se
+        # estira y su monto queda más abajo que el de al lado.
+        layout_total.addStretch()
 
         boton_refrescar = QPushButton("Actualizar")
         boton_refrescar.clicked.connect(self._refrescar)
@@ -184,15 +181,14 @@ class CajaWindow(_PantallaDeCaja):
         botones.addWidget(boton_salir)
 
         self._armar_cuerpo(
-            [(layout_fondo, layout_actual), (layout_ventas, layout_digital),
-             (layout_kiosko, layout_impresiones), (layout_tramites, QVBoxLayout()),
-             (layout_pcs, layout_playstation)],
-            "",  # se completa en _refrescar con _texto_nota_caja
+            [(layout_fondo, QVBoxLayout()), (layout_ventas, layout_digital),
+             (layout_kiosko, layout_impresiones), (layout_tramites, layout_playstation),
+             (layout_pcs, QVBoxLayout()),
+             (layout_total, layout_actual)],
+            "",  # esta pantalla no lleva nota abajo
             botones,
         )
-        # Letra un 15% más grande que el resto de la pantalla (13px -> 15px) para
-        # que la Suma Total se note más, pedido del dueño.
-        self.nota.setStyleSheet("font-size: 15px;")
+        self.nota.hide()
 
     @manejar_errores
     def _refrescar(self):
@@ -204,8 +200,8 @@ class CajaWindow(_PantallaDeCaja):
         self.valor_actual.setText(formato_pesos(resumen["caja_actual"]))
         self.valor_ventas.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_digital.setText(formato_pesos(resumen["ventas_digital"]))
+        self.valor_total.setText(formato_pesos(resumen["ventas_total"]))
         _mostrar_desglose_por_negocio(self, resumen)
-        self.nota.setText(_texto_nota_caja(resumen))
 
 
 class CierreTurnoWindow(_PantallaDeCaja):

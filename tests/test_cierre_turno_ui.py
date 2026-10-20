@@ -23,6 +23,7 @@ from PySide6.QtWidgets import QApplication, QLabel  # noqa: E402
 import dominio  # noqa: E402
 from repositories import articulos_repo, usuarios_repo, ventas_repo  # noqa: E402
 from ui.caja_window import CierreTurnoWindow  # noqa: E402
+from ui.utils import formato_pesos  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
@@ -146,6 +147,32 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.assertIn("#000000", titulo.styleSheet())
         self.assertTrue(ventana.valor_total.font().bold())
         self.assertIn("#2F6FED", ventana.valor_total.styleSheet())
+
+    def test_la_pantalla_caja_se_parece_al_cierre_y_aclara_que_la_caja_actual_incluye_el_cambio(self):
+        """Pedido del dueño (2026-10-20): Caja con los mismos renglones que el Cierre de Turno,
+        TOTAL | CAJA ACTUAL al final, sin el cartel azul de "Suma Total", y "Incluye el cambio"
+        debajo del monto de la Caja Actual."""
+        from ui.caja_window import CajaWindow
+
+        self._vender(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", 3, 150.0)  # $450 efectivo
+        ventas_repo.confirmar_venta(
+            self.usuario_id,
+            [{"codigo": "COD9", "descripcion": "Producto", "cantidad": 1, "precio_unitario": 10.0}],
+            [{"metodo": dominio.PAGO_DIGITAL, "monto": 10.0}],
+        )
+        caja = CajaWindow()
+        self.addCleanup(caja.deleteLater)
+        textos = [e.text() for e in caja.findChildren(QLabel)]
+
+        self.assertEqual(caja.valor_ventas.text(), "$ 450,00")
+        self.assertEqual(caja.valor_digital.text(), "$ 10,00")
+        self.assertEqual(caja.valor_total.text(), "$ 460,00")           # efectivo + digital, sin el cambio
+        self.assertEqual(caja.valor_actual.text(), formato_pesos(50000.0 + 450.0))   # el cambio SÍ entra
+        for titulo in ("CAJA INICIAL (Cambio Fijo)", "Efectivo", "Digital", "TOTAL (EFECTIVO + DIGITAL)",
+                       "CAJA ACTUAL (solo efectivo)", "Incluye el cambio"):
+            self.assertIn(titulo, textos)
+        self.assertFalse([t for t in textos if "Suma Total" in t], textos)
+        self.assertTrue(caja.nota.isHidden())
 
     def test_el_aviso_al_cerrar_habla_de_cambio_fijo(self):
         ventana = self._abrir()
