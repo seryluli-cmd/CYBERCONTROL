@@ -548,13 +548,10 @@ class PanelControlPcs(QWidget):
             aviso = (
                 f"Todavía le quedan {formato_tiempo(segundos_restantes)} disponibles a "
                 f"'{estacion['nombre']}'.\n\n¿Cerrar la sesión y reiniciar la PC de todas "
-                "formas? El tiempo no usado no se reintegra."
+                "formas?"
             )
         else:
-            aviso = (
-                f"¿Cerrar la sesión de '{estacion['nombre']}' y reiniciar la PC?\n"
-                "El tiempo que no se llegó a usar no se reintegra."
-            )
+            aviso = f"¿Cerrar la sesión de '{estacion['nombre']}' y reiniciar la PC?"
         if not confirmar(self, "Confirmar", aviso):
             return
         pcs_repo.finalizar_sesion(sesion["id"])

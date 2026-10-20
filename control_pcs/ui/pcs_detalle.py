@@ -378,7 +378,7 @@ class PanelDetalleEstacion(QFrame):
             if segundos_restantes:
                 aviso = (
                     f"Todavía le quedan {formato_tiempo(segundos_restantes)} disponibles a la "
-                    f"{item['nombre']}.\n\n¿Liberarla de todas formas? El tiempo no usado no se reintegra."
+                    f"{item['nombre']}.\n\n¿Liberarla de todas formas?"
                 )
             else:
                 aviso = f"¿Ya les avisaste a los clientes? Se va a liberar la {item['nombre']}."
@@ -390,19 +390,15 @@ class PanelDetalleEstacion(QFrame):
         estacion_nombre = item["estacion"]["nombre"]
         # Caso típico: el cliente pidió un bono de 3hs y se va antes -- el
         # mostrador tiene que poder cerrarle la PC ya mismo aunque le
-        # quede tiempo pago, por eso el aviso deja bien claro cuánto se
-        # está por perder en vez de una advertencia genérica.
+        # quede tiempo pago, por eso el aviso dice cuánto le queda. No dice
+        # nada de reintegros (pedido del dueño, 2026-10-20).
         if segundos_restantes:
             aviso = (
                 f"Todavía le quedan {formato_tiempo(segundos_restantes)} disponibles a "
-                f"'{estacion_nombre}'.\n\n¿Cerrarla de todas formas? El tiempo no usado "
-                "no se reintegra."
+                f"'{estacion_nombre}'.\n\n¿Cerrarla de todas formas?"
             )
         else:
-            aviso = (
-                f"¿Finalizar la sesión de '{estacion_nombre}'? "
-                "El tiempo que no se llegó a usar no se reintegra."
-            )
+            aviso = f"¿Finalizar la sesión de '{estacion_nombre}'?"
         if confirmar(self, "Confirmar", aviso):
             pcs_repo.finalizar_sesion(item["sesion"]["id"])
             self._avisar_cambio()

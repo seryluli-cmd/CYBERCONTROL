@@ -528,5 +528,58 @@ class TestPantallasDeAdmin(_ConPantalla):
         self.assertIs(formulario.repo, pcs_repo)
 
 
+class TestPreguntasAlCerrarSinHablarDeReintegros(_ConPantalla):
+    """Pedido del dueño (2026-10-20): las preguntas para cerrar una sesión o liberar
+    la consola no dicen nada del tiempo no usado (con un socio ni siquiera era
+    cierto: se le devuelven los bloques de 30 min que no usó)."""
+
+    def _pregunta(self, ruta_confirmar, accion):
+        with mock.patch(ruta_confirmar, return_value=False) as confirmar:
+            accion()
+        (_, _, aviso), _ = confirmar.call_args
+        return aviso
+
+    def test_finalizar_una_pc_con_tiempo(self):
+        pcs_repo.asignar_bono(self.estacion_id, self.bono_pc_id, self.operadora_id, _efectivo(9000.0))
+        panel = self._panel(self.operadora_id)
+        panel.mostrar(self._item_pc())
+
+        aviso = self._pregunta("control_pcs.ui.pcs_detalle.confirmar", panel._finalizar_sesion)
+
+        self.assertTrue(aviso.endswith("¿Cerrarla de todas formas?"), aviso)
+        self.assertIsNotNone(self._item_pc()["sesion"])  # dijo que no: sigue abierta
+
+    def test_finalizar_una_pc_sin_tiempo(self):
+        pcs_repo.asignar_bono(self.estacion_id, self.bono_pc_id, self.operadora_id, _efectivo(9000.0))
+        panel = self._panel(self.operadora_id)
+        panel.mostrar(dict(self._item_pc(), segundos_restantes=0))
+
+        aviso = self._pregunta("control_pcs.ui.pcs_detalle.confirmar", panel._finalizar_sesion)
+
+        self.assertEqual(aviso, "¿Finalizar la sesión de 'PC 1'?")
+
+    def test_liberar_la_consola_con_tiempo(self):
+        playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+        panel = self._panel(self.operadora_id)
+        panel.mostrar(playstation_repo.estado())
+
+        aviso = self._pregunta("control_pcs.ui.pcs_detalle.confirmar", panel._finalizar_sesion)
+
+        self.assertTrue(aviso.endswith("¿Liberarla de todas formas?"), aviso)
+
+    def test_cerrar_y_reiniciar_desde_el_mosaico(self):
+        pcs_repo.asignar_bono(self.estacion_id, self.bono_pc_id, self.operadora_id, _efectivo(9000.0))
+        item = self._item_pc()
+        grilla = self._grilla()
+
+        con_tiempo = self._pregunta("control_pcs.ui.pcs_window.confirmar", lambda: grilla._cerrar_sesion_y_reiniciar(
+            item["estacion"], item["sesion"], item["segundos_restantes"]))
+        sin_tiempo = self._pregunta("control_pcs.ui.pcs_window.confirmar", lambda: grilla._cerrar_sesion_y_reiniciar(
+            item["estacion"], item["sesion"], 0))
+
+        self.assertTrue(con_tiempo.endswith("¿Cerrar la sesión y reiniciar la PC de todas formas?"), con_tiempo)
+        self.assertEqual(sin_tiempo, "¿Cerrar la sesión de 'PC 1' y reiniciar la PC?")
+
+
 if __name__ == "__main__":
     unittest.main()
