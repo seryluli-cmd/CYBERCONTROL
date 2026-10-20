@@ -13,10 +13,6 @@ import tempfile
 import unittest
 
 import database
-from cifrado_de_prueba import activar_si_corresponde
-
-# Con CYBERCONTROL_PRUEBAS_CIFRADAS=1 toda la suite corre con la base cifrada (ver cifrado_de_prueba.py).
-activar_si_corresponde()
 
 
 class BaseConBaseTemporal(unittest.TestCase):

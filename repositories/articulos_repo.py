@@ -10,7 +10,7 @@ Compra (compras_repo.registrar_compra) o de una Venta
 mano, para que el historial de "Movimientos" siempre sea confiable.
 """
 
-from motor_sql import sqlite3
+import sqlite3
 from datetime import datetime
 import dominio
 from database import conexion_db

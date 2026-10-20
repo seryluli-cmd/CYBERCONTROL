@@ -17,6 +17,7 @@ Se ejecutan con:
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -142,7 +143,7 @@ class TestCopiasAutomaticas(_ConCopias):
         ruta = copias_repo.copia_automatica_si_corresponde()
         self.assertTrue(os.path.exists(ruta))
         self.assertEqual(os.path.dirname(ruta), os.path.join(database.DATA_DIR, "backups"))
-        conexion = database.abrir_archivo(ruta)
+        conexion = sqlite3.connect(ruta)
         try:
             self.assertGreaterEqual(conexion.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0], 2)
         finally:
@@ -164,7 +165,7 @@ class TestCopiasAutomaticas(_ConCopias):
         turnos_repo.cerrar_turno(self.empleada_id)
         ruta = copias_repo.copia_automatica_si_corresponde(datetime.now() + timedelta(seconds=1))
         self.assertIsNotNone(ruta)
-        conexion = database.abrir_archivo(ruta)
+        conexion = sqlite3.connect(ruta)
         try:
             self.assertEqual(conexion.execute("SELECT COUNT(*) FROM cierres_turno").fetchone()[0], 1)
         finally:

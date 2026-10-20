@@ -13,6 +13,7 @@ Se ejecutan con:
 """
 
 import os
+import sqlite3
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -47,7 +48,7 @@ def _contar(tabla, ruta=None):
     if ruta is None:
         with database.conexion_db() as conexion:
             return conexion.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0]
-    conexion = database.abrir_archivo(ruta)
+    conexion = sqlite3.connect(ruta)
     try:
         return conexion.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0]
     finally:

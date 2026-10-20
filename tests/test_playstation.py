@@ -17,7 +17,7 @@ Se ejecutan con:
 
 import contextlib
 import os
-from motor_sql import sqlite3
+import sqlite3
 import unittest
 from datetime import date, datetime
 from unittest import mock
@@ -714,7 +714,7 @@ class TestMigracionCheckOrigenEnVentas(BaseConBaseTemporal):
         copias = [nombre for nombre in os.listdir(carpeta) if nombre.startswith("antes_de_")]
         self.assertEqual(len(copias), 1)
         # La copia es la base ANTES de migrar: todavía con el CHECK viejo.
-        copia = database.abrir_archivo(os.path.join(carpeta, copias[0]))
+        copia = sqlite3.connect(os.path.join(carpeta, copias[0]))
         try:
             sql = copia.execute("SELECT sql FROM sqlite_master WHERE name = 'ventas'").fetchone()[0]
             ventas = copia.execute("SELECT COUNT(*) FROM ventas").fetchone()[0]

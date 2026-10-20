@@ -24,10 +24,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import database  # noqa: E402
 import dominio  # noqa: E402
-from cifrado_de_prueba import activar_si_corresponde  # noqa: E402
-
-# El mostrador corre en otro proceso: si la suite es la cifrada, él también (la variable se hereda).
-activar_si_corresponde()
 
 CLAVE_ADMIN = "1234"      # la de fábrica del primer Administrador (database._cargar_datos_iniciales)
 CLAVE_EMPLEADA = "4321"

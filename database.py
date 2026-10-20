@@ -17,16 +17,15 @@ Todo cambio de esquema va como migración idempotente (segura de correr en
 cada arranque), nunca borrando la base: ver CLAUDE.md, regla 6.
 """
 
+import sqlite3
 import hashlib
 import os
-import re
 import secrets
 import sys
 from contextlib import contextmanager
 from datetime import datetime
 
 import dominio
-from motor_sql import PUEDE_CIFRAR, sqlite3
 
 # Carpeta donde vive el archivo de la base de datos. Se guarda al lado del
 # programa, dentro de una carpeta "data" para no mezclar el archivo .db
@@ -39,91 +38,6 @@ BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) \
     else os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "kiosko.db")
-
-
-# --------------------------------------------------------------------
-# Cifrado de la base
-# --------------------------------------------------------------------
-# Pedido del dueño (2026-10-19): que quien consiga el archivo kiosko.db -- de esta
-# PC, de una copia de seguridad en otra PC o en un pendrive -- no pueda abrirlo
-# con ningún programa. La base va cifrada con SQLCipher y el programa le pone la
-# clave solo, sin pedírsela a nadie.
-#
-# La clave son 256 bits al azar (64 caracteres hexadecimales) y vive en el archivo
-# `clave_base.py`, que NO está en git (este repo es PÚBLICO) y que la receta de
-# armado del .exe copia a la carpeta de armado: PyInstaller la mete adentro del
-# CyberBios.exe. Sin ese archivo (una PC de desarrollo, las pruebas) CLAVE_HEX es
-# None y todo sigue con la base común, como antes.
-#
-# Es clave CRUDA (x'...') y no una frase a propósito: con una frase SQLCipher hace
-# 256.000 vueltas de PBKDF2 en CADA conexión (medido: ~100 ms) y este programa abre
-# una por consulta, además de las PCs que preguntan cada 5 segundos. La cruda no
-# tiene ese costo (medido: 0,4 ms). Una clave de 256 bits al azar no necesita
-# estirarse. Lo vigila TestComoAndaCifrada.test_abrir_una_conexion_sigue_siendo_rapido.
-#
-# Qué protege y qué no: protege el ARCHIVO (copiarlo, abrirlo con otro programa,
-# ver los datos de los socios). No protege contra alguien que tenga el .exe y sepa
-# desarmarlo: la clave está adentro. Es el mismo trato que se aceptó con la clave
-# de los Clientes PC (ver CLAUDE.md). Si se pierde clave_base.py Y todos los .exe
-# armados con ella, la base y sus copias no se pueden abrir nunca más: el dueño
-# guarda una copia de la clave aparte.
-try:
-    from clave_base import CLAVE_HEX
-except ImportError:
-    CLAVE_HEX = None
-
-_ENCABEZADO_BASE_COMUN = b"SQLite format 3\x00"
-_CLAVE_BIEN_ARMADA = re.compile(r"[0-9a-fA-F]{64}")
-
-
-class ErrorDeCifrado(Exception):
-    """La base no se puede abrir por la clave o el cifrado. El mensaje está escrito
-    para que lo lea el dueño (main.py lo muestra en un cartel al arrancar)."""
-
-
-def cifrado_activo() -> bool:
-    return CLAVE_HEX is not None
-
-
-def _clave_validada() -> str:
-    # PRAGMA key y ATTACH ... KEY no aceptan parámetros: la clave se pega en el
-    # texto. Por eso se la exige de 64 hexadecimales y nada más (si no, un
-    # clave_base.py roto podría meter cualquier cosa en el SQL).
-    if not _CLAVE_BIEN_ARMADA.fullmatch(CLAVE_HEX or ""):
-        raise ErrorDeCifrado(
-            "La clave de la base de datos (clave_base.py) está mal armada: tiene que ser "
-            "un texto de 64 letras y números (0-9, a-f)."
-        )
-    if not PUEDE_CIFRAR:
-        # El sqlite3 común IGNORA en silencio "PRAGMA key": seguiría andando, pero con la
-        # base sin cifrar y sin que nadie se entere. Mejor frenar.
-        raise ErrorDeCifrado(
-            "Este programa tiene una clave para cifrar la base de datos pero le falta el módulo "
-            "que sabe cifrar (sqlcipher3). Hay que armarlo de nuevo con ese módulo instalado."
-        )
-    return CLAVE_HEX
-
-
-def abrir_archivo(ruta: str, solo_lectura: bool = False) -> sqlite3.Connection:
-    """
-    Abre un archivo de base de datos del programa (la base en uso, una copia de
-    seguridad) con la clave, si la hay. Es el único lugar que sabe poner la clave:
-    todo lo que abra un archivo .db tiene que pasar por acá, nunca por
-    `sqlite3.connect` a mano (en una base cifrada no leería nada).
-    """
-    conexion = sqlite3.connect(ruta)
-    if cifrado_activo():
-        conexion.execute(f"PRAGMA key = \"x'{_clave_validada()}'\"")
-    if solo_lectura:
-        conexion.execute("PRAGMA query_only = ON")
-    return conexion
-
-
-def _es_base_comun(ruta: str) -> bool:
-    """Un archivo de SQLite sin cifrar empieza siempre con este texto; uno cifrado
-    parece ruido desde el primer byte."""
-    with open(ruta, "rb") as archivo:
-        return archivo.read(len(_ENCABEZADO_BASE_COMUN)) == _ENCABEZADO_BASE_COMUN
 
 
 def hash_clave(texto_plano: str, salt: str = None) -> str:
@@ -167,7 +81,7 @@ def get_connection() -> sqlite3.Connection:
     posición (fila[1]), lo cual hace el código mucho más legible.
     """
     os.makedirs(DATA_DIR, exist_ok=True)
-    conexion = abrir_archivo(DB_PATH)
+    conexion = sqlite3.connect(DB_PATH)
     conexion.row_factory = sqlite3.Row
     # Activamos el chequeo de claves foráneas: SQLite lo trae desactivado
     # por defecto, y sin esto no se respetarían las relaciones entre tablas.
@@ -220,15 +134,11 @@ def _backup_consistente(destino: str):
     puntual aunque haya otra conexión escribiendo al mismo tiempo,
     reintentando sola si choca con una escritura en curso -- nunca deja
     un archivo a medio grabar.
-
-    Con la base cifrada la copia sale cifrada con la misma clave (los dos lados se
-    abren con `abrir_archivo`): una copia en el pendrive o en otra PC no se lee
-    sin el programa.
     """
     os.makedirs(os.path.dirname(destino) or ".", exist_ok=True)
-    origen = abrir_archivo(DB_PATH)
+    origen = sqlite3.connect(DB_PATH)
     try:
-        con_destino = abrir_archivo(destino)
+        con_destino = sqlite3.connect(destino)
         try:
             origen.backup(con_destino)
         finally:
@@ -318,171 +228,9 @@ def _sql_tabla_de_bonos(tabla: str) -> str:
 
 
 def inicializar_base_de_datos():
-    """Cifra la base si hace falta, crea el esquema y actualiza bases anteriores sin
-    reemplazar sus datos."""
+    """Crea el esquema y actualiza bases anteriores sin reemplazar sus datos."""
     from database_esquema import inicializar_base_de_datos as crear_esquema
-    preparar_cifrado()
     return crear_esquema()
-
-
-# --------------------------------------------------------------------
-# Cifrar la base común que ya tiene el dueño
-# --------------------------------------------------------------------
-
-def _quitar(ruta: str):
-    try:
-        os.remove(ruta)
-    except FileNotFoundError:
-        pass
-
-
-def _copiar_comun(origen: str, destino: str):
-    """Copia de seguridad de la base COMÚN (Online Backup API, igual que
-    `_backup_consistente` pero sin clave en ninguno de los dos lados)."""
-    os.makedirs(os.path.dirname(destino) or ".", exist_ok=True)
-    de = sqlite3.connect(origen)
-    try:
-        a = sqlite3.connect(destino)
-        try:
-            de.backup(a)
-        finally:
-            a.close()
-    finally:
-        de.close()
-
-
-def _exportar_cifrada(destino: str):
-    """Escribe en `destino` una copia CIFRADA de la base común (DB_PATH): tablas, índices,
-    disparadores, datos y los números automáticos (sqlite_sequence). La base común no se
-    toca (se abre sin clave y se la lee nada más)."""
-    clave = _clave_validada()
-    comun = sqlite3.connect(DB_PATH)
-    try:
-        comun.execute(f"ATTACH DATABASE ? AS cifrada KEY \"x'{clave}'\"", (destino,))
-        comun.execute("SELECT sqlcipher_export('cifrada')")
-        comun.execute("DETACH DATABASE cifrada")
-    finally:
-        comun.close()
-
-
-def _resumen_para_comparar(conexion) -> tuple:
-    """Lo que tiene que ser igual antes y después de cifrar: cuántas filas tiene cada
-    tabla, los números automáticos y el esquema completo."""
-    tablas = [fila[0] for fila in conexion.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    )]
-    filas = {tabla: conexion.execute(f'SELECT COUNT(*) FROM "{tabla}"').fetchone()[0] for tabla in tablas}
-    hay_numeros = conexion.execute("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_sequence'").fetchone()
-    numeros = sorted(tuple(fila) for fila in conexion.execute("SELECT name, seq FROM sqlite_sequence")) \
-        if hay_numeros else []
-    esquema = sorted((fila[0], fila[1], fila[2] or "") for fila in
-                     conexion.execute("SELECT type, name, sql FROM sqlite_master"))
-    return filas, numeros, esquema
-
-
-def _comprobar_que_quedo_igual(ruta_comun: str, ruta_cifrada: str):
-    """Antes de reemplazar la base, se abre la cifrada con la clave y se compara con la
-    común: mismas tablas con las mismas cantidades de filas, mismo esquema, mismos
-    números automáticos y la base sana por dentro. Si algo no coincide la común no se
-    toca. (Las pruebas comparan además el contenido fila por fila.)"""
-    comun = sqlite3.connect(ruta_comun)
-    cifrada = abrir_archivo(ruta_cifrada)
-    try:
-        try:
-            integridad = cifrada.execute("PRAGMA integrity_check").fetchone()[0]
-            resumen_cifrada = _resumen_para_comparar(cifrada)
-        except sqlite3.DatabaseError as error:
-            raise ErrorDeCifrado(f"La copia cifrada no se pudo leer con la clave ({error}).") from error
-        if integridad != "ok":
-            raise ErrorDeCifrado(f"La copia cifrada quedó dañada ({integridad}).")
-        filas_comun, numeros_comun, esquema_comun = _resumen_para_comparar(comun)
-        filas_cifrada, numeros_cifrada, esquema_cifrada = resumen_cifrada
-        for tabla, cantidad in filas_comun.items():
-            if filas_cifrada.get(tabla) != cantidad:
-                raise ErrorDeCifrado(
-                    f"La tabla {tabla} tiene {cantidad} filas y en la copia cifrada {filas_cifrada.get(tabla)}."
-                )
-        if set(filas_cifrada) != set(filas_comun):
-            raise ErrorDeCifrado("La copia cifrada tiene otras tablas que la base original.")
-        if numeros_comun != numeros_cifrada:
-            raise ErrorDeCifrado("Los números automáticos de la copia cifrada no coinciden.")
-        if esquema_comun != esquema_cifrada:
-            raise ErrorDeCifrado("El esquema de la copia cifrada no coincide con el original.")
-    finally:
-        comun.close()
-        cifrada.close()
-
-
-def _cifrar_en_el_lugar():
-    """
-    Cifra la base común que ya está en DB_PATH, con todos sus datos. Pasos, cada uno
-    pensado para que la base común nunca se pierda:
-      1. una copia COMÚN en data/backups/antes_de_cifrar_*.db (sin copia no se cifra);
-      2. se escribe la versión cifrada en un archivo aparte (kiosko.db.cifrando);
-      3. se la abre con la clave y se la compara con la original;
-      4. recién ahí reemplaza a kiosko.db (un solo movimiento de archivo).
-    Si algo falla antes del paso 4, kiosko.db queda como estaba y se borran los restos.
-    La copia del paso 1 es la única copia legible que queda: el dueño la borra cuando
-    ya vio que todo anda (ver CLAUDE.md).
-    """
-    ahora = datetime.now().strftime("%Y%m%d_%H%M%S")
-    copia = os.path.join(DATA_DIR, "backups", f"antes_de_cifrar_{ahora}.db")
-    temporal = DB_PATH + ".cifrando"
-    _quitar(temporal)  # un resto de un intento anterior que se cortó
-    try:
-        _copiar_comun(DB_PATH, copia)
-        _exportar_cifrada(temporal)
-        _comprobar_que_quedo_igual(DB_PATH, temporal)
-        os.replace(temporal, DB_PATH)
-    except BaseException:
-        _quitar(temporal)
-        _quitar(copia)  # la base no cambió: esa copia no hace falta
-        raise
-
-
-def preparar_cifrado():
-    """
-    Se llama en cada arranque, antes de crear o migrar el esquema.
-      - Sin clave y base común (o sin base): nada que hacer.
-      - Con clave y base común: la cifra (`_cifrar_en_el_lugar`).
-      - Con clave y base ya cifrada: comprueba que la clave sirve.
-      - Base cifrada sin clave, o con otra clave: ErrorDeCifrado, con un mensaje
-        para el dueño. Nunca se intenta "arreglarla" ni se crea una base nueva al lado:
-        sería perder de vista las ventas.
-    Una base que no existe o está vacía no hace falta tocarla: se crea ya cifrada.
-    """
-    if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) == 0:
-        return
-    es_comun = _es_base_comun(DB_PATH)
-    if not cifrado_activo():
-        if not es_comun:
-            raise ErrorDeCifrado(
-                "La base de datos está cifrada y esta copia del programa no trae la clave para "
-                "abrirla (se armó sin ella). No se tocó nada: usá el CyberBios.exe de siempre."
-            )
-        return
-    _clave_validada()
-    if es_comun:
-        try:
-            _cifrar_en_el_lugar()
-        except (OSError, sqlite3.Error) as error:  # disco lleno, archivo trabado por un antivirus...
-            raise ErrorDeCifrado(
-                f"No se pudo cifrar la base de datos ({error}). La base quedó como estaba y se puede "
-                "seguir usando con el programa de antes."
-            ) from error
-        return
-    conexion = abrir_archivo(DB_PATH)
-    try:
-        conexion.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
-    except sqlite3.DatabaseError as error:
-        if "not a database" not in str(error).lower():
-            raise
-        raise ErrorDeCifrado(
-            "La base de datos no se puede abrir con la clave de este programa: está cifrada con "
-            "otra clave (o el archivo se dañó). No se tocó nada. Usá el CyberBios.exe de siempre."
-        ) from error
-    finally:
-        conexion.close()
 
 
 def _respaldar_antes_de_migrar(motivo: str):

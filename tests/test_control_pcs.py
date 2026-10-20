@@ -13,7 +13,7 @@ import base64
 import http.client
 import json
 import os
-from motor_sql import sqlite3
+import sqlite3
 import threading
 import unittest
 from datetime import datetime

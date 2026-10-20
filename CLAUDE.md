@@ -185,14 +185,6 @@ python main.py
 Que los tests pasen no alcanza si la pantalla no abre. Que la pantalla
 abra no alcanza si los tests no pasan.
 
-Si se toca algo de la base (`database.py`, una consulta nueva, una migración), correr
-además la suite con la base cifrada, que es como anda el `.exe` del dueño:
-
-```
-set CYBERCONTROL_PRUEBAS_CIFRADAS=1
-python -m unittest discover tests
-```
-
 ---
 
 ## Puntos únicos de verdad ya establecidos (usalos, no los repitas)
@@ -221,8 +213,6 @@ python -m unittest discover tests
 | `ventas_repo.subtotal_linea(linea)` | se calcula lo que se cobra por un renglón |
 | `ventas_repo.total_carrito(lineas)` | se suma el total de una venta en curso |
 | `database.conexion_db()` | se abre una transacción contra la base |
-| `database.abrir_archivo(ruta)` · `motor_sql.sqlite3` | se abre un archivo .db (la base, una copia de seguridad) CON la clave de cifrado, y de qué módulo salen `sqlite3.Row`/`IntegrityError`... (el de sqlcipher3, no el de la librería estándar). Nunca `sqlite3.connect(...)` a mano ni `import sqlite3`: ver "La base de datos va cifrada" |
-| `database.preparar_cifrado()` | se decide, en cada arranque, si la base se cifra (la común que ya tiene el dueño), si la clave sirve o si hay que avisar con un cartel (`ErrorDeCifrado`) |
 | `database.DATA_DIR` / `DB_PATH` | se resuelve dónde viven los datos (código vs `.exe`) |
 | `database.hash_clave()` / `verificar_clave()` | se maneja una contraseña |
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
@@ -325,47 +315,9 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   escaneado sin dejar basura en la base.
 - **El login es por nombre y exige nombres únicos entre usuarios activos.**
   Dos "Matías" activos romperían el login.
-- **Las claves de los usuarios están hasheadas con salt, y el archivo de la base
-  va cifrado, pero esto no es un sistema blindado.** El cifrado (siguiente
-  punto) protege el ARCHIVO; quien tenga el `.exe` y sepa desarmarlo puede sacar
-  la clave de adentro. No le prometas al usuario más que eso.
-- **La base de datos va cifrada** (pedido del dueño, 2026-10-19: que nadie que
-  consiga `data/kiosko.db`, ni una copia de seguridad, pueda abrirla con otro
-  programa; el programa la abre solo). SQLCipher vía `sqlcipher3`, clave CRUDA de
-  256 bits (ver el comentario de `database.py`, "Cifrado de la base"). Reglas que
-  no hay que romper:
-  (1) **La clave NO va al repo** (público): vive en `clave_base.py` (ignorado por
-  git), guardado en `C:\Users\CyberBIOS\ClaveBaseCyberControl\` (mismo trato que
-  `FirmaClientePC`). La receta de armado del `.exe` lo copia a la carpeta del
-  build ANTES de PyInstaller, y `Kiosko.spec` avisa con carteles si falta (un
-  `.exe` sin la clave NO cifra, y uno sin la clave que se abre sobre una base ya
-  cifrada se niega a arrancar con un cartel: `ErrorDeCifrado`, nunca crea una base
-  nueva al lado). Nunca escribas la clave en el repo, en un test, en un doc ni en
-  un chat: los tests usan claves al azar o `tests/cifrado_de_prueba.CLAVE_DE_PRUEBA`.
-  (2) **Clave cruda, nunca una frase:** con una frase SQLCipher hace ~100 ms de
-  PBKDF2 por conexión y este programa abre una por consulta (`TestComoAndaCifrada`
-  lo mide).
-  (3) **Todo acceso a un archivo .db pasa por `database.abrir_archivo`** (la base,
-  las copias, lo que lea una prueba) y los módulos importan `from motor_sql import
-  sqlite3`, no `import sqlite3`: los errores de `sqlcipher3` son otras clases y
-  un `except sqlite3.IntegrityError` contra el módulo común no los atraparía. Peor:
-  el `sqlite3` común IGNORA `PRAGMA key` en silencio y seguiría con la base sin
-  cifrar (por eso `_clave_validada` frena si hay clave y falta `sqlcipher3`).
-  (4) **La base común que ya existía se cifra sola al arrancar**, sin perder nada:
-  copia común `antes_de_cifrar_*.db`, versión cifrada aparte, comparación (tablas,
-  filas, esquema, números automáticos, integridad) y recién ahí reemplaza; si algo
-  falla, la base queda como estaba (`TestCifrarUnaBaseComun`). Esa copia y las
-  copias viejas de `data/backups`, `D:\BACKUPS` y la carpeta compartida quedan
-  LEGIBLES hasta que el dueño las borre: no se tocan solas ("nada se borra").
-  (5) **Las copias de seguridad salen cifradas** y solo las abre el `.exe` (o el
-  código con la clave): para restaurar una, abrirla con `abrir_archivo`.
-  (6) Si se pierde la clave y todos los `.exe` armados con ella, la base y sus
-  copias son irrecuperables: el dueño guarda una copia de `clave_base.py` aparte.
-  (7) El `.exe` abierto como copia remota (carpeta compartida) trae la clave
-  adentro igual, aunque no abra ninguna base: quien lea esa carpeta puede
-  desarmarlo. Aceptado.
-  Las pruebas corren con la base común; con `CYBERCONTROL_PRUEBAS_CIFRADAS=1`
-  corre TODO cifrado (regla 15).
+- **Las claves están hasheadas con salt, pero esto no es un sistema
+  seguro.** Cualquiera con acceso al archivo `data/kiosko.db` lee y
+  modifica todo. No le prometas al usuario que esto protege datos.
 - **Un bono de tiempo nunca reintegra minutos no usados; el saldo de un
   Miembro sí.** Cortar antes de tiempo una sesión de bono no devuelve
   nada (es un consumible de una sola vez); cortar antes de tiempo una
@@ -819,9 +771,6 @@ Estos puntos todavía no están construidos:
 - **Empaquetado:** `pyinstaller Kiosko.spec` genera `dist/CyberBios.exe` (el
   nombre con que lo usa el dueño; la receta conserva su nombre de archivo).
   Ojo: `dist/data/` es la base de datos *real* de la copia empaquetada.
-  Antes de armar, copiar `clave_base.py` (de `~\ClaveBaseCyberControl\`) a la
-  carpeta del build, al lado de `main.py`: si no, el `.exe` sale SIN cifrar (el
-  spec lo avisa). Y `pip install -r requirements.txt` (trae `sqlcipher3`).
 
 ---
 

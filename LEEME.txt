@@ -15,13 +15,6 @@ DATOS Y COPIAS
 --------------
 La información del negocio está en data/kiosko.db, junto al programa.
 No borres ni reemplaces esa carpeta al actualizar el ejecutable.
-La base va cifrada: si alguien copia el archivo (o una copia de seguridad) no
-lo puede abrir con ningún otro programa. El programa la abre solo, sin pedir
-ninguna clave. Por lo mismo, las copias de seguridad se restauran con el
-CyberBios.exe, no con otra herramienta. La primera vez que se abre una versión
-con cifrado, el programa cifra solo la base que ya tenía y deja una copia sin
-cifrar en data/backups (antes_de_cifrar_...): cuando ya viste que todo anda,
-borrala junto con las copias viejas, que siguen sin cifrar.
 El programa guarda solo una copia de la base, sin cerrarse: después de
 cada Cierre de Turno y, si no hubo ninguno, cada 8 horas. Quedan en
 data/backups (todas las de los últimos 3 días y una por día hasta 30 días).
