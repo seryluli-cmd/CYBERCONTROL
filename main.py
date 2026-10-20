@@ -575,6 +575,19 @@ HOJA_DE_ESTILOS = """
     QTableWidget::item:selected {
         border: none;
     }
+    /* El campo que se abre al escribir en una celda (el stock de ORDENAR Stock, los
+       módems): con el relleno de 7 px de los demás campos, en un renglón de tabla le
+       quedaba ~1 px a la letra y el número se veía como una rayita (reportado por el
+       dueño, 2026-10-20). Va con ">" (campo hijo del área de la tabla) para no tocar el
+       campo de adentro de un QSpinBox puesto en una celda, como los montos de la Tarifa
+       por Hora para Socios: ese cuelga del QSpinBox, no de la tabla. */
+    QAbstractItemView > QWidget > QLineEdit {
+        padding: 0 4px;
+        border-radius: 3px;
+    }
+    QAbstractItemView > QWidget > QLineEdit:focus {
+        border: 1px solid #2F6FED;
+    }
 
     /* Selector de fecha: mismo aspecto que el desplegable. */
     QDateEdit::drop-down {

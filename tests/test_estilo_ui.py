@@ -22,7 +22,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtGui import QPalette  # noqa: E402
-from PySide6.QtWidgets import QApplication, QDialog, QFrame, QLabel, QPushButton, QVBoxLayout  # noqa: E402
+from PySide6.QtWidgets import (  # noqa: E402
+    QAbstractItemView, QApplication, QDialog, QFrame, QLabel, QLineEdit, QPushButton, QStyle,
+    QStyleOptionFrame, QTableWidgetItem, QVBoxLayout,
+)
 
 import dominio  # noqa: E402
 import main as programa  # noqa: E402
@@ -167,6 +170,32 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
                 campo = tabla.cellWidget(fila, columna)
                 self.assertGreaterEqual(tabla.rowHeight(fila), campo.sizeHint().height(), (fila, columna))
         self.assertFalse(tabla.verticalHeader().isVisible())
+
+    def test_el_numero_entra_en_la_celda_que_se_esta_escribiendo(self):
+        # Reportado por el dueño (2026-10-20): en ORDENAR Stock, al escribir el stock, el
+        # número se veía como una rayita. El campo que abre la celda tenía el relleno de
+        # todos los campos y en un renglón de tabla le quedaba ~1 px a la letra. Pasa en
+        # cualquier tabla donde se escribe en la celda (también "Editar módems").
+        self.addCleanup(_app.setStyleSheet, _app.styleSheet())
+        _app.setStyleSheet(programa.HOJA_DE_ESTILOS)
+        tabla = crear_tabla(["Código", "Stock"])
+        self.addCleanup(tabla.deleteLater)
+        tabla.setEditTriggers(QAbstractItemView.DoubleClicked)
+        tabla.insertRow(0)
+        for columna, texto in enumerate(("COCA", "54")):
+            tabla.setItem(0, columna, QTableWidgetItem(texto))
+        tabla.resize(400, 200)
+        tabla.show()
+        _app.processEvents()
+
+        tabla.editItem(tabla.item(0, 1))
+        _app.processEvents()
+        campo = next(c for c in tabla.viewport().findChildren(QLineEdit) if c.isVisible())
+        opcion = QStyleOptionFrame()
+        campo.initStyleOption(opcion)
+        lugar_para_la_letra = campo.style().subElementRect(QStyle.SE_LineEditContents, opcion, campo)
+
+        self.assertGreaterEqual(lugar_para_la_letra.height(), campo.fontMetrics().height())
 
     def test_las_ventanas_que_abre_el_panel_gris_no_heredan_sus_letras_claras(self):
         # El panel del costado de Control de PCs es gris medio con letras claras
