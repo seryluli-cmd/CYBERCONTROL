@@ -233,7 +233,11 @@ class CierreTurnoWindow(_PantallaDeCaja):
         layout_digital, self.valor_digital = _etiqueta_dato("Digital", "")
         # Efectivo + Digital de todo lo cobrado (Kiosko, Impresiones, Trámites,
         # PCs y PlayStation 5).
-        layout_total, self.valor_total = _etiqueta_dato("TOTAL", "", destacado=True)
+        # El título dice qué suma (efectivo + digital, sin el Cambio Fijo) y va en negrita
+        # negra como "A RETIRAR EN EFECTIVO"; el monto sigue azul (pedido del dueño, 2026-10-20).
+        layout_total, self.valor_total = _etiqueta_dato(
+            "TOTAL (EFECTIVO + DIGITAL)", "", destacado=True, color_titulo="#000000", negrita_titulo=True,
+        )
         # Lo que la empleada guarda en el sobre: título negro en negrita y monto verde,
         # igual que la Caja Actual de la pantalla Caja (pedido del dueño, 2026-10-20).
         layout_retirar, self.valor_retirar = _etiqueta_dato(
