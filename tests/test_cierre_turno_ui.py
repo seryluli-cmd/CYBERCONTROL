@@ -125,6 +125,18 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.assertIn("Configurar Cambio Fijo", textos)
         self.assertIn("Cambio Fijo", [control.tabla.horizontalHeaderItem(c).text() for c in range(control.tabla.columnCount())])
 
+    def test_a_retirar_en_efectivo_va_en_negrita_con_el_monto_en_verde(self):
+        """Pedido del dueño (2026-10-20): es lo que se guarda en el sobre, tiene que
+        resaltar. Mismo estilo que la Caja Actual de la pantalla Caja."""
+        ventana = self._abrir()
+
+        titulo = next(e for e in ventana.findChildren(QLabel) if e.text() == "A RETIRAR EN EFECTIVO")
+
+        self.assertTrue(titulo.font().bold())
+        self.assertIn("#000000", titulo.styleSheet())
+        self.assertTrue(ventana.valor_retirar.font().bold())
+        self.assertIn("#2FB457", ventana.valor_retirar.styleSheet())
+
     def test_el_aviso_al_cerrar_habla_de_cambio_fijo(self):
         ventana = self._abrir()
 

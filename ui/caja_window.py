@@ -234,7 +234,12 @@ class CierreTurnoWindow(_PantallaDeCaja):
         # Efectivo + Digital de todo lo cobrado (Kiosko, Impresiones, Trámites,
         # PCs y PlayStation 5).
         layout_total, self.valor_total = _etiqueta_dato("TOTAL", "", destacado=True)
-        layout_retirar, self.valor_retirar = _etiqueta_dato("A RETIRAR EN EFECTIVO", "")
+        # Lo que la empleada guarda en el sobre: título negro en negrita y monto verde,
+        # igual que la Caja Actual de la pantalla Caja (pedido del dueño, 2026-10-20).
+        layout_retirar, self.valor_retirar = _etiqueta_dato(
+            "A RETIRAR EN EFECTIVO", "",
+            color_titulo="#000000", negrita_titulo=True, color_valor="#2FB457",
+        )
         layout_kiosko, self.valor_kiosko = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO], ""
         )
