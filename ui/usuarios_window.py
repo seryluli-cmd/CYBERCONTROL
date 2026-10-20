@@ -48,8 +48,8 @@ class UsuariosWindow(QDialog):
         boton_fondo.clicked.connect(self._configurar_fondo)
         boton_backup = QPushButton("Copias de Seguridad")
         boton_backup.setToolTip(
-            "Cuándo se hacen solas las copias de la base, cuál es la última, la "
-            "carpeta de Google Drive y una copia suelta a un pendrive."
+            "Cuándo se hacen solas las copias de la base, cuál es la última, las "
+            "otras carpetas donde se guardan, hacer una copia ahora o una suelta a un pendrive."
         )
         boton_backup.clicked.connect(self._abrir_copias)
         boton_salir = QPushButton("Salir")
