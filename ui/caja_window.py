@@ -275,8 +275,8 @@ class CierreTurnoWindow(_PantallaDeCaja):
             # Digital arriba a la derecha, y el TOTAL con "A RETIRAR EN EFECTIVO" en la última
             # línea, después del desglose por negocio (pedido del dueño, 2026-10-20).
             [(layout_fondo, layout_digital), (layout_efectivo, QVBoxLayout()),
-             (layout_kiosko, layout_impresiones), (layout_tramites, QVBoxLayout()),
-             (layout_pcs, layout_playstation),
+             (layout_kiosko, layout_impresiones), (layout_tramites, layout_playstation),
+             (layout_pcs, QVBoxLayout()),
              (layout_total, layout_retirar)],
             "Retirá el efectivo indicado y guardalo en el sobre. Dejá el cambio "
             "fijo en el cajón para que arranque el próximo turno.",
