@@ -253,6 +253,10 @@ class CierreTurnoWindow(_PantallaDeCaja):
         layout_playstation, self.valor_playstation = _etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION], ""
         )
+        # La última línea (TOTAL y A RETIRAR) con el doble de aire que el resto: entre renglones
+        # hay ~10 px y se le suman otros 10 (pedido del dueño, 2026-10-20: quedaba muy encimada).
+        for ultima_linea in (layout_total, layout_retirar):
+            ultima_linea.setContentsMargins(0, 10, 0, 0)
         # Kiosko, Impresiones y Trámites van separados, cada uno con su "ef. +
         # dig." (pedido del dueño, 2026-10-19: antes Impresiones y Trámites eran
         # renglones "incluidos en Kiosko"). Sumados dan lo que se graba como
