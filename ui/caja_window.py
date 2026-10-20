@@ -272,7 +272,9 @@ class CierreTurnoWindow(_PantallaDeCaja):
         botones.addWidget(boton_cerrar_turno)
 
         self._armar_cuerpo(
-            [(layout_fondo, layout_retirar), (layout_efectivo, layout_digital),
+            # Digital arriba a la derecha y "A RETIRAR EN EFECTIVO" abajo, al lado del Efectivo
+            # (pedido del dueño, 2026-10-20).
+            [(layout_fondo, layout_digital), (layout_efectivo, layout_retirar),
              (layout_total, QVBoxLayout()),
              (layout_kiosko, layout_impresiones), (layout_tramites, QVBoxLayout()),
              (layout_pcs, layout_playstation)],
