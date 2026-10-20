@@ -2,7 +2,9 @@
 
 import dominio
 from database import conexion_db
-from control_pcs.repositories import accesos_admin_pc_repo, cortes_pc_repo, filtro_palabras_repo, playstation_repo
+from control_pcs.repositories import (
+    accesos_admin_pc_repo, cortes_pc_repo, filtro_palabras_repo, playstation_repo, reconexion_repo,
+)
 
 
 def actividad_reciente(limite: int = 30):
@@ -108,6 +110,14 @@ def actividad_reciente(limite: int = 30):
                              "estacion_nombre": fila["estacion_nombre"],
                              "segundos": fila["segundos"], "causa": fila["causa"],
                              "fallas": fila["fallas"]})
+
+        # PCs que volvieron de un corte con menos tiempo que el del mostrador: se tomó
+        # el de la PC (ver reconexion_repo).
+        for fila in reconexion_repo.listar_recientes(limite):
+            eventos.append({"fecha": fila["fecha_hora"], "tipo": "AJUSTE_TIEMPO",
+                             "estacion_nombre": fila["estacion_nombre"],
+                             "segundos_mostrador": fila["segundos_mostrador"],
+                             "segundos_pc": fila["segundos_pc"]})
 
     # La PlayStation 5 comparte el panel con las PCs: sus sesiones y bonos
     # llegan con la misma forma (ver playstation_repo.eventos_recientes).

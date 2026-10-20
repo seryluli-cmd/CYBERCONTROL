@@ -46,6 +46,10 @@ GET /estado?estacion=<nombre>
     - Y su pulso (`arranque`, `fallas`, `sin_ok`, `encendida`; tampoco los manda un
       Cliente PC viejo): si la PC estaba titilando "SIN CLIENTE", con eso se anota
       por qué se cortó (cortes_pc_repo.registrar_si_volvio_de_un_corte).
+    - Después de un corte, la PC manda también cuánto le queda según su propia
+      cuenta (`sesion`, `resto`, `desde`): si es menos que lo del mostrador, gana
+      el de la PC y el mostrador lo guarda (reconexion_repo.tomar_el_menor). La
+      respuesta ya sale con el tiempo corregido.
 
 GET /cliente_pc
     El manifiesto firmado de la versión del Cliente PC cargada, como JSON:
@@ -124,7 +128,7 @@ from admin_remoto import servidor as admin_remoto_servidor
 from errores import registrar_error
 from control_pcs.repositories import (
     accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, cortes_pc_repo,
-    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo,
+    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, reconexion_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -245,6 +249,18 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             registrar_error(error, "Servidor de red: leer estado de PC")
             self._responder_vacio(500)
             return
+
+        tiempo_pc = reconexion_repo.leer_tiempo_de_la_pc(parametros)
+        if item is not None and item["sesion"] is not None and tiempo_pc is not None:
+            try:
+                # La PC vuelve de un corte y cuenta cuánto le queda según ella: gana el
+                # menor (ver reconexion_repo). Va ANTES de armar la respuesta, para que
+                # la PC ya reciba el tiempo corregido. Si falla, la respuesta sale con el
+                # tiempo del mostrador, como antes: nada de esto decide el bloqueo.
+                if reconexion_repo.tomar_el_menor(item["estacion"]["id"], tiempo_pc) is not None:
+                    item = pcs_repo.estado_de_estacion(nombre_estacion, self.client_address[0])
+            except Exception as error:
+                registrar_error(error, "Servidor de red: tomar el tiempo menor al volver de un corte")
 
         cuerpo = _estado_a_json(item)
         if item is not None:

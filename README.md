@@ -520,6 +520,24 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   pantalla lo marca en rojo con un aviso. "Traer IP" relee la base; "Borrar IP" la
   olvida para que se asiente la nueva. No hizo falta tocar el Cliente PC.
 
+## El tiempo de las PCs cuando el mostrador no está
+
+Explicación para el dueño, con ejemplos: [docs/TIEMPO_DE_LAS_PCS.md](docs/TIEMPO_DE_LAS_PCS.md).
+
+- **Cerrar sesión no toca a las PCs:** el servidor de red arranca con el programa
+  (`main.main`) y sigue contestando sin nadie logueado.
+- **Una sesión que ya llegó a cero no se estira** (`pcs_repo._abrir_o_extender_sesion`):
+  se cierra y se abre otra. Sin nadie logueado no hay pantalla que cierre las
+  sesiones vencidas, y un socio que entraba a esa PC quedaba pegado a la del cliente
+  anterior. Una sesión cerrada tarde queda con la hora en que llegó a cero
+  (`pcs_repo._cerrar_sesion`).
+- **Al volver de un corte gana el tiempo menor y el mostrador lo guarda**
+  (`control_pcs/repositories/reconexion_repo.py`, pedido del dueño 2026-10-20). El
+  Cliente PC manda en `GET /estado` cuánto le queda según su cuenta (`sesion`,
+  `resto`, `desde`); el mostrador le suma lo que se cargó durante el corte, y si
+  igual es menos, corre el fin de la sesión y lo anota en `ajustes_reconexion_pc`
+  ("Actividad reciente"). Nunca sube el tiempo; diferencias de hasta 30 s no se tocan.
+
 ## Administrar desde otra PC (`admin_remoto/`)
 
 Pedido del dueño (2026-10-18): desde su casa entra por UltraVNC a una PC libre

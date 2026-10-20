@@ -55,6 +55,10 @@ def _texto_evento(evento) -> str:
     if tipo == "CORTE":
         return (f"{hora} — {evento['estacion_nombre']}: "
                 f"{detalle_del_corte(evento['causa'], evento['segundos'], evento['fallas'])}.")
+    if tipo == "AJUSTE_TIEMPO":
+        return (f"{hora} — {evento['estacion_nombre']}: volvió la conexión y se tomó el tiempo de la PC, "
+                f"que era menor: le quedaban {formato_tiempo(evento['segundos_pc'])} "
+                f"(el mostrador decía {formato_tiempo(evento['segundos_mostrador'])}).")
     return hora
 
 

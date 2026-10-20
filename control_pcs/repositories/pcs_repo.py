@@ -367,11 +367,22 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
     del saldo de ese socio o es un walk-in/bono, ver
     pcs_repo.finalizar_sesion y database.miembros); si se está
     extendiendo una sesión que ya existía, se respeta lo que ya tenía.
+
+    Una sesión que ya llegó a cero no se estira: se cierra y se abre otra.
+    Normalmente la cierra el refresco de la pantalla de PCs a los pocos
+    segundos, pero con nadie logueado en el mostrador no hay pantalla, y un
+    socio que entraba a esa PC quedaba pegado a la sesión del cliente
+    anterior y la PC mostraba el nombre del otro (revisión del 2026-10-20).
     """
     sesion = conexion.execute(
         "SELECT * FROM sesiones_pc WHERE estacion_id = ? AND estado = ?",
         (estacion_id, dominio.SESION_ACTIVA),
     ).fetchone()
+    if sesion is not None and dominio.segundos_restantes(
+        datetime.fromisoformat(sesion["fecha_fin_prevista"]), ahora
+    ) == 0:
+        _cerrar_sesion(conexion, sesion, ahora)
+        sesion = None
 
     if sesion is None:
         fin_previsto = dominio.fin_al_sumar_minutos(None, minutos, ahora)
@@ -385,10 +396,6 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
         )
         return cursor.lastrowid
 
-    # Si ya venció y todavía no se finalizó (el refresco automático de la
-    # pantalla no pasó todavía), el tiempo nuevo se cuenta desde ahora, no
-    # desde un vencimiento que ya pasó (eso lo decide fin_al_sumar_minutos,
-    # la misma cuenta que usa la PlayStation 5).
     fin_previo = datetime.fromisoformat(sesion["fecha_fin_prevista"])
     fin_previsto = dominio.fin_al_sumar_minutos(fin_previo, minutos, ahora)
     conexion.execute(
@@ -583,29 +590,41 @@ def finalizar_sesion(sesion_id: int):
         ).fetchone()
         if sesion is None:
             return
+        _cerrar_sesion(conexion, sesion, ahora)
 
+
+def _cerrar_sesion(conexion, sesion, ahora: datetime):
+    """
+    El núcleo de finalizar_sesion, dentro de una transacción ya abierta (la usa
+    también _abrir_o_extender_sesion con una sesión que ya llegó a cero).
+
+    La hora de fin real nunca pasa de la prevista: una sesión que llegó a cero
+    a las 02:30 terminó a las 02:30 aunque se cierre más tarde (con nadie
+    logueado en el mostrador, nadie la cierra hasta que alguien entra). Si no,
+    "Actividad reciente" y el uso real de PCSTREAM mostrarían la hora del
+    ingreso al mostrador.
+    """
+    fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
+    conexion.execute(
+        "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ? WHERE id = ?",
+        (dominio.SESION_FINALIZADA, min(ahora, fin_previsto).isoformat(timespec="seconds"), sesion["id"]),
+    )
+
+    minutos_restantes = dominio.segundos_restantes(fin_previsto, ahora) // 60
+    if minutos_restantes <= 0:
+        return
+
+    reintegros = reintegros_por_miembro(conexion, sesion["id"], minutos_restantes)
+    for miembro_id, minutos_a_reintegrar in reintegros.items():
         conexion.execute(
-            "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ? WHERE id = ?",
-            (dominio.SESION_FINALIZADA, ahora.isoformat(timespec="seconds"), sesion_id),
+            "UPDATE miembros SET saldo_minutos = saldo_minutos + ? WHERE id = ?",
+            (minutos_a_reintegrar, miembro_id),
         )
-
-        fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
-        segundos_restantes = dominio.segundos_restantes(fin_previsto, ahora)
-        minutos_restantes = segundos_restantes // 60
-        if minutos_restantes <= 0:
-            return
-
-        reintegros = reintegros_por_miembro(conexion, sesion_id, minutos_restantes)
-        for miembro_id, minutos_a_reintegrar in reintegros.items():
-            conexion.execute(
-                "UPDATE miembros SET saldo_minutos = saldo_minutos + ? WHERE id = ?",
-                (minutos_a_reintegrar, miembro_id),
-            )
-            conexion.execute(
-                """
-                INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, sesion_id)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (miembro_id, dominio.MOVIMIENTO_REINTEGRO, minutos_a_reintegrar,
-                 ahora.isoformat(timespec="seconds"), sesion_id),
-            )
+        conexion.execute(
+            """
+            INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, sesion_id)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (miembro_id, dominio.MOVIMIENTO_REINTEGRO, minutos_a_reintegrar,
+             ahora.isoformat(timespec="seconds"), sesion["id"]),
+        )

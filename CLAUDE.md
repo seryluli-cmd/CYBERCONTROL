@@ -233,6 +233,8 @@ abra no alcanza si los tests no pasan.
 | `dominio.es_pcstream(nombre)` | se decide si una estación es PCSTREAM, la PC de streaming (solo por el nombre, sin espacios/guiones/mayúsculas; pedido del dueño, 2026-10-17). `estado_estaciones` lo trae en `item["es_pcstream"]` para la pantalla |
 | `pcstream_repo.uso_por_dia(desde, hasta)` | se calcula cuánto se usó PCSTREAM, en tiempo (vendido y de uso real) y en plata (Reportes > PCSTREAM) |
 | `reintegros_repo.reintegros_por_miembro(...)` | se decide cuánto se le devuelve a cada socio al cortar una sesión de PC (lo usa `pcs_repo.finalizar_sesion`) |
+| `reconexion_repo.leer_tiempo_de_la_pc(parametros)` · `.tomar_el_menor(estacion_id, tiempo_pc)` | se decide qué tiempo vale cuando una PC vuelve de un corte (pedido del dueño, 2026-10-20): gana el MENOR entre lo que cuenta la PC y lo del mostrador, contando lo que se cargó durante el corte, y el mostrador lo guarda (`ajustes_reconexion_pc`, "Actividad reciente"). Nunca sube el tiempo. Lo llama `servidor_red` en `GET /estado` antes de armar la respuesta; del lado de la PC es `CLIENTE PC/reconexion.py`. Explicación para el dueño: `docs/TIEMPO_DE_LAS_PCS.md` |
+| `pcs_repo._cerrar_sesion(conexion, sesion, ahora)` | se cierra una sesión de PC dentro de una transacción (reintegro del socio incluido; la hora de fin real nunca pasa de la prevista). La usan `finalizar_sesion` y `_abrir_o_extender_sesion`, que cierra una sesión que ya llegó a cero en vez de estirarla |
 | `pcs_window.PanelControlPcs._ficha_de_pc(...)` · `._ficha_de_playstation(...)` | se decide con qué color, dibujito y aviso se ve cada equipo en el mosaico; `control_pcs/ui/pcs_mosaico.py` solo dibuja la `Ficha` que recibe |
 | `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono del mostrador: el COMÚN (walk-in) o, si la PC es PCSTREAM, uno de SU catálogo (`pcstream_repo`) |
 | `dominio.segundos_restantes(fin, ahora)` · `dominio.fin_al_sumar_minutos(fin_actual, minutos, ahora)` | se calcula cuánto le queda a una sesión de tiempo y cuándo vence al sumarle un bono (PCs Y PlayStation 5: una sola cuenta) |
@@ -588,6 +590,19 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   asentada en dos estaciones activas no reconoce a ninguna (no adivinar: daría el
   tiempo de una PC a otra). Las PCs del local tienen IP fija; si alguna pasara a
   DHCP, la IP asentada podría quedar en otra máquina. Ver `tests/test_ip_asentada.py`.
+- **El tiempo de las PCs no depende de que haya alguien logueado ni de que el
+  mostrador esté prendido** (ver `docs/TIEMPO_DE_LAS_PCS.md`, pedido del dueño
+  2026-10-20). El servidor de red arranca con el programa, no con el login: cerrar
+  sesión no toca a las PCs. El mostrador guarda la HORA de fin de cada sesión, así
+  que su cuenta no se frena con el programa cerrado; cada Cliente PC cuenta solo
+  durante un corte. Al volver gana el menor (`reconexion_repo`): no lo cambies a
+  "gana el mostrador" ni a "gana la PC" sin que el dueño lo pida, y nunca dejes que
+  lo que manda la PC SUBA el tiempo (cualquiera puede tocar una PC). Lo que se cargó
+  durante el corte se le suma a la cuenta de la PC antes de comparar: si no, un bono
+  vendido con la PC desconectada se perdería. Con nadie logueado nadie cierra las
+  sesiones vencidas (lo hace `PanelControlPcs._refrescar`): por eso
+  `_abrir_o_extender_sesion` no estira una sesión que ya llegó a cero y
+  `_cerrar_sesion` anota como fin real la hora en que llegó a cero.
 - **Un traslado de PC conserva la sesión y su saldo.** `pcs_repo.trasladar_sesion`
   mueve o intercambia la misma sesión bajo `BEGIN IMMEDIATE`; el historial de
   qué PC ocupó está en `traslados_sesion`, no en el nombre actual de la estación.
@@ -800,7 +815,7 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-948 pruebas al 2026-10-20 (la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+969 pruebas al 2026-10-20 (el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

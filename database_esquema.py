@@ -386,6 +386,28 @@ def inicializar_base_de_datos():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cortes_pc_fecha ON cortes_pc(fecha_hora)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cortes_pc_sesion ON cortes_pc(sesion_id)")
+    # Cada vez que una PC volvió de un corte con MENOS tiempo que el que tenía
+    # anotado el mostrador y el mostrador bajó el suyo (ver
+    # control_pcs/repositories/reconexion_repo.py, pedido del dueño 2026-10-20:
+    # "se toma el menor"). Cuánto decía cada uno y cómo quedó el fin de la
+    # sesión, para poder explicar después por qué un cliente tuvo menos tiempo.
+    # Nada se borra (regla 7). Índice por fecha para "Actividad reciente".
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ajustes_reconexion_pc (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id          INTEGER NOT NULL REFERENCES estaciones(id),
+            sesion_id            INTEGER NOT NULL REFERENCES sesiones_pc(id),
+            fecha_hora           TEXT NOT NULL,
+            segundos_mostrador   INTEGER NOT NULL,
+            segundos_pc          INTEGER NOT NULL,
+            minutos_cargados     INTEGER NOT NULL,
+            fin_antes            TEXT NOT NULL,
+            fin_despues          TEXT NOT NULL
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ajustes_reconexion_pc_fecha ON ajustes_reconexion_pc(fecha_hora)"
+    )
     # Cada página que cerró el filtro de palabras de una PC cliente (ver
     # control_pcs/repositories/filtro_palabras_repo.py): qué palabra encontró y en
     # qué título. Nada se borra (regla 7). El índice por fecha es porque

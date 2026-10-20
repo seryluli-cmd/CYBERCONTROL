@@ -18,7 +18,8 @@ eso tiene sus propios resguardos:
 
 Qué se borra (_TABLAS_A_VACIAR): ventas con su detalle y sus pagos, cobros de
 trámites, cierres de turno, sesiones de las PCs y de la PlayStation 5 con sus
-bonos vendidos, sus traslados y sus cortes de conexión, y el historial de saldo
+bonos vendidos, sus traslados, sus cortes de conexión y el tiempo ajustado al
+volver de un corte, y el historial de saldo
 de los socios. Además
 cada socio queda con saldo 0 (su saldo se cargó con ventas que se borran) y a
 cada artículo se le devuelve el stock que se llevaron las ventas confirmadas
@@ -51,8 +52,10 @@ _TABLAS_A_VACIAR = (
     "sesion_playstation_bonos",
     "movimientos_saldo_miembro",
     "traslados_sesion",
-    # Los cortes de conexión apuntan a la sesión en la que pasaron (cortes_pc_repo).
+    # Los cortes de conexión apuntan a la sesión en la que pasaron (cortes_pc_repo),
+    # y lo mismo el tiempo que se bajó al volver de un corte (reconexion_repo).
     "cortes_pc",
+    "ajustes_reconexion_pc",
     "sesiones_pc",
     "sesiones_playstation",
     # Las cajas con número (database_esquema_cajas.py): apuntan a ventas y a
