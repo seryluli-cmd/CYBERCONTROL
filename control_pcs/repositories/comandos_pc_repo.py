@@ -33,6 +33,13 @@ la PC (`marcar_entregado`) y, si la PC no la pide en
 MINUTOS_VIGENCIA_CON_CLAVE, se da por vencida y se borra igual
 (`descartar_clave_de_pendientes`). Así tampoco llega a una PC horas después,
 cuando nadie se acuerda de haberla mandado.
+
+REINICIAR y APAGAR también vencen (MINUTOS_VIGENCIA_REINICIO, revisión del
+2026-10-21): antes esperaban para siempre, y uno mandado a una PC sin conexión
+(la que titila "SIN CLIENTE", o apagada) le llegaba cuando volvía, aunque fuera
+horas después y en medio de la partida de otro cliente: el Cliente PC lo hace
+sin preguntar. Una PC prendida lo pide en 5 s; si no lo pidió en 2 minutos, se
+da por no hecho y queda RESULTADO_REINICIO_VENCIDO.
 """
 
 import base64
@@ -59,6 +66,12 @@ TIPO_ESTADO_CONGELADO = dominio.COMANDO_ESTADO_CONGELADO
 # respuesta antes de esto (congelado_repo.SEGUNDOS_ESPERA_RESPUESTA).
 MINUTOS_VIGENCIA_CON_CLAVE = 2
 RESULTADO_VENCIDO = "ERROR: La PC no lo pidió a tiempo (¿apagada o sin conexión?). La clave no quedó guardada."
+
+# Cuánto espera un Reiniciar o un Apagar a que su PC lo pida (ver el docstring del módulo).
+MINUTOS_VIGENCIA_REINICIO = 2
+COMANDOS_QUE_VENCEN = (TIPO_REINICIAR, TIPO_APAGAR)
+RESULTADO_REINICIO_VENCIDO = ("ERROR: La PC no lo pidió a tiempo (¿apagada o sin conexión?). "
+                              "No se hizo, para que no le llegue más tarde a otro cliente.")
 
 
 def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
@@ -117,6 +130,21 @@ def _vencer_con_clave(conexion, comando_ids=None, estacion_id=None, todos=False)
     )
 
 
+def _vencer_reinicios(conexion, estacion_id: int):
+    """Da por no hechos los Reiniciar/Apagar de esta PC que esperaron más de
+    MINUTOS_VIGENCIA_REINICIO (ver el docstring del módulo)."""
+    limite = datetime.now() - timedelta(minutes=MINUTOS_VIGENCIA_REINICIO)
+    conexion.execute(
+        f"""
+        UPDATE comandos_pc SET estado = ?, resultado = COALESCE(resultado, ?)
+        WHERE estacion_id = ? AND estado = ? AND fecha_creacion < ?
+          AND tipo IN ({', '.join('?' * len(COMANDOS_QUE_VENCEN))})
+        """,
+        (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_REINICIO_VENCIDO, estacion_id,
+         dominio.ESTADO_COMANDO_PENDIENTE, limite.isoformat(timespec="seconds"), *COMANDOS_QUE_VENCEN),
+    )
+
+
 def descartar_clave_de_pendientes(comando_ids=None, todos=False):
     """Borra la clave de Shadow Defender de los comandos que todavía no viajaron:
     los de `comando_ids` (la ventana de congelar al cerrarse, para que no lleguen
@@ -130,11 +158,12 @@ def descartar_clave_de_pendientes(comando_ids=None, todos=False):
 def proximo_comando_pendiente(estacion_id: int):
     """El comando pendiente más viejo para esta estación, o None. Lo
     llama servidor_red.py en cada `GET /estado` de esa estación. Antes
-    vence los comandos con clave de esa PC que esperaron demasiado (ver el
-    docstring del módulo): con el índice por estación y estado, no recorre
-    el historial."""
+    vence los comandos con clave y los Reiniciar/Apagar de esa PC que
+    esperaron demasiado (ver el docstring del módulo): con el índice por
+    estación y estado, no recorre el historial."""
     with conexion_db() as conexion:
         _vencer_con_clave(conexion, estacion_id=estacion_id)
+        _vencer_reinicios(conexion, estacion_id)
         return conexion.execute(
             """
             SELECT * FROM comandos_pc WHERE estacion_id = ? AND estado = ?

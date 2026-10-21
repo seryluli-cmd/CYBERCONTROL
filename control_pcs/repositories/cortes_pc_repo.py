@@ -34,6 +34,7 @@ from datetime import datetime
 
 import dominio
 from database import conexion_db
+from control_pcs.repositories import reinicios_pc_repo
 
 # Cuánto más chico que el corte tiene que ser `sin_ok` para creerle a la PC que tuvo respuesta en
 # el medio. En una PC normal los dos son casi iguales; la diferencia la hacen la demora de cada
@@ -157,12 +158,15 @@ def cortes_de_sesiones(conexion, sesion_ids) -> dict:
 
 def listar_recientes(limite: int):
     """Los últimos `limite` cortes, con el nombre de la PC, para el panel de actividad de
-    Control de PCs (ver actividad_repo.actividad_reciente)."""
+    Control de PCs (ver actividad_repo.actividad_reciente). En los de PC_REINICIADA,
+    `reinicio_pedido` dice si ese reinicio lo pidió su Cliente PC (ver
+    reinicios_pc_repo.fue_pedido); en los demás, None."""
     with conexion_db() as conexion:
-        return conexion.execute(
+        filas = conexion.execute(
             """
             SELECT cortes_pc.fecha_hora, cortes_pc.segundos, cortes_pc.causa, cortes_pc.fallas,
-                   estaciones.nombre AS estacion_nombre
+                   cortes_pc.estacion_id, estaciones.nombre AS estacion_nombre,
+                   estaciones.numero_version_cliente
             FROM cortes_pc
             JOIN estaciones ON estaciones.id = cortes_pc.estacion_id
             ORDER BY cortes_pc.fecha_hora DESC, cortes_pc.id DESC
@@ -170,3 +174,13 @@ def listar_recientes(limite: int):
             """,
             (limite,),
         ).fetchall()
+        cortes = []
+        for fila in filas:
+            corte = dict(fila)
+            corte["reinicio_pedido"] = (
+                reinicios_pc_repo.fue_pedido(conexion, fila["estacion_id"], fila["fecha_hora"], fila["segundos"],
+                                             fila["numero_version_cliente"])
+                if fila["causa"] == dominio.CORTE_PC_REINICIADA else None
+            )
+            cortes.append(corte)
+    return cortes

@@ -133,7 +133,8 @@ from admin_remoto import servidor as admin_remoto_servidor
 from errores import registrar_error
 from control_pcs.repositories import (
     accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, cortes_pc_repo,
-    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, reconexion_repo, reservas_horario_repo,
+    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, reconexion_repo, reinicios_pc_repo,
+    reservas_horario_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -282,6 +283,14 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0], pulso["arranque"])
             except Exception as error:
                 registrar_error(error, "Servidor de red: registrar conexión de PC")
+            reinicio = reinicios_pc_repo.leer_reinicio(parametros)
+            if reinicio is not None:
+                try:
+                    # Su Cliente PC la reinició (o la apagó) y cuenta por qué. Va antes que el
+                    # corte de abajo: así ese corte ya sabe que el reinicio lo pidió el programa.
+                    reinicios_pc_repo.registrar(item["estacion"]["id"], reinicio)
+                except Exception as error:
+                    registrar_error(error, "Servidor de red: registrar un reinicio de PC")
             try:
                 # Si esta PC estaba titilando "SIN CLIENTE", acaba de volver: se anota
                 # cuánto estuvo sin noticias y por qué. `item` es de ANTES de esta

@@ -4,6 +4,7 @@ import dominio
 from database import conexion_db
 from control_pcs.repositories import (
     accesos_admin_pc_repo, cortes_pc_repo, filtro_palabras_repo, playstation_repo, reconexion_repo,
+    reinicios_pc_repo,
 )
 
 
@@ -112,7 +113,14 @@ def actividad_reciente(limite: int = 30):
             eventos.append({"fecha": fila["fecha_hora"], "tipo": "CORTE",
                              "estacion_nombre": fila["estacion_nombre"],
                              "segundos": fila["segundos"], "causa": fila["causa"],
-                             "fallas": fila["fallas"]})
+                             "fallas": fila["fallas"], "reinicio_pedido": fila["reinicio_pedido"]})
+
+        # Las PCs que reinició (o apagó) su propio Cliente PC, con el motivo (ver
+        # reinicios_pc_repo). Sin el de todos los días: el del final de cada sesión.
+        for fila in reinicios_pc_repo.listar_recientes(limite):
+            eventos.append({"fecha": fila["fecha_hora"], "tipo": "REINICIO",
+                             "estacion_nombre": fila["estacion_nombre"], "motivo": fila["motivo"],
+                             "segundos_quedaban": fila["segundos_quedaban"]})
 
         # PCs que volvieron de un corte con menos tiempo que el del mostrador: se tomó
         # el de la PC (ver reconexion_repo).

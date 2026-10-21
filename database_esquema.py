@@ -427,6 +427,24 @@ def inicializar_base_de_datos():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_ajustes_reconexion_pc_fecha ON ajustes_reconexion_pc(fecha_hora)"
     )
+    # Cada vez que el Cliente PC de una PC la reinició o la apagó, y por qué (ver
+    # control_pcs/repositories/reinicios_pc_repo.py, revisión del 2026-10-21).
+    # "segundos_quedaban": lo que le quedaba a la sesión según la PC (NULL si no
+    # había una). "marca" la elige la PC: si su aviso llega dos veces, se anota
+    # una sola. Nada se borra (regla 7). Índice por fecha para "Actividad
+    # reciente" y para saber si un reinicio de un corte lo pidió el Cliente PC.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS reinicios_pc (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            estacion_id          INTEGER NOT NULL REFERENCES estaciones(id),
+            fecha_hora           TEXT NOT NULL,
+            motivo               TEXT NOT NULL CHECK (motivo IN ({_valores_sql(dominio.MOTIVOS_REINICIO_PC)})),
+            segundos_quedaban    INTEGER,
+            marca                INTEGER NOT NULL,
+            UNIQUE (estacion_id, marca)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reinicios_pc_fecha ON reinicios_pc(fecha_hora)")
     # Cada página que cerró el filtro de palabras de una PC cliente (ver
     # control_pcs/repositories/filtro_palabras_repo.py): qué palabra encontró y en
     # qué título. Nada se borra (regla 7). El índice por fecha es porque

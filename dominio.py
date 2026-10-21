@@ -260,6 +260,25 @@ NOMBRE_CORTO_CAUSA_CORTE_PC = {
 }
 
 
+# --------------------------------------------------------------------
+# Reinicios que pidió el Cliente PC
+# --------------------------------------------------------------------
+# Por qué el Cliente PC de una PC la reinició o la apagó (revisión del
+# 2026-10-21: a un chico se le reinició la PC jugando y no se sabía si había
+# sido el programa). Viajan tal cual desde la PC (CLIENTE PC/motivo_reinicio.py):
+# ver control_pcs/repositories/reinicios_pc_repo.py.
+REINICIO_SESION_TERMINADA = "SESION_TERMINADA"
+REINICIO_TIEMPO_SIN_CONEXION = "TIEMPO_SIN_CONEXION"
+REINICIO_ORDEN_REINICIAR = "ORDEN_REINICIAR"
+REINICIO_ORDEN_APAGAR = "ORDEN_APAGAR"
+REINICIO_DESCONGELAR = "DESCONGELAR"
+
+MOTIVOS_REINICIO_PC = (
+    REINICIO_SESION_TERMINADA, REINICIO_TIEMPO_SIN_CONEXION, REINICIO_ORDEN_REINICIAR,
+    REINICIO_ORDEN_APAGAR, REINICIO_DESCONGELAR,
+)
+
+
 def pagos_netos_de_vuelto(pagos: list, vuelto: float) -> list:
     """
     Descuenta el vuelto de los pagos en Efectivo antes de que se graben en

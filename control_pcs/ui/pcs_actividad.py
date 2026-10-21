@@ -14,9 +14,28 @@ from datetime import datetime
 from PySide6.QtWidgets import QTextEdit
 
 import dominio
-from control_pcs.repositories import pcs_repo
+from control_pcs.repositories import pcs_repo, reinicios_pc_repo
 from control_pcs.ui.pcs_cortes import detalle_del_corte
 from ui.utils import formato_pesos, formato_tiempo
+
+
+def texto_del_reinicio(evento) -> str:
+    """"el Cliente PC la reinició por la orden Reiniciar del mostrador" (ver
+    reinicios_pc_repo): `evento` trae "motivo" y "segundos_quedaban"."""
+    motivo = evento["motivo"]
+    if motivo == dominio.REINICIO_ORDEN_REINICIAR:
+        return "el Cliente PC la reinició por la orden Reiniciar del mostrador"
+    if motivo == dominio.REINICIO_ORDEN_APAGAR:
+        return "el Cliente PC la apagó por la orden Apagar del mostrador"
+    if motivo == dominio.REINICIO_DESCONGELAR:
+        return "el Cliente PC la reinició para descongelarla (Shadow Defender)"
+    if motivo == dominio.REINICIO_TIEMPO_SIN_CONEXION:
+        return "el Cliente PC la reinició: se le terminó el tiempo estando sin conexión con el mostrador"
+    quedaban = evento["segundos_quedaban"]
+    if quedaban is not None and quedaban > reinicios_pc_repo.SEGUNDOS_DE_FIN_NORMAL:
+        return (f"el Cliente PC la reinició porque el mostrador dio la sesión por terminada cuando, según "
+                f"la PC, le quedaban {formato_tiempo(quedaban)} (se cerró, se finalizó o se pasó a otra PC)")
+    return "el Cliente PC la reinició porque se terminó el tiempo de la sesión"
 
 
 def _texto_evento(evento) -> str:
@@ -56,8 +75,16 @@ def _texto_evento(evento) -> str:
         return (f"{hora} — {evento['estacion_nombre']}: el filtro cerró una página con "
                 f"\"{evento['palabra']}\" ({titulo_corto(evento['titulo'])}).")
     if tipo == "CORTE":
-        return (f"{hora} — {evento['estacion_nombre']}: "
-                f"{detalle_del_corte(evento['causa'], evento['segundos'], evento['fallas'])}.")
+        texto = (f"{hora} — {evento['estacion_nombre']}: "
+                 f"{detalle_del_corte(evento['causa'], evento['segundos'], evento['fallas'])}")
+        if evento.get("reinicio_pedido") is True:
+            texto += " (la reinició el Cliente PC)"
+        elif evento.get("reinicio_pedido") is False:
+            texto += (" SIN que la reiniciara el Cliente PC: corte de luz, cuelgue o pantalla azul, "
+                      "Windows Update o alguien con el botón")
+        return texto + "."
+    if tipo == "REINICIO":
+        return f"{hora} — {evento['estacion_nombre']}: {texto_del_reinicio(evento)}."
     if tipo == "AJUSTE_TIEMPO":
         return (f"{hora} — {evento['estacion_nombre']}: volvió la conexión y se tomó el tiempo de la PC, "
                 f"que era menor: le quedaban {formato_tiempo(evento['segundos_pc'])} "

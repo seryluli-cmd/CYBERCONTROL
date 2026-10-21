@@ -187,10 +187,35 @@ class TestLaClaveNoQuedaGuardada(BaseConBaseTemporal):
         envejecer(comando_id, comandos_pc_repo.MINUTOS_VIGENCIA_CON_CLAVE - 1)
         self.assertEqual(comandos_pc_repo.proximo_comando_pendiente(self.pc1)["id"], comando_id)
 
-    def test_un_comando_viejo_sin_clave_no_se_vence(self):
-        comando_id = comandos_pc_repo.encolar_comando(self.pc1, comandos_pc_repo.TIPO_REINICIAR)
+    def test_un_mensaje_viejo_no_se_vence(self):
+        comando_id = comandos_pc_repo.encolar_comando(self.pc1, comandos_pc_repo.TIPO_MENSAJE, "Hola")
         envejecer(comando_id, 60)
         self.assertEqual(comandos_pc_repo.proximo_comando_pendiente(self.pc1)["id"], comando_id)
+
+    def test_reiniciar_o_apagar_que_la_pc_no_pidio_a_tiempo_no_le_llega_despues(self):
+        # Mandado a una PC sin conexión: si le llegara al volver, la reiniciaría en medio de la
+        # partida de otro cliente (revisión del 2026-10-21).
+        for tipo in (comandos_pc_repo.TIPO_REINICIAR, comandos_pc_repo.TIPO_APAGAR):
+            with self.subTest(tipo=tipo):
+                comando_id = comandos_pc_repo.encolar_comando(self.pc1, tipo)
+                envejecer(comando_id, comandos_pc_repo.MINUTOS_VIGENCIA_REINICIO + 1)
+
+                self.assertIsNone(comandos_pc_repo.proximo_comando_pendiente(self.pc1))
+                comando = fila(comando_id)
+                self.assertEqual(comando["estado"], dominio.ESTADO_COMANDO_ENTREGADO)
+                self.assertEqual(comando["resultado"], comandos_pc_repo.RESULTADO_REINICIO_VENCIDO)
+
+    def test_reiniciar_reciente_si_le_llega(self):
+        comando_id = comandos_pc_repo.encolar_comando(self.pc1, comandos_pc_repo.TIPO_REINICIAR)
+        envejecer(comando_id, comandos_pc_repo.MINUTOS_VIGENCIA_REINICIO - 1)
+        self.assertEqual(comandos_pc_repo.proximo_comando_pendiente(self.pc1)["id"], comando_id)
+
+    def test_un_reiniciar_vencido_de_otra_pc_no_se_toca(self):
+        pc2 = pcs_repo.crear_estacion("PC2")
+        comando_id = comandos_pc_repo.encolar_comando(pc2, comandos_pc_repo.TIPO_REINICIAR)
+        envejecer(comando_id, comandos_pc_repo.MINUTOS_VIGENCIA_REINICIO + 1)
+        comandos_pc_repo.proximo_comando_pendiente(self.pc1)
+        self.assertEqual(fila(comando_id)["estado"], dominio.ESTADO_COMANDO_PENDIENTE)
 
     def test_al_cerrar_la_ventana_se_borra_de_los_que_no_viajaron(self):
         pc2 = pcs_repo.crear_estacion("PC2")

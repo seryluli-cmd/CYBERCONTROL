@@ -613,7 +613,9 @@ class PanelControlPcs(QWidget):
         comandos_pc_repo.encolar_comando(estacion["id"], tipo)
         mostrar_info(
             self, "Enviado",
-            f"Se le va a avisar a '{estacion['nombre']}' en los próximos segundos.",
+            f"Se le va a avisar a '{estacion['nombre']}' en los próximos segundos.\n\n"
+            f"Si no lo recibe en {comandos_pc_repo.MINUTOS_VIGENCIA_REINICIO} minutos (apagada o sin "
+            "conexión), se descarta: así no le llega más tarde a otro cliente.",
         )
 
     @manejar_errores
