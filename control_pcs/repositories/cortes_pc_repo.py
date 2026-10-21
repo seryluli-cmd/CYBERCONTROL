@@ -165,7 +165,8 @@ def listar_recientes(limite: int):
     """Los últimos `limite` cortes, con el nombre de la PC, para el panel de actividad de
     Control de PCs (ver actividad_repo.actividad_reciente). En los de PC_REINICIADA,
     `reinicio_pedido` dice si ese reinicio lo pidió su Cliente PC (ver
-    reinicios_pc_repo.fue_pedido); en los demás, None. `despues_del_fin`: la PC volvió
+    reinicios_pc_repo.motivo_del_corte), y `reinicio_por_seguro` si fue su seguro de fin de
+    sesión; en los demás, None y False. `despues_del_fin`: la PC volvió
     después de que se terminó su sesión, sin haberse enterado (avisos_fin_pc_repo)."""
     with conexion_db() as conexion:
         filas = conexion.execute(
@@ -184,11 +185,14 @@ def listar_recientes(limite: int):
         cortes = []
         for fila in filas:
             corte = dict(fila)
-            corte["reinicio_pedido"] = (
-                reinicios_pc_repo.fue_pedido(conexion, fila["estacion_id"], fila["fecha_hora"], fila["segundos"],
-                                             fila["numero_version_cliente"])
+            motivo = (
+                reinicios_pc_repo.motivo_del_corte(conexion, fila["estacion_id"], fila["fecha_hora"],
+                                                   fila["segundos"], fila["numero_version_cliente"])
                 if fila["causa"] == dominio.CORTE_PC_REINICIADA else None
             )
+            corte["reinicio_pedido"] = None if motivo is None else motivo is not False
+            # Si la reinició el seguro de fin de sesión (el Cliente PC no estaba andando).
+            corte["reinicio_por_seguro"] = motivo == dominio.REINICIO_SEGURO_FIN
             corte["despues_del_fin"] = (fila["fecha_fin_real"] is not None
                                         and fila["fecha_hora"] > fila["fecha_fin_real"])
             cortes.append(corte)

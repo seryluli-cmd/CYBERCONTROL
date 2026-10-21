@@ -114,6 +114,7 @@ def actividad_reciente(limite: int = 30):
                              "estacion_nombre": fila["estacion_nombre"],
                              "segundos": fila["segundos"], "causa": fila["causa"],
                              "fallas": fila["fallas"], "reinicio_pedido": fila["reinicio_pedido"],
+                             "reinicio_por_seguro": fila["reinicio_por_seguro"],
                              "despues_del_fin": fila["despues_del_fin"]})
 
         # PCs que no se enteraron de que terminó su sesión y que un operador dio por

@@ -81,20 +81,32 @@ def registrar(estacion_id: int, reinicio: dict, ahora: datetime = None):
         )
 
 
-def fue_pedido(conexion, estacion_id: int, fecha_corte: str, segundos_corte: int, version_cliente):
-    """¿El reinicio de un corte (cortes_pc: volvió en `fecha_corte` después de `segundos_corte`
-    sin noticias) lo pidió el Cliente PC de esa PC? None si su Cliente PC es anterior a
-    PRIMERA_VERSION_QUE_AVISA: no se sabe."""
+def motivo_del_corte(conexion, estacion_id: int, fecha_corte: str, segundos_corte: int, version_cliente):
+    """¿Por qué se reinició la PC de un corte (cortes_pc: volvió en `fecha_corte` después de
+    `segundos_corte` sin noticias)? El motivo que contó la PC (uno de dominio.MOTIVOS_REINICIO_PC,
+    el más nuevo si hay varios), False si no contó ninguno (no lo pidió el Cliente PC ni su
+    seguro de fin de sesión) o None si su Cliente PC es anterior a PRIMERA_VERSION_QUE_AVISA:
+    no se sabe."""
     version = numero_de_version_valido(version_cliente)
     if version is None or es_mas_vieja(version, PRIMERA_VERSION_QUE_AVISA):
         return None
     volvio = datetime.fromisoformat(fecha_corte)
     desde = volvio - timedelta(seconds=segundos_corte + MARGEN_SEGUNDOS)
     fila = conexion.execute(
-        "SELECT 1 FROM reinicios_pc WHERE estacion_id = ? AND fecha_hora BETWEEN ? AND ? LIMIT 1",
+        """
+        SELECT motivo FROM reinicios_pc WHERE estacion_id = ? AND fecha_hora BETWEEN ? AND ?
+        ORDER BY fecha_hora DESC, id DESC LIMIT 1
+        """,
         (estacion_id, desde.isoformat(timespec="seconds"), volvio.isoformat(timespec="seconds")),
     ).fetchone()
-    return fila is not None
+    return fila["motivo"] if fila is not None else False
+
+
+def fue_pedido(conexion, estacion_id: int, fecha_corte: str, segundos_corte: int, version_cliente):
+    """¿El reinicio de un corte lo pidió el Cliente PC de esa PC (o su seguro de fin de sesión)?
+    None si no se sabe (ver motivo_del_corte)."""
+    motivo = motivo_del_corte(conexion, estacion_id, fecha_corte, segundos_corte, version_cliente)
+    return None if motivo is None else motivo is not False
 
 
 def listar_recientes(limite: int):

@@ -151,6 +151,25 @@ class TestFuePedido(_ConPc):
                 self.assertIsNone(reinicios_pc_repo.fue_pedido(None, self.estacion, "2026-10-21T20:00:00", 90,
                                                                version))
 
+    def test_un_reinicio_del_seguro_de_fin_de_sesion_se_distingue(self):
+        # El Cliente PC no estaba andando y la reinició la tarea de Windows (CLIENTE PC/seguro_fin.py).
+        self.version("1.3")
+        self.en_uso_sin_noticias(90)
+        reinicios_pc_repo.registrar(self.estacion, _aviso(dominio.REINICIO_SEGURO_FIN, hace=95, quedaban=0))
+        self.volvio_reiniciada()
+        corte = self.corte_en_actividad()
+        self.assertIs(corte["reinicio_pedido"], True)
+        self.assertTrue(corte["reinicio_por_seguro"])
+        self.assertIn("(la reinició el seguro de fin de sesión: el Cliente PC no estaba andando).",
+                      pcs_actividad._texto_evento(corte))
+
+    def test_un_reinicio_del_cliente_pc_no_es_del_seguro(self):
+        self.version("1.3")
+        self.en_uso_sin_noticias(90)
+        reinicios_pc_repo.registrar(self.estacion, _aviso(hace=95))
+        self.volvio_reiniciada()
+        self.assertFalse(self.corte_en_actividad()["reinicio_por_seguro"])
+
     def test_un_corte_que_no_es_un_reinicio_no_dice_nada(self):
         self.version("1.3")
         self.en_uso_sin_noticias(90)
@@ -185,6 +204,7 @@ class TestActividad(_ConPc):
                          "20:05 — PC11X: el Cliente PC la apagó por la orden Apagar del mostrador.")
         self.assertIn("descongelarla", self.linea(dominio.REINICIO_DESCONGELAR))
         self.assertIn("sin conexión", self.linea(dominio.REINICIO_TIEMPO_SIN_CONEXION))
+        self.assertIn("seguro de fin de sesión", self.linea(dominio.REINICIO_SEGURO_FIN, quedaban=0))
         self.assertEqual(self.linea(dominio.REINICIO_SESION_TERMINADA, quedaban=1500),
                          "20:05 — PC11X: el Cliente PC la reinició porque el mostrador dio la sesión por "
                          "terminada cuando, según la PC, le quedaban 25m 00s (se cerró, se finalizó o se "

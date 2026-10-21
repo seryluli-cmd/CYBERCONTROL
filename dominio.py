@@ -272,10 +272,18 @@ REINICIO_TIEMPO_SIN_CONEXION = "TIEMPO_SIN_CONEXION"
 REINICIO_ORDEN_REINICIAR = "ORDEN_REINICIAR"
 REINICIO_ORDEN_APAGAR = "ORDEN_APAGAR"
 REINICIO_DESCONGELAR = "DESCONGELAR"
+# La reinició el seguro de fin de sesión: una tarea de Windows que el Cliente PC
+# deja programada a la hora de fin (más un margen) y que corre aunque el programa
+# esté cerrado o colgado (CLIENTE PC/seguro_fin.py, pedido del dueño 2026-10-21).
+# La cuenta la PC al volver: si la reinició el seguro, a esa hora no estaba andando.
+REINICIO_SEGURO_FIN = "SEGURO_FIN"
 
+# Sale del CHECK de reinicios_pc.motivo. SEGURO_FIN se sumó el mismo día en que
+# nació la tabla, antes de armar ningún exe con ella: ninguna base la tiene sin él.
+# Un motivo que se sume después necesita una migración que reconstruya la tabla.
 MOTIVOS_REINICIO_PC = (
     REINICIO_SESION_TERMINADA, REINICIO_TIEMPO_SIN_CONEXION, REINICIO_ORDEN_REINICIAR,
-    REINICIO_ORDEN_APAGAR, REINICIO_DESCONGELAR,
+    REINICIO_ORDEN_APAGAR, REINICIO_DESCONGELAR, REINICIO_SEGURO_FIN,
 )
 
 

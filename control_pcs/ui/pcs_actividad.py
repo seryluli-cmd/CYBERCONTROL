@@ -29,6 +29,9 @@ def texto_del_reinicio(evento) -> str:
         return "el Cliente PC la apagó por la orden Apagar del mostrador"
     if motivo == dominio.REINICIO_DESCONGELAR:
         return "el Cliente PC la reinició para descongelarla (Shadow Defender)"
+    if motivo == dominio.REINICIO_SEGURO_FIN:
+        return ("la reinició el seguro de fin de sesión de Windows: se le terminó el tiempo y el Cliente PC "
+                "no estaba andando (cerrado o colgado)")
     if motivo == dominio.REINICIO_TIEMPO_SIN_CONEXION:
         return "el Cliente PC la reinició: se le terminó el tiempo estando sin conexión con el mostrador"
     quedaban = evento["segundos_quedaban"]
@@ -80,7 +83,9 @@ def _texto_evento(evento) -> str:
         if evento.get("despues_del_fin"):
             # Volvió con la sesión ya terminada: hasta ese momento pudieron seguir usándola.
             texto += " (volvió después de terminada su sesión, sin haberse enterado)"
-        if evento.get("reinicio_pedido") is True:
+        if evento.get("reinicio_por_seguro"):
+            texto += " (la reinició el seguro de fin de sesión: el Cliente PC no estaba andando)"
+        elif evento.get("reinicio_pedido") is True:
             texto += " (la reinició el Cliente PC)"
         elif evento.get("reinicio_pedido") is False:
             texto += (" SIN que la reiniciara el Cliente PC: corte de luz, cuelgue o pantalla azul, "
