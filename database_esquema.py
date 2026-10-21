@@ -152,6 +152,25 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # CAMBIOS DE CÓDIGO (también "ORDENAR Stock", pedido del dueño 2026-10-20)
+    # -------------------------------------------------------------------
+    # Códigos que se cargaron mal a mano (en vez de con la pistola) y un Admin
+    # corrigió: el de antes, el nuevo, quién y cuándo. `articulo_codigo` es el
+    # código ACTUAL del artículo: en cada cambio se corrige junto con las ventas,
+    # compras y ajustes (articulos_repo.cambiar_codigo), así Movimientos muestra
+    # todos los cambios de un artículo aunque se haya corregido dos veces.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cambios_codigo (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            articulo_codigo  TEXT NOT NULL REFERENCES articulos(codigo),
+            fecha            TEXT NOT NULL,
+            usuario_id       INTEGER NOT NULL REFERENCES usuarios(id),
+            codigo_anterior  TEXT NOT NULL,
+            codigo_nuevo     TEXT NOT NULL
+        )
+    """)
+
+    # -------------------------------------------------------------------
     # VENTAS (facturación)
     # -------------------------------------------------------------------
     # "turno" se calcula automáticamente según la hora de la venta (ver
@@ -657,6 +676,7 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_articulo ON compra_detalle(articulo_codigo)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_compra_detalle_compra ON compra_detalle(compra_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ajustes_stock_articulo ON ajustes_stock(articulo_codigo, fecha)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cambios_codigo_articulo ON cambios_codigo(articulo_codigo, fecha)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_fecha ON sesiones(fecha_hora)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_estacion ON sesiones_pc(estacion_id, estado)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_saldo_miembro ON movimientos_saldo_miembro(miembro_id)")

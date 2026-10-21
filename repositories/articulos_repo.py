@@ -8,7 +8,8 @@ es a propósito: el stock se mueve con una Compra
 (compras_repo.registrar_compra), con una Venta (ventas_repo.confirmar_venta /
 anular_venta) o con ORDENAR Stock (ajustar_stock, abajo, que deja cada
 corrección anotada en ajustes_stock), para que el historial de
-"Movimientos" siempre sea confiable.
+"Movimientos" siempre sea confiable. El código tampoco se cambia al editar:
+solo ORDENAR Stock lo corrige (cambiar_codigo, anotado en cambios_codigo).
 """
 
 import sqlite3
@@ -291,11 +292,76 @@ def ajustar_stock(usuario_id: int, codigo: str, stock_nuevo, clave: str) -> dict
     return {"stock_anterior": stock_anterior, "stock_nuevo": stock_nuevo}
 
 
+# Las tablas que guardan el código de un artículo (todas con REFERENCES
+# articulos(codigo)): cambiar_codigo las corrige todas juntas. Una tabla nueva
+# que apunte a un artículo va acá; tests/test_ordenar_stock.py lo vigila.
+_TABLAS_CON_CODIGO_DE_ARTICULO = ("venta_detalle", "compra_detalle", "ajustes_stock", "cambios_codigo")
+
+
+def cambiar_codigo(usuario_id: int, codigo_actual: str, codigo_nuevo, clave: str) -> dict:
+    """
+    Corrige el código de un artículo (pedido del dueño, 2026-10-20: hubo
+    códigos escritos a mano mal en vez de leídos con la pistola). Las ventas,
+    compras y ajustes de stock de antes pasan al código nuevo en la misma
+    transacción: es el mismo producto, su historial lo sigue. Queda anotado en
+    cambios_codigo y en Movimientos. Devuelve {"codigo_anterior", "codigo_nuevo"};
+    el mismo código no anota nada.
+
+    PermissionError como ajustar_stock, o ValueError: código nuevo vacío, que ya
+    es de otro artículo (dos artículos no pueden compartirlo: no se juntan solos),
+    o el de Impresiones, que no se cambia ni se le da a otro (el botón Impresiones
+    y los reportes lo buscan por ese número, dominio.CODIGO_ARTICULO_IMPRESIONES).
+    """
+    comprobar_clave_para_ordenar_stock(usuario_id, clave)
+    nuevo = "" if codigo_nuevo is None else str(codigo_nuevo).strip()
+    if not nuevo:
+        raise ValueError("El código nuevo no puede quedar vacío.")
+    impresiones = dominio.CODIGO_ARTICULO_IMPRESIONES
+    if impresiones in (codigo_actual, nuevo) and codigo_actual != nuevo:
+        raise ValueError(
+            f"El código {impresiones} es el de Impresiones: el botón Impresiones y los reportes "
+            "lo buscan por ese número, así que no se cambia ni se le pone a otro artículo."
+        )
+    ahora = datetime.now().isoformat(timespec="seconds")
+    with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+        # Las tablas hijas apuntan al código: con las referencias revisadas recién al
+        # guardar, se cambia el artículo y después cada tabla. Si faltara una, el
+        # guardado falla y no queda nada a medias (conexion_db deshace todo).
+        conexion.execute("PRAGMA defer_foreign_keys = ON")
+        if conexion.execute("SELECT 1 FROM articulos WHERE codigo = ?", (codigo_actual,)).fetchone() is None:
+            raise ValueError("Ese artículo ya no existe. Actualizá la lista e intentá de nuevo.")
+        if nuevo == codigo_actual:
+            return {"codigo_anterior": codigo_actual, "codigo_nuevo": nuevo}
+        otro = conexion.execute("SELECT descripcion FROM articulos WHERE codigo = ?", (nuevo,)).fetchone()
+        if otro is not None:
+            raise ValueError(
+                f'El código {nuevo} ya es de otro artículo: "{otro["descripcion"]}". '
+                "Dos artículos no pueden tener el mismo código."
+            )
+        conexion.execute(
+            "UPDATE articulos SET codigo = ?, fecha_modif = ? WHERE codigo = ?", (nuevo, ahora, codigo_actual)
+        )
+        for tabla in _TABLAS_CON_CODIGO_DE_ARTICULO:
+            conexion.execute(
+                f"UPDATE {tabla} SET articulo_codigo = ? WHERE articulo_codigo = ?", (nuevo, codigo_actual)
+            )
+        conexion.execute(
+            """
+            INSERT INTO cambios_codigo (articulo_codigo, fecha, usuario_id, codigo_anterior, codigo_nuevo)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (nuevo, ahora, usuario_id, codigo_actual, nuevo),
+        )
+    return {"codigo_anterior": codigo_actual, "codigo_nuevo": nuevo}
+
+
 def obtener_movimientos(codigo: str, desde: str, hasta: str):
     """
     Arma el historial de "Movimientos" de un artículo: junta las líneas
     de Compras (suman stock), las líneas de Ventas confirmadas (restan
-    stock) y los ajustes de ORDENAR Stock (lo que sumó o restó cada uno)
+    stock), los ajustes de ORDENAR Stock (lo que sumó o restó cada uno) y
+    los cambios de código (cantidad 0, con el código de antes y el nuevo)
     dentro de un rango de fechas, y las devuelve ordenadas por fecha. Las
     ventas anuladas no aparecen: ya repusieron su stock.
     """
@@ -324,10 +390,17 @@ def obtener_movimientos(codigo: str, desde: str, hasta: str):
             FROM ajustes_stock
             WHERE articulo_codigo = ? AND date(fecha) BETWEEN date(?) AND date(?)
 
+            UNION ALL
+
+            SELECT fecha, 'cambio de código ' || codigo_anterior || ' → ' || codigo_nuevo AS comprobante,
+                   id AS numero, 0 AS cantidad
+            FROM cambios_codigo
+            WHERE articulo_codigo = ? AND date(fecha) BETWEEN date(?) AND date(?)
+
             -- El número desempata lo que pasó en el mismo segundo (dos ajustes
             -- seguidos del mismo artículo): sin él, podían salir al revés.
             ORDER BY fecha, numero
             """,
             (codigo, desde, hasta, codigo, dominio.VENTA_CONFIRMADA, desde, hasta,
-             codigo, desde, hasta),
+             codigo, desde, hasta, codigo, desde, hasta),
         ).fetchall()

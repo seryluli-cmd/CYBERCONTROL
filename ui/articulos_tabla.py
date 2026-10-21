@@ -20,9 +20,14 @@ COLUMNA_DESCRIPCION = 1
 COLUMNA_STOCK = 6
 COLUMNA_STOCK_MINIMO = 7
 
-# El fondo de la celda de stock cuando se puede escribir (ORDENAR Stock), para
-# que se vea de un vistazo cuál es la única columna que se toca.
+# El fondo de las celdas que se pueden escribir (stock y código en ORDENAR
+# Stock), para que se vea de un vistazo qué columnas se tocan.
 FONDO_EDITABLE = QColor("#FFF4C2")
+
+# Lo que la columna del código se ensancha de más cuando se escribe (ORDENAR
+# Stock): el campo que se abre tiene borde y relleno, y sin esto, al escribir
+# un EAN-13 quedaba escondido el primer dígito.
+DE_MAS_PARA_ESCRIBIR_EL_CODIGO = 20
 
 
 def crear_tabla_de_articulos():
@@ -32,12 +37,13 @@ def crear_tabla_de_articulos():
     return tabla
 
 
-def llenar_tabla_de_articulos(tabla, articulos, *, stock_editable=False):
+def llenar_tabla_de_articulos(tabla, articulos, *, stock_editable=False, codigo_editable=False):
     """
     Vuelve a llenar `tabla` con `articulos` (filas de articulos_repo). Ninguna
-    celda queda para escribir salvo el stock con `stock_editable` (ORDENAR
-    Stock). Se arma con el orden por columnas apagado: con él prendido, cada
-    celda que se agrega o se pinta puede mover su fila a mitad del armado.
+    celda queda para escribir salvo el stock con `stock_editable` y el código
+    con `codigo_editable` (las dos, solo en ORDENAR Stock). Se arma con el orden
+    por columnas apagado: con él prendido, cada celda que se agrega o se pinta
+    puede mover su fila a mitad del armado.
     """
     tabla.setSortingEnabled(False)
     tabla.setRowCount(0)
@@ -55,11 +61,23 @@ def llenar_tabla_de_articulos(tabla, articulos, *, stock_editable=False):
             tabla.setItem(fila, columna, item)
         item_stock = tabla.item(fila, COLUMNA_STOCK)
         poner_stock(item_stock, datos["stock"], datos["stock_minimo"])
-        if stock_editable:
-            item_stock.setFlags(item_stock.flags() | Qt.ItemIsEditable)
-            item_stock.setBackground(FONDO_EDITABLE)
+        item_codigo = tabla.item(fila, COLUMNA_CODIGO)
+        poner_codigo(item_codigo, datos["codigo"])
+        editables = ((item_stock, stock_editable), (item_codigo, codigo_editable))
+        for item, editable in editables:
+            if editable:
+                item.setFlags(item.flags() | Qt.ItemIsEditable)
+                item.setBackground(FONDO_EDITABLE)
     tabla.setSortingEnabled(True)
-    mostrar_columna_entera(tabla, COLUMNA_CODIGO)
+    mostrar_columna_entera(tabla, COLUMNA_CODIGO, DE_MAS_PARA_ESCRIBIR_EL_CODIGO if codigo_editable else 0)
+
+
+def poner_codigo(item, codigo: str):
+    """Muestra `codigo` en su celda y lo guarda también en ella (Qt.UserRole):
+    es el código de verdad del artículo aunque la celda se esté escribiendo, y
+    ORDENAR Stock lo usa para volver atrás si el nuevo no se pudo guardar."""
+    item.setText(codigo)
+    item.setData(Qt.UserRole, codigo)
 
 
 def poner_stock(item, stock: int, stock_minimo: int):

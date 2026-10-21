@@ -74,7 +74,7 @@ FUNCIONES = {
         "listar_articulos", "buscar_por_codigo", "buscar_por_descripcion", "buscar_por_marca",
         "crear_articulo", "modificar_articulo", "borrar_articulo", "obtener_movimientos",
         "listar_marcas", "listar_rubros", "crear_rubro", "renombrar_rubro", "borrar_rubro",
-        "comprobar_clave_para_ordenar_stock", "ajustar_stock",
+        "comprobar_clave_para_ordenar_stock", "ajustar_stock", "cambiar_codigo",
     ),
     # Compras
     "compras_repo": ("proximo_numero_compra", "registrar_compra"),
@@ -124,6 +124,7 @@ FUNCIONES = {
 ACTOR = {
     ("articulos_repo", "comprobar_clave_para_ordenar_stock"): "usuario_id",
     ("articulos_repo", "ajustar_stock"): "usuario_id",
+    ("articulos_repo", "cambiar_codigo"): "usuario_id",
     ("compras_repo", "registrar_compra"): "usuario_id",
     ("ventas_repo", "anular_venta"): "usuario_admin_id",
     ("miembros_repo", "anular_carga"): "usuario_admin_id",

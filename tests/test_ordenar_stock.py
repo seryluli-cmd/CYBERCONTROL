@@ -15,6 +15,7 @@ Se ejecutan con:
 """
 
 import os
+import sqlite3
 import unittest
 from datetime import date
 from unittest import mock
@@ -28,7 +29,7 @@ from PySide6.QtWidgets import QAbstractItemView, QApplication  # noqa: E402
 import database  # noqa: E402
 import dominio  # noqa: E402
 from database import conexion_db  # noqa: E402
-from repositories import articulos_repo, usuarios_repo  # noqa: E402
+from repositories import articulos_repo, compras_repo, usuarios_repo, ventas_repo  # noqa: E402
 from ui.articulos_tabla import COLUMNA_CODIGO, COLUMNA_STOCK  # noqa: E402
 from ui.articulos_window import ArticulosWindow  # noqa: E402
 from ui.ordenar_stock_window import OrdenarStockWindow  # noqa: E402
@@ -151,6 +152,136 @@ class TestAjustarStock(BaseOrdenarStock):
         self.assertIsNone(articulos_repo.buscar_por_codigo("ALFA"))
 
 
+class TestCambiarCodigo(BaseOrdenarStock):
+    """Un código escrito mal a mano en vez de leído con la pistola (pedido del dueño,
+    2026-10-20): ORDENAR Stock lo corrige y el historial del artículo lo sigue."""
+
+    NUEVO = "7790580001234"
+
+    def _con_historial(self):
+        # Una compra, una venta y un ajuste del Alfajor, cargado con el código "ALFA".
+        compras_repo.registrar_compra(self.admin_id, [{"codigo": "ALFA", "cantidad": 10, "costo_unitario": 300.0}])
+        ventas_repo.confirmar_venta(
+            self.admin_id,
+            [{"codigo": "ALFA", "descripcion": "Alfajor", "cantidad": 2, "precio_unitario": 600.0}],
+            [{"metodo": dominio.PAGO_EFECTIVO, "monto": 1200.0}],
+        )
+        articulos_repo.ajustar_stock(self.admin_id, "ALFA", 9, CLAVE)
+
+    def _cuantos(self, tabla, codigo):
+        with conexion_db() as conexion:
+            return conexion.execute(
+                f"SELECT COUNT(*) AS n FROM {tabla} WHERE articulo_codigo = ?", (codigo,)
+            ).fetchone()["n"]
+
+    def _cambios(self):
+        with conexion_db() as conexion:
+            return conexion.execute("SELECT * FROM cambios_codigo ORDER BY id").fetchall()
+
+    def test_cambia_el_codigo_y_sus_ventas_compras_y_ajustes_lo_siguen(self):
+        self._con_historial()
+
+        resultado = articulos_repo.cambiar_codigo(self.admin_id, "ALFA", self.NUEVO, CLAVE)
+
+        self.assertEqual(resultado, {"codigo_anterior": "ALFA", "codigo_nuevo": self.NUEVO})
+        self.assertIsNone(articulos_repo.buscar_por_codigo("ALFA"))
+        articulo = articulos_repo.buscar_por_codigo(self.NUEVO)
+        self.assertEqual((articulo["descripcion"], articulo["precio_venta"], articulo["stock"]), ("Alfajor", 600.0, 9))
+        for tabla in ("venta_detalle", "compra_detalle", "ajustes_stock"):
+            with self.subTest(tabla=tabla):
+                self.assertEqual((self._cuantos(tabla, "ALFA"), self._cuantos(tabla, self.NUEVO)), (0, 1))
+        with conexion_db() as conexion:
+            self.assertEqual(conexion.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_queda_anotado_y_se_ve_en_movimientos(self):
+        self._con_historial()
+        articulos_repo.cambiar_codigo(self.admin_id, "ALFA", self.NUEVO, CLAVE)
+
+        [cambio] = self._cambios()
+        self.assertEqual(
+            (cambio["articulo_codigo"], cambio["codigo_anterior"], cambio["codigo_nuevo"], cambio["usuario_id"]),
+            (self.NUEVO, "ALFA", self.NUEVO, self.admin_id),
+        )
+        hoy = date.today().isoformat()
+        movimientos = articulos_repo.obtener_movimientos(self.NUEVO, hoy, hoy)
+        self.assertCountEqual(
+            [(m["comprobante"], m["cantidad"]) for m in movimientos],
+            [("compras", 10), ("ventas", -2), ("ajuste de stock", 1),
+             (f"cambio de código ALFA → {self.NUEVO}", 0)],
+        )
+
+    def test_corregido_dos_veces_se_ven_los_dos_cambios(self):
+        articulos_repo.cambiar_codigo(self.admin_id, "ALFA", "779", CLAVE)
+        articulos_repo.cambiar_codigo(self.admin_id, "779", self.NUEVO, CLAVE)
+        hoy = date.today().isoformat()
+        movimientos = articulos_repo.obtener_movimientos(self.NUEVO, hoy, hoy)
+        self.assertEqual([m["comprobante"] for m in movimientos],
+                         ["cambio de código ALFA → 779", f"cambio de código 779 → {self.NUEVO}"])
+
+    def test_no_se_puede_usar_el_codigo_de_otro_articulo(self):
+        with self.assertRaises(ValueError) as error:
+            articulos_repo.cambiar_codigo(self.admin_id, "ALFA", "COCA", CLAVE)
+        self.assertIn("Coca 500", str(error.exception))
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo("ALFA"))
+        self.assertEqual(self._cambios(), [])
+
+    def test_vacio_no_y_el_mismo_codigo_no_anota_nada(self):
+        for vacio in ("", "   ", None):
+            with self.subTest(codigo=vacio):
+                with self.assertRaises(ValueError):
+                    articulos_repo.cambiar_codigo(self.admin_id, "ALFA", vacio, CLAVE)
+        resultado = articulos_repo.cambiar_codigo(self.admin_id, "ALFA", " ALFA ", CLAVE)
+        self.assertEqual(resultado, {"codigo_anterior": "ALFA", "codigo_nuevo": "ALFA"})
+        self.assertEqual(self._cambios(), [])
+
+    def test_saca_los_espacios_de_los_costados(self):
+        articulos_repo.cambiar_codigo(self.admin_id, "ALFA", f"  {self.NUEVO} ", CLAVE)
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo(self.NUEVO))
+
+    def test_el_codigo_de_impresiones_no_se_cambia_ni_se_le_pone_a_otro(self):
+        impresiones = dominio.CODIGO_ARTICULO_IMPRESIONES
+        with self.assertRaises(ValueError):
+            articulos_repo.cambiar_codigo(self.admin_id, "ALFA", impresiones, CLAVE)
+        articulos_repo.crear_articulo(impresiones, "IMPRESIONES", None, None, 150.0, 0.0, 0)
+        with self.assertRaises(ValueError):
+            articulos_repo.cambiar_codigo(self.admin_id, impresiones, "44", CLAVE)
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo(impresiones))
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo("ALFA"))
+
+    def test_pide_admin_y_la_contrasena(self):
+        for usuario_id, clave in ((self.admin_id, "otra"), (self.admin_id, None), (self.empleada_id, CLAVE)):
+            with self.subTest(usuario_id=usuario_id, clave=clave):
+                with self.assertRaises(PermissionError):
+                    articulos_repo.cambiar_codigo(usuario_id, "ALFA", self.NUEVO, clave)
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo("ALFA"))
+
+    def test_articulo_que_no_existe(self):
+        with self.assertRaises(ValueError):
+            articulos_repo.cambiar_codigo(self.admin_id, "NO-EXISTE", self.NUEVO, CLAVE)
+        self.assertEqual(self._cambios(), [])
+
+    def test_corrige_todas_las_tablas_que_apuntan_a_un_articulo(self):
+        # Si mañana una tabla nueva guarda el código de un artículo, cambiar_codigo
+        # tiene que corregirla también: si no, el cambio fallaría al guardar.
+        with conexion_db() as conexion:
+            tablas = [fila["name"] for fila in conexion.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+            apuntan = {
+                tabla for tabla in tablas
+                for clave_foranea in conexion.execute(f"PRAGMA foreign_key_list({tabla})")
+                if clave_foranea["table"] == "articulos"
+            }
+        self.assertEqual(apuntan, set(articulos_repo._TABLAS_CON_CODIGO_DE_ARTICULO))
+
+    def test_si_se_olvida_una_tabla_no_queda_nada_a_medias(self):
+        self._con_historial()
+        sin_ventas = tuple(t for t in articulos_repo._TABLAS_CON_CODIGO_DE_ARTICULO if t != "venta_detalle")
+        with mock.patch.object(articulos_repo, "_TABLAS_CON_CODIGO_DE_ARTICULO", sin_ventas):
+            with self.assertRaises(sqlite3.IntegrityError):
+                articulos_repo.cambiar_codigo(self.admin_id, "ALFA", self.NUEVO, CLAVE)
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo("ALFA"))
+        self.assertEqual((self._cuantos("compra_detalle", "ALFA"), self._cambios()), (1, []))
+
+
 class BasePantallas(BaseOrdenarStock):
     def _abrir(self, ventana):
         self.addCleanup(ventana.deleteLater)
@@ -212,12 +343,85 @@ class TestPantallaOrdenarStock(BasePantallas):
     def test_muestra_todos_los_articulos(self):
         self.assertEqual(self.tabla.rowCount(), 3)
 
-    def test_solo_se_puede_escribir_el_stock(self):
+    def test_solo_se_puede_escribir_el_stock_y_el_codigo(self):
         for fila in range(self.tabla.rowCount()):
             for columna in range(self.tabla.columnCount()):
                 editable = bool(self.tabla.item(fila, columna).flags() & Qt.ItemIsEditable)
                 with self.subTest(fila=fila, columna=columna):
-                    self.assertEqual(editable, columna == COLUMNA_STOCK)
+                    self.assertEqual(editable, columna in (COLUMNA_STOCK, COLUMNA_CODIGO))
+
+    def test_en_articulos_el_codigo_no_se_escribe(self):
+        ventana = self._abrir(ArticulosWindow(None, usuarios_repo.obtener_usuario(self.admin_id)))
+        tabla = ventana.tabla
+        for fila in range(tabla.rowCount()):
+            self.assertFalse(tabla.item(fila, COLUMNA_CODIGO).flags() & Qt.ItemIsEditable)
+
+    def _escribir_codigo(self, codigo, nuevo, confirma=True):
+        """Escribe `nuevo` en la celda del código de `codigo`, contestando la pregunta."""
+        with mock.patch("ui.ordenar_stock_window.confirmar", return_value=confirma) as pregunta, \
+                mock.patch("ui.ordenar_stock_window.mostrar_error") as error:
+            self.tabla.item(self._fila(codigo), COLUMNA_CODIGO).setText(nuevo)
+            _app.processEvents()
+        return pregunta, error
+
+    def test_escribir_el_codigo_pregunta_y_lo_cambia(self):
+        pregunta, error = self._escribir_codigo("ALFA", "7790580001234")
+
+        pregunta.assert_called_once()
+        self.assertIn("7790580001234", pregunta.call_args.args[2])
+        error.assert_not_called()
+        self.assertIsNone(articulos_repo.buscar_por_codigo("ALFA"))
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo("7790580001234"))
+        self.assertEqual(self.tabla.item(self._fila("7790580001234"), COLUMNA_CODIGO).data(Qt.UserRole),
+                         "7790580001234")
+        self.assertIn("ALFA → 7790580001234", self.ventana.etiqueta_estado.text())
+
+    def test_si_no_confirma_queda_el_codigo_de_antes(self):
+        self._escribir_codigo("ALFA", "7790580001234", confirma=False)
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo("ALFA"))
+        self.assertEqual(self.tabla.item(self._fila("ALFA"), COLUMNA_CODIGO).text(), "ALFA")
+
+    def test_el_codigo_de_otro_articulo_avisa_y_vuelve_atras(self):
+        _pregunta, error = self._escribir_codigo("ALFA", "COCA")
+        error.assert_called_once()
+        self.assertEqual(self.tabla.item(self._fila("ALFA"), COLUMNA_CODIGO).text(), "ALFA")
+        self.assertEqual(articulos_repo.buscar_por_codigo("COCA")["descripcion"], "Coca 500")
+
+    def test_borrar_el_codigo_y_enter_es_cancelar(self):
+        pregunta, error = self._escribir_codigo("ALFA", "   ")
+        pregunta.assert_not_called()
+        error.assert_not_called()
+        self.assertEqual(self.tabla.item(self._fila("ALFA"), COLUMNA_CODIGO).text(), "ALFA")
+
+    def test_con_el_codigo_cambiado_el_stock_se_sigue_guardando(self):
+        self._escribir_codigo("ALFA", "7790580001234")
+        self.tabla.item(self._fila("7790580001234"), COLUMNA_STOCK).setText("6")
+        _app.processEvents()
+        self.assertEqual(self._stock("7790580001234"), 6)
+
+    def test_doble_clic_abre_el_codigo_y_al_cerrarlo_vuelve_al_stock(self):
+        # Un clic sigue yendo al stock (test de abajo): el código se abre solo con
+        # doble clic, así no se cambia sin querer.
+        fila = self._fila("ALFA")
+        centro = self.tabla.visualItemRect(self.tabla.item(fila, COLUMNA_CODIGO)).center()
+        # Lo que manda un mouse de verdad: apretar, soltar, doble clic, soltar. QTest.mouseDClick
+        # solo manda el doble clic, y sin el primer clic la tabla lo toma como un clic suelto.
+        area = self.tabla.viewport()
+        QTest.mousePress(area, Qt.LeftButton, Qt.NoModifier, centro)
+        QTest.mouseRelease(area, Qt.LeftButton, Qt.NoModifier, centro)
+        QTest.mouseDClick(area, Qt.LeftButton, Qt.NoModifier, centro)
+        QTest.mouseRelease(area, Qt.LeftButton, Qt.NoModifier, centro)
+        _app.processEvents()
+
+        self.assertEqual(self.tabla.state(), QAbstractItemView.EditingState)
+        editor = self.tabla.indexWidget(self.tabla.model().index(fila, COLUMNA_CODIGO))
+        self.assertIsNotNone(editor)
+        QTest.keyClick(editor, Qt.Key_Escape)
+        _app.processEvents()
+
+        self.assertNotEqual(self.tabla.state(), QAbstractItemView.EditingState)
+        self.assertEqual((self.tabla.currentRow(), self.tabla.currentColumn()), (fila, COLUMNA_STOCK))
+        self.assertIsNotNone(articulos_repo.buscar_por_codigo("ALFA"))
 
     def test_escribir_el_stock_lo_guarda(self):
         self._celda_stock("COCA").setText("9")

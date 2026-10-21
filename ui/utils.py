@@ -304,17 +304,19 @@ def crear_tabla(titulos, estirar=None, por_filas=False, una_sola=False) -> QTabl
     return tabla
 
 
-def mostrar_columna_entera(tabla: QTableWidget, columna: int):
+def mostrar_columna_entera(tabla: QTableWidget, columna: int, de_mas: int = 0):
     """
     Ensancha `columna` lo justo para que su texto más largo se lea entero
-    (llamarla después de llenar la tabla). Nunca la achica.
+    (llamarla después de llenar la tabla), con `de_mas` píxeles más si la
+    celda se escribe (el campo que se abre tiene borde y relleno). Nunca la
+    achica.
 
     Pensada para la columna de códigos de barras: Qt corta con "..." lo que
     no entra, y en la de 100 px de siempre un EAN-13 como 7798113301024 se
     veía "77981133010…". Parecía guardado con dos dígitos menos y se lo
     buscaba así, sin encontrarlo (2026-10-18).
     """
-    necesario = max(tabla.sizeHintForColumn(columna),
+    necesario = max(tabla.sizeHintForColumn(columna) + de_mas,
                     tabla.horizontalHeader().sectionSizeHint(columna))
     if necesario > tabla.columnWidth(columna):
         tabla.setColumnWidth(columna, necesario)

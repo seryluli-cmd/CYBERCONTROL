@@ -269,6 +269,7 @@ abra no alcanza si los tests no pasan.
 | `ui.utils.crear_tabla(titulos, ...)` | se arma una tabla de solo lectura (filas alternadas, columna que se estira, selección por filas) |
 | `ui.utils.mostrar_columna_entera(tabla, columna)` | se ensancha una columna para que su texto no se corte con "..." (la de códigos de barras, en las seis tablas que la muestran: llamarla después de llenar la tabla). Con 100 px un EAN-13 se veía "77981133010…" y parecía guardado con dos dígitos menos (2026-10-18) |
 | `articulos_repo.ajustar_stock(usuario_id, codigo, stock_nuevo, clave)` · `.comprobar_clave_para_ordenar_stock(...)` | se corrige el stock de un artículo a mano (ORDENAR Stock, pedido del dueño 2026-10-20): solo Admin activo con la contraseña de `CLAVE_ORDENAR_STOCK`, entero de 0 para arriba, anotado en `ajustes_stock` y visible en Movimientos. Es la única forma de mover el stock aparte de Compras y Ventas |
+| `articulos_repo.cambiar_codigo(usuario_id, codigo_actual, codigo_nuevo, clave)` · `._TABLAS_CON_CODIGO_DE_ARTICULO` | se corrige el código de un artículo (ORDENAR Stock, doble clic en el código; pedido del dueño 2026-10-20): mismo permiso y contraseña que el stock; las ventas, compras y ajustes de antes pasan al código nuevo en la misma transacción, anotado en `cambios_codigo` y en Movimientos ("cambio de código A → B"). Es el único lugar donde se cambia un código (ver "Trampas conocidas") |
 | `ui.articulos_tabla.llenar_tabla_de_articulos(...)` · `.poner_stock(...)` | se arma la grilla de artículos (columnas y stock en rojo bajo el mínimo): la usan Artículos y ORDENAR Stock |
 | `ui.buscar_articulo.avisar_codigo_no_encontrado(ventana, codigo)` | se avisa en Ventas y Compras que lo escaneado no es ningún artículo, con cuántos dígitos llegaron (para comparar con el código cargado) |
 | `ui.utils.crear_selector_de_fecha(...)` | se crea un campo de fecha con calendario (sin sábado/domingo en rojo; usarlo siempre, nunca un `QDateEdit` a mano) |
@@ -327,6 +328,19 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   ni ventas, ni la caja. Ahí sí se rechaza un número negativo (es lo que hay
   contado en el estante); lo de arriba vale para vender. El alta/edición de un
   artículo sigue sin tocar el stock.
+- **El código de un artículo se cambia SOLO en ORDENAR Stock** (mismo día: había
+  códigos escritos a mano mal en vez de leídos con la pistola). Se abre con doble
+  clic en el código (un clic sigue yendo al stock, así no se cambia uno sin
+  querer), pregunta antes de guardar y pasa por `articulos_repo.cambiar_codigo`
+  (mismo permiso y contraseña que el stock). El código es la clave de `articulos`
+  y lo guardan `venta_detalle`, `compra_detalle`, `ajustes_stock` y
+  `cambios_codigo`: se corrigen todas en la misma transacción con
+  `PRAGMA defer_foreign_keys` (si faltara una, el guardado falla y no queda nada a
+  medias). Una tabla nueva que guarde el código de un artículo va en
+  `articulos_repo._TABLAS_CON_CODIGO_DE_ARTICULO` (`tests/test_ordenar_stock.py`
+  lo vigila). No deja usar el código de otro artículo (no se juntan dos
+  artículos) ni tocar el de Impresiones (`dominio.CODIGO_ARTICULO_IMPRESIONES`).
+  En Artículos > Modificar el código sigue sin poder cambiarse.
 - **El carrito de una venta vive solo en memoria** hasta que se cobra. No
   lo persistas "por las dudas": es lo que permite borrar un renglón mal
   escaneado sin dejar basura en la base.
@@ -815,7 +829,7 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-974 pruebas al 2026-10-20 (el número que se escribe en una celda de tabla, como el stock de ORDENAR Stock, las preguntas de cerrar una sesión sin hablar de reintegros, el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+992 pruebas al 2026-10-20 (cambiar el código de un artículo desde ORDENAR Stock, el número que se escribe en una celda de tabla, como el stock de ORDENAR Stock, las preguntas de cerrar una sesión sin hablar de reintegros, el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

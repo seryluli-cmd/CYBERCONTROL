@@ -380,7 +380,11 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   `articulos_repo.ajustar_stock(usuario_id, codigo, stock_nuevo, clave)`, que
   vuelve a exigir Admin activo y contraseña, toma el stock "antes" de la base
   (no de la pantalla), acepta solo enteros de 0 para arriba y anota cada cambio
-  en `ajustes_stock`. No toca precios, costos ni la caja.
+  en `ajustes_stock`. No toca precios, costos ni la caja. También corrige el
+  CÓDIGO de un artículo cargado mal a mano (amarillo también; doble clic, escanear
+  o escribir, Enter y confirmar): `articulos_repo.cambiar_codigo` lleva sus
+  ventas, compras y ajustes al código nuevo y lo anota en `cambios_codigo` y en
+  Movimientos. Es el único lugar donde se cambia un código.
 - **Compras** (`compras_window.py`, `ComprasWindow`) — carga de mercadería
   por escaneo (mismos F5/F6/F7 que Ventas). Al escanear pide cantidad y
   costo (precargado con el `precio_compra` actual) por `QInputDialog`.
