@@ -35,6 +35,9 @@ def _texto_evento(evento) -> str:
     if tipo == "BONO":
         return (f"{hora} — {evento['estacion_nombre']}: bono '{evento['bono_nombre']}' "
                 f"cobrado ({formato_pesos(evento['precio'])}).")
+    if tipo == "RESERVA":
+        return (f"{hora} — {evento['estacion_nombre']}: reserva Nº {evento['numero']} de {evento['cliente']} "
+                f"habilitada ({evento['bono_nombre']}).")
     if tipo == dominio.MOVIMIENTO_CARGA:
         return f"{hora} — {formato_pesos(evento['monto'])} cargados a {evento['miembro_nombre']}."
     if tipo == dominio.MOVIMIENTO_CONSUMO:

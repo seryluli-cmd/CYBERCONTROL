@@ -42,6 +42,7 @@ class DialogoLimpiarBase(QDialog):
             f"({cantidades['sesiones_playstation']}), también las que estén en curso: "
             "esas PCs se vuelven a bloquear.</li>"
             "<li>El saldo de los socios (quedan en 0) y su historial de saldo.</li>"
+            f"<li>Las reservas: {cantidades['reservas']}.</li>"
             "</ul>Con eso Caja, Cierre de Turno y todos los Reportes quedan en cero. A los "
             "artículos se les devuelve el stock que se llevaron esas ventas."
         )

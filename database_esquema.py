@@ -531,6 +531,56 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # RESERVAS (pedido del dueño, 2026-10-20; ver control_pcs/repositories/reservas_repo.py)
+    # -------------------------------------------------------------------
+    # Un cliente reserva un equipo para otro momento y paga una seña o todo. La
+    # plata entra en la caja de quien la cobra, como cualquier venta: cada pago
+    # es una fila común de "ventas" (Alquiler de PCs o PlayStation 5) unida a su
+    # reserva por "reservas_pagos", igual que un trámite por "tramites_venta". Así
+    # la caja la cuenta sola y no hace falta otro origen de venta.
+    #
+    # El bono se guarda como foto (nombre, minutos y precio del día que se
+    # reservó: el precio queda fijo aunque después cambie el bono). "bono_id" no
+    # lleva REFERENCES porque sale de uno de tres catálogos según el equipo
+    # (bonos_tiempo, bonos_pcstream o bonos_playstation). "estacion_id" es la PC
+    # pedida: NULL es "cualquier PC disponible" (y también PCSTREAM y la
+    # PlayStation 5, que son una sola). Al habilitarla queda dónde se usó y con
+    # qué sesión. "estado_desde"/"estado_por" dicen desde cuándo está como está y
+    # quién la pasó (NULL = el programa solo, al vencer la tolerancia o los días
+    # para reprogramar).
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS reservas (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha_creacion          TEXT NOT NULL,
+            usuario_id              INTEGER NOT NULL REFERENCES usuarios(id),
+            cliente                 TEXT NOT NULL,
+            celular                 TEXT NOT NULL DEFAULT '',
+            equipo                  TEXT NOT NULL CHECK (equipo IN ({_valores_sql(dominio.EQUIPOS_RESERVA)})),
+            estacion_id             INTEGER REFERENCES estaciones(id),
+            bono_id                 INTEGER NOT NULL,
+            bono_nombre             TEXT NOT NULL,
+            minutos                 INTEGER NOT NULL,
+            precio                  REAL NOT NULL,
+            fecha_reserva           TEXT NOT NULL,
+            estado                  TEXT NOT NULL CHECK (estado IN ({_valores_sql(dominio.ESTADOS_RESERVA)})),
+            estado_desde            TEXT NOT NULL,
+            estado_por              INTEGER REFERENCES usuarios(id),
+            estacion_habilitada_id  INTEGER REFERENCES estaciones(id),
+            sesion_pc_id            INTEGER REFERENCES sesiones_pc(id),
+            sesion_playstation_id   INTEGER REFERENCES sesiones_playstation(id),
+            motivo_devolucion       TEXT
+        )
+    """)
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS reservas_pagos (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            reserva_id  INTEGER NOT NULL REFERENCES reservas(id),
+            venta_id    INTEGER NOT NULL UNIQUE REFERENCES ventas(id),
+            tipo        TEXT NOT NULL CHECK (tipo IN ({_valores_sql(dominio.TIPOS_PAGO_RESERVA)}))
+        )
+    """)
+
+    # -------------------------------------------------------------------
     # COMANDOS_PC (control remoto de una estación desde el mostrador)
     # -------------------------------------------------------------------
     # El mostrador no tiene ninguna conexión directa hacia la PC cliente
@@ -701,6 +751,12 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_playstation_inicio ON sesiones_playstation(fecha_inicio)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_playstation_fin_real ON sesiones_playstation(fecha_fin_real)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesion_playstation_bonos_venta ON sesion_playstation_bonos(venta_id)")
+    # Las reservas que esperan (la ventana RESERVAS y el botón de la barra, que
+    # cuenta las de hoy) y los pagos de cada una.
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservas_estado ON reservas(estado, fecha_reserva)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservas_pagos_reserva ON reservas_pagos(reserva_id)")
+    # Las últimas habilitadas, para "Actividad reciente" (cada 5 s, ver arriba).
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservas_estado_desde ON reservas(estado, estado_desde)")
 
     conexion.commit()
 

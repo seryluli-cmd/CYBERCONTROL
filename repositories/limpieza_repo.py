@@ -19,8 +19,8 @@ eso tiene sus propios resguardos:
 Qué se borra (_TABLAS_A_VACIAR): ventas con su detalle y sus pagos, cobros de
 trámites, cierres de turno, sesiones de las PCs y de la PlayStation 5 con sus
 bonos vendidos, sus traslados, sus cortes de conexión y el tiempo ajustado al
-volver de un corte, y el historial de saldo
-de los socios. Además
+volver de un corte, el historial de saldo
+de los socios y las reservas (su plata son ventas). Además
 cada socio queda con saldo 0 (su saldo se cargó con ventas que se borran) y a
 cada artículo se le devuelve el stock que se llevaron las ventas confirmadas
 (como si esas ventas no hubieran pasado; las anuladas ya lo habían devuelto).
@@ -44,6 +44,10 @@ from repositories import usuarios_repo
 # En este orden: primero las tablas que apuntan a otras (las claves foráneas
 # están prendidas, y SQLite no deja borrar una venta que todavía tiene pagos).
 _TABLAS_A_VACIAR = (
+    # Las reservas (reservas_repo): sus pagos son ventas y la reserva apunta a la
+    # sesión en que se usó, así que van antes que las dos.
+    "reservas_pagos",
+    "reservas",
     "venta_pagos",
     "venta_detalle",
     "tramites_venta",

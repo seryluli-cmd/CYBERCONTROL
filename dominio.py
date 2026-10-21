@@ -420,6 +420,71 @@ def fin_al_sumar_minutos(fin_actual, minutos: int, ahora: datetime) -> datetime:
 
 
 # --------------------------------------------------------------------
+# Reservas (pedido del dueño, 2026-10-20; ver control_pcs/repositories/reservas_repo.py)
+# --------------------------------------------------------------------
+# Un cliente reserva un equipo para más tarde y paga una seña o todo en el
+# momento. Qué equipo: una PC común (una puntual, o "cualquiera disponible"),
+# PCSTREAM o la PlayStation 5. Cada uno se cobra con SU catálogo de bonos.
+EQUIPO_RESERVA_PC = "PC"
+EQUIPO_RESERVA_PCSTREAM = "PCSTREAM"
+EQUIPO_RESERVA_PLAYSTATION = "PLAYSTATION"
+EQUIPOS_RESERVA = (EQUIPO_RESERVA_PC, EQUIPO_RESERVA_PCSTREAM, EQUIPO_RESERVA_PLAYSTATION)
+# Cómo se ve una reserva de PC sin PC fija (no aparta ninguna: decisión del dueño).
+NOMBRE_RESERVA_CUALQUIER_PC = "Cualquier PC disponible"
+
+
+def nombre_equipo_reservado(equipo: str, nombre_pc=None) -> str:
+    """Cómo se nombra el equipo de una reserva: la PC pedida (`nombre_pc`),
+    "Cualquier PC disponible", PCSTREAM o la PlayStation 5."""
+    if equipo == EQUIPO_RESERVA_PLAYSTATION:
+        return NOMBRE_PLAYSTATION
+    if equipo == EQUIPO_RESERVA_PCSTREAM:
+        return NOMBRE_PCSTREAM
+    return nombre_pc or NOMBRE_RESERVA_CUALQUIER_PC
+
+# Cómo está una reserva. "Pendiente" sirve con seña o ya pagada: lo que falta
+# cobrar se calcula con sus pagos, no es otro estado.
+RESERVA_PENDIENTE = "PENDIENTE"
+RESERVA_HABILITADA = "HABILITADA"
+# Dejó seña y no vino: la pierde (decisión del dueño).
+RESERVA_NO_VINO = "NO_VINO"
+# Pagó todo y no vino: se le da otro día, con cualquier PC disponible.
+RESERVA_A_REPROGRAMAR = "A_REPROGRAMAR"
+# Quedó "A reprogramar" y nadie le dio otro día a tiempo: la plata queda donde entró.
+RESERVA_VENCIDA = "VENCIDA"
+# El Admin le devolvió la plata (corte de luz, PC rota, el local canceló).
+RESERVA_DEVUELTA = "DEVUELTA"
+ESTADOS_RESERVA = (
+    RESERVA_PENDIENTE, RESERVA_HABILITADA, RESERVA_NO_VINO, RESERVA_A_REPROGRAMAR,
+    RESERVA_VENCIDA, RESERVA_DEVUELTA,
+)
+# Las que todavía esperan al cliente: se pueden habilitar, reprogramar o dar por no venidas.
+ESTADOS_RESERVA_ABIERTA = (RESERVA_PENDIENTE, RESERVA_A_REPROGRAMAR)
+
+# Qué fue cada venta de una reserva: lo que se pagó al reservar (una seña o
+# todo), lo que se cobró al habilitarla y la devolución (una venta en negativo:
+# sale de la caja de quien entrega la plata).
+PAGO_RESERVA_ANTICIPO = "ANTICIPO"
+PAGO_RESERVA_RESTO = "RESTO"
+PAGO_RESERVA_DEVOLUCION = "DEVOLUCION"
+TIPOS_PAGO_RESERVA = (PAGO_RESERVA_ANTICIPO, PAGO_RESERVA_RESTO, PAGO_RESERVA_DEVOLUCION)
+# Cómo se cuentan esos pagos debajo del renglón "Reservas" de Caja y Cierre de
+# Turno ("1 seña · 1 resto"), en este orden: lo pagado al reservar es una seña si
+# no cubría el precio, o un pago total si sí (no se guarda: se mira al contar).
+CLASE_PAGO_RESERVA_SENA = "SENA"
+CLASE_PAGO_RESERVA_TOTAL = "TOTAL"
+CLASES_PAGO_RESERVA = (
+    CLASE_PAGO_RESERVA_SENA, CLASE_PAGO_RESERVA_TOTAL, PAGO_RESERVA_RESTO, PAGO_RESERVA_DEVOLUCION,
+)
+
+# Pasada la hora de la reserva más esto sin que el cliente llegue, la reserva
+# pasa sola a "No vino" o a "A reprogramar" (decisión del dueño).
+MINUTOS_TOLERANCIA_RESERVA = 20
+# Una reserva "A reprogramar" vence a los cinco días (decisión del dueño).
+DIAS_PARA_REPROGRAMAR_RESERVA = 5
+
+
+# --------------------------------------------------------------------
 # Bonos de tiempo (reglas compartidas por los cuatro catálogos)
 # --------------------------------------------------------------------
 # Hay cuatro catálogos de bonos -- pcs_repo.bonos_tiempo (walk-ins),

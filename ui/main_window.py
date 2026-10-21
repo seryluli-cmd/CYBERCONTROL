@@ -19,7 +19,10 @@ los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
   modificar datos, cargar saldo, desactivar — usa la tarifa y los bonos ya
   definidos, no los edita; pedido del dueño, 2026-10-19: antes pedía
   `permiso_control_pcs`, cualquier operador tiene que poder cargarle saldo a
-  un socio), Caja, Cierre de Turno, y Cambiar mi Clave. La PlayStation 5, que
+  un socio), "Reservas" (tomar una reserva cobrando la seña, habilitarla,
+  reprogramarla; devolver la plata es solo del Admin, ver
+  control_pcs/repositories/reservas_repo.py), Caja, Cierre de Turno, y Cambiar
+  mi Clave. La PlayStation 5, que
   está en esa misma grilla, la ve cualquiera pero solo la opera (vender sus
   bonos, liberarla) quien tenga `permiso_control_pcs` (o sea Admin) —
   ese permiso sigue existiendo, solo que ya no hace falta para Miembros.
@@ -84,6 +87,8 @@ from control_pcs.ui.pcs_gestion_dialogos import (
     DialogoGestionBonosPcstream,
 )
 from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
+from control_pcs.ui.reservas_window import ReservasWindow
+from control_pcs.repositories import reservas_repo
 from ui.ingreso_caja import mensaje_del_sobre
 from ui.utils import aplicar_clase, mostrar_error, mostrar_info, sin_boton_por_defecto
 
@@ -124,6 +129,7 @@ class MainWindow(QMainWindow):
             self._mostrar_la_caja_del_mostrador()
         else:
             self._actualizar_estado_de_la_caja()
+        self._actualizar_boton_reservas()
 
         self._timer_caja = QTimer(self)
         self._timer_caja.setInterval(INTERVALO_REVISION_CAJA_MS)
@@ -197,6 +203,7 @@ class MainWindow(QMainWindow):
         """El renglón de botones, de izquierda a derecha empezando por Vender;
         "Cerrar sesión" va solo, en la punta derecha (lejos de los demás, para no
         apretarlo sin querer)."""
+        self.boton_reservas = None
         if not self._remota:
             self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
             # Cobro rápido de impresiones, sin entrar a Vender (pedido del dueño, 2026-10-19).
@@ -208,6 +215,9 @@ class MainWindow(QMainWindow):
             # antes pedía permiso_control_pcs o Admin, pero cargarle saldo a un socio
             # es una venta más y cualquiera tiene que poder hacerlo.
             self._agregar_boton_barra(layout_barra, "🧑  Miembros", self._abrir_miembros)
+            # Reservas de PCs, PCSTREAM y PlayStation 5 (pedido del dueño, 2026-10-20): cobra,
+            # así que solo en el mostrador. Dice cuántas esperan hoy (ver _actualizar_boton_reservas).
+            self.boton_reservas = self._agregar_boton_barra(layout_barra, "", self._abrir_reservas)
         # Nombres cortos en la barra (pedido del dueño, 2026-10-18); las ventanas
         # que abren siguen con su nombre entero.
         self._agregar_boton_barra(
@@ -326,6 +336,7 @@ class MainWindow(QMainWindow):
         if self._remota:
             self._mostrar_la_caja_del_mostrador()
             return
+        self._actualizar_boton_reservas()
         try:
             estado = self._actualizar_estado_de_la_caja()
             if estado is None or not estado["vencida"] or self._hay_un_cobro_a_medias():
@@ -395,6 +406,23 @@ class MainWindow(QMainWindow):
 
     def _abrir_miembros(self):
         MiembrosWindow(self.usuario, self).exec()
+
+    def _abrir_reservas(self):
+        ReservasWindow(self.usuario, self).exec()
+        self._actualizar_boton_reservas()
+
+    def _actualizar_boton_reservas(self):
+        """"Reservas · 3 hoy" con las que esperan hoy (reservas_repo.reservas_de_hoy),
+        o solo "Reservas" si no hay. Se mira al abrir, en cada revisión de la caja y al
+        cerrar la ventana de Reservas. Un fallo de la base no puede tirar el mostrador."""
+        if self.boton_reservas is None:
+            return
+        try:
+            hoy = reservas_repo.reservas_de_hoy()
+        except Exception as error:
+            registrar_error(error, "Contar las reservas de hoy")
+            hoy = 0
+        self.boton_reservas.setText(f"📅  Reservas · {hoy} hoy" if hoy else "📅  Reservas")
 
     def _abrir_configuracion_admin(self):
         ConfiguracionAdminWindow(self.usuario, self).exec()

@@ -117,6 +117,17 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   llevan `ventas.origen = 'PLAYSTATION'` (`dominio.ORIGEN_PLAYSTATION`), así
   Caja, Cierre de Turno y Reportes la muestran aparte de Kiosko y de Alquiler
   de PCs. Ver `control_pcs/repositories/playstation_repo.py`.
+- **`reservas`** + **`reservas_pagos`** — las **reservas** de una PC (una
+  puntual o "cualquier PC disponible"), PCSTREAM o la PlayStation 5 (pedido del
+  dueño, 2026-10-20). La reserva guarda quién y cuándo viene, el equipo y una
+  foto del bono (nombre, minutos y precio: el precio queda fijo), su estado
+  (`dominio.ESTADOS_RESERVA`: Pendiente, Habilitada, No vino, A reprogramar,
+  Vencida, Devuelta) y, al habilitarla, dónde y con qué sesión se usó. Cada
+  pago es una venta común (Alquiler de PCs o PlayStation 5) unida a su reserva
+  en `reservas_pagos` con su tipo (`ANTICIPO` al reservar, `RESTO` al habilitar,
+  `DEVOLUCION`, una venta en negativo): la plata queda en la caja de quien la
+  cobra y no hace falta otro origen de venta. Ver
+  `control_pcs/repositories/reservas_repo.py`.
 - **`cierres_turno`** — `fecha`/`turno` del cierre, `usuario_id` (quién
   cerró), `fecha_cierre` (momento exacto — es el límite "desde" del
   próximo turno), `fondo_cambio`/`ventas_efectivo`/`ventas_digital`/
@@ -325,12 +336,27 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   liberarla lo puede hacer cualquier operador logueado; crear/modificar/dar
   de baja sus bonos es solo del Admin, desde Configuración ADMIN →
   "Gestionar Bonos de PlayStation 5". Ver `playstation_repo.vender_bono`.
+- **Reservas** (`control_pcs/ui/reservas_window.py` + `reservas_dialogos.py`;
+  botón "📅 Reservas · N hoy" de la barra, solo en el mostrador) — pedido del
+  dueño, 2026-10-20 (parte 1: la plata). Un cliente reserva un equipo para otro
+  momento y paga una seña o todo; cuando vuelve puede ser otro turno. Nueva
+  reserva cobra lo que paga ahora con la ventana de cobro de siempre (queda en la
+  caja de quien la toma); Habilitar dice cuánto pagó, cuándo y a quién, cobra lo
+  que falta (queda en la caja de quien habilita) y abre el equipo con el bono
+  reservado. **Habilitar una reserva ya pagada no crea ninguna venta.** Si no
+  viene (sola, a la hora + 20 minutos, o con "No vino"): con seña la pierde; si
+  pagó todo queda "A reprogramar" (otro día, con cualquier PC disponible) y vence
+  a los 5 días. Ninguna de las dos cosas mueve plata. Devolver plata es solo del
+  Admin: una venta en negativo en la caja de ahora (el cierre viejo no se toca).
+  Reglas en `control_pcs/repositories/reservas_repo.py` y
+  `reservas_habilitar_repo.py`. Falta la parte 2 (la PC marcada RESERVADA en el
+  mosaico, el cartel en la pantalla de bloqueo).
 - **Caja** (`caja_window.py`, `CajaWindow`) — solo lectura, resumen del
   turno en curso vía `turnos_repo.resumen_turno_actual()` (número de caja y
   responsable, caja inicial = el cambio con que arrancó la caja, caja actual =
   caja inicial + efectivo, ventas efectivo/digital, y el desglose Kiosko /
-  Impresiones / Trámites / Alquiler de PCs / PlayStation 5, cada uno con su
-  efectivo y digital). La caja actual
+  Impresiones / Trámites / Alquiler de PCs / PlayStation 5 / Reservas, cada uno
+  con su efectivo y digital). La caja actual
   excluye a propósito lo cobrado en digital.
 - **Cierre de Turno** (`caja_window.py`, `CierreTurnoWindow`) — cualquiera
   cierra su propio turno. Muestra preview y, al confirmar, llama a
@@ -352,6 +378,12 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   efectivo y digital se hace venta por venta con sus pagos
   (`turnos_ventas_repo._aparte_por_metodo`): exacto si las impresiones se
   cobraron solas, en proporción si iban en un carrito pagado en los dos medios.
+  Lo mismo con las **Reservas** (variante A, elegida por el dueño el
+  2026-10-20): un renglón propio al lado de Alquiler de PCs, sacado de Alquiler
+  de PCs y de PlayStation 5 (`resumen["pcs_solo_*"]`, `["playstation_solo_*"]`,
+  `["reservas_*"]`), con un renglón chico abajo ("1 seña · 1 resto") y, al pie,
+  las reservas que se habilitaron ya pagadas de otro turno (no suman acá). Lo
+  que se graba en el cierre no cambia.
 
 **Administrar Kiosko:** Artículos, Compras, Consulta de Ventas, Reportes y
 Control de Cierres pueden delegarse por permiso individual a una empleada.
@@ -642,7 +674,8 @@ Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,
-PCs, Miembros, PlayStation 5, Trámites, servidor de red (con el fondo de pantalla
+PCs, Miembros, PlayStation 5, Trámites, reservas (`tests/test_reservas.py`,
+`tests/test_reservas_ui.py`), servidor de red (con el fondo de pantalla
 y el filtro de palabras de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.
 

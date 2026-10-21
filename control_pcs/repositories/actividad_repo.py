@@ -39,6 +39,8 @@ def actividad_reciente(limite: int = 30):
 
         # Los bonos comunes y los de PCSTREAM viven en tablas distintas (ver
         # pcstream_repo), pero en el panel son el mismo evento: "se vendió un bono".
+        # Menos el de una reserva: se anota con la venta del día que se reservó (que
+        # pudo ser solo una seña), y sale abajo como "reserva habilitada".
         # Los últimos bonos son los de número de venta más alto (se numeran a
         # medida que se venden): ordenar por `venta_id`, con su índice, lee solo
         # esos. Ordenar por `ventas.fecha` obligaba a recorrer y ordenar todos los
@@ -53,6 +55,7 @@ def actividad_reciente(limite: int = 30):
                 JOIN {tabla_bonos} b ON b.id = sb.bono_id
                 JOIN sesiones_pc s ON s.id = sb.sesion_id
                 JOIN estaciones e ON e.id = s.estacion_id
+                WHERE NOT EXISTS (SELECT 1 FROM reservas_pagos rp WHERE rp.venta_id = sb.venta_id)
                 ORDER BY sb.venta_id DESC LIMIT ?
             """, (limite,)).fetchall():
                 eventos.append({"fecha": fila["fecha"], "tipo": "BONO",
@@ -118,6 +121,20 @@ def actividad_reciente(limite: int = 30):
                              "estacion_nombre": fila["estacion_nombre"],
                              "segundos_mostrador": fila["segundos_mostrador"],
                              "segundos_pc": fila["segundos_pc"]})
+
+        # Las reservas que se habilitaron (reservas_repo), en la PC donde se usaron o
+        # en la consola. Con su índice (estado, estado_desde): lee solo las últimas.
+        for fila in conexion.execute("""
+            SELECT r.estado_desde AS fecha, r.id AS numero, r.cliente AS cliente, r.bono_nombre AS bono_nombre,
+                   CASE WHEN r.sesion_playstation_id IS NOT NULL THEN ? ELSE e.nombre END AS estacion_nombre
+            FROM reservas r
+            LEFT JOIN estaciones e ON e.id = r.estacion_habilitada_id
+            WHERE r.estado = ?
+            ORDER BY r.estado_desde DESC LIMIT ?
+        """, (dominio.NOMBRE_PLAYSTATION, dominio.RESERVA_HABILITADA, limite)).fetchall():
+            eventos.append({"fecha": fila["fecha"], "tipo": "RESERVA", "estacion_nombre": fila["estacion_nombre"],
+                            "numero": fila["numero"], "cliente": fila["cliente"],
+                            "bono_nombre": fila["bono_nombre"]})
 
     # La PlayStation 5 comparte el panel con las PCs: sus sesiones y bonos
     # llegan con la misma forma (ver playstation_repo.eventos_recientes).

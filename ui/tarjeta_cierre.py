@@ -18,6 +18,8 @@ También están acá las piezas que comparte con la pantalla Caja (CajaWindow),
 que tiene los mismos renglones pero otra última línea.
 """
 
+from datetime import datetime
+
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -31,6 +33,19 @@ NOTA_AL_CERRAR = (
     "fijo en el cajón para que arranque el próximo turno."
 )
 
+# El azul del monto de "Reservas" (el de los avisos informativos), como en la
+# maqueta que eligió el dueño (variante A, 2026-10-20).
+COLOR_RESERVAS = "#1D48A0"
+
+# Cómo se nombra cada pago de reserva en el renglón de abajo de "Reservas", en
+# singular y en plural (las claves son dominio.CLASES_PAGO_RESERVA).
+_NOMBRES_DE_PAGO_DE_RESERVA = {
+    dominio.CLASE_PAGO_RESERVA_SENA: ("seña", "señas"),
+    dominio.CLASE_PAGO_RESERVA_TOTAL: ("pago total", "pagos totales"),
+    dominio.PAGO_RESERVA_RESTO: ("resto", "restos"),
+    dominio.PAGO_RESERVA_DEVOLUCION: ("devolución", "devoluciones"),
+}
+
 
 def texto_desglose(efectivo: float, digital: float) -> str:
     """"$X ef. + $Y dig." -- una sola línea para mostrar el desglose de un
@@ -39,20 +54,65 @@ def texto_desglose(efectivo: float, digital: float) -> str:
     return f"{formato_pesos(efectivo)} ef. + {formato_pesos(digital)} dig."
 
 
+def texto_pagos_de_reservas(por_tipo: list) -> str:
+    """"1 seña ($ 5.000,00) · 1 resto ($ 3.000,00)": qué fueron los pagos de
+    reservas del turno (resumen["reservas_por_tipo"]); vacío si no hubo."""
+    partes = []
+    for pago in por_tipo:
+        singular, plural = _NOMBRES_DE_PAGO_DE_RESERVA[pago["clase"]]
+        # Con espacio duro: el renglón es angosto y "$" quedaba solo al final de una línea.
+        monto = formato_pesos(pago["monto"]).replace(" ", "\u00a0")
+        partes.append(f"{pago['cantidad']} {singular if pago['cantidad'] == 1 else plural} ({monto})")
+    return " · ".join(partes)
+
+
+def texto_reservas_sin_cobro(reservas: list) -> str:
+    """El aviso de las reservas que se habilitaron en el turno ya pagadas de otro
+    (resumen["reservas_sin_cobro"]): no suman nada acá y así se entiende por qué
+    se abrió un equipo sin plata. Vacío si no hubo."""
+    if not reservas:
+        return ""
+    renglones = []
+    for reserva in reservas:
+        pagada = ""
+        if reserva["pagada_el"]:
+            pagada = f", ya pagada el {datetime.fromisoformat(reserva['pagada_el']):%d/%m %H:%M}"
+            if reserva["pagada_a"]:
+                pagada += f" ({reserva['pagada_a']})"
+        renglones.append(f"reserva Nº {reserva['numero']} ({reserva['cliente']}) en {reserva['lugar']}{pagada}")
+    return f"📅 Habilitada sin cobro en este turno: {'; '.join(renglones)}. Acá suma $ 0."
+
+
+def armar_renglon_de_reservas():
+    """El dato "Reservas" de Caja y de Cierre de Turno, con un renglón chico abajo
+    que dice qué fueron (señas, restos...). Devuelve (layout, etiqueta del valor,
+    etiqueta del renglón chico)."""
+    layout, valor = etiqueta_dato("Reservas", "", color_valor=COLOR_RESERVAS)
+    detalle = QLabel()
+    detalle.setWordWrap(True)
+    detalle.setStyleSheet("color: #6B7585; font-size: 11px;")
+    detalle.hide()
+    layout.addWidget(detalle)
+    return layout, valor, detalle
+
+
 def mostrar_desglose_por_negocio(pantalla, resumen):
     """Los renglones de cada negocio, iguales en Caja y en Cierre de Turno:
     Kiosko (sin impresiones ni trámites), Impresiones, Trámites, Alquiler de
-    PCs y PlayStation 5, cada uno con su efectivo y digital (ver
-    turnos_repo.resumen_turno_actual)."""
+    PCs y PlayStation 5 (sin sus reservas) y Reservas, cada uno con su efectivo
+    y digital (ver turnos_repo.resumen_turno_actual)."""
     pantalla.valor_kiosko.setText(texto_desglose(resumen["kiosko_solo_efectivo"], resumen["kiosko_solo_digital"]))
     pantalla.valor_impresiones.setText(
         texto_desglose(resumen["impresiones_efectivo"], resumen["impresiones_digital"])
     )
     pantalla.valor_tramites.setText(texto_desglose(resumen["tramites_efectivo"], resumen["tramites_digital"]))
-    pantalla.valor_pcs.setText(texto_desglose(resumen["pcs_efectivo"], resumen["pcs_digital"]))
+    pantalla.valor_pcs.setText(texto_desglose(resumen["pcs_solo_efectivo"], resumen["pcs_solo_digital"]))
     pantalla.valor_playstation.setText(
-        texto_desglose(resumen["playstation_efectivo"], resumen["playstation_digital"])
+        texto_desglose(resumen["playstation_solo_efectivo"], resumen["playstation_solo_digital"])
     )
+    pantalla.valor_reservas.setText(texto_desglose(resumen["reservas_efectivo"], resumen["reservas_digital"]))
+    pantalla.detalle_reservas.setText(texto_pagos_de_reservas(resumen["reservas_por_tipo"]))
+    pantalla.detalle_reservas.setVisible(bool(pantalla.detalle_reservas.text()))
 
 
 def titulo_de_la_caja(resumen) -> str:
@@ -150,6 +210,18 @@ class TarjetaCierreDeTurno(QWidget):
         # Kiosko en el cierre.
         layout_impresiones, self.valor_impresiones = etiqueta_dato("Impresiones", "")
         layout_tramites, self.valor_tramites = etiqueta_dato("Trámites", "")
+        # Lo cobrado por reservas, sacado de Alquiler de PCs y de PlayStation 5, al
+        # lado de Alquiler de PCs (variante A, elegida por el dueño el 2026-10-20).
+        # Abajo lleva un renglón chico ("1 seña · 1 resto"): sin el stretch, el
+        # monto de Alquiler de PCs bajaría para emparejarse con él.
+        layout_reservas, self.valor_reservas, self.detalle_reservas = armar_renglon_de_reservas()
+        layout_pcs.addStretch()
+
+        # Las reservas que se habilitaron ya pagadas de otro turno (no suman acá).
+        self.nota_reservas = QLabel()
+        self.nota_reservas.setWordWrap(True)
+        self.nota_reservas.setStyleSheet("color: #6B7585; font-size: 11px;")
+        self.nota_reservas.hide()
 
         self.nota = QLabel()
         self.nota.setWordWrap(True)
@@ -163,9 +235,10 @@ class TarjetaCierreDeTurno(QWidget):
         armar_filas(layout, [
             (layout_fondo, QVBoxLayout()), (layout_efectivo, layout_digital),
             (layout_kiosko, layout_impresiones), (layout_tramites, layout_playstation),
-            (layout_pcs, QVBoxLayout()),
+            (layout_pcs, layout_reservas),
             (layout_total, layout_retirar),
         ])
+        layout.addWidget(self.nota_reservas)
         layout.addWidget(self.nota)
         self.setLayout(layout)
 
@@ -180,6 +253,8 @@ class TarjetaCierreDeTurno(QWidget):
         self.valor_total.setText(formato_pesos(resumen["ventas_total"]))
         self.valor_retirar.setText(formato_pesos(resumen["ventas_efectivo"]))
         mostrar_desglose_por_negocio(self, resumen)
+        self.nota_reservas.setText(texto_reservas_sin_cobro(resumen["reservas_sin_cobro"]))
+        self.nota_reservas.setVisible(bool(self.nota_reservas.text()))
 
     def poner_nota(self, texto: str, alerta: bool = False):
         """La nota de abajo: gris en itálica, o en rojo si `alerta` (un cierre

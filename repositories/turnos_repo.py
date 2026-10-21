@@ -40,22 +40,15 @@ from repositories.control_cierres_repo import (  # noqa: F401 (API de las pantal
     _PRINCIPIO_DE_LOS_TIEMPOS, _cierre_o_error, _desde_del_cierre, detalle_cierre, listar_cierres,
     verificar_cierre,
 )
+# _PREFIJO_COLUMNAS_POR_ORIGEN: con qué prefijo se llaman, en el desglose de un
+# turno y en las columnas de "cierres_turno", los importes de cada origen de
+# venta (kiosko_efectivo, pcs_digital, ...). Tiene que tener TODOS los
+# dominio.ORIGENES_VENTA (ver _desglose_de_totales y TestCadaOrigenSumaEnLaCaja);
+# vive en turnos_ventas_repo desde el 2026-10-20 (lo usan también las reservas).
 from repositories.turnos_ventas_repo import (
-    _LINEAS_APARTE, _aparte_por_metodo, _contar_ventas_entre, _separar_de_kiosko, _sumar_ventas_por_origen_y_metodo,
-    _vendido_aparte_entre,
+    _LINEAS_APARTE, _PREFIJO_COLUMNAS_POR_ORIGEN, _aparte_por_metodo, _contar_ventas_entre, _resumen_de_reservas,
+    _separar_de_kiosko, _sumar_ventas_por_origen_y_metodo, _vendido_aparte_entre,
 )
-
-
-# Con qué prefijo se llaman, en el desglose de un turno y en las columnas de
-# "cierres_turno", los importes de cada origen de venta (kiosko_efectivo,
-# pcs_digital, ...). Tiene que tener TODOS los dominio.ORIGENES_VENTA: un origen
-# que falte acá haría desaparecer su plata del cierre (ver _desglose_de_totales y
-# TestCadaOrigenSumaEnLaCaja).
-_PREFIJO_COLUMNAS_POR_ORIGEN = {
-    dominio.ORIGEN_KIOSKO: "kiosko",
-    dominio.ORIGEN_ALQUILER_PCS: "pcs",
-    dominio.ORIGEN_PLAYSTATION: "playstation",
-}
 
 # Los importes en que se desglosa lo cobrado en un turno (origen x método): son
 # las columnas de cierres_turno (ver _desglose_de_totales).
@@ -188,6 +181,13 @@ def resumen_turno_actual():
     "kiosko_solo_digital": Kiosko sin impresiones ni trámites. Los tres suman
     justo kiosko_efectivo/kiosko_digital.
 
+    Con las reservas pasa lo mismo (pedido del dueño, 2026-10-20: renglón propio
+    "Reservas"): lo cobrado por reservas ya está en pcs_*/playstation_*, y vienen
+    además "pcs_solo_*"/"playstation_solo_*" (sin las reservas),
+    "reservas_efectivo"/"reservas_digital"/"reservas", "reservas_por_tipo" (cuántas
+    señas, pagos totales, restos y devoluciones) y "reservas_sin_cobro" (las que se
+    habilitaron ya pagadas de otro turno). Ver turnos_ventas_repo._resumen_de_reservas.
+
     Con una caja abierta trae también "caja_numero" y "responsable" (si no,
     None), y "cambio_inicial" es el cambio con que arrancó esa caja (lo que se
     contó al abrirla); sin caja, el Cambio Fijo. "caja_actual" (lo que tendría
@@ -207,6 +207,7 @@ def _resumen_en_curso(conexion, ahora_dt=None) -> dict:
         _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
     )
     aparte = _separar_de_kiosko(desglose, _aparte_por_metodo(conexion, ventana["desde"], ventana["hasta"]))
+    reservas = _resumen_de_reservas(conexion, desglose, ventana["desde"], ventana["hasta"])
 
     fondo_cambio = obtener_fondo_cambio()
     caja = ventana["caja"]
@@ -218,6 +219,7 @@ def _resumen_en_curso(conexion, ahora_dt=None) -> dict:
         "fondo_cambio": fondo_cambio,
         **desglose,
         **aparte,
+        **reservas,
         # Todo lo cobrado en el turno (efectivo + digital de todos los negocios).
         # Las impresiones y los trámites no se suman: ya están dentro de Kiosko.
         "ventas_total": round(desglose["ventas_efectivo"] + desglose["ventas_digital"], 2),

@@ -17,7 +17,9 @@ en reportes_repo.ranking_ventas, con sus mismas categorías): venta_detalle
 (artículos de kiosko), tramites_venta, sesion_bonos (bono de PC, con la PC
 donde estaba la sesión AL VENDERLO aunque después se haya cambiado de máquina),
 sesion_pcstream_bonos, sesion_playstation_bonos y movimientos_saldo_miembro
-(bono o carga de saldo de un socio).
+(bono o carga de saldo de un socio). Las ventas de una reserva (seña, pago
+total, resto, devolución; ver control_pcs/repositories/reservas_repo.py) salen de
+reservas_pagos y se nombran como lo que fueron.
 
 Cada venta trae además sus `lineas`, renglón por renglón tal cual se cobró (con el
 código del artículo), para el listado "Renglón por renglón" que se imprime (pedido
@@ -52,6 +54,35 @@ def _sin_articulo(rubro: str, detalle: str, producto: str, importe: float) -> tu
     return (
         rubro, detalle, [(rubro, producto, 1, importe)],
         [{"codigo": "", "descripcion": detalle, "cantidad": 1, "importe": round(importe, 2)}],
+    )
+
+
+def _de_una_reserva(fila) -> tuple:
+    """
+    Lo vendido en una venta de una reserva, como _sin_articulo pero diciendo qué
+    fue: "Seña reserva Nº 12 · Juan · Promo 10 hs · PC7 21/10 10:00", "Resto
+    reserva Nº 12 · ... · habilitada en PC7" o "Devolución reserva Nº 12 · ...".
+    El bono cuenta UNA vez en "Lo vendido": en lo que se pagó al reservar; el
+    resto no suma unidades y la devolución la resta.
+    """
+    equipo = dominio.nombre_equipo_reservado(fila["equipo"], fila["pc"])
+    if fila["tipo"] == dominio.PAGO_RESERVA_ANTICIPO:
+        que = "Seña" if fila["total"] < fila["precio"] - 0.005 else "Pago total"
+        cuando = datetime.fromisoformat(fila["fecha_reserva"]).strftime("%d/%m %H:%M")
+        detalle = f"{que} reserva Nº {fila['numero']} · {fila['cliente']} · {fila['bono_nombre']} · {equipo} {cuando}"
+        cantidad = 1
+    elif fila["tipo"] == dominio.PAGO_RESERVA_RESTO:
+        lugar = dominio.NOMBRE_PLAYSTATION if fila["sesion_playstation_id"] is not None else fila["habilitada_en"]
+        detalle = (f"Resto reserva Nº {fila['numero']} · {fila['cliente']} · {fila['bono_nombre']}"
+                   f" · habilitada en {lugar or equipo}")
+        cantidad = 0
+    else:
+        detalle = f"Devolución reserva Nº {fila['numero']} · {fila['cliente']} · {fila['bono_nombre']}"
+        cantidad = -1
+    rubro = reportes_repo.CATEGORIA_RESERVA
+    return (
+        rubro, detalle, [(rubro, fila["bono_nombre"], cantidad, fila["total"])],
+        [{"codigo": "", "descripcion": detalle, "cantidad": cantidad, "importe": round(fila["total"], 2)}],
     )
 
 
@@ -199,6 +230,25 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
                 reportes_repo.CATEGORIA_CARGA_TARIFA_SOCIO, f"Socio {fila['socio']} · carga de saldo ({minutos})",
                 "Carga por monto", fila["total"],
             )
+
+    # Al final a propósito: una vez habilitada, la venta con que se pagó la
+    # reserva también tiene su bono en sesion_bonos (reservas_habilitar_repo.habilitar),
+    # y acá se la nombra como lo que fue.
+    for fila in conexion.execute(
+        """
+        SELECT reservas_pagos.venta_id, reservas_pagos.tipo, reservas.id AS numero, reservas.cliente,
+               reservas.bono_nombre, reservas.equipo, reservas.precio, reservas.fecha_reserva,
+               reservas.sesion_playstation_id, estaciones.nombre AS pc, habilitada.nombre AS habilitada_en,
+               ventas.total
+        FROM reservas_pagos
+        JOIN ventas ON ventas.id = reservas_pagos.venta_id
+        JOIN reservas ON reservas.id = reservas_pagos.reserva_id
+        LEFT JOIN estaciones ON estaciones.id = reservas.estacion_id
+        LEFT JOIN estaciones AS habilitada ON habilitada.id = reservas.estacion_habilitada_id
+        WHERE ventas.fecha > ? AND ventas.fecha <= ?
+        """, rango,
+    ):
+        resultado[fila["venta_id"]] = _de_una_reserva(fila)
     return resultado
 
 

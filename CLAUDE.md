@@ -239,7 +239,7 @@ abra no alcanza si los tests no pasan.
 | `pcs_repo.asignar_bono(...)` | se crea o extiende una sesión de PC con un bono del mostrador: el COMÚN (walk-in) o, si la PC es PCSTREAM, uno de SU catálogo (`pcstream_repo`) |
 | `dominio.segundos_restantes(fin, ahora)` · `dominio.fin_al_sumar_minutos(fin_actual, minutos, ahora)` | se calcula cuánto le queda a una sesión de tiempo y cuándo vence al sumarle un bono (PCs Y PlayStation 5: una sola cuenta) |
 | `playstation_repo.estado()` · `.vender_bono(...)` · `.finalizar_sesion(...)` | se sabe cómo está la PlayStation 5, se le vende un bono (origen PLAYSTATION) y se la libera; ahí mismo se exige el permiso (`puede_operar`) o ser Admin (catálogo) |
-| `turnos_repo._desglose_de_totales(...)` · `_PREFIJO_COLUMNAS_POR_ORIGEN` | se reparte lo cobrado de un turno por origen (kiosko/pcs/playstation × efectivo/digital) y se suma el efectivo del cajón sobre TODOS los `ORIGENES_VENTA` |
+| `turnos_repo._desglose_de_totales(...)` · `_PREFIJO_COLUMNAS_POR_ORIGEN` | se reparte lo cobrado de un turno por origen (kiosko/pcs/playstation × efectivo/digital) y se suma el efectivo del cajón sobre TODOS los `ORIGENES_VENTA` (el diccionario vive en `turnos_ventas_repo` desde el 2026-10-20 y `turnos_repo` lo importa con el mismo nombre) |
 | `bonos_miembro_repo.listar_bonos()` / `.obtener_bono(id)` | catálogo de bonos EXCLUSIVO de socios (no confundir con `pcs_repo`) |
 | `miembros_repo.abrir_estacion_por_miembro(...)` | un socio abre una PC con su propio saldo (y, con `pedir_datos`, completa sus datos del primer ingreso) |
 | `miembros_repo.normalizar_dni(...)` · `.tiene_dni(miembro)` · `.normalizar_telefono(...)` | se valida y se guarda el DNI (solo números, 7 u 8 cifras), el celular y el WhatsApp de un socio, y se decide si a un socio le falta el DNI (el Cliente PC se lo pide; Miembros lo marca "Falta DNI") |
@@ -252,6 +252,10 @@ abra no alcanza si los tests no pasan.
 | `turnos_ventas_repo._vendido_aparte_entre(...)` (lo usa `turnos_repo`) | se calcula cuánto del Kiosko de un turno fue impresiones y trámites, para mostrarlos en columna propia en el Resumen del Día |
 | `turnos_ventas_repo._aparte_por_metodo(...)` · `turnos_ventas_repo._separar_de_kiosko(...)` | se reparte lo de impresiones y trámites del turno en curso (o de un cierre ya hecho, con `cierre_grabado=True`) entre efectivo y digital (venta por venta, con sus pagos) y se arma Kiosko sin ellos para Caja, Cierre de Turno y el detalle de Control de Cierres (`resumen_turno_actual()["kiosko_solo_*"]`, `["impresiones_*"]`, `["tramites_*"]`). `turnos_repo` la importa con el mismo nombre |
 | `tramites_repo.registrar_tramite(...)` | se cobra un trámite de mostrador (monto libre): venta KIOSKO sin detalle + vínculo en `tramites_venta` |
+| `reservas_repo.crear_reserva(...)` · `reservas_habilitar_repo.habilitar(...)` · `reservas_repo.marcar_no_vino` · `.reprogramar` · `.devolver` | se toma una reserva cobrando la seña o todo, se la habilita (cobrando solo lo que falta), se la da por no venida, se la reprograma y se devuelve su plata (solo Admin). Pedido del dueño 2026-10-20; ver "Trampas conocidas". Las dos pantallas preguntan antes de cobrar (`revisar_reserva`, `preparar_habilitacion`) para no cobrar algo que después no se puede grabar |
+| `reservas_repo._pasar_las_vencidas(conexion, ahora)` | se decide cuándo una reserva pasa sola a No vino / A reprogramar (su hora + `MINUTOS_TOLERANCIA_RESERVA`) y a Vencida (`DIAS_PARA_REPROGRAMAR_RESERVA`). No hay reloj: corre al listar (`listar_reservas`, `actualizar_estados`) |
+| `turnos_ventas_repo._resumen_de_reservas(...)` | se separa lo cobrado por reservas de Alquiler de PCs y PlayStation 5 para el renglón "Reservas" de Caja, Cierre de Turno y el detalle de un cierre (`resumen["pcs_solo_*"]`, `["playstation_solo_*"]`, `["reservas_*"]`, `["reservas_por_tipo"]`, `["reservas_sin_cobro"]`) |
+| `dominio.nombre_equipo_reservado(equipo, nombre_pc)` | se nombra el equipo de una reserva (la PC, "Cualquier PC disponible", PCSTREAM o la PlayStation 5) |
 | `main.aplicar_estilo(app)` | se fija el aspecto de TODO el programa: estilo Fusion, esquema de color CLARO y la hoja de estilos (`HOJA_DE_ESTILOS`) |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `ui.utils.formato_fecha_hora(fecha)` | una fecha con hora de la base se convierte en `"16/10/2026 22:13"` |
@@ -493,6 +497,30 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   borrar la vieja y recién ahí renombrar, con las claves foráneas apagadas y todo
   en UNA transacción — ver `_migrar_check_origen_en_ventas` y
   `TestMigracionCheckOrigenEnVentas` (en tests/test_playstation.py).
+- **Una reserva no es un origen de venta: su plata son ventas comunes** (Alquiler
+  de PCs o PlayStation 5) unidas a la reserva en `reservas_pagos`, como un trámite
+  (pedido del dueño, 2026-10-20). El problema que resuelve: el operador que
+  habilitaba al cliente que volvía tenía que "Cobrar" el bono de nuevo y en su
+  cierre faltaba plata que nunca recibió. Por eso: lo que se paga al reservar
+  queda en la caja de quien lo cobra, el resto en la de quien habilita, y
+  **habilitar una reserva ya pagada NO crea ninguna venta** (ni una de $0). El
+  bono se anota en la sesión (`sesion_bonos`, `sesion_pcstream_bonos` o
+  `sesion_playstation_bonos`) con la venta del primer pago, así los reportes de
+  bonos y el reintegro de socios lo cuentan una vez; en "Actividad reciente" ese
+  bono no sale como "cobrado" sino como "reserva habilitada". El precio queda fijo
+  al reservar (foto en la reserva). La devolución (solo Admin) es una venta en
+  NEGATIVO en la caja de ahora: el cierre del turno en que entró no se toca. Si no
+  viene: con seña la pierde (No vino), si pagó todo queda A reprogramar (vence a
+  los 5 días); ninguna de las dos mueve plata. Una reserva se habilita solo en un
+  equipo LIBRE (sumarle el tiempo a una sesión en curso se lo daría a otro
+  cliente). El renglón "Reservas" aparte es solo de Caja y Cierre de Turno (lo
+  eligió el dueño, variante A): el Resumen del Día y los Reportes las siguen
+  contando dentro de Alquiler de PCs y PlayStation 5. Cobra: la ventana se abre
+  solo en el mostrador y nada de esto está en `admin_remoto/lista_blanca.py`.
+  Falta la parte 2 (la PC marcada RESERVADA 2 h antes en el mosaico, el aviso al
+  venderle un bono que se pase de la hora, el socio que se corta a la hora de la
+  reserva y el cartel en la pantalla de bloqueo, Cliente PC V1.2): ver
+  `PROPUESTA_RESERVAS\PROPUESTA_RESERVAS.md` en la carpeta de los proyectos.
 - **Un trámite es un servicio que se cobra, no el pago de una boleta.** Lo que
   se tipea en "Trámites" es lo que el local cobra por hacerle el trámite al
   cliente (imprimir la boleta de luz, un trámite online, sacar un turno...);
@@ -825,11 +853,11 @@ Estos puntos todavía no están construidos:
 
 ## Estado actual
 
-El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCSTREAM), Miembros, Trámites y PlayStation 5.
+El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCSTREAM), Miembros, Trámites, PlayStation 5 y Reservas (parte 1, la plata).
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-992 pruebas al 2026-10-20 (cambiar el código de un artículo desde ORDENAR Stock, el número que se escribe en una celda de tabla, como el stock de ORDENAR Stock, las preguntas de cerrar una sesión sin hablar de reintegros, el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+1037 pruebas al 2026-10-20 (las reservas, parte 1: la plata; cambiar el código de un artículo desde ORDENAR Stock, el número que se escribe en una celda de tabla, como el stock de ORDENAR Stock, las preguntas de cerrar una sesión sin hablar de reintegros, el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

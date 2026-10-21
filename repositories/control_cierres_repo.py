@@ -19,7 +19,7 @@ from datetime import datetime
 
 from database import conexion_db
 from repositories import cajas_repo, usuarios_repo
-from repositories.turnos_ventas_repo import _aparte_por_metodo, _separar_de_kiosko
+from repositories.turnos_ventas_repo import _aparte_por_metodo, _resumen_de_reservas, _separar_de_kiosko
 from turnos import etiqueta_turno, fin_del_turno
 
 
@@ -121,8 +121,9 @@ def _resumen_del_cierre(conexion, cierre, desde: str, caja: dict) -> dict:
 
     Casi todo sale tal cual de lo guardado en el cierre (efectivo, digital y cada
     negocio): son los mismos números con que se cerró. Lo único que se recalcula
-    es cuánto de Kiosko fue impresiones y trámites (no se guarda aparte), con
-    las ventas de su ventana contadas como estaban al cerrar (ver
+    es cuánto de Kiosko fue impresiones y trámites, y cuánto de Alquiler de PCs y
+    PlayStation 5 fueron reservas (no se guarda aparte), con las ventas de su
+    ventana contadas como estaban al cerrar (ver
     turnos_ventas_repo._condicion_vigente).
     """
     guardado = dict(cierre)
@@ -130,6 +131,7 @@ def _resumen_del_cierre(conexion, cierre, desde: str, caja: dict) -> dict:
     return {
         **guardado,
         **_separar_de_kiosko(guardado, por_metodo),
+        **_resumen_de_reservas(conexion, guardado, desde, cierre["fecha_cierre"], cierre_grabado=True),
         "turno_actual": cierre["turno"],
         "turno_actual_label": etiqueta_turno(cierre["fecha"], cierre["turno"]),
         "ventas_total": round(cierre["ventas_efectivo"] + cierre["ventas_digital"], 2),

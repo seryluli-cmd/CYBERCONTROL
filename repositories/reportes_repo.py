@@ -36,6 +36,8 @@ CATEGORIA_CARGA_TARIFA_SOCIO = "Carga de saldo de Socio (tarifa por hora)"
 CATEGORIA_TRAMITE = "Trámite"
 CATEGORIA_BONO_PLAYSTATION = "Bono de PlayStation 5"
 CATEGORIA_BONO_PCSTREAM = f"Bono de {dominio.NOMBRE_PCSTREAM}"
+# Lo que se cobra (o devuelve) de una reserva: lo usa el Detalle del Día.
+CATEGORIA_RESERVA = "Reserva"
 
 
 def resumen_ventas(desde: str, hasta: str):

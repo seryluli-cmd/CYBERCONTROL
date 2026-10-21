@@ -10,9 +10,27 @@ CLAUDE.md). turnos_repo las sigue ofreciendo con los mismos nombres.
 
 Ninguna mira la hora: reciben la ventana ya armada. Las fechas se comparan
 como texto ISO, igual que en turnos_repo.
+
+Desde el 2026-10-20 también cuánto de Alquiler de PCs y PlayStation 5 fueron
+reservas (control_pcs/repositories/reservas_repo.py), que Caja y Cierre de
+Turno muestran en un renglón propio.
 """
 
 import dominio
+
+
+# Con qué prefijo se llaman, en el desglose de un turno y en las columnas de
+# "cierres_turno", los importes de cada origen de venta (kiosko_efectivo,
+# pcs_digital, ...). Tiene que tener TODOS los dominio.ORIGENES_VENTA: un origen
+# que falte acá haría desaparecer su plata del cierre (ver
+# turnos_repo._desglose_de_totales y TestCadaOrigenSumaEnLaCaja). Vive acá y no
+# en turnos_repo (que lo usa con el mismo nombre) porque también lo necesita
+# _separar_reservas, y control_cierres_repo no puede importar turnos_repo.
+_PREFIJO_COLUMNAS_POR_ORIGEN = {
+    dominio.ORIGEN_KIOSKO: "kiosko",
+    dominio.ORIGEN_ALQUILER_PCS: "pcs",
+    dominio.ORIGEN_PLAYSTATION: "playstation",
+}
 
 
 def _sumar_ventas_por_origen_y_metodo(conexion, desde: str, hasta: str):
@@ -209,3 +227,144 @@ def _separar_de_kiosko(desglose: dict, por_metodo: dict) -> dict:
     resultado["kiosko_solo_efectivo"] = round(resto["efectivo"], 2)
     resultado["kiosko_solo_digital"] = round(resto["digital"], 2)
     return resultado
+
+
+# Los negocios que tienen reservas: la plata de una reserva entra como Alquiler
+# de PCs (también PCSTREAM) o como PlayStation 5 (ver reservas_repo._origen).
+_ORIGENES_CON_RESERVAS = (dominio.ORIGEN_ALQUILER_PCS, dominio.ORIGEN_PLAYSTATION)
+
+
+def _reservas_por_metodo(conexion, desde: str, hasta: str, cierre_grabado: bool = False) -> dict:
+    """
+    Lo cobrado por reservas en la ventana (desde, hasta] -- señas, pagos totales,
+    restos y devoluciones (estas en negativo) --, como {origen: {metodo: monto}}
+    para Alquiler de PCs y PlayStation 5. Ya está sumado dentro de esos dos
+    negocios (son ventas comunes de ese origen, unidas a su reserva en
+    reservas_pagos): Caja y Cierre de Turno lo muestran aparte en el renglón
+    "Reservas" (variante A, elegida por el dueño el 2026-10-20). Cada venta de
+    una reserva es solo eso, así que el reparto por medio de pago es exacto.
+
+    Cuentan las ventas confirmadas, salvo con `cierre_grabado=True`: ver
+    _condicion_vigente.
+    """
+    vigente, parametros_vigente = _condicion_vigente(hasta, cierre_grabado)
+    filas = conexion.execute(
+        f"""
+        SELECT ventas.origen AS origen, venta_pagos.metodo AS metodo, SUM(venta_pagos.monto) AS total
+        FROM reservas_pagos
+        JOIN ventas ON ventas.id = reservas_pagos.venta_id
+        JOIN venta_pagos ON venta_pagos.venta_id = ventas.id
+        WHERE {vigente}
+          AND ventas.fecha > ?
+          AND ventas.fecha <= ?
+        GROUP BY ventas.origen, venta_pagos.metodo
+        """,
+        (*parametros_vigente, desde, hasta),
+    ).fetchall()
+    sumas = {origen: {metodo: 0.0 for metodo in dominio.METODOS_PAGO} for origen in _ORIGENES_CON_RESERVAS}
+    for fila in filas:
+        if fila["origen"] in sumas:
+            sumas[fila["origen"]][fila["metodo"]] = fila["total"] or 0.0
+    return sumas
+
+
+def _separar_reservas(desglose: dict, por_metodo: dict) -> dict:
+    """
+    Las claves de turnos_repo.resumen_turno_actual que separan las reservas de
+    Alquiler de PCs y de PlayStation 5: "pcs_solo_efectivo"/"pcs_solo_digital",
+    "playstation_solo_efectivo"/"playstation_solo_digital" (cada negocio SIN sus
+    reservas), "reservas_efectivo"/"reservas_digital" y "reservas" (el total). A
+    partir del desglose del turno (o de un cierre ya guardado) y de
+    _reservas_por_metodo. Separarlas es solo cómo se muestra: lo que se graba en
+    el cierre y el efectivo a retirar no cambian.
+    """
+    resultado = {}
+    reservas = {metodo: 0.0 for metodo in dominio.METODOS_PAGO}
+    for origen in _ORIGENES_CON_RESERVAS:
+        prefijo = _PREFIJO_COLUMNAS_POR_ORIGEN[origen]
+        for metodo, sufijo in ((dominio.PAGO_EFECTIVO, "efectivo"), (dominio.PAGO_DIGITAL, "digital")):
+            de_reservas = round(por_metodo[origen][metodo], 2)
+            reservas[metodo] += de_reservas
+            resultado[f"{prefijo}_solo_{sufijo}"] = round(desglose[f"{prefijo}_{sufijo}"] - de_reservas, 2)
+    resultado["reservas_efectivo"] = round(reservas[dominio.PAGO_EFECTIVO], 2)
+    resultado["reservas_digital"] = round(reservas[dominio.PAGO_DIGITAL], 2)
+    resultado["reservas"] = round(resultado["reservas_efectivo"] + resultado["reservas_digital"], 2)
+    return resultado
+
+
+def _pagos_de_reservas_por_tipo(conexion, desde: str, hasta: str, cierre_grabado: bool = False) -> list:
+    """
+    Qué fueron los pagos de reservas de la ventana, para el renglón de abajo de
+    "Reservas" ("1 seña ($ 5.000) · 1 resto ($ 3.000)"): [{"clase", "cantidad",
+    "monto"}] en el orden de dominio.CLASES_PAGO_RESERVA, solo las que hubo. Mismas
+    ventas que _reservas_por_metodo.
+    """
+    vigente, parametros_vigente = _condicion_vigente(hasta, cierre_grabado)
+    filas = conexion.execute(
+        f"""
+        SELECT CASE WHEN reservas_pagos.tipo = ? AND ventas.total < reservas.precio - 0.005 THEN ?
+                    WHEN reservas_pagos.tipo = ? THEN ?
+                    ELSE reservas_pagos.tipo END AS clase,
+               COUNT(*) AS cantidad, SUM(ventas.total) AS monto
+        FROM reservas_pagos
+        JOIN ventas ON ventas.id = reservas_pagos.venta_id
+        JOIN reservas ON reservas.id = reservas_pagos.reserva_id
+        WHERE {vigente}
+          AND ventas.fecha > ?
+          AND ventas.fecha <= ?
+        GROUP BY clase
+        """,
+        (dominio.PAGO_RESERVA_ANTICIPO, dominio.CLASE_PAGO_RESERVA_SENA,
+         dominio.PAGO_RESERVA_ANTICIPO, dominio.CLASE_PAGO_RESERVA_TOTAL, *parametros_vigente, desde, hasta),
+    ).fetchall()
+    por_clase = {fila["clase"]: fila for fila in filas}
+    return [
+        {"clase": clase, "cantidad": por_clase[clase]["cantidad"], "monto": round(por_clase[clase]["monto"], 2)}
+        for clase in dominio.CLASES_PAGO_RESERVA if clase in por_clase
+    ]
+
+
+def _reservas_habilitadas_sin_cobro(conexion, desde: str, hasta: str) -> list:
+    """
+    Las reservas que se habilitaron en la ventana (desde, hasta] sin cobrar nada
+    (ya estaban pagadas de otro turno): no son una venta, así que no suman en
+    ningún renglón, pero el Cierre de Turno las nombra para que se entienda por
+    qué se habilitó un equipo sin plata. Cada una: {"numero", "cliente", "lugar",
+    "pagada_el" (fecha del primer pago), "pagada_a" (a nombre de quién quedó)}.
+    """
+    filas = conexion.execute(
+        """
+        SELECT reservas.id AS numero, reservas.cliente, reservas.sesion_playstation_id,
+               habilitada.nombre AS pc, primer_pago.fecha AS pagada_el, usuarios.nombre AS pagada_a
+        FROM reservas
+        LEFT JOIN estaciones AS habilitada ON habilitada.id = reservas.estacion_habilitada_id
+        LEFT JOIN ventas AS primer_pago ON primer_pago.id = (
+            SELECT MIN(reservas_pagos.venta_id) FROM reservas_pagos
+            WHERE reservas_pagos.reserva_id = reservas.id AND reservas_pagos.tipo = ?)
+        LEFT JOIN usuarios ON usuarios.id = primer_pago.usuario_id
+        WHERE reservas.estado = ?
+          AND reservas.estado_desde > ?
+          AND reservas.estado_desde <= ?
+          AND NOT EXISTS (SELECT 1 FROM reservas_pagos
+                          WHERE reservas_pagos.reserva_id = reservas.id AND reservas_pagos.tipo = ?)
+        ORDER BY reservas.estado_desde
+        """,
+        (dominio.PAGO_RESERVA_ANTICIPO, dominio.RESERVA_HABILITADA, desde, hasta, dominio.PAGO_RESERVA_RESTO),
+    ).fetchall()
+    return [
+        {"numero": fila["numero"], "cliente": fila["cliente"],
+         "lugar": dominio.NOMBRE_PLAYSTATION if fila["sesion_playstation_id"] is not None else fila["pc"],
+         "pagada_el": fila["pagada_el"], "pagada_a": fila["pagada_a"]}
+        for fila in filas
+    ]
+
+
+def _resumen_de_reservas(conexion, desglose: dict, desde: str, hasta: str, cierre_grabado: bool = False) -> dict:
+    """Todas las claves de reservas que suman Caja, Cierre de Turno y el detalle de
+    un cierre (ver turnos_repo.resumen_turno_actual): las de _separar_reservas,
+    "reservas_por_tipo" y "reservas_sin_cobro"."""
+    return {
+        **_separar_reservas(desglose, _reservas_por_metodo(conexion, desde, hasta, cierre_grabado)),
+        "reservas_por_tipo": _pagos_de_reservas_por_tipo(conexion, desde, hasta, cierre_grabado),
+        "reservas_sin_cobro": _reservas_habilitadas_sin_cobro(conexion, desde, hasta),
+    }

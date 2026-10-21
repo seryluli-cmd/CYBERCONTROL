@@ -26,7 +26,8 @@ import dominio
 from repositories import turnos_repo
 from ui.control_cierres_window import ControlCierresWindow, DialogoDetalleCierre  # noqa: F401 (API de main_window y las pruebas)
 from ui.tarjeta_cierre import (
-    TarjetaCierreDeTurno, armar_filas, etiqueta_dato, mostrar_desglose_por_negocio, titulo_de_la_caja,
+    TarjetaCierreDeTurno, armar_filas, armar_renglon_de_reservas, etiqueta_dato, mostrar_desglose_por_negocio,
+    titulo_de_la_caja,
 )
 from ui.utils import (
     formato_pesos, mostrar_info, confirmar, manejar_errores, aplicar_clase, sin_boton_por_defecto,
@@ -106,6 +107,9 @@ class CajaWindow(_PantallaDeCaja):
         layout_playstation, self.valor_playstation = etiqueta_dato(
             dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION], ""
         )
+        # Las reservas, en su renglón, como en el Cierre de Turno (ver ui/tarjeta_cierre.py).
+        layout_reservas, self.valor_reservas, self.detalle_reservas = armar_renglon_de_reservas()
+        layout_pcs.addStretch()
         # La última línea con más aire arriba, igual que en el Cierre de Turno (ver ui/tarjeta_cierre.py).
         for ultima_linea in (layout_total, layout_actual):
             ultima_linea.setContentsMargins(0, 28, 0, 0)
@@ -125,7 +129,7 @@ class CajaWindow(_PantallaDeCaja):
         self._armar_cuerpo(
             [(layout_fondo, QVBoxLayout()), (layout_ventas, layout_digital),
              (layout_kiosko, layout_impresiones), (layout_tramites, layout_playstation),
-             (layout_pcs, QVBoxLayout()),
+             (layout_pcs, layout_reservas),
              (layout_total, layout_actual)],
             "",  # esta pantalla no lleva nota abajo
             botones,
