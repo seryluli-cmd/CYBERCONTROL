@@ -342,6 +342,8 @@ class DialogoHabilitarReserva(QDialog):
                 texto += "  (la reservada)"
             if not lugar["enlazada"]:
                 texto += "  (sin conexión)"
+            if lugar["reservada_para"]:
+                texto += f"  (reservada para {lugar['reservada_para']})"
             self.combo_lugar.addItem(texto, lugar)
         self.combo_lugar.currentIndexChanged.connect(self._actualizar_boton)
         fila_lugar = QHBoxLayout()

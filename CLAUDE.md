@@ -256,6 +256,8 @@ abra no alcanza si los tests no pasan.
 | `reservas_repo._pasar_las_vencidas(conexion, ahora)` | se decide cuándo una reserva pasa sola a No vino / A reprogramar (su hora + `MINUTOS_TOLERANCIA_RESERVA`) y a Vencida (`DIAS_PARA_REPROGRAMAR_RESERVA`). No hay reloj: corre al listar (`listar_reservas`, `actualizar_estados`) |
 | `turnos_ventas_repo._resumen_de_reservas(...)` | se separa lo cobrado por reservas de Alquiler de PCs y PlayStation 5 para el renglón "Reservas" de Caja, Cierre de Turno y el detalle de un cierre (`resumen["pcs_solo_*"]`, `["playstation_solo_*"]`, `["reservas_*"]`, `["reservas_por_tipo"]`, `["reservas_sin_cobro"]`) |
 | `dominio.nombre_equipo_reservado(equipo, nombre_pc)` | se nombra el equipo de una reserva (la PC, "Cualquier PC disponible", PCSTREAM o la PlayStation 5) |
+| `reservas_horario_repo.pendientes(conexion, ahora)` · `.proxima(reservas, estacion)` | se decide qué reserva aparta qué equipo y desde cuándo se ve RESERVADO (`MINUTOS_EQUIPO_RESERVADO_ANTES`, 2 h, hasta la hora + la tolerancia). Lo usan `pcs_repo.estado_estaciones` y `playstation_repo.estado` (`item["reserva"]`), y de ahí el mosaico (`pcs_window._ficha_de_pc`, celeste `COLOR_RESERVADA`), el panel y `lugares_para_habilitar` |
+| `reservas_horario_repo.aviso_al_vender(estacion_id, minutos)` · `.minutos_para_el_socio(...)` · `.cartel_para_la_pc(estacion)` · `.sin_pc_fija(...)` · `.pcs_libres(...)` | se avisa antes de cobrar un bono que deja el equipo ocupado a la hora de su reserva (no frena), se decide cuánto saldo usa un socio en una PC reservada (hasta la hora; lo demás le queda), qué cartel viaja a la pantalla de bloqueo (`reserva` en GET /estado) y qué va en el aviso de "Cualquier PC disponible" de arriba del mosaico (`ui/pcs_aviso_reservas.py`) |
 | `main.aplicar_estilo(app)` | se fija el aspecto de TODO el programa: estilo Fusion, esquema de color CLARO y la hoja de estilos (`HOJA_DE_ESTILOS`) |
 | `ui.utils.formato_pesos(monto)` | un número se convierte en `"$ 1.234,50"` |
 | `ui.utils.formato_fecha_hora(fecha)` | una fecha con hora de la base se convierte en `"16/10/2026 22:13"` |
@@ -517,9 +519,16 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   eligió el dueño, variante A): el Resumen del Día y los Reportes las siguen
   contando dentro de Alquiler de PCs y PlayStation 5. Cobra: la ventana se abre
   solo en el mostrador y nada de esto está en `admin_remoto/lista_blanca.py`.
-  Falta la parte 2 (la PC marcada RESERVADA 2 h antes en el mosaico, el aviso al
-  venderle un bono que se pase de la hora, el socio que se corta a la hora de la
-  reserva y el cartel en la pantalla de bloqueo, Cliente PC V1.2): ver
+  La parte 2 ("que el programa cuide la hora", 2026-10-21, `reservas_horario_repo`):
+  una PC puntual, PCSTREAM o la consola se ve RESERVADA 2 h antes (celeste si está
+  libre; en uso conserva su color y dice "Res. 10:00"), venderle a otro cliente un
+  bono que se pasa de la hora AVISA pero no frena (lo decidió el dueño: "avisa"), un
+  socio entra solo hasta la hora y lo demás le queda en el saldo (con menos de
+  `MINUTOS_MINIMOS_SOCIO_ANTES_DE_RESERVA` no entra), "Cualquier PC disponible" no
+  aparta ninguna (aviso arriba del mosaico) y la pantalla de bloqueo muestra el cartel
+  (Cliente PC V1.2; uno viejo no lo mira). Nada de eso escribe en la base: las vencidas
+  cambian de estado al listar, y acá se ignoran las que pasaron su tolerancia. El cartel
+  viaja en GET /estado en su propio try: nunca puede tocar el bloqueo. Ver
   `PROPUESTA_RESERVAS\PROPUESTA_RESERVAS.md` en la carpeta de los proyectos.
 - **Un trámite es un servicio que se cobra, no el pago de una boleta.** Lo que
   se tipea en "Trámites" es lo que el local cobra por hacerle el trámite al
@@ -853,11 +862,11 @@ Estos puntos todavía no están construidos:
 
 ## Estado actual
 
-El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCSTREAM), Miembros, Trámites, PlayStation 5 y Reservas (parte 1, la plata).
+El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCSTREAM), Miembros, Trámites, PlayStation 5 y Reservas (la plata y el cuidado de la hora).
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-1037 pruebas al 2026-10-20 (las reservas, parte 1: la plata; cambiar el código de un artículo desde ORDENAR Stock, el número que se escribe en una celda de tabla, como el stock de ORDENAR Stock, las preguntas de cerrar una sesión sin hablar de reintegros, el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+1064 pruebas al 2026-10-21 (las reservas, parte 2: la PC reservada en el mosaico y en la pantalla de bloqueo, el aviso al vender y el socio que se corta a la hora; las reservas, parte 1: la plata; cambiar el código de un artículo desde ORDENAR Stock, el número que se escribe en una celda de tabla, como el stock de ORDENAR Stock, las preguntas de cerrar una sesión sin hablar de reintegros, el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`).
 

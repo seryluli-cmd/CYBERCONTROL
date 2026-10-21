@@ -482,6 +482,12 @@ CLASES_PAGO_RESERVA = (
 MINUTOS_TOLERANCIA_RESERVA = 20
 # Una reserva "A reprogramar" vence a los cinco días (decisión del dueño).
 DIAS_PARA_REPROGRAMAR_RESERVA = 5
+# Desde cuánto antes de la hora una PC puntual, PCSTREAM o la consola se ve
+# RESERVADA en el mosaico y en la pantalla de bloqueo (decisión del dueño: 2 h).
+MINUTOS_EQUIPO_RESERVADO_ANTES = 120
+# Un socio entra a una PC reservada solo hasta la hora de la reserva (decisión del
+# dueño); si le quedaría menos que esto, no entra y se le pide que use otra PC.
+MINUTOS_MINIMOS_SOCIO_ANTES_DE_RESERVA = 15
 
 
 # --------------------------------------------------------------------

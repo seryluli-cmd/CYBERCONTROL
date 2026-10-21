@@ -28,6 +28,9 @@ menú contextual (clic derecho) y el refresco automático. El resto del módulo
 vive al lado:
 - `pcs_mosaico.py`: el dibujo del mosaico de monitores (solo dibuja).
 - `pcs_actividad.py`: el log de "Actividad reciente" de la parte de abajo.
+- `pcs_aviso_reservas.py`: el aviso de arriba del mosaico con las reservas de
+  "Cualquier PC disponible". Las de una PC puntual, PCSTREAM o la consola se ven
+  en su monitor: celeste si está libre (ver COLOR_RESERVADA).
 - `pcs_detalle.py`: el panel lateral (vender un bono, abrir con Miembro,
   finalizar) y el login de socio.
 - `pcs_comandos_dialogos.py`: los diálogos del menú contextual (captura,
@@ -47,14 +50,15 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
-from control_pcs.repositories import comandos_pc_repo, pcs_repo, playstation_repo
+from control_pcs.repositories import comandos_pc_repo, pcs_repo, playstation_repo, reservas_horario_repo
 from control_pcs.ui.pcs_comandos_dialogos import (
     DialogoCambiarRed, DialogoCaptura, DialogoTrasladarSesion, DialogoVolumen,
 )
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
 from control_pcs.ui.pcs_actividad import PanelActividad
+from control_pcs.ui.pcs_aviso_reservas import AvisoDeReservasSinPcFija
 from control_pcs.ui.pcs_cortes import resumen_de_cortes
-from control_pcs.ui.pcs_detalle import PanelDetalleEstacion, es_playstation
+from control_pcs.ui.pcs_detalle import PanelDetalleEstacion, es_playstation, texto_de_la_reserva
 from control_pcs.ui.pcs_mosaico import (
     MosaicoDeEquipos, LeyendaDeColores, Ficha,
     DIBUJO_NINGUNO, DIBUJO_RELOJ, DIBUJO_SOCIO, DIBUJO_ALERTA, DIBUJO_CANDADO_ABIERTO,
@@ -91,6 +95,10 @@ COLOR_ESPERANDO_CLIENTE = QColor("#3B7DF0")
 # hasta que el Cliente PC vuelva a arrancar. Lila a propósito, distinto del
 # rojo de "Sin conexión" (apagada) para que se note cuál es cuál.
 COLOR_CLIENTE_CERRADO_ADMIN = QColor("#9B6BD6")
+# Equipo libre que ya está apartado para una reserva (2 h antes de la hora, ver
+# reservas_horario_repo): celeste, la variante A que eligió el dueño. Uno en uso
+# conserva su color y avisa "Res. 10:00" debajo del nombre.
+COLOR_RESERVADA = QColor("#22C3E6")
 
 
 # Alerta especial (pedido explícito del dueño): sesión activa (Bono o
@@ -113,6 +121,7 @@ LEYENDA = [
     (COLOR_EN_USO, "En uso"),
     (COLOR_POR_VENCER, "Por vencer"),
     (COLOR_ESPERANDO_CLIENTE, "Esperando al cliente"),
+    (COLOR_RESERVADA, "Reservada"),
     (COLOR_DESCONECTADA, "Sin conexión"),
     (COLOR_CLIENTE_CERRADO_ADMIN, "Sin bloqueo"),
     (COLOR_ALERTA_SESION_SIN_CLIENTE, "Alerta (titila)"),
@@ -205,6 +214,10 @@ class PanelControlPcs(QWidget):
         layout_marco.setContentsMargins(12, 12, 12, 8)
         layout_marco.setSpacing(8)
         layout_marco.addWidget(LeyendaDeColores(LEYENDA))
+        # Las reservas de "Cualquier PC disponible": no apartan ninguna PC, así que
+        # se avisan acá arriba (decisión del dueño). Escondido si no hay ninguna.
+        self.aviso_reservas = AvisoDeReservasSinPcFija()
+        layout_marco.addWidget(self.aviso_reservas)
         layout_marco.addWidget(self.mosaico, 1)
         marco.setLayout(layout_marco)
 
@@ -246,6 +259,7 @@ class PanelControlPcs(QWidget):
         # llegar a cero no se libera sola, queda avisando en rojo hasta que el
         # operador la libera (ver playstation_repo).
         self._item_playstation = playstation_repo.estado()
+        self.aviso_reservas.actualizar(reservas_horario_repo.reservas_para_la_grilla(), estados)
         self._redibujar_mosaico()
         self.panel_actividad.actualizar()
 
@@ -301,10 +315,26 @@ class PanelControlPcs(QWidget):
         else:
             icono, texto_estado, color = "🔌", "Sin conexión", COLOR_DESCONECTADA
 
+        reserva = item.get("reserva")
+        if reserva is not None and reserva["marcada"]:
+            hora = f"{reserva['inicio']:%H:%M}"
+            if sesion is None and item["cliente_cerrado_admin_desde"] is None:
+                # Libre y apartada: celeste, para que nadie se la dé a otro cliente.
+                # Apagada también: lo que importa es que está reservada.
+                icono, color = "📅", COLOR_RESERVADA
+                texto_estado = f"Reservada para {reserva['cliente']}"
+                if not item["enlazada"]:
+                    texto_estado += " (la PC está apagada o sin conexión)"
+                aviso = f"{reserva['cliente']} {hora}"
+            elif not aviso:
+                aviso = f"Res. {hora}"  # en uso: más urgente que el nombre del socio
+
         if not aviso and dibujo == DIBUJO_SOCIO:
             aviso = quien_texto  # el nombre del socio, si no hay nada más urgente que avisar
 
         estado = f"{icono} {texto_estado}"
+        if texto_de_la_reserva(item):
+            estado += f"\n{texto_de_la_reserva(item)}"
         if item["cortes"]:
             # Solo en el cartelito: el monitor dibujado no cambia (el detalle, en el panel).
             estado += f"\n⚠ {resumen_de_cortes(item['cortes'])}"
@@ -330,10 +360,23 @@ class PanelControlPcs(QWidget):
         caso es una alerta: titila en rojo hasta que el operador avise a los
         clientes y la libere (o venda otro bono)."""
         comun = {"clave": _CLAVE_PLAYSTATION, "nombre": item["nombre"], "es_consola": True}
+        reserva = item.get("reserva") if item.get("reserva") is not None and item["reserva"]["marcada"] else None
         if item["sesion"] is None:
+            if reserva is not None:
+                return Ficha(
+                    estado=f"📅 Reservada para {reserva['cliente']}\n{texto_de_la_reserva(item)}",
+                    restante="—", quien="—", color=COLOR_RESERVADA,
+                    aviso=f"{reserva['cliente']} {reserva['inicio']:%H:%M}", **comun,
+                )
             return Ficha(estado="✓ Disponible", restante="—", quien="—", color=COLOR_DISPONIBLE, **comun)
         restante_texto = formato_tiempo(item["segundos_restantes"], con_segundos=True)
         en_sesion = {"restante": restante_texto, "quien": "Bono", "con_bono": True, **comun}
+        if reserva is not None and not item["tiempo_agotado"] \
+                and item["segundos_restantes"] > UMBRAL_POR_VENCER_SEGUNDOS:
+            return Ficha(
+                estado=f"▶ En uso\n{texto_de_la_reserva(item)}", color=COLOR_EN_USO, dibujo=DIBUJO_RELOJ,
+                aviso=f"Res. {reserva['inicio']:%H:%M}", **en_sesion,
+            )
         if item["tiempo_agotado"]:
             return Ficha(
                 estado="⏰ TIEMPO AGOTADO — avisar", color=COLOR_ALERTA_SESION_SIN_CLIENTE,

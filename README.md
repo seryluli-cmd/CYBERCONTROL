@@ -349,8 +349,15 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   a los 5 días. Ninguna de las dos cosas mueve plata. Devolver plata es solo del
   Admin: una venta en negativo en la caja de ahora (el cierre viejo no se toca).
   Reglas en `control_pcs/repositories/reservas_repo.py` y
-  `reservas_habilitar_repo.py`. Falta la parte 2 (la PC marcada RESERVADA en el
-  mosaico, el cartel en la pantalla de bloqueo).
+  `reservas_habilitar_repo.py`.
+  Parte 2 (2026-10-21, `reservas_horario_repo.py`): 2 horas antes de la hora, la
+  PC, PCSTREAM o la consola reservada se ve celeste en el mosaico ("Reservada" en
+  la leyenda, con el cliente y la hora; si está en uso conserva su color y dice
+  "Res. 10:00"), y la pantalla de bloqueo de la PC muestra "RESERVADA para Juan ·
+  hoy 10:00" (Cliente PC V1.2). Venderle a otro cliente un bono que se pasa de la
+  hora avisa antes de cobrar; un socio entra solo hasta la hora y lo demás le
+  queda en el saldo. Las de "Cualquier PC disponible" van en un aviso arriba del
+  mosaico, con cuántas PCs libres hay.
 - **Caja** (`caja_window.py`, `CajaWindow`) — solo lectura, resumen del
   turno en curso vía `turnos_repo.resumen_turno_actual()` (número de caja y
   responsable, caja inicial = el cambio con que arrancó la caja, caja actual =

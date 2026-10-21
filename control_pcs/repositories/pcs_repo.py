@@ -37,7 +37,7 @@ from datetime import datetime
 import dominio
 from database import conexion_db
 from repositories import ventas_repo
-from control_pcs.repositories import cortes_pc_repo, pcstream_repo
+from control_pcs.repositories import cortes_pc_repo, pcstream_repo, reservas_horario_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 from control_pcs.repositories.actividad_repo import actividad_reciente
 from control_pcs.repositories.reintegros_repo import reintegros_por_miembro
@@ -246,6 +246,10 @@ def estado_estaciones():
 
     Y "cortes": las veces que la PC estuvo en la alerta "SIN CLIENTE" durante
     la sesión en curso y volvió sola, con la causa (ver cortes_pc_repo).
+
+    Y "reserva": la próxima reserva Pendiente de esa PC (o de PCSTREAM), como la
+    arma reservas_horario_repo.pendientes, o None. Con "marcada" en True la PC ya
+    se ve RESERVADA.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
@@ -260,6 +264,7 @@ def estado_estaciones():
             WHERE sesiones_pc.estado = ?
         """, (dominio.SESION_ACTIVA,)).fetchall()
         cortes = cortes_pc_repo.cortes_de_sesiones(conexion, [sesion["id"] for sesion in sesiones])
+        reservas = reservas_horario_repo.pendientes(conexion, ahora)
 
     sesiones_por_estacion = {sesion["estacion_id"]: sesion for sesion in sesiones}
 
@@ -267,7 +272,9 @@ def estado_estaciones():
     for estacion in estaciones:
         sesion = sesiones_por_estacion.get(estacion["id"])
         cortes_de_la_sesion = cortes.get(sesion["id"], []) if sesion is not None else []
-        estados.append(_estado_para_estacion(estacion, sesion, ahora, cortes_de_la_sesion))
+        estado = _estado_para_estacion(estacion, sesion, ahora, cortes_de_la_sesion)
+        estado["reserva"] = reservas_horario_repo.proxima(reservas, estacion)
+        estados.append(estado)
     return estados
 
 
@@ -312,6 +319,9 @@ def _estado_para_estacion(estacion, sesion, ahora, cortes=()):
         "esperando_cliente": esperando_cliente,
         "cliente_cerrado_admin_desde": cliente_cerrado_admin_desde,
         "cortes": list(cortes),
+        # Solo la completa estado_estaciones (la grilla): al Cliente PC le llega
+        # aparte, en su propio try (servidor_red, "reserva"), para que nunca toque el bloqueo.
+        "reserva": None,
     }
 
 

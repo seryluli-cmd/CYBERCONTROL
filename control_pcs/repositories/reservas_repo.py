@@ -31,8 +31,8 @@ habilitaba le faltaba en el Cierre de Turno una plata que nunca recibió. Ahora:
 
 Las decisiones son del dueño (PROPUESTA_RESERVAS.md, en la carpeta de los
 proyectos). La parte 2 (la PC marcada RESERVADA en el mosaico, el aviso al
-venderle un bono que se pase de la hora, el cartel en la pantalla de bloqueo)
-todavía no está.
+venderle un bono que se pase de la hora, el socio que se corta a la hora y el
+cartel en la pantalla de bloqueo) está en reservas_horario_repo.py.
 
 Cobrar es del mostrador: nada de esto está en lo que se puede pedir desde otra
 PC (admin_remoto/lista_blanca.py) y la ventana no se abre allá.

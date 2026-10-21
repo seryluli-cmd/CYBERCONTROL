@@ -8,6 +8,8 @@ finalizar la sesión — y el diálogo con el que un socio se loguea solo
 (`DialogoLoginMiembro`).
 """
 
+from datetime import datetime
+
 from PySide6.QtWidgets import (
     QButtonGroup, QDialog, QFrame, QLabel, QLineEdit, QPushButton, QScrollArea,
     QVBoxLayout, QWidget,
@@ -15,7 +17,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
-from control_pcs.repositories import miembros_repo, pcs_repo, pcstream_repo, playstation_repo
+from control_pcs.repositories import (
+    miembros_repo, pcs_repo, pcstream_repo, playstation_repo, reservas_horario_repo,
+)
 from control_pcs.ui.pcs_cortes import texto_para_el_panel
 from ui.dialogo_pago import cobrar
 from ui.utils import (
@@ -97,6 +101,18 @@ class _ListaDeBonos:
         """La fila del bono tildado, o None si la lista está vacía."""
         bono_id = self.grupo.checkedId()
         return next((bono for bono in self.bonos if bono["id"] == bono_id), None)
+
+
+def texto_de_la_reserva(item) -> str:
+    """El renglón del panel con la próxima reserva del equipo elegido ("" si no
+    tiene): la ve el operador antes de venderle un bono a otro cliente."""
+    reserva = item.get("reserva")
+    if reserva is None:
+        return ""
+    cuando = reservas_horario_repo.texto_de_la_hora(reserva["inicio"], datetime.now())
+    if reserva["marcada"]:
+        return f"📅 RESERVADA para {reserva['cliente']}, {cuando}."
+    return f"📅 Próxima reserva: {reserva['cliente']}, {cuando}."
 
 
 def es_playstation(item) -> bool:
@@ -269,7 +285,7 @@ class PanelDetalleEstacion(QFrame):
         else:
             self.etiqueta_titulo.setText(item["estacion"]["nombre"])
             if sesion is None:
-                self.etiqueta_estado.setText("🔒 Bloqueada — sin sesión activa.")
+                texto = "🔒 Bloqueada — sin sesión activa."
             else:
                 quien = sesion["miembro_nombre"] or "Bono"
                 texto = f"▶ Activa — {formato_tiempo(item['segundos_restantes'])} restantes ({quien})."
@@ -282,7 +298,9 @@ class PanelDetalleEstacion(QFrame):
                               "Cuando vuelva, acá dice por qué se cortó.")
                 if item["cortes"]:
                     texto += "\n" + texto_para_el_panel(item["cortes"])
-                self.etiqueta_estado.setText(texto)
+            if texto_de_la_reserva(item):
+                texto += "\n" + texto_de_la_reserva(item)
+            self.etiqueta_estado.setText(texto)
             lista, puede = self._lista_del_equipo(item), True
 
         self.boton_cobrar.setText("Cobrar" if sesion is None else "Cobrar y Agregar Bono")
@@ -319,6 +337,8 @@ class PanelDetalleEstacion(QFrame):
             texto = f"▶ Activa — {formato_tiempo(item['segundos_restantes'], con_segundos=True)} restantes."
         if not puede_operar:
             texto += "\n🔒 Sin permiso para operarla."
+        if texto_de_la_reserva(item):
+            texto += "\n" + texto_de_la_reserva(item)
         self.etiqueta_estado.setText(texto)
 
     @manejar_errores
@@ -348,6 +368,14 @@ class PanelDetalleEstacion(QFrame):
         bono = lista.bono_elegido()
         if bono is None:
             mostrar_error(self, "Sin bonos", sin_bonos)
+            return
+
+        # Si el bono deja el equipo ocupado a la hora de una reserva suya, se avisa
+        # antes de cobrar; no se frena: decide el operador (decisión del dueño).
+        aviso = reservas_horario_repo.aviso_al_vender(
+            None if es_playstation(item) else item["estacion"]["id"], bono["minutos"]
+        )
+        if aviso and not confirmar(self, "Equipo reservado", aviso):
             return
 
         pagos = cobrar(self, bono["precio"])
@@ -451,9 +479,10 @@ class DialogoLoginMiembro(QDialog):
             mostrar_error(self, "Faltan datos", "Ingresá tu usuario y tu contraseña.")
             return
         resultado = miembros_repo.abrir_estacion_por_miembro(self.estacion["id"], usuario, clave)
-        mostrar_info(
-            self, "PC activada",
-            f"Hola {resultado['miembro']}, se activó '{self.estacion['nombre']}' con "
-            f"{formato_tiempo(resultado['minutos_usados'] * 60)} de tu saldo."
-        )
+        texto = (f"Hola {resultado['miembro']}, se activó '{self.estacion['nombre']}' con "
+                 f"{formato_tiempo(resultado['minutos_usados'] * 60)} de tu saldo.")
+        if resultado["hasta_la_reserva"]:
+            texto += (f"\n\nLa PC está reservada a las {resultado['hasta_la_reserva']}: se corta a esa hora "
+                      "y el resto te queda en el saldo.")
+        mostrar_info(self, "PC activada", texto)
         self.accept()

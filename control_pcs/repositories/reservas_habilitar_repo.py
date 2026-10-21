@@ -12,12 +12,12 @@ al reservar). Por eso el bono se anota en la sesión con la venta con que se
 pagó la reserva, sin cobrarlo de nuevo.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import dominio
 from database import conexion_db
 from repositories import usuarios_repo
-from control_pcs.repositories import pcs_repo, playstation_repo, reservas_repo
+from control_pcs.repositories import pcs_repo, playstation_repo, reservas_horario_repo, reservas_repo
 
 
 def lugares_para_habilitar(reserva_id: int) -> list:
@@ -28,6 +28,10 @@ def lugares_para_habilitar(reserva_id: int) -> list:
     común libre, con la reservada primero; una "A reprogramar" ya no tiene PC
     propia (decisión del dueño). Para PCSTREAM, PCSTREAM; para la consola, la
     consola (estacion_id None). Lista vacía si no hay ninguno libre.
+
+    "reservada_para" ("Marta hoy 11:00", o None): esa PC tiene otra reserva antes
+    de que termine el bono de esta, así que quedaría ocupada cuando llegue ese
+    cliente (parte 2 de las reservas). Esas van al final; la pantalla lo avisa.
     """
     with conexion_db() as conexion:
         reserva = reservas_repo._reserva_abierta(conexion, reserva_id)
@@ -35,10 +39,12 @@ def lugares_para_habilitar(reserva_id: int) -> list:
         consola = playstation_repo.estado()
         libre = consola["sesion"] is None or consola["tiempo_agotado"]
         return [{"estacion_id": None, "nombre": dominio.NOMBRE_PLAYSTATION, "es_la_reservada": True,
-                 "enlazada": True}] if libre else []
+                 "enlazada": True, "reservada_para": None}] if libre else []
 
     propia = reserva["estacion_id"] if reserva["estado"] == dominio.RESERVA_PENDIENTE else None
     es_de_pcstream = reserva["equipo"] == dominio.EQUIPO_RESERVA_PCSTREAM
+    ahora = datetime.now()
+    hasta = ahora + timedelta(minutes=reserva["minutos"])
     lugares = []
     for item in pcs_repo.estado_estaciones():
         estacion = item["estacion"]
@@ -46,10 +52,14 @@ def lugares_para_habilitar(reserva_id: int) -> list:
             continue
         if item["sesion"] is not None and item["segundos_restantes"]:
             continue
+        otra = item["reserva"]
+        reservada_para = None
+        if otra is not None and otra["id"] != reserva_id and otra["inicio"] < hasta:
+            reservada_para = f"{otra['cliente']} {reservas_horario_repo.texto_de_la_hora(otra['inicio'], ahora)}"
         lugares.append({"estacion_id": estacion["id"], "nombre": estacion["nombre"],
                         "es_la_reservada": es_de_pcstream or estacion["id"] == propia,
-                        "enlazada": item["enlazada"]})
-    lugares.sort(key=lambda lugar: not lugar["es_la_reservada"])
+                        "enlazada": item["enlazada"], "reservada_para": reservada_para})
+    lugares.sort(key=lambda lugar: (not lugar["es_la_reservada"], lugar["reservada_para"] is not None))
     return lugares
 
 

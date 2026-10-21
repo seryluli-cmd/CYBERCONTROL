@@ -50,6 +50,7 @@ from datetime import datetime
 import dominio
 from database import conexion_db
 from repositories import usuarios_repo, ventas_repo
+from control_pcs.repositories import reservas_horario_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 
 # Ya no gobierna la PlayStation 5 (ver el docstring del módulo): queda el
@@ -163,6 +164,8 @@ def estado() -> dict:
     - "nombre": el nombre fijo, dominio.NOMBRE_PLAYSTATION.
     - "tiempo_agotado": True si hay una sesión cuyo tiempo llegó a cero y nadie
       la liberó todavía -- es lo que dispara el parpadeo rojo.
+    - "reserva": su próxima reserva Pendiente, o None (como en
+      pcs_repo.estado_estaciones; ver reservas_horario_repo).
 
     El tiempo restante se calcula al vuelo contra el reloj de ahora (ver
     dominio.segundos_restantes), no se guarda ningún contador.
@@ -170,6 +173,7 @@ def estado() -> dict:
     ahora = datetime.now()
     with conexion_db() as conexion:
         sesion = _sesion_activa(conexion)
+        reserva = reservas_horario_repo.proxima(reservas_horario_repo.pendientes(conexion, ahora))
 
     segundos = None
     if sesion is not None:
@@ -181,6 +185,7 @@ def estado() -> dict:
         "sesion": sesion,
         "segundos_restantes": segundos,
         "tiempo_agotado": sesion is not None and segundos == 0,
+        "reserva": reserva,
     }
 
 

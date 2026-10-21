@@ -36,10 +36,13 @@ from datetime import datetime
 import dominio
 from database import conexion_db, hash_clave, verificar_clave
 from repositories import config_repo, ventas_repo
-from control_pcs.repositories import pcs_repo, bonos_miembro_repo
+from control_pcs.repositories import pcs_repo, bonos_miembro_repo, reservas_horario_repo
 
-# El saldo se carga y se gasta siempre en bloques de 30 minutos. Mismo valor
-# que reintegros_repo.MINUTOS_POR_FRACCION (ver ahí por qué no se importa).
+# El saldo se carga, se devuelve y se pide como mínimo en bloques de 30 minutos.
+# Se gasta entero, salvo en una PC reservada: ahí se gasta justo hasta la hora de
+# la reserva, así que puede quedar un saldo que no es múltiplo de 30 (decisión del
+# dueño: "lo que no usó le queda en el saldo"). Mismo valor que
+# reintegros_repo.MINUTOS_POR_FRACCION (ver ahí por qué no se importa).
 MINUTOS_POR_FRACCION = 30
 
 
@@ -467,6 +470,12 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
     propios precios y se cobra solo con sus bonos (pedido del dueño,
     2026-10-17). Se rechaza antes de pedir la clave, con un mensaje que el
     Cliente PC le muestra tal cual al socio.
+
+    Una PC con una reserva por delante (pedido del dueño, 2026-10-20): el socio
+    entra solo hasta la hora de la reserva y se le descuenta solo ese tiempo; lo
+    demás le queda en el saldo (reservas_horario_repo.minutos_para_el_socio, que
+    lo rechaza si quedaría muy poco). "hasta_la_reserva" en lo que devuelve es esa
+    hora ("10:00"), o None si usó todo su saldo.
     """
     ahora = datetime.now()
     # Microsegundos, no segundos: esta "fecha" es la que
@@ -500,18 +509,20 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
                 f"{miembro['nombre']} no tiene saldo suficiente (le quedan "
                 f"{miembro['saldo_minutos']} minutos, hace falta al menos {MINUTOS_POR_FRACCION})."
             )
+        # Antes de los datos del primer ingreso: que no escriba el DNI si la PC está reservada.
+        minutos_a_usar, corte = reservas_horario_repo.minutos_para_el_socio(
+            conexion, estacion_id, miembro["saldo_minutos"], ahora
+        )
         if pedir_datos and not tiene_dni(miembro):
             if datos_socio is None:
                 raise FaltanDatosDelSocio("Es tu primer ingreso: completá tus datos para entrar.")
             _guardar_datos_del_primer_ingreso(conexion, miembro, datos_socio)
 
-        minutos_a_usar = miembro["saldo_minutos"]
-
         sesion_id = pcs_repo._abrir_o_extender_sesion(
             conexion, estacion_id, minutos_a_usar, ahora, miembro_id=miembro["id"]
         )
         conexion.execute(
-            "UPDATE miembros SET saldo_minutos = 0 WHERE id = ?", (miembro["id"],)
+            "UPDATE miembros SET saldo_minutos = saldo_minutos - ? WHERE id = ?", (minutos_a_usar, miembro["id"])
         )
         conexion.execute(
             """
@@ -521,4 +532,5 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
             (miembro["id"], dominio.MOVIMIENTO_CONSUMO, minutos_a_usar, ahora_iso, sesion_id),
         )
 
-    return {"miembro": miembro["nombre"], "minutos_usados": minutos_a_usar, "sesion_id": sesion_id}
+    return {"miembro": miembro["nombre"], "minutos_usados": minutos_a_usar, "sesion_id": sesion_id,
+            "hasta_la_reserva": f"{corte:%H:%M}" if corte is not None else None}

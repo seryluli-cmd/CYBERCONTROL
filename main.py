@@ -354,6 +354,15 @@ HOJA_DE_ESTILOS = """
         color: #C9CED8;
         font-size: 12px;
     }
+    /* Las reservas de "Cualquier PC disponible", arriba del mosaico (maqueta 7 de
+       PROPUESTA_RESERVAS: recuadro claro con letra azul). */
+    QLabel#avisoReservasMosaico {
+        background-color: #EAF1FE;
+        color: #1D4FB8;
+        border-radius: 6px;
+        padding: 5px 12px;
+        font-size: 12px;
+    }
     QListWidget#mosaicoPcs QScrollBar:vertical {
         background: #181B21;
     }

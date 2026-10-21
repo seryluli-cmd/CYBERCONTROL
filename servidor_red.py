@@ -50,6 +50,10 @@ GET /estado?estacion=<nombre>
       cuenta (`sesion`, `resto`, `desde`): si es menos que lo del mostrador, gana
       el de la PC y el mostrador lo guarda (reconexion_repo.tomar_el_menor). La
       respuesta ya sale con el tiempo corregido.
+    - Y `reserva`: {"cliente", "inicio"} si la PC ya se ve RESERVADA (2 h antes de
+      la hora de una reserva suya), o None; el Cliente PC V1.2 muestra el cartel
+      en la pantalla de bloqueo (ver reservas_horario_repo.cartel_para_la_pc). Un
+      Cliente PC viejo no lo mira.
 
 GET /cliente_pc
     El manifiesto firmado de la versión del Cliente PC cargada, como JSON:
@@ -76,7 +80,8 @@ GET /fondo
 POST /login           {"estacion", "usuario", "clave", "pide_datos" (opcional), "datos_socio" (opcional)}
     Un Miembro se loguea directo desde su PC cliente con TODO su saldo
     (mismo mecanismo que miembros_repo.abrir_estacion_por_miembro, el de la
-    pantalla Miembros). Primer ingreso (pedido del dueño, 2026-10-17): un
+    pantalla Miembros), o solo hasta la hora de una reserva de esa PC
+    (`hasta_la_reserva` en la respuesta). Primer ingreso (pedido del dueño, 2026-10-17): un
     Cliente PC que sabe pedirle sus datos al socio manda `"pide_datos": true`;
     si el socio todavía no tiene DNI, contesta 200 con
     `{"ok": false, "faltan_datos": true, "error": <texto>}` sin abrir nada, y
@@ -128,7 +133,7 @@ from admin_remoto import servidor as admin_remoto_servidor
 from errores import registrar_error
 from control_pcs.repositories import (
     accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, cortes_pc_repo,
-    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, reconexion_repo,
+    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, reconexion_repo, reservas_horario_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -304,6 +309,12 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 cuerpo["cliente_version"] = actualizacion_cliente_repo.version_para_estacion(item["estacion"]["id"])
             except Exception as error:
                 registrar_error(error, "Servidor de red: leer la versión del Cliente PC")
+            try:
+                # El cartel "RESERVADA" de la pantalla de bloqueo. Si falla, no viaja y la
+                # PC se queda sin cartel: nada de esto decide el bloqueo.
+                cuerpo["reserva"] = reservas_horario_repo.cartel_para_la_pc(item["estacion"])
+            except Exception as error:
+                registrar_error(error, "Servidor de red: leer la reserva de una PC")
             try:
                 comando = comandos_pc_repo.proximo_comando_pendiente(item["estacion"]["id"])
                 if comando is not None:
