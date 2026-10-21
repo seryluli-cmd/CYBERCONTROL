@@ -37,7 +37,7 @@ from datetime import datetime
 import dominio
 from database import conexion_db
 from repositories import ventas_repo
-from control_pcs.repositories import cortes_pc_repo, pcstream_repo, reservas_horario_repo
+from control_pcs.repositories import avisos_fin_pc_repo, cortes_pc_repo, pcstream_repo, reservas_horario_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 from control_pcs.repositories.actividad_repo import actividad_reciente
 from control_pcs.repositories.reintegros_repo import reintegros_por_miembro
@@ -154,7 +154,11 @@ def registrar_conexion(estacion_id: int, ip: str = None, arranque: str = None):
     `arranque` identifica al Cliente PC abierto que hizo el pedido (ver
     cortes_pc_repo): se guarda en estaciones.cliente_arranque. Un Cliente PC
     viejo no lo manda (None) y queda el que había.
+
+    De paso, la PC ya se enteró de que terminaron las sesiones suyas que se cerraron
+    antes de esta consulta (ver avisos_fin_pc_repo): la respuesta le dice que no tiene.
     """
+    ahora_texto = datetime.now().isoformat(timespec="seconds")
     with conexion_db() as conexion:
         if ip:
             conexion.execute(
@@ -164,7 +168,7 @@ def registrar_conexion(estacion_id: int, ip: str = None, arranque: str = None):
                                       cliente_arranque = COALESCE(?, cliente_arranque)
                 WHERE id = ?
                 """,
-                (datetime.now().isoformat(timespec="seconds"), ip, ip, arranque, estacion_id),
+                (ahora_texto, ip, ip, arranque, estacion_id),
             )
         else:
             conexion.execute(
@@ -172,8 +176,9 @@ def registrar_conexion(estacion_id: int, ip: str = None, arranque: str = None):
                 UPDATE estaciones SET ultima_conexion = ?, cliente_arranque = COALESCE(?, cliente_arranque)
                 WHERE id = ?
                 """,
-                (datetime.now().isoformat(timespec="seconds"), arranque, estacion_id),
+                (ahora_texto, arranque, estacion_id),
             )
+        avisos_fin_pc_repo.marcar_enterada(conexion, estacion_id, ahora_texto)
 
 
 def obtener_estacion(estacion_id: int):
@@ -250,6 +255,9 @@ def estado_estaciones():
     Y "reserva": la próxima reserva Pendiente de esa PC (o de PCSTREAM), como la
     arma reservas_horario_repo.pendientes, o None. Con "marcada" en True la PC ya
     se ve RESERVADA.
+
+    Y "fin_sin_aviso": si a una PC sin sesión se le terminó la última y no se enteró
+    (su Cliente PC no volvió a preguntar), ver avisos_fin_pc_repo.fin_sin_aviso.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
@@ -265,6 +273,7 @@ def estado_estaciones():
         """, (dominio.SESION_ACTIVA,)).fetchall()
         cortes = cortes_pc_repo.cortes_de_sesiones(conexion, [sesion["id"] for sesion in sesiones])
         reservas = reservas_horario_repo.pendientes(conexion, ahora)
+        fines_pendientes = avisos_fin_pc_repo.pendientes(conexion)
 
     sesiones_por_estacion = {sesion["estacion_id"]: sesion for sesion in sesiones}
 
@@ -272,15 +281,17 @@ def estado_estaciones():
     for estacion in estaciones:
         sesion = sesiones_por_estacion.get(estacion["id"])
         cortes_de_la_sesion = cortes.get(sesion["id"], []) if sesion is not None else []
-        estado = _estado_para_estacion(estacion, sesion, ahora, cortes_de_la_sesion)
+        estado = _estado_para_estacion(estacion, sesion, ahora, cortes_de_la_sesion,
+                                       fines_pendientes.get(estacion["id"]))
         estado["reserva"] = reservas_horario_repo.proxima(reservas, estacion)
         estados.append(estado)
     return estados
 
 
-def _estado_para_estacion(estacion, sesion, ahora, cortes=()):
+def _estado_para_estacion(estacion, sesion, ahora, cortes=(), fin_pendiente=None):
     """Misma cuenta para la grilla y para la consulta individual de un Cliente PC
-    (esa no necesita los cortes: ver estado_de_estacion)."""
+    (esa no necesita los cortes: ver estado_de_estacion). `fin_pendiente`: la última
+    sesión de esa PC que todavía no se sabe si se enteró de su fin (avisos_fin_pc_repo)."""
     segundos_restantes = None
     if sesion is not None:
         fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
@@ -297,6 +308,13 @@ def _estado_para_estacion(estacion, sesion, ahora, cortes=()):
     cliente_cerrado_admin_desde = None
     if estacion["cliente_cerrado_desde"] is not None and not enlazada:
         cliente_cerrado_admin_desde = datetime.fromisoformat(estacion["cliente_cerrado_desde"])
+
+    # Sin sesión y sin noticias desde que se terminó la última: la PC no se enteró y
+    # puede que sigan usándola. Una PC con el Cliente PC cerrado desde su panel admin
+    # ya está a la vista como "Sin bloqueo".
+    fin_sin_aviso = None
+    if sesion is None and cliente_cerrado_admin_desde is None:
+        fin_sin_aviso = avisos_fin_pc_repo.fin_sin_aviso(fin_pendiente, estacion, ahora, UMBRAL_ENLACE_SEGUNDOS)
 
     esperando_cliente = False
     if sesion is not None and not enlazada and cliente_cerrado_admin_desde is None:
@@ -319,6 +337,7 @@ def _estado_para_estacion(estacion, sesion, ahora, cortes=()):
         "esperando_cliente": esperando_cliente,
         "cliente_cerrado_admin_desde": cliente_cerrado_admin_desde,
         "cortes": list(cortes),
+        "fin_sin_aviso": fin_sin_aviso,
         # Solo la completa estado_estaciones (la grilla): al Cliente PC le llega
         # aparte, en su propio try (servidor_red, "reserva"), para que nunca toque el bloqueo.
         "reserva": None,
@@ -361,7 +380,11 @@ def estado_de_estacion(nombre: str, ip: str = None):
             """,
             (estacion["id"], dominio.SESION_ACTIVA),
         ).fetchone()
-    return _estado_para_estacion(estacion, sesion, datetime.now())
+        # Si volvió después de que se le terminó una sesión sin enterarse, el corte se anota
+        # (cortes_pc_repo). Con una sesión en curso no hace falta mirar.
+        fin_pendiente = (avisos_fin_pc_repo.pendientes(conexion, estacion["id"]).get(estacion["id"])
+                         if sesion is None else None)
+    return _estado_para_estacion(estacion, sesion, datetime.now(), fin_pendiente=fin_pendiente)
 
 
 def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: datetime, miembro_id: int = None) -> int:
@@ -615,9 +638,12 @@ def _cerrar_sesion(conexion, sesion, ahora: datetime):
     ingreso al mostrador.
     """
     fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
+    # Queda PENDIENTE hasta que la PC vuelva a preguntar y reciba "sin sesión"
+    # (ver avisos_fin_pc_repo): si no pregunta, la grilla avisa.
     conexion.execute(
-        "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ? WHERE id = ?",
-        (dominio.SESION_FINALIZADA, min(ahora, fin_previsto).isoformat(timespec="seconds"), sesion["id"]),
+        "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ?, aviso_fin = ? WHERE id = ?",
+        (dominio.SESION_FINALIZADA, min(ahora, fin_previsto).isoformat(timespec="seconds"),
+         dominio.AVISO_FIN_PENDIENTE, sesion["id"]),
     )
 
     minutos_restantes = dominio.segundos_restantes(fin_previsto, ahora) // 60

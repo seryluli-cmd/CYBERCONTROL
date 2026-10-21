@@ -306,6 +306,17 @@ class PanelControlPcs(QWidget):
                 aviso = "Por vencer"
             else:
                 icono, texto_estado, color = "▶", "En uso", COLOR_EN_USO
+        elif item.get("fin_sin_aviso") is not None:
+            # Se terminó su sesión y la PC no se enteró: su Cliente PC no responde y
+            # pueden seguir usándola sin tiempo (ver avisos_fin_pc_repo). Titila como la
+            # PlayStation 5 con el tiempo agotado, hasta que vuelva o alguien la revise.
+            fin = item["fin_sin_aviso"]
+            que_paso = "Se terminó el tiempo" if fin["por_tiempo"] else "Se cerró la sesión"
+            icono, color, quien_texto = "⏰", COLOR_ALERTA_SESION_SIN_CLIENTE, fin["quien"]
+            texto_estado = (f"{que_paso} a las {fin['fin']:%H:%M} y la PC no se enteró "
+                            "(su Cliente PC no responde): revisar la PC")
+            en_alerta, dibujo = True, DIBUJO_ALERTA
+            aviso = "TIEMPO AGOTADO" if fin["por_tiempo"] else "NO SE BLOQUEÓ"
         elif item["enlazada"]:
             icono, texto_estado, color = "✓", "Disponible", COLOR_DISPONIBLE
         elif item["cliente_cerrado_admin_desde"] is not None:
@@ -318,7 +329,7 @@ class PanelControlPcs(QWidget):
         reserva = item.get("reserva")
         if reserva is not None and reserva["marcada"]:
             hora = f"{reserva['inicio']:%H:%M}"
-            if sesion is None and item["cliente_cerrado_admin_desde"] is None:
+            if sesion is None and item["cliente_cerrado_admin_desde"] is None and not en_alerta:
                 # Libre y apartada: celeste, para que nadie se la dé a otro cliente.
                 # Apagada también: lo que importa es que está reservada.
                 icono, color = "📅", COLOR_RESERVADA

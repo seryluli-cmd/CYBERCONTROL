@@ -144,6 +144,21 @@ def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columnas_aviso_fin_en_sesiones(conexion: sqlite3.Connection):
+    """
+    Agrega a sesiones_pc si la PC se enteró de que se terminó la sesión (pedido del
+    dueño, 2026-10-21: en la PC 30 se terminó el tiempo con el Cliente PC cerrado y
+    el cliente siguió jugando; ver control_pcs/repositories/avisos_fin_pc_repo.py):
+    `aviso_fin` (uno de dominio.AVISO_FIN_*; NULL en las sesiones de antes, así no
+    titila ninguna PC vieja) y, si el operador lo dio por revisado, quién y cuándo
+    (`aviso_fin_revisado_por`, `aviso_fin_revisado_fecha`; regla 7).
+    """
+    _agregar_columna_si_falta(conexion, "sesiones_pc", "aviso_fin", "TEXT")
+    _agregar_columna_si_falta(conexion, "sesiones_pc", "aviso_fin_revisado_por", "INTEGER REFERENCES usuarios(id)")
+    _agregar_columna_si_falta(conexion, "sesiones_pc", "aviso_fin_revisado_fecha", "TEXT")
+    conexion.commit()
+
+
 def _migrar_columna_whatsapp_en_miembros(conexion: sqlite3.Connection):
     """
     Agrega miembros.whatsapp (pedido del dueño, 2026-10-17: el socio lo carga,

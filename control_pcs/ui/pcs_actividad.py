@@ -77,12 +77,19 @@ def _texto_evento(evento) -> str:
     if tipo == "CORTE":
         texto = (f"{hora} — {evento['estacion_nombre']}: "
                  f"{detalle_del_corte(evento['causa'], evento['segundos'], evento['fallas'])}")
+        if evento.get("despues_del_fin"):
+            # Volvió con la sesión ya terminada: hasta ese momento pudieron seguir usándola.
+            texto += " (volvió después de terminada su sesión, sin haberse enterado)"
         if evento.get("reinicio_pedido") is True:
             texto += " (la reinició el Cliente PC)"
         elif evento.get("reinicio_pedido") is False:
             texto += (" SIN que la reiniciara el Cliente PC: corte de luz, cuelgue o pantalla azul, "
                       "Windows Update o alguien con el botón")
         return texto + "."
+    if tipo == "FIN_REVISADO":
+        fin = datetime.fromisoformat(evento["fin"]).strftime("%H:%M")
+        return (f"{hora} — {evento['estacion_nombre']}: {evento['usuario_nombre'] or 'alguien'} marcó "
+                f"\"Ya revisé la PC\" (no se había enterado de que su sesión terminó a las {fin}).")
     if tipo == "REINICIO":
         return f"{hora} — {evento['estacion_nombre']}: {texto_del_reinicio(evento)}."
     if tipo == "AJUSTE_TIEMPO":

@@ -19,7 +19,8 @@ def inicializar_base_de_datos():
         _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_columnas_actualizacion_estaciones,
         _migrar_columna_cliente_arranque_estaciones,
         _migrar_check_tipo_en_comandos_pc, _migrar_check_tipo_en_eventos_admin_pc,
-        _migrar_columna_miembro_en_sesiones, _migrar_columna_whatsapp_en_miembros,
+        _migrar_columna_miembro_en_sesiones, _migrar_columnas_aviso_fin_en_sesiones,
+        _migrar_columna_whatsapp_en_miembros,
         _migrar_columna_desde_ip_en_sesiones,
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
@@ -679,6 +680,7 @@ def inicializar_base_de_datos():
         _TIPOS_MOVIMIENTO_SALDO, "bonos_miembro(id)", si_no_existe=True
     ))
     _migrar_columna_miembro_en_sesiones(conexion)
+    _migrar_columnas_aviso_fin_en_sesiones(conexion)
 
     # Una base que ya tenía "movimientos_saldo_miembro" de antes de que
     # existiera "bonos_miembro" sigue con bono_id apuntando a bonos_tiempo
@@ -775,6 +777,14 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservas_pagos_reserva ON reservas_pagos(reserva_id)")
     # Las últimas habilitadas, para "Actividad reciente" (cada 5 s, ver arriba).
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservas_estado_desde ON reservas(estado, estado_desde)")
+    # Las sesiones que la PC todavía no supo que terminaron (avisos_fin_pc_repo): se
+    # buscan en cada GET /estado y en cada refresco, y son pocas porque la PC las
+    # marca en su próxima consulta. Y las que el operador dio por revisadas, para
+    # "Actividad reciente".
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_aviso_fin ON sesiones_pc(aviso_fin, estacion_id)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sesiones_pc_aviso_revisado ON sesiones_pc(aviso_fin_revisado_fecha)"
+    )
 
     conexion.commit()
 

@@ -98,9 +98,12 @@ def causa_del_corte(segundos: int, pulso: dict, arranque_anterior) -> str:
 
 
 def estaba_en_alerta(item) -> bool:
-    """¿La grilla mostraba esta PC en la alerta "SIN CLIENTE" que titila? `item` es el de
+    """¿La grilla mostraba esta PC en la alerta "SIN CLIENTE" que titila, o en la de una
+    sesión que terminó sin que la PC se enterara (avisos_fin_pc_repo)? `item` es el de
     pcs_repo.estado_de_estacion, leído ANTES de anotar la consulta que acaba de llegar. Fuera
     queda la PC cuyo Cliente PC se cerró desde el panel admin (ver el docstring del módulo)."""
+    if item.get("fin_sin_aviso") is not None:
+        return item["ultima_conexion"] is not None
     return (
         item["sesion"] is not None
         and not item["enlazada"]
@@ -115,7 +118,8 @@ def registrar_si_volvio_de_un_corte(item, pulso: dict, ahora: datetime = None,
     """
     Se llama en cada GET /estado (servidor_red.py) con el estado de la estación ANTES de anotar
     esa consulta. Si la PC estaba en la alerta "SIN CLIENTE", anota el corte (cuánto duró y por
-    qué) y devuelve la causa; si no, devuelve None sin tocar la base, que es lo de siempre.
+    qué) y devuelve la causa; si no, devuelve None sin tocar la base, que es lo de siempre. Si
+    volvió después de que se le terminó la sesión sin enterarse, el corte va con esa sesión.
     `programa_abierto_desde` es para las pruebas.
     """
     if not estaba_en_alerta(item):
@@ -125,13 +129,14 @@ def registrar_si_volvio_de_un_corte(item, pulso: dict, ahora: datetime = None,
         return None
     segundos = max(0, int((ahora - item["ultima_conexion"]).total_seconds()))
     causa = causa_del_corte(segundos, pulso, item["estacion"]["cliente_arranque"])
+    sesion_id = item["sesion"]["id"] if item["sesion"] is not None else item["fin_sin_aviso"]["sesion_id"]
     with conexion_db() as conexion:
         conexion.execute(
             """
             INSERT INTO cortes_pc (estacion_id, sesion_id, fecha_hora, segundos, causa, fallas)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (item["estacion"]["id"], item["sesion"]["id"], ahora.isoformat(timespec="seconds"),
+            (item["estacion"]["id"], sesion_id, ahora.isoformat(timespec="seconds"),
              segundos, causa, pulso["fallas"]),
         )
     return causa
@@ -160,15 +165,17 @@ def listar_recientes(limite: int):
     """Los últimos `limite` cortes, con el nombre de la PC, para el panel de actividad de
     Control de PCs (ver actividad_repo.actividad_reciente). En los de PC_REINICIADA,
     `reinicio_pedido` dice si ese reinicio lo pidió su Cliente PC (ver
-    reinicios_pc_repo.fue_pedido); en los demás, None."""
+    reinicios_pc_repo.fue_pedido); en los demás, None. `despues_del_fin`: la PC volvió
+    después de que se terminó su sesión, sin haberse enterado (avisos_fin_pc_repo)."""
     with conexion_db() as conexion:
         filas = conexion.execute(
             """
             SELECT cortes_pc.fecha_hora, cortes_pc.segundos, cortes_pc.causa, cortes_pc.fallas,
                    cortes_pc.estacion_id, estaciones.nombre AS estacion_nombre,
-                   estaciones.numero_version_cliente
+                   estaciones.numero_version_cliente, sesiones_pc.fecha_fin_real
             FROM cortes_pc
             JOIN estaciones ON estaciones.id = cortes_pc.estacion_id
+            LEFT JOIN sesiones_pc ON sesiones_pc.id = cortes_pc.sesion_id
             ORDER BY cortes_pc.fecha_hora DESC, cortes_pc.id DESC
             LIMIT ?
             """,
@@ -182,5 +189,7 @@ def listar_recientes(limite: int):
                                              fila["numero_version_cliente"])
                 if fila["causa"] == dominio.CORTE_PC_REINICIADA else None
             )
+            corte["despues_del_fin"] = (fila["fecha_fin_real"] is not None
+                                        and fila["fecha_hora"] > fila["fecha_fin_real"])
             cortes.append(corte)
     return cortes

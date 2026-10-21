@@ -18,7 +18,7 @@ from PySide6.QtCore import Qt, QTimer
 
 import dominio
 from control_pcs.repositories import (
-    miembros_repo, pcs_repo, pcstream_repo, playstation_repo, reservas_horario_repo,
+    avisos_fin_pc_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo, reservas_horario_repo,
 )
 from control_pcs.ui.pcs_cortes import texto_para_el_panel
 from ui.dialogo_pago import cobrar
@@ -284,7 +284,13 @@ class PanelDetalleEstacion(QFrame):
             lista, puede = self.lista_playstation, puede_operar_consola
         else:
             self.etiqueta_titulo.setText(item["estacion"]["nombre"])
-            if sesion is None:
+            if sesion is None and item.get("fin_sin_aviso") is not None:
+                fin = item["fin_sin_aviso"]
+                que_paso = "Se terminó el tiempo" if fin["por_tiempo"] else "Se cerró la sesión"
+                texto = (f"⏰ {que_paso} ({fin['quien']}) a las {fin['fin']:%H:%M} y la PC no se enteró: "
+                         "su Cliente PC no responde, así que no se bloqueó. Fijate si siguen usándola.\n"
+                         "Cuando la PC vuelva, en Actividad reciente dice qué pasó.")
+            elif sesion is None:
                 texto = "🔒 Bloqueada — sin sesión activa."
             else:
                 quien = sesion["miembro_nombre"] or "Bono"
@@ -303,12 +309,17 @@ class PanelDetalleEstacion(QFrame):
             self.etiqueta_estado.setText(texto)
             lista, puede = self._lista_del_equipo(item), True
 
+        # Una PC que no se enteró del fin de su sesión: el mismo botón apaga la alerta.
+        fin_sin_aviso = es_pc and sesion is None and item.get("fin_sin_aviso") is not None
         self.boton_cobrar.setText("Cobrar" if sesion is None else "Cobrar y Agregar Bono")
-        self.boton_finalizar.setText(
-            "Ya avisé: liberar la consola" if es_consola and item["tiempo_agotado"] else "Finalizar Sesión"
-        )
+        if es_consola and item["tiempo_agotado"]:
+            self.boton_finalizar.setText("Ya avisé: liberar la consola")
+        elif fin_sin_aviso:
+            self.boton_finalizar.setText("Ya revisé la PC")
+        else:
+            self.boton_finalizar.setText("Finalizar Sesión")
         self.boton_cobrar.setEnabled(puede and bool(lista.bonos))
-        self.boton_finalizar.setEnabled(puede and sesion is not None)
+        self.boton_finalizar.setEnabled(puede and (sesion is not None or fin_sin_aviso))
         # Abrir con el saldo de un socio es cosa de las PCs: la consola y
         # PCSTREAM se venden solo con sus bonos (miembros_repo también lo rechaza).
         self.boton_miembro.setEnabled(es_pc and not es_pcstream)
@@ -398,7 +409,17 @@ class PanelDetalleEstacion(QFrame):
     @manejar_errores
     def _finalizar_sesion(self):
         item = self.item
-        if item is None or item["sesion"] is None:
+        if item is None:
+            return
+        if not es_playstation(item) and item["sesion"] is None and item.get("fin_sin_aviso") is not None:
+            # "Ya revisé la PC" (ver avisos_fin_pc_repo): apaga la alerta y queda quién fue.
+            if confirmar(self, "Confirmar",
+                         f"¿Ya revisaste '{item['estacion']['nombre']}'? Deja de titilar; si después "
+                         "vuelve a responder, en Actividad reciente dice qué le había pasado."):
+                avisos_fin_pc_repo.marcar_revisada(item["fin_sin_aviso"]["sesion_id"], self.usuario["id"])
+                self._avisar_cambio()
+            return
+        if item["sesion"] is None:
             return
         segundos_restantes = item["segundos_restantes"]
 

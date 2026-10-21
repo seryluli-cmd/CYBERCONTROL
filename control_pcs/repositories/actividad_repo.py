@@ -3,8 +3,8 @@
 import dominio
 from database import conexion_db
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, cortes_pc_repo, filtro_palabras_repo, playstation_repo, reconexion_repo,
-    reinicios_pc_repo,
+    accesos_admin_pc_repo, avisos_fin_pc_repo, cortes_pc_repo, filtro_palabras_repo, playstation_repo,
+    reconexion_repo, reinicios_pc_repo,
 )
 
 
@@ -113,7 +113,15 @@ def actividad_reciente(limite: int = 30):
             eventos.append({"fecha": fila["fecha_hora"], "tipo": "CORTE",
                              "estacion_nombre": fila["estacion_nombre"],
                              "segundos": fila["segundos"], "causa": fila["causa"],
-                             "fallas": fila["fallas"], "reinicio_pedido": fila["reinicio_pedido"]})
+                             "fallas": fila["fallas"], "reinicio_pedido": fila["reinicio_pedido"],
+                             "despues_del_fin": fila["despues_del_fin"]})
+
+        # PCs que no se enteraron de que terminó su sesión y que un operador dio por
+        # revisadas (avisos_fin_pc_repo): quién apagó la alerta.
+        for fila in avisos_fin_pc_repo.listar_revisadas_recientes(limite):
+            eventos.append({"fecha": fila["fecha_hora"], "tipo": "FIN_REVISADO",
+                             "estacion_nombre": fila["estacion_nombre"], "fin": fila["fecha_fin_real"],
+                             "usuario_nombre": fila["usuario_nombre"]})
 
         # Las PCs que reinició (o apagó) su propio Cliente PC, con el motivo (ver
         # reinicios_pc_repo). Sin el de todos los días: el del final de cada sesión.

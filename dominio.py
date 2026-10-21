@@ -394,6 +394,13 @@ def es_pcstream(nombre_estacion: str) -> bool:
 SESION_ACTIVA = "ACTIVA"
 SESION_FINALIZADA = "FINALIZADA"
 
+# ¿La PC se enteró de que se terminó su sesión? (sesiones_pc.aviso_fin, ver
+# control_pcs/repositories/avisos_fin_pc_repo.py; pedido del dueño 2026-10-21).
+# NULL en las sesiones cerradas antes de que existiera.
+AVISO_FIN_PENDIENTE = "PENDIENTE"   # cerrada; la PC todavía no volvió a preguntar
+AVISO_FIN_ENTERADA = "ENTERADA"     # la PC preguntó después del fin: ya se bloqueó
+AVISO_FIN_REVISADO = "REVISADO"     # no se enteró y el operador apretó "Ya revisé la PC"
+
 # Tipos del historial de saldo de socios. Los usa también el CHECK del esquema.
 MOVIMIENTO_CARGA = "CARGA"
 MOVIMIENTO_CONSUMO = "CONSUMO"
