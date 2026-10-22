@@ -257,8 +257,70 @@ def autenticar_miembro(usuario: str, clave: str):
         return _buscar_miembro_autenticado(conexion, usuario, clave)
 
 
+def _sesion_en_curso_del_socio(conexion, miembro_id: int, ahora: datetime):
+    """La sesión de PC que el socio está usando ahora (abierta con su saldo y
+    con tiempo por delante), con el nombre de la PC en `estacion_nombre`; None
+    si no está usando ninguna. Si figura en más de una, también None: no se
+    adivina a cuál sumarle el tiempo."""
+    filas = conexion.execute(
+        """
+        SELECT s.*, e.nombre AS estacion_nombre
+        FROM sesiones_pc s JOIN estaciones e ON e.id = s.estacion_id
+        WHERE s.miembro_id = ? AND s.estado = ?
+        """,
+        (miembro_id, dominio.SESION_ACTIVA),
+    ).fetchall()
+    en_curso = [
+        fila for fila in filas
+        if dominio.segundos_restantes(datetime.fromisoformat(fila["fecha_fin_prevista"]), ahora) > 0
+    ]
+    return en_curso[0] if len(en_curso) == 1 else None
+
+
+def _sumar_carga_a_la_sesion(conexion, miembro_id: int, minutos: int, ahora: datetime):
+    """
+    Si el socio está usando una PC, le pasa los minutos recién cargados a esa
+    sesión (pedido del dueño, 2026-10-22: un socio con 20 minutos por delante
+    cargó 13 h y la PC siguió contando hasta cero, porque al entrar la sesión
+    se lleva el saldo de ESE momento y la carga quedaba en el saldo; tuvo que
+    cerrar sesión y volver a entrar, y perdió los minutos sueltos). Es lo mismo
+    que hace abrir_estacion_por_miembro al entrar, con el mismo movimiento
+    CONSUMO: los reintegros (reintegros_repo) y la reconexión de una PC
+    (reconexion_repo) lo cuentan igual que un ingreso.
+
+    Si la PC tiene una reserva por delante, solo hasta su hora y lo demás queda
+    en el saldo (reservas_horario_repo.minutos_para_el_socio); si hasta la
+    reserva quedaría muy poco, todo queda en el saldo. Devuelve
+    {"estacion": nombre de la PC, "minutos": los que se sumaron}, o None si no
+    se sumó nada.
+    """
+    sesion = _sesion_en_curso_del_socio(conexion, miembro_id, ahora)
+    if sesion is None:
+        return None
+    try:
+        minutos_a_usar, _corte = reservas_horario_repo.minutos_para_el_socio(
+            conexion, sesion["estacion_id"], minutos, ahora
+        )
+    except ValueError:
+        return None
+    pcs_repo._abrir_o_extender_sesion(conexion, sesion["estacion_id"], minutos_a_usar, ahora, miembro_id=miembro_id)
+    conexion.execute(
+        "UPDATE miembros SET saldo_minutos = saldo_minutos - ? WHERE id = ?", (minutos_a_usar, miembro_id)
+    )
+    # Con microsegundos, por el mismo motivo que en abrir_estacion_por_miembro.
+    conexion.execute(
+        """
+        INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, sesion_id)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (miembro_id, dominio.MOVIMIENTO_CONSUMO, minutos_a_usar, ahora.isoformat(timespec="microseconds"),
+         sesion["id"]),
+    )
+    return {"estacion": sesion["estacion_nombre"], "minutos": minutos_a_usar}
+
+
 def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pagos: list,
-                      usuario_operador_id: int, bono_id: int = None) -> int:
+                      usuario_operador_id: int, bono_id: int = None) -> dict:
     """Núcleo común de cargar_saldo_por_monto/cargar_saldo_por_bono: la
     venta se registra vía ventas_repo.registrar_venta_sin_detalle (mismo
     mecanismo que pcs_repo.asignar_bono, por la misma razón: no hay un
@@ -266,10 +328,17 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pag
     CARGA en el ledger. A diferencia de abrir_estacion_por_miembro
     (autoservicio puro), cargar saldo siempre lo hace el Operador porque
     implica cobrar plata — por eso necesita `usuario_operador_id`, igual
-    que cualquier otra venta del sistema.
+    que cualquier otra venta del sistema. Si el socio está usando una PC, lo
+    cargado pasa a esa sesión (_sumar_carga_a_la_sesion).
+
+    Devuelve {"venta_id", "sumado_a_la_sesion"} (lo segundo, lo que devuelve
+    _sumar_carga_a_la_sesion).
 
     `pagos`: lista de {"metodo", "monto"} — ver
     ventas_repo.registrar_venta_sin_detalle."""
+    # El lock de escritura de entrada, como abrir_estacion_por_miembro: la sesión
+    # que se estira no puede cambiar entre que se la lee y se la estira.
+    conexion.execute("BEGIN IMMEDIATE")
     ahora = datetime.now()
     ahora_iso = ahora.isoformat(timespec="seconds")
 
@@ -287,7 +356,8 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pag
         """,
         (miembro_id, dominio.MOVIMIENTO_CARGA, minutos, ahora_iso, venta_id, bono_id),
     )
-    return venta_id
+    return {"venta_id": venta_id,
+            "sumado_a_la_sesion": _sumar_carga_a_la_sesion(conexion, miembro_id, minutos, ahora)}
 
 
 def minutos_por_monto(tramos: list, monto: float):
@@ -327,12 +397,12 @@ def validar_monto_de_carga(tramos: list, monto: float):
         )
 
 
-def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int) -> int:
+def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int) -> dict:
     """
     Convierte un pago en pesos a minutos de saldo (ver minutos_por_monto) y
     se los suma al socio. Levanta ValueError si el monto es cero, no llega
     a la carga mínima (ver validar_monto_de_carga) o no alcanza ni para un
-    bloque.
+    bloque. Devuelve lo mismo que _registrar_carga.
     """
     tramos = config_repo.obtener_tramos_tarifa_hora_miembro()
     validar_monto_de_carga(tramos, monto)
@@ -346,11 +416,11 @@ def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_o
         return _registrar_carga(conexion, miembro_id, minutos, monto, pagos, usuario_operador_id)
 
 
-def cargar_saldo_por_bono(miembro_id: int, bono_id: int, pagos: list, usuario_operador_id: int) -> int:
+def cargar_saldo_por_bono(miembro_id: int, bono_id: int, pagos: list, usuario_operador_id: int) -> dict:
     """Agrega al saldo del socio un bono del catálogo EXCLUSIVO de socios
     (bonos_miembro_repo, no pcs_repo.listar_bonos -- ese es para
     walk-ins) — ya viene en minutos múltiplos de 30 por construcción del
-    catálogo."""
+    catálogo. Devuelve lo mismo que _registrar_carga."""
     bono = bonos_miembro_repo.obtener_bono(bono_id)
     if bono is None or not bono["activo"]:
         raise ValueError("Ese bono ya no está disponible.")

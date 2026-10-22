@@ -34,7 +34,7 @@ from control_pcs.repositories import miembros_repo, bonos_miembro_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from ui.dialogo_pago import cobrar
 from ui.utils import (
-    formato_pesos, formato_tiempo, mostrar_error, confirmar, manejar_errores,
+    formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar,
     crear_tabla, fila_agregar_quitar,
 )
@@ -372,7 +372,7 @@ class DialogoCargarSaldo(QDialog):
             pagos = cobrar(self, monto)
             if pagos is None:
                 return
-            miembros_repo.cargar_saldo_por_monto(
+            resultado = miembros_repo.cargar_saldo_por_monto(
                 self.miembro["id"], monto, pagos, self.usuario_operador["id"]
             )
         else:
@@ -386,8 +386,17 @@ class DialogoCargarSaldo(QDialog):
             pagos = cobrar(self, bono["precio"])
             if pagos is None:
                 return
-            miembros_repo.cargar_saldo_por_bono(
+            resultado = miembros_repo.cargar_saldo_por_bono(
                 self.miembro["id"], bono_id, pagos, self.usuario_operador["id"]
+            )
+        # Si el socio está usando una PC, lo cargado ya corre en esa sesión
+        # (miembros_repo._sumar_carga_a_la_sesion): que el operador lo sepa.
+        sumado = resultado["sumado_a_la_sesion"]
+        if sumado is not None:
+            mostrar_info(
+                self, "Saldo cargado",
+                f"Se le sumaron {formato_tiempo(sumado['minutos'] * 60)} a su sesión en "
+                f"{sumado['estacion']}: le aparecen en la PC en unos segundos.",
             )
         self.accept()
 

@@ -92,8 +92,8 @@ class _UnDiaConDeTodo(BaseConBaseTemporal):
             )
         self.v_stream = pcs_repo.asignar_bono(self.pcstream, bono_stream, self.lucia_id, _digital(2000.0))
         self.v_ps5 = playstation_repo.vender_bono(self.lucia_id, bono_ps5, _efectivo(1500.0))
-        self.v_carga = miembros_repo.cargar_saldo_por_monto(socio, 3000.0, _efectivo(3000.0), self.lucia_id)
-        self.v_pack = miembros_repo.cargar_saldo_por_bono(socio, bono_socio, _digital(4000.0), self.lucia_id)
+        self.v_carga = miembros_repo.cargar_saldo_por_monto(socio, 3000.0, _efectivo(3000.0), self.lucia_id)["venta_id"]
+        self.v_pack = miembros_repo.cargar_saldo_por_bono(socio, bono_socio, _digital(4000.0), self.lucia_id)["venta_id"]
         self.v_admin = self._vender(self.admin_id, 1)  # queda a nombre de Lucía
         self.v_anulada_antes = self._vender(self.lucia_id, 3)
         ventas_repo.anular_venta(self.v_anulada_antes, self.admin_id, "mal cobrada")

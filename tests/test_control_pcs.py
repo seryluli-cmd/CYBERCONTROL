@@ -412,7 +412,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
 
         venta_id = miembros_repo.cargar_saldo_por_monto(
             miembro_id, 13000, [{"metodo": "EFECTIVO", "monto": 13000}], operador_id
-        )
+        )["venta_id"]
 
         miembro = miembros_repo.obtener_miembro(miembro_id)
         self.assertEqual(miembro["saldo_minutos"], 780)  # 13 horas exactas
@@ -524,7 +524,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
 
         venta_id = miembros_repo.cargar_saldo_por_bono(
             miembro_id, bono_id, [{"metodo": "EFECTIVO", "monto": 15000}], operador_id
-        )
+        )["venta_id"]
 
         miembro = miembros_repo.obtener_miembro(miembro_id)
         self.assertEqual(miembro["saldo_minutos"], 300)
@@ -551,7 +551,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
             miembro_id, bono_id,
             [{"metodo": "EFECTIVO", "monto": 10000}, {"metodo": "DIGITAL", "monto": 5000}],
             operador_id,
-        )
+        )["venta_id"]
 
         venta, _detalle, pagos = ventas_repo.buscar_venta(venta_id)
         self.assertEqual(venta["total"], 15000)
@@ -866,7 +866,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
         venta_id = miembros_repo.cargar_saldo_por_monto(
             miembro_id, 1000, [{"metodo": "EFECTIVO", "monto": 1000}], operador_id
-        )
+        )["venta_id"]
         saldo_cargado = miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"]
         self.assertGreater(saldo_cargado, 0)
 
@@ -895,7 +895,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
         venta_id = miembros_repo.cargar_saldo_por_monto(
             miembro_id, 1000, [{"metodo": "EFECTIVO", "monto": 1000}], operador_id
-        )
+        )["venta_id"]
         saldo_cargado = miembros_repo.obtener_miembro(miembro_id)["saldo_minutos"]
 
         with database.conexion_db() as conexion:
