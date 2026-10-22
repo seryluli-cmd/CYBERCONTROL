@@ -37,6 +37,8 @@ vive al lado:
   cambiar red, intercambiar de máquina, volumen).
 - `pcs_congelado_dialogo.py`: congelar y descongelar PCs con Shadow Defender
   (también del menú contextual, solo para el Admin).
+- `pcs_botones_libres.py`: los botones DESCONGELAR y REINICIAR de abajo del
+  mosaico, para todas las PCs prendidas y libres de una vez.
 - `pcs_gestion_dialogos.py`: administrar el catálogo de Estaciones y de
   Bonos de Tiempo (solo se abren desde Configuración ADMIN, no desde acá).
 """
@@ -55,6 +57,7 @@ from control_pcs.ui.pcs_comandos_dialogos import (
     DialogoCambiarRed, DialogoCaptura, DialogoTrasladarSesion, DialogoVolumen,
 )
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
+from control_pcs.ui.pcs_botones_libres import BotonesParaLasLibres
 from control_pcs.ui.pcs_actividad import PanelActividad
 from control_pcs.ui.pcs_aviso_reservas import AvisoDeReservasSinPcFija
 from control_pcs.ui.pcs_cortes import resumen_de_cortes
@@ -220,6 +223,10 @@ class PanelControlPcs(QWidget):
         self.aviso_reservas = AvisoDeReservasSinPcFija()
         layout_marco.addWidget(self.aviso_reservas)
         layout_marco.addWidget(self.mosaico, 1)
+        # Abajo a la izquierda, DESCONGELAR y REINICIAR para todas las PCs prendidas
+        # y libres (pedido del dueño, 2026-10-22): el mosaico se achica para dejarles lugar.
+        self.botones_libres = BotonesParaLasLibres(self.usuario, lambda: self._estados, self)
+        layout_marco.addWidget(self.botones_libres)
         marco.setLayout(layout_marco)
 
         self.panel_detalle = PanelDetalleEstacion(self.usuario, self._refrescar, self)

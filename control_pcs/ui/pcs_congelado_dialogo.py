@@ -3,7 +3,8 @@ pcs_congelado_dialogo.py
 ==========================
 Congelar y descongelar PCs con Shadow Defender (clic derecho en una PC de
 Control de PCs -> "Congelar / descongelar...", solo Admin; pedido del dueño,
-2026-10-18). Se eligen las PCs (arranca marcada la del clic), se escribe la
+2026-10-18). Se eligen las PCs (arranca marcada la del clic; desde el botón
+DESCONGELAR de abajo del mosaico, todas las prendidas y libres), se escribe la
 clave de Shadow Defender y se manda: ver cómo están, descongelar (reinicia) o
 congelar (en el acto). Cada PC contesta en su renglón; las que tienen un
 cliente se saltean y lo dicen ahí.
@@ -19,7 +20,7 @@ from PySide6.QtWidgets import (
     QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidgetItem, QVBoxLayout,
 )
 
-from control_pcs.repositories import comandos_pc_repo, congelado_repo
+from control_pcs.repositories import comandos_pc_repo, congelado_repo, pcs_libres_repo
 from ui.utils import (
     aplicar_clase, confirmar, crear_tabla, encadenar_enter, manejar_errores, sin_boton_por_defecto,
 )
@@ -31,6 +32,8 @@ COLOR_MAL = QColor("#b3261e")
 
 class DialogoCongelado(QDialog):
     def __init__(self, estacion_elegida, estados, parent=None):
+        """`estacion_elegida` es la PC del clic derecho, que arranca marcada; con
+        None (botón DESCONGELAR) arrancan marcadas todas las prendidas y libres."""
         super().__init__(parent)
         self.setWindowTitle("Congelar / descongelar PCs (Shadow Defender)")
         self.resize(720, 560)
@@ -56,7 +59,11 @@ class DialogoCongelado(QDialog):
 
         self.tabla = crear_tabla(["PC", "Ahora", "Respuesta"], estirar=COLUMNA_RESPUESTA)
         for item in estados:
-            self._agregar_pc(item, marcada=item["estacion"]["id"] == estacion_elegida["id"])
+            if estacion_elegida is None:
+                marcada = pcs_libres_repo.esta_prendida_y_libre(item)
+            else:
+                marcada = item["estacion"]["id"] == estacion_elegida["id"]
+            self._agregar_pc(item, marcada=marcada)
         self.tabla.resizeColumnToContents(COLUMNA_PC)
         self.tabla.resizeColumnToContents(COLUMNA_AHORA)
 
@@ -136,7 +143,7 @@ class DialogoCongelado(QDialog):
             self.tabla.item(fila, COLUMNA_PC).setCheckState(Qt.Checked if condicion(item) else Qt.Unchecked)
 
     def _marcar_libres(self):
-        self._marcar(lambda item: item["enlazada"] and not congelado_repo.esta_ocupada(item))
+        self._marcar(pcs_libres_repo.esta_prendida_y_libre)
 
     def _elegidas(self) -> list:
         return [
