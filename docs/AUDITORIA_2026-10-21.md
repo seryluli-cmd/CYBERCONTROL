@@ -158,16 +158,23 @@ tarda 12 ms cada 5 s. Nadie lo nota. Se evaluó:
 
 ---
 
-## Cómo seguiría (con tu OK)
+## Cómo se aplicó (22/10, con el OK del dueño)
 
-En tandas, cada una con toda la suite antes y después, revisando `git diff --stat`,
-con un commit y push a `master`:
+Tres tandas, cada una con la suite completa, revisando `git diff --stat`, con un
+commit y push a `master`:
 
-1. **Pruebas:** punto 6, más el `noqa` del punto 7.
-2. **Código muerto:** puntos 1 a 5 (con los comentarios que los nombran: `dominio.py:318`,
-   `articulos_repo.py:62`). Quedan 4 pruebas menos (1060).
-3. **Comentarios y documentación:** puntos 8 a 13.
-4. **Optimización:** ninguna (ver D).
+| Tanda | Commit | Qué | Pruebas |
+|---|---|---|---|
+| 1. Pruebas | `ae2d97e` | Punto 6, el `noqa` del punto 7 y este informe | 1107 OK |
+| 2. Código muerto | `b86e826` | Puntos 1 a 4 (con `dominio.py:318` y `articulos_repo.py:62`). El 5 se quedó | 1103 OK |
+| 3. Textos | (este commit) | Puntos 8 a 13, y la fila de `playstation_repo` en CLAUDE.md | 1103 OK sobre `b86e826`. Entra encima de `167c9b0` (otra sesión, +14 pruebas): 1117 |
+| 4. Optimización | — | Ninguna (ver D) | — |
 
-Tamaño estimado: unas 60 líneas menos, sin ningún cambio en lo que se ve ni en cómo
-funciona el programa. No se arma el .exe.
+En total, 90 líneas menos en neto (125 borradas y 35 escritas, sin contar este
+informe; 41 de las borradas son las 4 pruebas), sin ningún cambio en lo que se ve ni
+en cómo funciona el programa. No se armó el .exe.
+
+Mientras se aplicaba, otras sesiones trabajaban en la misma carpeta (la barra en
+negrita y mayúscula; por qué una actualización del Cliente PC no se puso). Sus cambios
+sin commitear quedaron fuera de estos commits: las tandas 2 y 3 se probaron y se
+commitearon desde el índice de git (HEAD + solo estos cambios), en una copia aparte.

@@ -308,8 +308,9 @@ def _pasar_las_vencidas(conexion, ahora: datetime):
 
 
 def actualizar_estados(ahora: datetime = None):
-    """Pasa de estado las reservas que vencieron (ver _pasar_las_vencidas). La
-    llama listar_reservas; `ahora` es para las pruebas."""
+    """Pasa de estado las reservas que vencieron (ver _pasar_las_vencidas).
+    listar_reservas no pasa por acá: llama a _pasar_las_vencidas con su propia
+    conexión. `ahora` es para las pruebas."""
     with conexion_db() as conexion:
         _pasar_las_vencidas(conexion, ahora or datetime.now())
 

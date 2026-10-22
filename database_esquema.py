@@ -660,8 +660,8 @@ def inicializar_base_de_datos():
     # ofrecerle a los socios combos propios, distintos de los del
     # mostrador. Crear/editar/dar de baja un bono de ESTE catálogo, igual
     # que uno de bonos_tiempo, es exclusivo de ADMIN (ver
-    # ui/main_window.ConfiguracionAdminWindow) -- cualquiera con
-    # 'permiso_control_pcs' puede usar un bono ya creado, no editarlo.
+    # ui/main_window.ConfiguracionAdminWindow) -- cualquier operador
+    # puede usar un bono ya creado, no editarlo.
     cursor.execute(_sql_tabla_de_bonos("bonos_miembro"))
     # Ledger de auditoría de todo movimiento de saldo: CARGA (siempre con
     # venta_id, porque implica cobrar plata real — y bono_id si se cargó

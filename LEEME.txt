@@ -39,7 +39,7 @@ LA CAJA (cada persona con su caja)
 - 5 minutos antes del fin del turno (13:55, 21:55 y 05:55; los domingos
   17:55 y 05:55) el botón Cierre de Turno titila en rojo: cerrá la caja,
   armá el sobre con lo que dice el programa y guardalo en la caja fuerte.
-- Si a los 15 minutos del fin del turno la caja sigue abierta, el programa
+- Si a los 30 minutos del fin del turno la caja sigue abierta, el programa
   la cierra solo (cierre forzoso). Si estás en medio de un cobro, espera a
   que termines.
 - Si tu reemplazo no llegó: cerrá tu caja a horario, volvé a entrar con tu
@@ -129,9 +129,8 @@ separados.
 Las PCs comunes se pueden operar con cualquier usuario logueado.
 Al vencer el tiempo de una PC, el Cliente PC la bloquea. La PlayStation
 avisa en rojo hasta que un operador confirme que la consola quedó libre.
-Operar la PlayStation y entrar a Miembros requiere el permiso
-"Operar PCs y Miembros" o ser Admin. Los catálogos y las estaciones
-se administran desde Configuración ADMIN.
+La PlayStation y Miembros también los opera cualquier usuario logueado.
+Los catálogos y las estaciones se administran desde Configuración ADMIN.
 PCSTREAM es la PC de streaming: va al lado de la PlayStation 5 y se la
 reconoce por el nombre (la estación tiene que llamarse PCSTREAM; con otro
 nombre es una PC común). Tiene sus propios bonos (Configuración ADMIN >

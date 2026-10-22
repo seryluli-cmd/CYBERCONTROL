@@ -23,9 +23,10 @@ los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
   reprogramarla; devolver la plata es solo del Admin, ver
   control_pcs/repositories/reservas_repo.py), Caja, Cierre de Turno, y Cambiar
   mi Clave. La PlayStation 5, que
-  está en esa misma grilla, la ve cualquiera pero solo la opera (vender sus
-  bonos, liberarla) quien tenga `permiso_control_pcs` (o sea Admin) —
-  ese permiso sigue existiendo, solo que ya no hace falta para Miembros.
+  está en esa misma grilla, también la opera cualquiera (vender sus bonos,
+  liberarla; pedido del dueño, 2026-10-19). `permiso_control_pcs` sigue
+  existiendo, pero ya no hace falta para nada de esto: solo cuenta para ser
+  "encargado".
 - "Encargado" (ADMIN, o EMPLEADA con al menos uno de los permisos de
   usuarios_repo.PERMISOS_EMPLEADA): además abre "Administrar Kiosko", que
   agrupa Artículos/Compras/Consulta de Ventas/Reportes/Control de
@@ -40,8 +41,8 @@ los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
   de logins de administradores) y Limpiar base de datos (borra la plata y el
   historial de ventas para volver a probar; ver limpieza_repo).
   Pedido explícito del dueño: editar estos catálogos es tarea de super
-  admin; usarlos (asignar un bono, cobrar con la tarifa ya fijada) sigue
-  delegable con `permiso_control_pcs`.
+  admin; usarlos (asignar un bono, cobrar con la tarifa ya fijada) lo puede
+  hacer cualquier operador.
 
 Cada módulo se abre como un diálogo modal (QDialog.exec) encima de esta
 ventana.
@@ -568,8 +569,8 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
 
     *Usar* esos catálogos (asignarle un bono ya creado a una PC o a la
     PlayStation 5, cargar saldo con la tarifa ya fijada) sigue abierto a
-    cualquier operador con permiso_control_pcs desde la grilla de PCs y
-    "Miembros". Separación pedida explícitamente por el dueño: editar el
+    cualquier operador desde la grilla de PCs y "Miembros". Separación
+    pedida explícitamente por el dueño: editar el
     catálogo es tarea de super admin, usarlo no.
     """
 
