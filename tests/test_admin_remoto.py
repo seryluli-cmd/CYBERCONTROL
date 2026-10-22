@@ -291,7 +291,7 @@ class TestServidorDelMostrador(_ConServidor):
         token = self._entrar()["token"]
         linea = {"codigo": "x", "descripcion": "x", "cantidad": 1, "precio_unitario": 1.0}
         for modulo_repo, funcion in [
-            ("ventas_repo", "confirmar_venta"), ("limpieza_repo", "limpiar_base"),
+            ("ventas_repo", "confirmar_venta"),
             ("turnos_repo", "cerrar_turno"), ("database", "conexion_db"), ("usuarios_repo", "__dict__"),
         ]:
             respuesta = self._llamar(token, modulo_repo, funcion, [self.admin["id"], [linea], []])
@@ -786,7 +786,7 @@ class TestCopiaRemota(unittest.TestCase):
             return [widget.text() for widget in pantalla.findChildren(tipo)]
 
         # Lo que solo se hace en el mostrador no aparece.
-        self.assertFalse(any("LIMPIAR" in texto or "OTRA PC" in texto for texto in textos(configuracion)))
+        self.assertFalse(any("OTRA PC" in texto for texto in textos(configuracion)))
         self.assertFalse(any("Actualizar el Cliente PC" in texto for texto in textos(estaciones)))
         self.assertNotIn("Copia de Seguridad", textos(usuarios))
         self.assertTrue(any("Entra solo un Administrador" in texto for texto in textos(login, QLabel)))

@@ -19,7 +19,7 @@ from unittest import mock
 import dominio
 from database import conexion_db
 from repositories import (
-    articulos_repo, compras_repo, limpieza_repo, relevo_repo, tramites_repo, turnos_repo, usuarios_repo,
+    articulos_repo, compras_repo, relevo_repo, tramites_repo, turnos_repo, usuarios_repo,
     ventas_repo,
 )
 from base import BaseConBaseTemporal
@@ -473,23 +473,6 @@ class TestUnCierreHechoSeVeComoAlCerrarlo(_BaseDeCajas):
 
         self.assertIsNone(resumen["caja_numero"])
         self.assertEqual((resumen["cambio_inicial"], resumen["ventas_efectivo"]), (50000.0, 1500.0))
-
-
-class TestLimpiarBaseConCajas(_BaseDeCajas):
-    def test_limpiar_la_base_borra_tambien_las_cajas(self):
-        caja = relevo_repo.abrir_caja(self.lucia_id, 50000.0, _a_las(5, 55))
-        self._vender(self.lucia_id, _a_las(9), 1000.0)
-        cierre = turnos_repo.cerrar_turno(self.lucia_id, ahora_dt=_a_las(14, 0))
-        turnos_repo.verificar_cierre(cierre["id"], 1000.0, self.admin_id)
-        relevo_repo.abrir_caja(self.lucia_id, None, _a_las(14, 0))
-        relevo_repo.recibir_caja(self.gaby_id, caja["caja_numero"] + 1, 50000.0, _a_las(14, 50))
-
-        limpieza_repo.limpiar_base(self.admin_id)
-
-        with conexion_db() as conexion:
-            for tabla in ("cajas", "relevos_caja", "ventas_caja", "verificaciones_cierre"):
-                with self.subTest(tabla=tabla):
-                    self.assertEqual(conexion.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

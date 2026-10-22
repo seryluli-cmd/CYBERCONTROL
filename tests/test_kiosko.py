@@ -502,7 +502,7 @@ class TestMigracionColumnasPermisos(BaseConBaseTemporal):
 
 class TestExigirAdmin(BaseConBaseTemporal):
     """usuarios_repo.exigir_admin: la única forma de pedir "solo un Admin" en un
-    repo (la usan Limpiar base de datos y los bonos de la PlayStation 5)."""
+    repo (la usan, entre otros, los bonos de la PlayStation 5 y ORDENAR Stock)."""
 
     def test_un_admin_activo_pasa_y_devuelve_su_fila(self):
         admin = usuarios_repo.crear_usuario("Jefa", "1234", dominio.ROL_ADMIN)

@@ -161,7 +161,11 @@ tarda 12 ms cada 5 s. Nadie lo nota. Se evaluó:
    con plata real: cajas desde el 18/10 y socios desde el 19/10. Un clic de Admin
    borra todo el historial de ventas (con copia previa). **Recomiendo sacarlo ya.**
    Es un cambio visible: va aparte, si decís que sí.
+   **Decidido (22/10): se sacó** ("ya es peligroso"). Se borraron `limpieza_repo.py`,
+   `ui/limpieza_dialogo.py` y sus 14 pruebas, y el botón de Configuración ADMIN. Las
+   copias `antes_de_limpiar_base_*` que haya en `data/backups` quedan: no se borran.
 3. **Rama `origin/mosaico-pcs` en GitHub:** ya está en `master`. ¿La borro?
+   **Decidido (22/10): borrada** (0 commits propios, entera dentro de `master`).
 4. **(Opcional) `main.py` tiene 825 líneas** y pasó el tope de 600 (regla 12). La
    revisión del 17/10 dejó dicho que la hoja de estilos (~400 líneas) se muda a su
    propio archivo cuando pase el tope. No cambia nada visible. Es orden, no código

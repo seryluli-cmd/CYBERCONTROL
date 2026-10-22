@@ -33,8 +33,8 @@ nombres_a_borrar). Se cuentan días CON copias y no días del calendario: si el
 reloj de la PC salta o el programa pasa un mes cerrado, no se borra todo de golpe.
 Solo se tocan los archivos con el nombre de una copia automática
 (kiosko_AAAA-MM-DD_HHMMSS.db, o kiosko_AAAA-MM-DD.db de antes de este cambio): las
-copias "antes_de_..." de las migraciones y de Limpiar base, y las que se guardan a
-mano, no se borran nunca.
+copias "antes_de_..." de las migraciones (y las de Limpiar base, que existió hasta el
+2026-10-22) y las que se guardan a mano no se borran nunca.
 """
 
 import json

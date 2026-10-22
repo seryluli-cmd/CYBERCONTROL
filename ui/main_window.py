@@ -38,8 +38,7 @@ los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
   walk-ins), Gestionar Bonos de PlayStation 5, Gestionar Bonos de PCSTREAM (la
   PC de streaming), Tarifa por Hora de Socios,
   Gestionar Bonos de Socios, Gestionar Trámites, Accesos de Admin (registro
-  de logins de administradores) y Limpiar base de datos (borra la plata y el
-  historial de ventas para volver a probar; ver limpieza_repo).
+  de logins de administradores).
   Pedido explícito del dueño: editar estos catálogos es tarea de super
   admin; usarlos (asignar un bono, cobrar con la tarifa ya fijada) lo puede
   hacer cualquier operador.
@@ -77,7 +76,6 @@ from ui.compras_window import ComprasWindow
 from ui.impresiones_window import DialogoImpresiones
 from ui.ventas_window import VentasWindow
 from ui.consulta_ventas_window import ConsultaVentasWindow
-from ui.limpieza_dialogo import DialogoLimpiarBase
 from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
 from ui.tramites_window import DialogoTramites, DialogoGestionTramites
@@ -560,7 +558,7 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     Tiempo (walk-in), Bonos de PlayStation 5, Bonos de PCSTREAM, Tarifa por Hora
     de Socios, Bonos de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
     de administrador, ver ui/accesos_admin_window.py) y, en el mostrador, "Entrar desde
-    otra PC" (ui/admin_remoto_dialogo.py) y "Limpiar base de datos". La abre
+    otra PC" (ui/admin_remoto_dialogo.py). La abre
     cualquiera, pero un Operador solo puede usar Gestionar Estaciones (pedido del
     dueño, 2026-10-19); el resto se ve en gris y es de ADMIN, sin excepción: no
     hay permiso delegable para esto. Recibe el `usuario` para eso y porque el
@@ -587,15 +585,10 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
             ("📄  Gestionar Trámites", self._abrir_tramites),
             ("🔐  Accesos de Admin", self._abrir_accesos_admin),
         ]
-        # Desde otra PC no se prende ni apaga la entrada desde otra PC (se apagaría
-        # a sí misma) ni se limpia la base: las dos cosas, solo en el mostrador.
+        # Desde otra PC no se prende ni apaga la entrada desde otra PC: se apagaría
+        # a sí misma. Solo en el mostrador.
         if not modo_remoto.es_copia_remota():
-            botones += [
-                ("🌐  Entrar desde otra PC", self._abrir_entrar_desde_otra_pc),
-                # Para la etapa de pruebas (pedido del dueño, 2026-10-17): borra la
-                # plata y el historial de ventas, deja los catálogos. Ver limpieza_repo.
-                ("🧹  Limpiar base de datos", self._limpiar_base, "peligro"),
-            ]
+            botones.append(("🌐  Entrar desde otra PC", self._abrir_entrar_desde_otra_pc))
         # Un Operador entra pero solo usa Gestionar Estaciones; lo demás se ve en
         # gris (pedido del dueño, 2026-10-19).
         self._armar_botones(botones, habilitados=None if dominio.es_admin(usuario) else [self._abrir_estaciones])
@@ -626,6 +619,3 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
 
     def _abrir_entrar_desde_otra_pc(self):
         DialogoEntrarDesdeOtraPC(self.usuario, self).exec()
-
-    def _limpiar_base(self):
-        DialogoLimpiarBase(self.usuario, self).exec()

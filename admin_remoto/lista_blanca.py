@@ -14,7 +14,7 @@ accesos de admin, fondo y filtro de palabras de las PCs) y Caja para mirar.
 
 Lo que NO está, a propósito, y sigue solo en el mostrador: vender y cobrar
 (Ventas, Trámites, bonos de PCs, carga de saldo), abrir/cerrar cajas y turnos,
-la grilla de PCs, Limpiar base de datos y Actualizar el Cliente PC.
+la grilla de PCs y Actualizar el Cliente PC.
 
 `ACTOR` dice, para cada función que recibe "quién lo hace", cuál es ese
 parámetro: el mostrador lo completa SIEMPRE con el Administrador que entró, sin

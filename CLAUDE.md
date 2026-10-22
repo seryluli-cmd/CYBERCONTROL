@@ -118,12 +118,11 @@ dos veces, siguiendo el patrón de `_migrar_columnas_permisos()`. Nunca
 Una venta anulada cambia de estado y guarda quién, cuándo y por qué —
 nunca desaparece de la tabla. Un usuario que se va se desactiva. Esto es
 lo que permite auditar un faltante tres meses después.
-> Única excepción: "Limpiar base de datos" (Configuración ADMIN,
-> `limpieza_repo.limpiar_base`), pedida por el dueño el 2026-10-17 para la
-> etapa de pruebas. Borra la plata y el historial de ventas y deja los
-> catálogos; solo Admin, con copia completa en `data/backups/antes_de_limpiar_base_*`
-> antes de borrar (sin copia no borra) y todo en una transacción. No sumes
-> otros borrados "porque ya hay uno": si el dueño deja de necesitarlo, se saca.
+> Sin excepciones: "Limpiar base de datos" (borraba la plata y el historial
+> de ventas, pedido el 2026-10-17 para la etapa de pruebas) se sacó el
+> 2026-10-22 a pedido del dueño ("ya es peligroso": el local trabaja con plata
+> real). No vuelvas a sumar un borrado así sin que el dueño lo pida. En
+> `data/backups/` pueden quedar copias `antes_de_limpiar_base_*`: no se borran.
 
 **8. Una operación de negocio = una transacción.**
 Cabecera, detalle, pagos y descuento de stock se graban juntos o no se
@@ -215,7 +214,7 @@ abra no alcanza si los tests no pasan.
 | `database.DATA_DIR` / `DB_PATH` | se resuelve dónde viven los datos (código vs `.exe`) |
 | `database.hash_clave()` / `verificar_clave()` | se maneja una contraseña |
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
-| `usuarios_repo.exigir_admin(usuario_id, para)` · `.usuario_habilitado(usuario_id)` | un repo exige que quien opera siga activo (y sea Admin), releyéndolo de la base: un usuario dado de baja con la sesión abierta no puede seguir. Lo usan Limpiar base de datos y la PlayStation 5 |
+| `usuarios_repo.exigir_admin(usuario_id, para)` · `.usuario_habilitado(usuario_id)` | un repo exige que quien opera siga activo (y sea Admin), releyéndolo de la base: un usuario dado de baja con la sesión abierta no puede seguir. Lo usan, entre otros, la PlayStation 5, ORDENAR Stock y la devolución de una reserva |
 | `clientes_repo.es_clave_de_clientes(clave)` | se decide si un pedido de red viene de un Cliente PC (clave fija, comparada por su huella SHA-256; la usa `servidor_red._autorizado`) |
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `filtro_palabras_repo.obtener()` · `.guardar(...)` · `.registrar_bloqueo(...)` | se lee y se cambia el filtro de palabras de las PCs ("protección antiporno", pedido del dueño 2026-10-17: prendido, lista y mensaje, como JSON en `configuracion`; su versión viaja en `GET /estado` como `filtro_version`) y se anota cada página que cerró una PC (`bloqueos_filtro_pc`). Buscar las palabras en los títulos es tarea de cada Cliente PC (`CLIENTE PC/filtro_palabras.py`), no de este repo |
@@ -265,7 +264,6 @@ abra no alcanza si los tests no pasan.
 | `turnos_repo._ventanas_del_dia(conexion, dia, ahora)` | se decide qué ventas son de qué turno de un día (los cierres anotados ese día y la ventana abierta si es de ese día): la usan las filas del Resumen del Día y su detalle |
 | `detalle_dia_repo.detalle_del_dia(dia)` | se arma el detalle venta por venta de un día (hora, turno, operador, rubro y qué se vendió de kiosko, trámites, PCs con la PC al momento de vender, PCSTREAM, PlayStation 5 y socios), con los renglones de cada venta tal cual se cobraron (`lineas`, con el código), lo vendido por producto y por operador (Reportes > Resumen del Día, pedido del dueño 2026-10-18) |
 | `ui.imprimir.html_del_listado(...)` · `.vista_previa(parent, html, nombre)` | se imprime un listado: HTML en hojas A4 con los títulos de las columnas repetidos en cada hoja y vista previa (desde ahí se imprime o se guarda en PDF). Lo usa el "Renglón por renglón" del Detalle del Día |
-| `limpieza_repo.limpiar_base(usuario_id)` | se borra la plata y el historial de ventas para volver a probar (qué tablas, en `_TABLAS_A_VACIAR`; devuelve el stock de las ventas confirmadas y deja a los socios con saldo 0). Una tabla nueva que guarde plata o ventas tiene que sumarse ahí |
 | `copias_repo.copia_automatica_si_corresponde()` · `.toca_copia(...)` · `.nombres_a_borrar(...)` · `.agregar_carpeta_extra(...)` | se decide cuándo se hace una copia de seguridad (después de cada Cierre de Turno y cada `HORAS_ENTRE_COPIAS`, con el programa abierto; lo corre el hilo de `iniciar_copias_automaticas`), cuántas quedan y en qué otras carpetas se guarda (otro disco, carpeta compartida de otra PC); pedido del dueño, 2026-10-19. La pantalla es `ui/copias_dialogo.py` (Usuarios > "Copias de Seguridad") |
 | `errores.registrar_error(excepcion, contexto)` | la UI y el servidor guardan fallos inesperados en `data/errores.log` sin depender de Qt |
 | `ui.utils.manejar_errores` | se atrapa un error de una acción de pantalla |
@@ -719,8 +717,8 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   si una pantalla que se abre desde otra PC empieza a usar otra función de un
   repo, va a `admin_remoto/lista_blanca.py` (con su `ACTOR` si recibe quién lo
   hace) — `tests/test_admin_remoto.py` lo vigila; (3) lo que solo se hace en el
-  mostrador (vender, cobrar, cajas y turnos, la grilla de PCs, Miembros, Limpiar
-  base, Actualizar el Cliente PC, Copias de Seguridad) se esconde con
+  mostrador (vender, cobrar, cajas y turnos, la grilla de PCs, Miembros,
+  Actualizar el Cliente PC, Copias de Seguridad) se esconde con
   `modo.es_copia_remota()` y NO entra en la lista; (4) el cierre forzoso de la
   caja lo hace solo el mostrador; (5) una consulta de reporte lenta frena las
   ventas del mostrador mientras dura (SQLite no deja grabar mientras otro lee):
@@ -785,8 +783,8 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   Ventas: escanear, Enter con el código vacío (abre el cobro) y Enter. Un Enter que queda
   apretado no cobra: `encadenar_enter` descarta la repetición del teclado y los atajos de
   Confirmar no se repiten (`tests/test_dialogo_pago.py`, `tests/test_enter_como_tab.py`).
-  Excepciones a propósito: el texto de varias líneas del filtro de palabras (Enter es un
-  renglón nuevo) y "Limpiar base de datos" (Enter nunca borra).
+  Excepción a propósito: el texto de varias líneas del filtro de palabras (Enter es un
+  renglón nuevo).
 - **El "Renglón por renglón" del Detalle del Día muestra cada renglón TAL CUAL se
   cobró** (pedido del dueño, 2026-10-18: "si se cobran 14 impresiones juntas, que diga
   14; si se hacen 4 por separado, que las ponga tal cual se cobraron, con su horario y
@@ -880,7 +878,7 @@ El programa integra kiosko (con el botón Impresiones), Control de PCs (con PCST
 Las decisiones de negocio y las trampas vigentes están arriba; el detalle
 cronológico anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
 La suite actual se ejecuta con `python -m unittest discover tests` y tiene
-1118 pruebas al 2026-10-22 (la casilla "Operar PCs y Miembros" que se sacó de Usuarios; por qué una PC no puso la actualización del Cliente PC al reiniciarse, la barra en mayúscula y negrita; la revisión de limpieza del 21/10 sacó las 4 de `dominio.pagos_netos_de_vuelto`, que el cobro ya no usaba; la PC que no se enteró de que terminó su sesión titila como la PlayStation 5, y una PC que se reinicia sigue con su sesión y su tiempo; el reinicio del seguro de fin de sesión del Cliente PC; Reiniciar/Apagar que vencen a los 2 minutos y el motivo de cada reinicio que pide el Cliente PC; las reservas, parte 2: la PC reservada en el mosaico y en la pantalla de bloqueo, el aviso al vender y el socio que se corta a la hora; las reservas, parte 1: la plata; cambiar el código de un artículo desde ORDENAR Stock, el número que se escribe en una celda de tabla, como el stock de ORDENAR Stock, las preguntas de cerrar una sesión sin hablar de reintegros, el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
+1104 pruebas al 2026-10-22 (sin las 14 de Limpiar base de datos, que se sacó; la casilla "Operar PCs y Miembros" que se sacó de Usuarios; por qué una PC no puso la actualización del Cliente PC al reiniciarse, la barra en mayúscula y negrita; la revisión de limpieza del 21/10 sacó las 4 de `dominio.pagos_netos_de_vuelto`, que el cobro ya no usaba; la PC que no se enteró de que terminó su sesión titila como la PlayStation 5, y una PC que se reinicia sigue con su sesión y su tiempo; el reinicio del seguro de fin de sesión del Cliente PC; Reiniciar/Apagar que vencen a los 2 minutos y el motivo de cada reinicio que pide el Cliente PC; las reservas, parte 2: la PC reservada en el mosaico y en la pantalla de bloqueo, el aviso al vender y el socio que se corta a la hora; las reservas, parte 1: la plata; cambiar el código de un artículo desde ORDENAR Stock, el número que se escribe en una celda de tabla, como el stock de ORDENAR Stock, las preguntas de cerrar una sesión sin hablar de reintegros, el tiempo de las PCs al volver de un corte y con nadie logueado, la lista de Miembros alta, por usuario y con lupa, el detalle de cada cierre con la tarjeta del Cierre de Turno, también el forzoso, ORDENAR Stock, las copias de seguridad automáticas en varias carpetas, el aviso de mantenimiento de las PCs, la actualización del Cliente PC rehecha con casillas, con los cortes de las PCs, Miembros y la PlayStation 5 abiertos a cualquier operador, las cajas con número, administrar desde otra PC, el detalle del día con su renglón por renglón para imprimir, el cobro nuevo en todas las pantallas, congelar/descongelar PCs con Shadow Defender, la barra oscura de arriba, el botón Impresiones con Kiosko sin impresiones en Caja y Cierre de Turno, el panel gris del costado y la barra con todos los botones para todos).
 
 La barra de arriba de la ventana principal es oscura, estilo cyber, con teclas en relieve (pedido del dueño 2026-10-19, eligió esta entre cuatro maquetas). Los colores viven en la hoja de estilos de `main.py` (`#encabezadoInicio`, clases `barra` y `alerta`, y Vender/Cerrar sesión dentro de la barra). Cuidado al tocar `alerta`: tiene que llevar los mismos bordes, relleno y letra que `barra`, porque si no Cierre de Turno cambia de tamaño cada vez que titila (lo cuida `test_estilo_ui`). Desde el 2026-10-22 (pedido del dueño) todos los botones de la barra van en negrita (700, en la hoja de estilos) y en mayúscula (la pone `MainWindow._agregar_boton_barra`, y Reservas al cambiar su texto: Qt no tiene `text-transform`); así la ventana pide unos 1490 px de ancho (el mostrador tiene 1920).
 

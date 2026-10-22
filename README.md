@@ -52,7 +52,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
 | [assets/](assets/) | Ícono de la app (`icono.ico`/`.png`). |
-| [data/backups/](data/backups/) | Copias automáticas de la base (después de cada Cierre de Turno y cada 8 horas; todas las de 3 días y una por día hasta 30) + las de antes de una migración o de Limpiar base. |
+| [data/backups/](data/backups/) | Copias automáticas de la base (después de cada Cierre de Turno y cada 8 horas; todas las de 3 días y una por día hasta 30) + las de antes de una migración (y las de Limpiar base, que existió hasta el 2026-10-22). |
 
 ## Modelo de datos (SQLite, `database_esquema.py`)
 
@@ -607,7 +607,7 @@ y decisiones en [docs/ADMIN_REMOTO.md](docs/ADMIN_REMOTO.md).
   vuelve a mirar que la entrada siga prendida y el usuario siga siendo Admin; y
   el "quién lo hizo" (`lista_blanca.ACTOR`) lo pone el mostrador.
 - **Qué no se puede desde otra PC:** vender, cobrar, abrir/cerrar cajas y
-  turnos, la grilla de PCs, Miembros, Limpiar base de datos, Actualizar el
+  turnos, la grilla de PCs, Miembros, Actualizar el
   Cliente PC y las Copias de Seguridad (las pantallas lo esconden con
   `modo.es_copia_remota()`, y la lista blanca lo rechaza igual). El cierre
   forzoso de la caja lo hace solo el mostrador.

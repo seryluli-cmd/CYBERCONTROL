@@ -43,7 +43,7 @@ Si lo querés revisar con ChatGPT, este archivo se puede adjuntar tal cual.
 ### Qué sigue solo en el mostrador
 
 Vender, cobrar (bonos, trámites, carga de saldo), Cierre de Turno y las cajas,
-la grilla de PCs, Miembros, Limpiar base de datos, Actualizar el Cliente PC (se
+la grilla de PCs, Miembros, Actualizar el Cliente PC (se
 firma con la clave que vive en la PC del mostrador), Copia de Seguridad y prender
 o apagar la entrada desde otra PC. El cierre forzoso de la caja también lo hace
 solo el mostrador.

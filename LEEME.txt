@@ -23,12 +23,6 @@ otras carpetas donde se guarda cada copia (por ejemplo D:\BACKUPS o la
 carpeta compartida de otra PC, con su usuario y clave: se los pasa a
 Windows, no quedan en el programa), hace una copia en el momento o guarda
 una suelta en un pendrive.
-Configuración ADMIN > Limpiar base de datos es solo para la etapa de
-pruebas: borra todas las ventas, los cierres de turno, las sesiones de PCs
-y de la PlayStation 5 y el saldo de los socios, y deja todo lo cargado
-(usuarios, artículos, compras, bonos, estaciones, socios, trámites y
-configuración). Hay que escribir LIMPIAR para confirmar, y antes de borrar
-guarda una copia completa en data/backups.
 
 LA CAJA (cada persona con su caja)
 ----------------------------------
@@ -171,8 +165,8 @@ Para entrar, en la otra PC:
   - Entrá con el usuario Administrador y su clave.
 Desde ahí se puede: Administrar Kiosko completo (artículos y precios,
 compras, consulta y anulación de ventas, reportes, control de cierres y
-sobres, usuarios), Configuración ADMIN (menos Limpiar base de datos y
-Actualizar el Cliente PC) y mirar la Caja. Lo que guardes queda guardado
+sobres, usuarios), Configuración ADMIN (menos Actualizar el Cliente PC) y
+mirar la Caja. Lo que guardes queda guardado
 en el mostrador al instante.
 Vender, cobrar, cerrar el turno, la grilla de PCs y Miembros se hacen
 solo en el mostrador.

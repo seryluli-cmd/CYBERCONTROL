@@ -217,7 +217,7 @@ def usuario_habilitado(usuario_id: int):
     si ya no existe o fue desactivado: quien quedó con una sesión abierta no
     puede seguir operando. Es para las operaciones que se controlan en el repo
     y no solo escondiendo el botón, así un permiso quitado o un usuario dado de
-    baja corta el acceso en el acto (PlayStation 5, Limpiar base de datos).
+    baja corta el acceso en el acto (PlayStation 5, ORDENAR Stock).
     """
     usuario = obtener_usuario(usuario_id)
     if usuario is None or not usuario["activo"]:
@@ -229,7 +229,7 @@ def exigir_admin(usuario_id: int, para: str):
     """
     Como usuario_habilitado(), y además tiene que ser Administrador; si no,
     PermissionError con un mensaje listo para mostrar: "Solo un Administrador
-    puede {para}." (`para`, por ejemplo, "limpiar la base de datos").
+    puede {para}." (`para`, por ejemplo, "ordenar el stock").
     Devuelve la fila del usuario.
     """
     usuario = usuario_habilitado(usuario_id)

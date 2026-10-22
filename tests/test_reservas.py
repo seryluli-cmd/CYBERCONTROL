@@ -8,8 +8,7 @@ y reservas_habilitar_repo.py). Lo que más importa es la plata, que se valida as
 - seña + resto = precio, y cada parte en la caja (el cierre) de quien la cobró;
 - habilitar una reserva ya pagada no crea ninguna venta;
 - "No vino" no mueve plata;
-- la devolución baja lo que hay que retirar AHORA y no toca el cierre viejo;
-- Limpiar base de datos borra las reservas.
+- la devolución baja lo que hay que retirar AHORA y no toca el cierre viejo.
 
 Y las reglas del dueño: pierde la seña si no viene, "A reprogramar" si pagó
 todo (vence a los 5 días), 20 minutos de tolerancia, el precio queda fijo,
@@ -25,7 +24,7 @@ from datetime import date, datetime, timedelta
 
 import dominio
 from database import conexion_db
-from repositories import detalle_dia_repo, limpieza_repo, reportes_repo, turnos_repo, \
+from repositories import detalle_dia_repo, reportes_repo, turnos_repo, \
     usuarios_repo, ventas_repo
 from control_pcs.repositories import (
     actividad_repo, pcs_repo, pcstream_repo, playstation_repo, reservas_habilitar_repo, reservas_repo,
@@ -428,18 +427,6 @@ class TestCajaYCierre(_ConReservas):
         # Lo vendido: un bono, por el precio entero.
         self.assertEqual([(p["producto"], p["cantidad"], p["importe"]) for p in detalle["por_producto"]],
                          [("Promo 10 hs", 1, 10000.0)])
-
-
-class TestLimpiarBase(_ConReservas):
-    def test_limpiar_la_base_borra_las_reservas(self):
-        reserva = self._reservar(5000.0)
-        reservas_habilitar_repo.habilitar(reserva, self.luis, self.pc1, _efectivo(5000.0))
-
-        limpieza_repo.limpiar_base(self.admin)
-
-        with conexion_db() as conexion:
-            for tabla in ("reservas", "reservas_pagos"):
-                self.assertEqual(conexion.execute(f"SELECT COUNT(*) AS n FROM {tabla}").fetchone()["n"], 0, tabla)
 
 
 if __name__ == "__main__":
