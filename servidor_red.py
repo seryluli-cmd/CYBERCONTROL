@@ -134,7 +134,7 @@ from errores import registrar_error
 from control_pcs.repositories import (
     accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, cortes_pc_repo,
     filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, reconexion_repo, reinicios_pc_repo,
-    reservas_horario_repo,
+    reservas_horario_repo, temperatura_pc_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -283,6 +283,12 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 pcs_repo.registrar_conexion(item["estacion"]["id"], self.client_address[0], pulso["arranque"])
             except Exception as error:
                 registrar_error(error, "Servidor de red: registrar conexión de PC")
+            try:
+                # La temperatura del procesador y la placa de video, para el termómetro del
+                # mosaico. Si falla, el mosaico muestra la anterior: nada que decida el bloqueo.
+                temperatura_pc_repo.registrar(item["estacion"]["id"], temperatura_pc_repo.leer_temperatura(parametros))
+            except Exception as error:
+                registrar_error(error, "Servidor de red: registrar la temperatura de una PC")
             reinicio = reinicios_pc_repo.leer_reinicio(parametros)
             if reinicio is not None:
                 try:

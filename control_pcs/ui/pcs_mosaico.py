@@ -8,6 +8,12 @@ aviso si hay que mirarla), las monedas si corre con un bono, y abajo el tiempo
 que le queda y su nombre. Pedido del dueño (2026-10-16), con el aspecto de los
 programas de cyber que ya conocía, respetando los colores de cada estado.
 
+A la izquierda de cada PC, un termómetro con la temperatura del procesador
+(pedido del dueño, 2026-10-22: eligió la maqueta B): se llena según el calor,
+ámbar desde dominio.TEMPERATURA_TIBIA y rojo desde TEMPERATURA_CALIENTE, y en
+ese caso el renglón de abajo dice "CALIENTE" titilando. Vacío y con una raya si
+la PC no la manda (Cliente PC viejo, sin PawnIO, o PC sin conexión).
+
 Este archivo solo DIBUJA: qué estado, color y dibujito le toca a cada equipo lo
 decide `pcs_window.PanelControlPcs` y llega acá armado como una `Ficha`. Los
 monitores se pintan con QPainter (no son imágenes): así cualquier color de
@@ -23,6 +29,8 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QListView, QStyledItemDelegate, QStyle, QAbstractItemView,
     QWidget, QHBoxLayout, QLabel,
 )
+
+import dominio
 
 # Qué se dibuja sobre la pantalla del monitor.
 DIBUJO_NINGUNO = ""
@@ -56,6 +64,9 @@ EQUIPOS_POR_FILA = 8
 # AHORA (que no siempre es el de la ficha: el parpadeo lo alterna).
 _ROL_FICHA = Qt.UserRole
 _ROL_COLOR = Qt.UserRole + 1
+# Si "CALIENTE" se ve AHORA (titila con el mismo reloj que las alertas, ver
+# pcs_window._alternar_parpadeo). Sin dato cuenta como que se ve.
+_ROL_CALOR_VISIBLE = Qt.UserRole + 2
 
 _COLOR_TEXTO = QColor("#F3F5F9")
 _COLOR_TEXTO_SUAVE = QColor("#AEB5C2")
@@ -63,6 +74,17 @@ _COLOR_MARCO_MONITOR = QColor("#2B2F38")
 _COLOR_BORDE_MONITOR = QColor("#0C0E12")
 _COLOR_TRAZO_DIBUJO = QColor(18, 20, 24, 225)
 _COLOR_SELECCION = QColor("#4F8EF7")
+
+# El termómetro: el tubo, el líquido según el nivel y el de una PC sin dato.
+_COLOR_TUBO = QColor("#2B2F38")
+_COLOR_TEMPERATURA = {
+    dominio.TEMPERATURA_NORMAL_NIVEL: QColor("#7FA7D9"),
+    dominio.TEMPERATURA_TIBIA_NIVEL: QColor("#F5A524"),
+    dominio.TEMPERATURA_CALIENTE_NIVEL: QColor("#FF4D4F"),
+}
+_COLOR_SIN_TEMPERATURA = QColor("#4A5160")
+# Hasta dónde se llena el tubo: vacío a 30° y lleno a 100°.
+_TEMPERATURA_TUBO_VACIO, _TEMPERATURA_TUBO_LLENO = 30, 100
 
 
 @dataclass(frozen=True)
@@ -79,6 +101,13 @@ class Ficha:
     con_bono: bool = False        # dibuja las monedas en la esquina
     es_consola: bool = False      # dibuja el joystick en la esquina
     aviso: str = ""               # renglón corto debajo del nombre (solo si hay algo que avisar)
+    con_termometro: bool = False  # las PCs sí; la PlayStation 5 no
+    temperatura: int = None       # grados del procesador (None = no llega)
+    nivel_temperatura: str = None  # dominio.nivel_de_temperatura(temperatura)
+
+    @property
+    def caliente(self) -> bool:
+        return self.nivel_temperatura == dominio.TEMPERATURA_CALIENTE_NIVEL
 
 
 class MosaicoDeEquipos(QListWidget):
@@ -152,6 +181,7 @@ class MosaicoDeEquipos(QListWidget):
         casillero.setToolTip(f"{ficha.nombre}\n{ficha.estado}\nTiempo: {ficha.restante}\nQuién: {ficha.quien}")
         casillero.setData(_ROL_FICHA, ficha)
         casillero.setData(_ROL_COLOR, QColor(ficha.color))
+        casillero.setData(_ROL_CALOR_VISIBLE, True)
 
     def ficha(self, fila) -> Ficha:
         return self.item(fila).data(_ROL_FICHA)
@@ -164,14 +194,23 @@ class MosaicoDeEquipos(QListWidget):
         """Cambia solo el color de la pantalla (lo usa el parpadeo)."""
         self.item(fila).setData(_ROL_COLOR, QColor(color))
 
+    def titilar_calor(self, fila, visible):
+        """Prende o apaga el "CALIENTE" de ese equipo (lo usa el parpadeo)."""
+        self.item(fila).setData(_ROL_CALOR_VISIBLE, bool(visible))
+
+    def calor_visible(self, fila) -> bool:
+        return self.item(fila).data(_ROL_CALOR_VISIBLE) is not False
+
     def cambiar_restante(self, fila, texto):
         """Cambia solo el tiempo que le queda (la cuenta regresiva de cada segundo)."""
         casillero = self.item(fila)
         ficha = casillero.data(_ROL_FICHA)
         nueva = replace(ficha, restante=texto)
         color_actual = casillero.data(_ROL_COLOR)
+        calor_actual = casillero.data(_ROL_CALOR_VISIBLE)
         self._poner_ficha(casillero, nueva)
         casillero.setData(_ROL_COLOR, color_actual)
+        casillero.setData(_ROL_CALOR_VISIBLE, calor_actual)
 
     def fila_en(self, posicion) -> int:
         """La fila del equipo bajo ese punto (coordenadas del viewport), o -1."""
@@ -234,7 +273,15 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
             _pintar_joystick(pintor, QPointF(marco.left() + 2, marco.top() + 2))
         pintor.restore()
 
-        self._pintar_textos(pintor, caja, caja.top() + _ALTO_MONITOR * ESCALA_MONITOR, ficha)
+        calor_visible = indice.data(_ROL_CALOR_VISIBLE) is not False
+        if ficha.con_termometro:
+            # El marco del monitor en coordenadas del casillero (el de arriba está escalado).
+            e = ESCALA_MONITOR
+            marco_real = QRectF(caja.center().x() + marco.left() * e, caja.top() + marco.top() * e,
+                                marco.width() * e, marco.height() * e)
+            _pintar_termometro(pintor, marco_real, ficha, calor_visible)
+
+        self._pintar_textos(pintor, caja, caja.top() + _ALTO_MONITOR * ESCALA_MONITOR, ficha, calor_visible)
         pintor.restore()
 
     @staticmethod
@@ -250,7 +297,7 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
             pintor.drawRoundedRect(fondo, 10, 10)
 
     @staticmethod
-    def _pintar_textos(pintor, caja, arriba, ficha):
+    def _pintar_textos(pintor, caja, arriba, ficha, calor_visible=True):
         ancho = caja.width() - 10
         izquierda = caja.left() + 5
 
@@ -266,7 +313,15 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
         nombre = pintor.fontMetrics().elidedText(ficha.nombre, Qt.ElideRight, int(ancho))
         pintor.drawText(QRectF(izquierda, arriba + 16, ancho, 16), Qt.AlignCenter, nombre)
 
-        if ficha.aviso:
+        if ficha.caliente:
+            # Pisa al aviso de siempre mientras dure: el cartelito lo sigue diciendo todo.
+            if calor_visible:
+                fuente.setPixelSize(11)
+                pintor.setFont(fuente)
+                pintor.setPen(_COLOR_TEMPERATURA[dominio.TEMPERATURA_CALIENTE_NIVEL])
+                pintor.drawText(QRectF(izquierda, arriba + 32, ancho, 14), Qt.AlignCenter,
+                                f"CALIENTE {ficha.temperatura}°")
+        elif ficha.aviso:
             fuente.setBold(False)
             fuente.setPixelSize(11)
             pintor.setFont(fuente)
@@ -373,6 +428,42 @@ def _pintar_candado_abierto(pintor, centro):
     pintor.setPen(Qt.NoPen)
     pintor.setBrush(_COLOR_TRAZO_DIBUJO)
     pintor.drawRoundedRect(QRectF(centro.x() - 11, centro.y() - 2, 20, 15), 3, 3)
+
+
+def _pintar_termometro(pintor, marco, ficha, calor_visible):
+    """Termómetro a la izquierda del monitor (`marco`, sin escalar), con los grados arriba.
+    Caliente y en la mitad apagada del parpadeo, el líquido se oscurece."""
+    x = marco.left() - 7
+    arriba, abajo = marco.top() + 12, marco.bottom() + 2
+    if ficha.temperatura is None:
+        color = _COLOR_SIN_TEMPERATURA
+    else:
+        color = QColor(_COLOR_TEMPERATURA[ficha.nivel_temperatura])
+        if ficha.caliente and not calor_visible:
+            color = color.darker(230)
+    pintor.save()
+    pintor.setPen(QPen(_COLOR_BORDE_MONITOR, 1))
+    pintor.setBrush(_COLOR_TUBO)
+    pintor.drawRoundedRect(QRectF(x - 2.5, arriba, 5, abajo - arriba), 2.5, 2.5)
+    if ficha.temperatura is not None:
+        lleno = (ficha.temperatura - _TEMPERATURA_TUBO_VACIO) / (_TEMPERATURA_TUBO_LLENO - _TEMPERATURA_TUBO_VACIO)
+        alto = (abajo - arriba) * max(0.08, min(1.0, lleno))
+        pintor.setPen(Qt.NoPen)
+        pintor.setBrush(color)
+        pintor.drawRoundedRect(QRectF(x - 1.5, abajo - alto, 3, alto + 1), 1.5, 1.5)
+    pintor.setPen(QPen(_COLOR_BORDE_MONITOR, 1))
+    pintor.setBrush(color)
+    pintor.drawEllipse(QPointF(x, abajo + 3), 4.2, 4.2)
+
+    fuente = QFont(pintor.font())
+    fuente.setPixelSize(9)
+    fuente.setBold(True)
+    pintor.setFont(fuente)
+    normal = ficha.nivel_temperatura in (None, dominio.TEMPERATURA_NORMAL_NIVEL)
+    pintor.setPen(_COLOR_TEXTO_SUAVE if normal else color)
+    texto = f"{ficha.temperatura}°" if ficha.temperatura is not None else "—"
+    pintor.drawText(QRectF(x - 12, arriba - 12, 24, 11), Qt.AlignCenter, texto)
+    pintor.restore()
 
 
 def _pintar_monedas(pintor, esquina):

@@ -362,6 +362,29 @@ def es_pcstream(nombre_estacion: str) -> bool:
     """
     return re.sub(r"[\s_-]", "", nombre_estacion or "").upper() == NOMBRE_PCSTREAM
 
+
+# La temperatura del procesador de una PC (pedido del dueño, 2026-10-22; la manda cada Cliente PC,
+# ver temperatura_pc_repo). Desde TIBIA el termómetro del mosaico se pone ámbar; desde CALIENTE,
+# rojo, y el monitor dice "CALIENTE" titilando. Un procesador de escritorio jugando anda por los
+# 60-80°; pasados los 85° de forma sostenida conviene mirar los ventiladores y el polvo.
+TEMPERATURA_TIBIA = 75
+TEMPERATURA_CALIENTE = 85
+TEMPERATURA_NORMAL_NIVEL = "normal"
+TEMPERATURA_TIBIA_NIVEL = "tibia"
+TEMPERATURA_CALIENTE_NIVEL = "caliente"
+
+
+def nivel_de_temperatura(grados):
+    """Único lugar donde se decide si un procesador está normal, tibio o caliente (None si no
+    hay dato)."""
+    if grados is None:
+        return None
+    if grados >= TEMPERATURA_CALIENTE:
+        return TEMPERATURA_CALIENTE_NIVEL
+    if grados >= TEMPERATURA_TIBIA:
+        return TEMPERATURA_TIBIA_NIVEL
+    return TEMPERATURA_NORMAL_NIVEL
+
 # Estado de una sesión de tiempo. Tienen que coincidir con el CHECK de
 # "sesiones_playstation.estado" en database.py (las sesiones de PC todavía los
 # escriben a mano, ver CLAUDE.md "Estado").

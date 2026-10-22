@@ -165,6 +165,7 @@ class PanelControlPcs(QWidget):
         self._items_en_grilla = []      # lo que hay en cada fila: la consola y después las PCs
         self._seleccion = None          # clave de la fila elegida (ver _clave_de_item)
         self._filas_en_alerta = []
+        self._filas_calientes = []      # las PCs con el procesador caliente: "CALIENTE" titila
         self._parpadeo_encendido = True
         self._armar_interfaz()
         self._refrescar()
@@ -344,6 +345,14 @@ class PanelControlPcs(QWidget):
             aviso = quien_texto  # el nombre del socio, si no hay nada más urgente que avisar
 
         estado = f"{icono} {texto_estado}"
+        temperatura = item.get("temperatura") or {"cpu": None, "gpu": None}
+        nivel_temperatura = dominio.nivel_de_temperatura(temperatura["cpu"])
+        if temperatura["cpu"] is not None or temperatura["gpu"] is not None:
+            partes = [f"Procesador {temperatura['cpu']}°" if temperatura["cpu"] is not None else None,
+                      f"Placa de video {temperatura['gpu']}°" if temperatura["gpu"] is not None else None]
+            estado += "\n🌡 " + " · ".join(parte for parte in partes if parte)
+            if nivel_temperatura == dominio.TEMPERATURA_CALIENTE_NIVEL:
+                estado += "\n🔥 CALIENTE: revisar ventiladores y polvo"
         if texto_de_la_reserva(item):
             estado += f"\n{texto_de_la_reserva(item)}"
         if item["cortes"]:
@@ -361,6 +370,9 @@ class PanelControlPcs(QWidget):
             dibujo=dibujo,
             con_bono=sesion is not None and not sesion["miembro_nombre"],
             aviso=aviso,
+            con_termometro=True,
+            temperatura=temperatura["cpu"],
+            nivel_temperatura=nivel_temperatura,
         )
 
     @staticmethod
@@ -410,6 +422,7 @@ class PanelControlPcs(QWidget):
             for item in self._items_en_grilla
         ]
         self._filas_en_alerta = [fila for fila, ficha in enumerate(fichas) if ficha.en_alerta]
+        self._filas_calientes = [fila for fila, ficha in enumerate(fichas) if ficha.caliente]
         self._parpadeo_encendido = True
 
         claves = [ficha.clave for ficha in fichas]
@@ -457,13 +470,14 @@ class PanelControlPcs(QWidget):
         """
         Alterna la pantalla de los equipos en `self._filas_en_alerta` entre
         rojo fuerte y blanco cada INTERVALO_PARPADEO_MS -- ver
-        COLOR_ALERTA_SESION_SIN_CLIENTE. Corre en un timer aparte del
+        COLOR_ALERTA_SESION_SIN_CLIENTE --, y prende y apaga el "CALIENTE" de
+        los de `self._filas_calientes`. Corre en un timer aparte del
         refresco de 5s (`_redibujar_mosaico` ya deja los índices
         actualizados cada vez que corre); si no hay ningún equipo en
-        alerta no hace nada, así que dejarlo corriendo siempre no cuesta
-        nada.
+        alerta ni caliente no hace nada, así que dejarlo corriendo siempre
+        no cuesta nada.
         """
-        if not self._filas_en_alerta:
+        if not self._filas_en_alerta and not self._filas_calientes:
             return
         self._parpadeo_encendido = not self._parpadeo_encendido
         color = (
@@ -474,6 +488,9 @@ class PanelControlPcs(QWidget):
         for fila in self._filas_en_alerta:
             if fila < self.mosaico.count():
                 self.mosaico.pintar(fila, color)
+        for fila in self._filas_calientes:
+            if fila < self.mosaico.count():
+                self.mosaico.titilar_calor(fila, self._parpadeo_encendido)
 
     @manejar_errores
     def _al_cambiar_seleccion(self):

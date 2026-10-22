@@ -140,6 +140,18 @@ def _migrar_columna_cliente_arranque_estaciones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columnas_temperatura_estaciones(conexion: sqlite3.Connection):
+    """
+    Agrega estaciones.temp_cpu y temp_gpu (pedido del dueño, 2026-10-22): la última
+    temperatura del procesador y de la placa de video que mandó el Cliente PC, en grados
+    (ver temperatura_pc_repo). Arrancan vacías: cada PC las completa en su próxima consulta
+    (un Cliente PC viejo, o sin PawnIO para el procesador, las deja vacías).
+    """
+    _agregar_columna_si_falta(conexion, "estaciones", "temp_cpu", "INTEGER")
+    _agregar_columna_si_falta(conexion, "estaciones", "temp_gpu", "INTEGER")
+    conexion.commit()
+
+
 def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     """
     Para una base creada antes de que existiera "Miembros": agrega

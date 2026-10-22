@@ -37,7 +37,9 @@ from datetime import datetime
 import dominio
 from database import conexion_db
 from repositories import ventas_repo
-from control_pcs.repositories import avisos_fin_pc_repo, cortes_pc_repo, pcstream_repo, reservas_horario_repo
+from control_pcs.repositories import (
+    avisos_fin_pc_repo, cortes_pc_repo, pcstream_repo, reservas_horario_repo, temperatura_pc_repo,
+)
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 from control_pcs.repositories.actividad_repo import actividad_reciente  # noqa: F401 (API de las pantallas y las pruebas)
 from control_pcs.repositories.reintegros_repo import reintegros_por_miembro
@@ -332,6 +334,8 @@ def _estado_para_estacion(estacion, sesion, ahora, cortes=(), fin_pendiente=None
         "sesion": sesion,
         "segundos_restantes": segundos_restantes,
         "enlazada": enlazada,
+        # La del procesador y la placa de video ({"cpu", "gpu"}), solo si está enlazada.
+        "temperatura": temperatura_pc_repo.vigente(estacion, enlazada),
         # La última vez que preguntó su Cliente PC (None = nunca): de cuándo es la última noticia.
         "ultima_conexion": ultima_conexion,
         "esperando_cliente": esperando_cliente,
