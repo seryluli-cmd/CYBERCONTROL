@@ -120,47 +120,6 @@ class TestSubtotalDeLinea(unittest.TestCase):
         self.assertEqual(ventas_repo.total_carrito([]), 0)
 
 
-class TestPagosNetosDeVuelto(unittest.TestCase):
-    """Reproduce el bug real: una venta de $1.000 pagada con un billete
-    de $2.000 sumaba $2.000 a caja aunque se hayan devuelto $1.000 de
-    vuelto. dominio.pagos_netos_de_vuelto es lo que usa
-    ui/dialogo_pago.DialogoPago._confirmar antes de devolver self.pagos,
-    para que lo que se graba en venta_pagos sea neto del vuelto."""
-
-    def test_descuenta_el_vuelto_del_unico_pago_en_efectivo(self):
-        pagos = [{"metodo": dominio.PAGO_EFECTIVO, "monto": 2000.0}]
-        resultado = dominio.pagos_netos_de_vuelto(pagos, vuelto=1000.0)
-        self.assertEqual(resultado, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0}])
-
-    def test_no_toca_el_pago_digital(self):
-        pagos = [
-            {"metodo": dominio.PAGO_DIGITAL, "monto": 500.0},
-            {"metodo": dominio.PAGO_EFECTIVO, "monto": 1200.0},
-        ]
-        # Total real $1.500: $500 digital + $1.000 efectivo: sobraron $200.
-        resultado = dominio.pagos_netos_de_vuelto(pagos, vuelto=200.0)
-        self.assertEqual(resultado, [
-            {"metodo": dominio.PAGO_DIGITAL, "monto": 500.0},
-            {"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0},
-        ])
-
-    def test_descarta_un_pago_que_queda_en_cero(self):
-        # Un pago en Efectivo que era EXACTAMENTE el vuelto que se llevó
-        # puesto (por ejemplo, dos pagos en efectivo donde el segundo
-        # sobraba entero) no debe dejar una fila de $0 en venta_pagos.
-        pagos = [
-            {"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0},
-            {"metodo": dominio.PAGO_EFECTIVO, "monto": 500.0},
-        ]
-        resultado = dominio.pagos_netos_de_vuelto(pagos, vuelto=500.0)
-        self.assertEqual(resultado, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0}])
-
-    def test_no_modifica_la_lista_original(self):
-        pagos = [{"metodo": dominio.PAGO_EFECTIVO, "monto": 2000.0}]
-        dominio.pagos_netos_de_vuelto(pagos, vuelto=1000.0)
-        self.assertEqual(pagos, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 2000.0}])
-
-
 class TestTarifaHoraParaMonto(unittest.TestCase):
     """dominio.tarifa_hora_para_monto: qué tarifa $/hora corresponde a un
     monto cargado, según la tabla de tramos que reemplazó a la tarifa

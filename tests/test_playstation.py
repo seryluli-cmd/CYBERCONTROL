@@ -60,7 +60,7 @@ class _ConPlaystation(BaseConBaseTemporal):
         super().setUp()
         self.admin_id = usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN)
         self.operadora_id = usuarios_repo.crear_usuario(
-            "Operadora", "1234", dominio.ROL_EMPLEADA, {playstation_repo.PERMISO_OPERAR: True}
+            "Operadora", "1234", dominio.ROL_EMPLEADA, {"permiso_control_pcs": True}
         )
         self.empleada_id = usuarios_repo.crear_usuario("Empleada", "1234", dominio.ROL_EMPLEADA)
         self.bono_id = playstation_repo.crear_bono(self.admin_id, "1 hora", 60, 3000)
@@ -139,7 +139,7 @@ class TestPermisosDeLaPlaystation(_ConPlaystation):
 
     def test_el_admin_opera_sin_necesitar_el_permiso_marcado(self):
         # tiene_permiso deja pasar siempre a un Admin, aunque su columna esté en 0.
-        self.assertEqual(usuarios_repo.obtener_usuario(self.admin_id)[playstation_repo.PERMISO_OPERAR], 0)
+        self.assertEqual(usuarios_repo.obtener_usuario(self.admin_id)["permiso_control_pcs"], 0)
         self._vender(self.HORA, usuario_id=self.admin_id)
         with _reloj(self.HORA):
             playstation_repo.finalizar_sesion(self.admin_id)

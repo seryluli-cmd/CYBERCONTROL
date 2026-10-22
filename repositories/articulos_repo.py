@@ -46,20 +46,14 @@ def _crear_o_buscar(tabla: str, nombre: str) -> int:
         return fila["id"]
 
 
-def crear_marca(nombre: str) -> int:
-    """Crea la marca y devuelve su id; si ya existía una con ese nombre,
-    devuelve el id de la existente en vez de fallar (así se puede "agregar
-    al vuelo" desde Artículos sin chequear antes)."""
-    return _crear_o_buscar("marcas", nombre)
-
-
 def listar_rubros():
     with conexion_db() as conexion:
         return conexion.execute("SELECT * FROM rubros ORDER BY nombre").fetchall()
 
 
 def crear_rubro(nombre: str) -> int:
-    """Igual que crear_marca: devuelve el id, sea nuevo o ya existente."""
+    """Crea el rubro y devuelve su id; si ya existía uno con ese nombre,
+    devuelve el id del existente en vez de fallar."""
     return _crear_o_buscar("rubros", nombre)
 
 

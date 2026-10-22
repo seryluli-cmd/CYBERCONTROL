@@ -60,7 +60,7 @@ class _ConPantalla(BaseConBaseTemporal):
         super().setUp()
         self.admin_id = usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN)
         self.operadora_id = usuarios_repo.crear_usuario(
-            "Operadora", "1234", dominio.ROL_EMPLEADA, {playstation_repo.PERMISO_OPERAR: True}
+            "Operadora", "1234", dominio.ROL_EMPLEADA, {"permiso_control_pcs": True}
         )
         self.empleada_id = usuarios_repo.crear_usuario("Empleada", "1234", dominio.ROL_EMPLEADA)
         self.estacion_id = pcs_repo.crear_estacion("PC 1")

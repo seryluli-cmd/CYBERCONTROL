@@ -76,12 +76,6 @@ NOMBRE_METODO_PAGO = {
 }
 
 
-def nombre_metodo(metodo: str) -> str:
-    """Nombre corto y legible de un método de pago, para tablas y
-    resúmenes donde no entra el texto largo del combo."""
-    return "Efectivo" if metodo == PAGO_EFECTIVO else "Digital"
-
-
 # --------------------------------------------------------------------
 # Origen de una venta (Kiosko, Alquiler de PCs, PlayStation 5)
 # --------------------------------------------------------------------
@@ -287,38 +281,6 @@ MOTIVOS_REINICIO_PC = (
 )
 
 
-def pagos_netos_de_vuelto(pagos: list, vuelto: float) -> list:
-    """
-    Descuenta el vuelto de los pagos en Efectivo antes de que se graben en
-    venta_pagos: lo que queda en la caja de una venta es el total, nunca lo
-    que la clienta puso arriba del mostrador. Sin esto, una venta de
-    $1.000 pagada con un billete de $2.000 sumaba $2.000 a caja aunque se
-    hayan devuelto $1.000 de vuelto -- inflaba Caja y Cierre de Turno en
-    exactamente el vuelto de cada venta con cambio.
-
-    No modifica `pagos`: devuelve una lista nueva, para que quien la llama
-    (ui/dialogo_pago.DialogoPago) pueda seguir usando el vuelto calculado
-    para avisarle a la empleada cuánto entregar, sin que se le mezcle con
-    lo que se termina grabando.
-
-    El recorte se hace de atrás para adelante (no importa cuál pago en
-    Efectivo puntual se recorte, solo que la suma final quede igual al
-    total); un pago que queda en $0 tras el recorte se descarta -- por
-    ejemplo, uno que era exactamente el vuelto que se llevó puesto.
-    """
-    pagos = [dict(pago) for pago in pagos]
-    restante = round(vuelto, 2)
-    for pago in reversed(pagos):
-        if restante <= 0:
-            break
-        if pago["metodo"] != PAGO_EFECTIVO:
-            continue
-        recorte = min(pago["monto"], restante)
-        pago["monto"] = round(pago["monto"] - recorte, 2)
-        restante = round(restante - recorte, 2)
-    return [pago for pago in pagos if pago["monto"] > 0.001]
-
-
 def lo_que_falta_para(total: float, monto: float) -> float:
     """En el cobro, lo que va en el OTRO medio cuando se escribe `monto` en uno
     (Efectivo <-> Digital): lo que falta para el total, nunca negativo."""
@@ -342,7 +304,7 @@ def cuenta_del_cobro(total: float, efectivo: float, digital: float, paga_con: fl
     Devuelve {"parte_efectivo", "digital", "entrega" (el efectivo que da el
     cliente), "vuelto", "falta" (efectivo que todavía no entregó; con algo
     acá no se puede cobrar) y "pagos"}. "pagos" ya es lo que queda en la caja
-    (neto de vuelto, como pagos_netos_de_vuelto): una o dos filas de
+    (neto de vuelto): una o dos filas de
     PAGO_EFECTIVO/PAGO_DIGITAL, listas para grabar.
     """
     total = round(total, 2)

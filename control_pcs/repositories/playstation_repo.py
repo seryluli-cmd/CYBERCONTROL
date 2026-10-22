@@ -53,11 +53,6 @@ from repositories import usuarios_repo, ventas_repo
 from control_pcs.repositories import reservas_horario_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 
-# Ya no gobierna la PlayStation 5 (ver el docstring del módulo): queda el
-# nombre porque usuarios_repo.PERMISOS_EMPLEADA todavía lo usa como clave
-# para "Operar PCs y Miembros" (cuenta para ser "encargada").
-PERMISO_OPERAR = "permiso_control_pcs"
-
 
 # ---------------------------------------------------------------------
 # Permisos
