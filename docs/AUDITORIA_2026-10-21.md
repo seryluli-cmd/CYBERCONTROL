@@ -122,6 +122,12 @@ entonces y 13-16 ms hoy, unos 4 ms más por consulta. Es lo que sumaron la recon
 los cortes, la versión del cliente y la reserva. Los "~5 ms" anotados el 17/10 se
 midieron de otra forma y no se comparan.
 
+**Medido de nuevo el 22/10 sobre `eb3540b`** (con los reinicios, "TIEMPO AGOTADO" y
+la actualización que sigue la copia; mismo instrumento): refresco de la pantalla de
+PCs 14,6 ms (antes 11,9: "Actividad reciente" pasó de 6 a 8 conexiones: suma los
+reinicios y las PCs revisadas), `GET /estado` 12,6 ms de mediana (igual que antes, dentro del ruido) y la
+ráfaga de 40 PCs, 1,12 s. La conclusión no cambia.
+
 **Conclusión: no se cambia nada.** Con 40 PCs son unas 8 consultas por segundo, que
 ocupan ~11% del tiempo y en su mayoría esperando al disco. La pantalla del mostrador
 tarda 12 ms cada 5 s. Nadie lo nota. Se evaluó:
