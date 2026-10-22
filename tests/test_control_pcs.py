@@ -458,7 +458,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
 
         # $4000 cae por debajo del tramo de $5000 -> tarifa de $1000/hora
         # (4000/1000*60 = 240 min).
-        venta_id = miembros_repo.cargar_saldo_por_monto(
+        miembros_repo.cargar_saldo_por_monto(
             miembro_id, 4000, [{"metodo": "EFECTIVO", "monto": 4000}], operador_id
         )
         miembro = miembros_repo.obtener_miembro(miembro_id)
@@ -668,7 +668,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         # el segundo pedido espera a que el primero termine y recién ahí
         # la lee ya FINALIZADA, sin volver a reintegrar (mismo patrón que
         # test_abrir_estacion_por_miembro_dos_pedidos_simultaneos_no_duplican_el_saldo).
-        operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
         estacion_id = pcs_repo.crear_estacion("PC 1")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
         with database.conexion_db() as conexion:
@@ -1443,8 +1443,8 @@ class TestServidorRedLogout(_ConServidorRed):
         self.assertIsNone(pcs_repo.estado_estaciones()[0]["sesion"])
 
     def test_estado_y_login_devuelven_el_sesion_id(self):
-        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
-        estacion_id = pcs_repo.crear_estacion("PC 8")
+        usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        pcs_repo.crear_estacion("PC 8")
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
         with database.conexion_db() as conexion:
             conexion.execute("UPDATE miembros SET saldo_minutos = 60 WHERE id = ?", (miembro_id,))

@@ -25,7 +25,7 @@ from datetime import date, datetime, timedelta
 
 import dominio
 from database import conexion_db
-from repositories import articulos_repo, detalle_dia_repo, limpieza_repo, reportes_repo, turnos_repo, \
+from repositories import detalle_dia_repo, limpieza_repo, reportes_repo, turnos_repo, \
     usuarios_repo, ventas_repo
 from control_pcs.repositories import (
     actividad_repo, pcs_repo, pcstream_repo, playstation_repo, reservas_habilitar_repo, reservas_repo,

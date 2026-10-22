@@ -29,7 +29,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock

@@ -1074,7 +1074,7 @@ class TestDetalleCierre(BaseConBaseTemporal):
         articulos_repo.crear_articulo("COD9", "Producto", None, None, 10.0, 5.0, 0)
         compras_repo.registrar_compra(usuario_id, [{"codigo": "COD9", "cantidad": 5, "costo_unitario": 5.0}])
 
-        cierre_1 = self._cerrar(usuario_id, datetime(2026, 1, 1, 10, 0, 0, 500000))
+        self._cerrar(usuario_id, datetime(2026, 1, 1, 10, 0, 0, 500000))
         venta_2 = self._vender(usuario_id, datetime(2026, 1, 1, 10, 0, 0, 800000))
         cierre_2 = self._cerrar(usuario_id, datetime(2026, 1, 1, 11, 0, 0))
 
