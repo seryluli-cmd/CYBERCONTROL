@@ -18,20 +18,26 @@ from database import conexion_db, hash_clave, verificar_clave
 #
 # - Sin ningún permiso, una empleada ya puede: Ventas, operar la grilla de
 #   PCs (asignarle un bono a una PC es una venta más, no un privilegio),
-#   Caja, Cierre de Turno y Cambiar mi Clave.
+#   Miembros, la PlayStation 5, Caja, Cierre de Turno y Cambiar mi Clave.
 # - Un ADMIN los tiene todos siempre (ver tiene_permiso) y no se le pueden
 #   sacar desde acá.
 # - "Usuarios" (crear/borrar gente, resetear claves) y "Anular Venta" son
 #   exclusivos de ADMIN a propósito: no están en esta lista.
 # - Tener al menos uno de estos permisos es lo que separa a un "encargado"
 #   de una empleada común en ui/main_window.py: ve "Administrar Kiosko".
+# - "Operar PCs y Miembros" (`permiso_control_pcs`) se sacó de esta lista el
+#   2026-10-22 (pedido del dueño: "así no está por estar"): desde el 19/10
+#   PCs, Miembros y la PlayStation 5 los opera cualquiera y la casilla no daba
+#   nada. La columna sigue en la tabla con lo que tenía cada usuario (las
+#   columnas no se borran, regla 6), pero ya no se lee ni se escribe. Si el
+#   dueño quiere volver a repartir quién opera qué, se suma de nuevo acá y se
+#   engancha en playstation_repo.puede_operar o en Miembros.
 PERMISOS_EMPLEADA = [
     ("permiso_articulos", "Artículos (crear/editar productos y precios)"),
     ("permiso_compras", "Compras (cargar mercadería / stock)"),
     ("permiso_consulta_ventas", "Consulta de Ventas (sin poder anular)"),
     ("permiso_reportes", "Reportes"),
     ("permiso_control_cierres", "Control de Cierres de Turno"),
-    ("permiso_control_pcs", "Operar PCs y Miembros (asignar bonos, abrir con socio, cargar saldo)"),
 ]
 
 

@@ -24,6 +24,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QFrame, QPushButton  # noqa: E402
 
 import dominio  # noqa: E402
+from database import conexion_db  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from ui.main_window import ConfiguracionAdminWindow, MainWindow  # noqa: E402
 from control_pcs.ui.pcs_gestion_dialogos import DialogoGestionEstaciones  # noqa: E402
@@ -88,13 +89,25 @@ class TestBarraParaTodos(_ConUsuarios):
         self.assertEqual(self._que_abre(admin), set(_CON_PERMISO))
 
     def test_cada_empleada_abre_solo_lo_que_tiene_habilitado(self):
-        con_pcs = self._ventana("PCs", dominio.ROL_EMPLEADA, {"permiso_control_pcs": True})
         encargada = self._ventana("Encargada", dominio.ROL_EMPLEADA, {"permiso_reportes": True})
 
-        # Operar PCs y Miembros también la hace "encargada" (es uno de los
-        # permisos de usuarios_repo.PERMISOS_EMPLEADA).
-        self.assertEqual(self._que_abre(con_pcs), {"🛠️  ADMIN KIOSKO"})
         self.assertEqual(self._que_abre(encargada), {"🛠️  ADMIN KIOSKO"})
+
+    def test_la_casilla_vieja_de_pcs_ya_no_la_hace_encargada(self):
+        """Pedido del dueño, 2026-10-22: se sacó "Operar PCs y Miembros" de
+        Usuarios. Quien la tenía tildada (la columna sigue en la base, con su
+        valor) ya no abre Admin Kiosko, que se le abría vacío."""
+        usuario_id = usuarios_repo.crear_usuario("PCs", "1234", dominio.ROL_EMPLEADA)
+        with conexion_db() as conexion:
+            conexion.execute("UPDATE usuarios SET permiso_control_pcs = 1 WHERE id = ?", (usuario_id,))
+        ventana = MainWindow(usuarios_repo.obtener_usuario(usuario_id), lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+
+        self.assertEqual(self._que_abre(ventana), set())
+        # Y modificarla en Usuarios no le pisa lo que tenía guardado.
+        usuarios_repo.modificar_usuario(usuario_id, "PCs", dominio.ROL_EMPLEADA, permisos={})
+        self.assertEqual(usuarios_repo.obtener_usuario(usuario_id)["permiso_control_pcs"], 1)
 
     def test_miembros_abre_para_cualquier_empleada(self):
         """Pedido del dueño, 2026-10-19: antes pedía permiso_control_pcs o Admin,

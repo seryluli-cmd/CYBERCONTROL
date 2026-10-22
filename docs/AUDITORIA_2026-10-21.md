@@ -148,10 +148,15 @@ tarda 12 ms cada 5 s. Nadie lo nota. Se evaluó:
 1. **La casilla "Operar PCs y Miembros (asignar bonos, abrir con socio, cargar
    saldo)" de Usuarios ya no da ninguna de esas cosas.** Desde el 19/10 todo eso lo
    hace cualquier operador. Lo único que hace hoy es habilitar el botón "Admin
-   Kiosko" a esa empleada, que lo abre y ve todos los botones en gris si no tiene
-   otro permiso (`ui/main_window.py:119` y `:527`). Opciones: (a) dejarla, (b)
+   Kiosko" a esa empleada, que lo abre vacío (sin ningún botón) si no tiene otro
+   permiso (`ui/main_window.py:120` y `:530`). Opciones: (a) dejarla, (b)
    cambiarle el texto, (c) sacarla de la lista (la columna de la base queda). Cambia
    lo que se ve, así que no entra en esta limpieza sin tu OK.
+   **Decidido (22/10): se saca la casilla** ("así no está por estar"), manteniendo lo
+   que puede hacer cada uno. La columna `usuarios.permiso_control_pcs` queda en la
+   base con lo que tenía cada usuario, sin que nadie la lea ni la escriba. Quien la
+   tenía tildada como único permiso ya no abre Admin Kiosko (se le abría vacío).
+   Anotado en `usuarios_repo.PERMISOS_EMPLEADA` y en CLAUDE.md.
 2. **"Limpiar base de datos" sigue en Configuración ADMIN.** El programa ya trabaja
    con plata real: cajas desde el 18/10 y socios desde el 19/10. Un clic de Admin
    borra todo el historial de ventas (con copia previa). **Recomiendo sacarlo ya.**

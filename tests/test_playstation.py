@@ -60,7 +60,7 @@ class _ConPlaystation(BaseConBaseTemporal):
         super().setUp()
         self.admin_id = usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN)
         self.operadora_id = usuarios_repo.crear_usuario(
-            "Operadora", "1234", dominio.ROL_EMPLEADA, {"permiso_control_pcs": True}
+            "Operadora", "1234", dominio.ROL_EMPLEADA
         )
         self.empleada_id = usuarios_repo.crear_usuario("Empleada", "1234", dominio.ROL_EMPLEADA)
         self.bono_id = playstation_repo.crear_bono(self.admin_id, "1 hora", 60, 3000)
@@ -152,8 +152,8 @@ class TestPermisosDeLaPlaystation(_ConPlaystation):
 
     def test_sacarle_el_permiso_ya_no_corta_el_acceso(self):
         """Hasta el 2026-10-19 esto sí cortaba el acceso en el acto; el permiso
-        ya no gobierna la PlayStation 5 (sigue contando para "encargada", ver
-        usuarios_repo.PERMISOS_EMPLEADA)."""
+        ya no gobierna la PlayStation 5 (y su casilla se sacó de Usuarios el
+        2026-10-22, ver usuarios_repo.PERMISOS_EMPLEADA)."""
         self._vender(self.HORA, usuario_id=self.operadora_id)
         usuarios_repo.modificar_usuario(self.operadora_id, "Operadora", dominio.ROL_EMPLEADA, permisos={})
 

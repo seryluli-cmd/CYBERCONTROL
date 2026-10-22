@@ -24,9 +24,9 @@ los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
   control_pcs/repositories/reservas_repo.py), Caja, Cierre de Turno, y Cambiar
   mi Clave. La PlayStation 5, que
   está en esa misma grilla, también la opera cualquiera (vender sus bonos,
-  liberarla; pedido del dueño, 2026-10-19). `permiso_control_pcs` sigue
-  existiendo, pero ya no hace falta para nada de esto: solo cuenta para ser
-  "encargado".
+  liberarla; pedido del dueño, 2026-10-19). La casilla de ese permiso
+  ("Operar PCs y Miembros") se sacó de Usuarios el 2026-10-22: ya no daba
+  nada (ver usuarios_repo.PERMISOS_EMPLEADA).
 - "Encargado" (ADMIN, o EMPLEADA con al menos uno de los permisos de
   usuarios_repo.PERMISOS_EMPLEADA): además abre "Administrar Kiosko", que
   agrupa Artículos/Compras/Consulta de Ventas/Reportes/Control de

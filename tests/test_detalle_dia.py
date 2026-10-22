@@ -59,7 +59,7 @@ class _UnDiaConDeTodo(BaseConBaseTemporal):
         super().setUp()
         self.admin_id = usuarios_repo.listar_usuarios()[0]["id"]
         self.lucia_id = usuarios_repo.crear_usuario(
-            "LUCIA", "4321", dominio.ROL_EMPLEADA, permisos={"permiso_control_pcs": 1},
+            "LUCIA", "4321", dominio.ROL_EMPLEADA,
         )
         self.gaby_id = usuarios_repo.crear_usuario("GABY", "4321", dominio.ROL_EMPLEADA)
         articulos_repo.crear_articulo("COCA", "Coca 500", None, None, 1000.0, 500.0, 0)

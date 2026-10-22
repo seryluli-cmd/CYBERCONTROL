@@ -28,9 +28,8 @@ Quién puede qué:
   del dueño, 2026-10-19: hasta ese día pedía el permiso operativo
   `permiso_control_pcs` -- "Operar PCs y Miembros" --, la misma asimetría
   que tenía Miembros con el resto de la barra, y se sacó por el mismo
-  motivo). Ese permiso sigue existiendo en usuarios_repo.PERMISOS_EMPLEADA
-  (cuenta para que a alguien se lo considere "encargada"), pero ya no
-  gobierna nada acá.
+  motivo). Su casilla se sacó de Usuarios el 2026-10-22 (ver
+  usuarios_repo.PERMISOS_EMPLEADA).
 Estas reglas se hacen cumplir ACÁ y no solo en la pantalla: una pantalla que
 se olvide de esconder un botón no puede darle a nadie un poder que no tiene.
 Se lee el usuario de la base en cada operación (no se confía en la fila que
