@@ -138,7 +138,7 @@ def aplicar_clase(widget, clase: str):
     Marca un botón como "primario" (acción principal, ej. Cobrar,
     Guardar) o "peligro" (acción destructiva, ej. Cancelar, Borrar,
     Cerrar sesión) para que tome el color correspondiente de la hoja de
-    estilos global (ver main.py). No alcanza con setProperty solo: Qt
+    estilos global (ver ui/hoja_de_estilos.py). No alcanza con setProperty solo: Qt
     necesita que se le pida "repintar" el widget con el selector CSS
     nuevo, si no el botón se queda con el aspecto neutro de siempre.
     """

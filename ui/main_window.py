@@ -164,7 +164,7 @@ class MainWindow(QMainWindow):
         # por dentro sigue siendo EMPLEADA). El Admin se sigue distinguiendo.
         cargo = "Administrador" if self.es_admin else "Operador"
         # Letra clara sobre la barra oscura: "#nombreEncabezado" y "#cajaEncabezado"
-        # en la hoja de estilos de main.py.
+        # en ui/hoja_de_estilos.py.
         titulo = QLabel(f"{cargo}: {self.usuario['nombre']}")
         titulo.setObjectName("nombreEncabezado")
         # La caja abierta, al lado del nombre: "Caja Nº 12 · Mañana" (ver
@@ -243,13 +243,13 @@ class MainWindow(QMainWindow):
         se ve igual que los demás pero no hace nada al apretarlo: no se lo
         apaga con setEnabled(False) porque se vería gris, distinto del resto.
 
-        El texto va en mayúscula (y en negrita, por la hoja de estilos de main.py),
+        El texto va en mayúscula (y en negrita, por ui/hoja_de_estilos.py),
         pedido del dueño 2026-10-22; acá y no en la hoja porque Qt no tiene
         text-transform."""
         boton = QPushButton(texto.upper())
         boton.setFixedHeight(38)
         # Los que no son ni "primario" ni "peligro" son teclas oscuras con relieve
-        # (clase "barra", ver la hoja de estilos de main.py).
+        # (clase "barra", ver ui/hoja_de_estilos.py).
         aplicar_clase(boton, clase or "barra")
         if habilitado:
             boton.clicked.connect(funcion)
@@ -301,7 +301,7 @@ class MainWindow(QMainWindow):
     def _parpadear(self):
         """Titila en rojo (alterna con su color de siempre) mientras toca
         cerrar; si no, se queda con su color de siempre. El rojo es la clase
-        "alerta" de la hoja de estilos (main.py)."""
+        "alerta" de la hoja de estilos (ui/hoja_de_estilos.py)."""
         if self.boton_cierre_turno is None:  # desde otra PC no hay Cierre de Turno
             return
         self._encendido = self._titilar and not self._encendido

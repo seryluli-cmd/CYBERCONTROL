@@ -206,8 +206,8 @@ class PanelControlPcs(QWidget):
         self.mosaico.setContextMenuPolicy(Qt.CustomContextMenu)
         self.mosaico.customContextMenuRequested.connect(self._mostrar_menu_contextual)
 
-        # El mosaico va sobre un fondo oscuro (estilo "#marcoMosaico" en la hoja
-        # de estilos de main.py): los colores de las pantallas resaltan mucho más
+        # El mosaico va sobre un fondo oscuro (estilo "#marcoMosaico" en
+        # ui/hoja_de_estilos.py): los colores de las pantallas resaltan mucho más
         # que sobre el gris claro del resto del programa.
         marco = QFrame()
         marco.setObjectName("marcoMosaico")

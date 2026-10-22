@@ -74,7 +74,7 @@ class DialogoPago(QDialog):
         self.finished.connect(lambda _resultado: self._parpadeo_timer.stop())
 
     def _armar_interfaz(self):
-        # Por hoja de estilos y no con QFont: la hoja global (main.py) le gana a
+        # Por hoja de estilos y no con QFont: la hoja global (ui/hoja_de_estilos.py) le gana a
         # un QFont y el total salía con la letra chica de siempre.
         self.etiqueta_total = QLabel(f"Total: {formato_pesos(self.total)}")
         self.etiqueta_total.setStyleSheet("font-size: 22px; font-weight: 700; color: #1B2233;")

@@ -170,6 +170,9 @@ tarda 12 ms cada 5 s. Nadie lo nota. Se evaluó:
    revisión del 17/10 dejó dicho que la hoja de estilos (~400 líneas) se muda a su
    propio archivo cuando pase el tope. No cambia nada visible. Es orden, no código
    muerto: va como tanda aparte si querés.
+   **Decidido (22/10): hecho.** La hoja pasó a `ui/hoja_de_estilos.py`, idéntica carácter
+   por carácter (comparada antes de commitear); `main.aplicar_estilo` sigue en `main.py`
+   y la importa de ahí. `main.py` bajó de 826 a 242 líneas.
 
 ---
 

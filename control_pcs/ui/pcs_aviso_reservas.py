@@ -17,7 +17,7 @@ from control_pcs.repositories import reservas_horario_repo
 
 
 class AvisoDeReservasSinPcFija(QLabel):
-    """Recuadro claro con letra azul (estilo "#avisoReservasMosaico" en main.py)."""
+    """Recuadro claro con letra azul (estilo "#avisoReservasMosaico" en ui/hoja_de_estilos.py)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)

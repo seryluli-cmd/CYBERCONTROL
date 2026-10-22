@@ -123,7 +123,7 @@ class LoginWindow(QWidget):
         boton_entrar.clicked.connect(self._intentar_ingresar)
 
         # Tarjeta blanca centrada, con borde suave, que agrupa todo el
-        # formulario. Su estilo vive en la hoja de estilos GLOBAL de main.py
+        # formulario. Su estilo vive en la hoja de estilos GLOBAL (ui/hoja_de_estilos.py)
         # (selector "#tarjetaLogin"), no en un setStyleSheet local, por el
         # mismo motivo que el fondo de arriba: una hoja local rompería la
         # regla [clase="primario"] del botón "Entrar" que va adentro.
