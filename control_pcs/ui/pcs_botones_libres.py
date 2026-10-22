@@ -2,14 +2,15 @@
 pcs_botones_libres.py
 =====================
 Los dos botones de abajo del mosaico de Control de PCs (pedido del dueño,
-2026-10-22), para hacer algo con todas las PCs prendidas y libres de una vez:
+2026-10-22), para hacer algo con todas las PCs prendidas y libres de una vez.
+Los dos abren una ventana con esas PCs ya marcadas, donde se desmarcan las que
+no se quieren tocar (pedido del dueño, mismo día):
 
-- DESCONGELAR abre la ventana de Shadow Defender con todas esas PCs ya
-  marcadas; desde ahí se descongelan o se congelan. Lo ve solo el Admin, igual
-  que "Congelar / descongelar..." del clic derecho: pide la clave de Shadow
-  Defender, que las empleadas no tienen.
-- REINICIAR las reinicia a todas, después de preguntar cuáles. Lo puede usar
-  cualquiera, como "Reiniciar PC" del clic derecho.
+- DESCONGELAR abre la ventana de Shadow Defender; desde ahí se descongelan o
+  se congelan. Lo ve solo el Admin, igual que "Congelar / descongelar..." del
+  clic derecho: pide la clave de Shadow Defender, que las empleadas no tienen.
+- REINICIAR abre pcs_reiniciar_dialogo. Lo puede usar cualquiera, como
+  "Reiniciar PC" del clic derecho.
 
 Cuáles son las prendidas y libres lo decide pcs_libres_repo: las PCs con un
 cliente nunca se tocan.
@@ -18,9 +19,10 @@ cliente nunca se tocan.
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 import dominio
-from control_pcs.repositories import comandos_pc_repo, pcs_libres_repo
+from control_pcs.repositories import pcs_libres_repo
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
-from ui.utils import aplicar_clase, confirmar, manejar_errores, mostrar_info
+from control_pcs.ui.pcs_reiniciar_dialogo import DialogoReiniciar
+from ui.utils import aplicar_clase, manejar_errores, mostrar_info
 
 
 class BotonesParaLasLibres(QWidget):
@@ -55,24 +57,8 @@ class BotonesParaLasLibres(QWidget):
 
     @manejar_errores
     def _reiniciar(self):
-        libres = pcs_libres_repo.prendidas_y_libres(self._estados())
-        if not libres:
+        estados = self._estados()
+        if not pcs_libres_repo.prendidas_y_libres(estados):
             mostrar_info(self, "Reiniciar", "No hay ninguna PC prendida y libre para reiniciar.")
             return
-        nombres = ", ".join(item["estacion"]["nombre"] for item in libres)
-        if not confirmar(
-            self, "Reiniciar",
-            f"Se van a reiniciar {len(libres)} PC(s) prendidas y libres:\n{nombres}\n\n"
-            "Las que tienen un cliente no se tocan. ¿Seguir?",
-        ):
-            return
-        reiniciadas, salteadas = pcs_libres_repo.reiniciar([item["estacion"]["id"] for item in libres])
-        if reiniciadas:
-            texto = (f"Se les va a avisar a {len(reiniciadas)} PC(s) en los próximos segundos.\n\n"
-                     f"Si alguna no lo recibe en {comandos_pc_repo.MINUTOS_VIGENCIA_REINICIO} minutos "
-                     "(apagada o sin conexión), se descarta: así no le llega más tarde a otro cliente.")
-        else:
-            texto = "No se reinició ninguna PC."
-        if salteadas:
-            texto += f"\n\nNo se reiniciaron porque ya no estaban libres: {', '.join(salteadas)}."
-        mostrar_info(self, "Reiniciar", texto)
+        DialogoReiniciar(estados, self).exec()

@@ -38,7 +38,8 @@ vive al lado:
 - `pcs_congelado_dialogo.py`: congelar y descongelar PCs con Shadow Defender
   (también del menú contextual, solo para el Admin).
 - `pcs_botones_libres.py`: los botones DESCONGELAR y REINICIAR de abajo del
-  mosaico, para todas las PCs prendidas y libres de una vez.
+  mosaico, para todas las PCs prendidas y libres de una vez (REINICIAR abre
+  `pcs_reiniciar_dialogo.py`, para desmarcar las que no).
 - `pcs_gestion_dialogos.py`: administrar el catálogo de Estaciones y de
   Bonos de Tiempo (solo se abren desde Configuración ADMIN, no desde acá).
 """

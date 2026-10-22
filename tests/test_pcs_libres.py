@@ -18,6 +18,7 @@ import dominio  # noqa: E402
 from control_pcs.repositories import comandos_pc_repo, pcs_libres_repo, pcs_repo  # noqa: E402
 from control_pcs.ui.pcs_botones_libres import BotonesParaLasLibres  # noqa: E402
 from control_pcs.ui.pcs_congelado_dialogo import COLUMNA_PC, DialogoCongelado  # noqa: E402
+from control_pcs.ui.pcs_reiniciar_dialogo import DialogoReiniciar  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 from test_congelado import ocupar  # noqa: E402
 
@@ -86,32 +87,19 @@ class TestBotones(_TresPcs):
         self.assertIsNone(empleada.boton_descongelar)
         self.assertEqual(empleada.boton_reiniciar.text(), "🔄  REINICIAR")
 
-    def test_reiniciar_pregunta_y_reinicia_solo_las_libres(self):
+    def test_reiniciar_abre_la_ventana_para_elegir(self):
         botones = self.botones(EMPLEADA)
-        with mock.patch("control_pcs.ui.pcs_botones_libres.confirmar", return_value=True) as pregunta, \
-                mock.patch("control_pcs.ui.pcs_botones_libres.mostrar_info") as aviso:
+        with mock.patch("control_pcs.ui.pcs_botones_libres.DialogoReiniciar") as ventana:
             botones.boton_reiniciar.click()
+        ventana.return_value.exec.assert_called_once()
 
-        self.assertIn("PC1", pregunta.call_args.args[2])
-        self.assertNotIn("PC2", pregunta.call_args.args[2])
-        self.assertIn("1 PC(s)", aviso.call_args.args[2])
-        self.assertEqual(self.pendiente(self.libre), dominio.COMANDO_REINICIAR)
-        self.assertIsNone(self.pendiente(self.ocupada))
-
-    def test_si_dice_que_no_no_reinicia_nada(self):
-        botones = self.botones(EMPLEADA)
-        with mock.patch("control_pcs.ui.pcs_botones_libres.confirmar", return_value=False), \
-                mock.patch("control_pcs.ui.pcs_botones_libres.mostrar_info"):
-            botones.boton_reiniciar.click()
-        self.assertIsNone(self.pendiente(self.libre))
-
-    def test_sin_pcs_libres_avisa_y_no_pregunta(self):
+    def test_sin_pcs_libres_avisa_y_no_abre_la_ventana(self):
         ocupar(self.libre)
         botones = self.botones(EMPLEADA)
-        with mock.patch("control_pcs.ui.pcs_botones_libres.confirmar") as pregunta, \
+        with mock.patch("control_pcs.ui.pcs_botones_libres.DialogoReiniciar") as ventana, \
                 mock.patch("control_pcs.ui.pcs_botones_libres.mostrar_info") as aviso:
             botones.boton_reiniciar.click()
-        pregunta.assert_not_called()
+        ventana.assert_not_called()
         self.assertIn("ninguna PC prendida y libre", aviso.call_args.args[2])
 
     def test_la_ventana_de_descongelar_arranca_con_las_libres_marcadas(self):
@@ -126,3 +114,54 @@ class TestBotones(_TresPcs):
             self.assertEqual(marcadas, {self.libre})
         finally:
             dialogo.close()
+
+
+class TestVentanaReiniciar(_TresPcs):
+    """La ventana de REINICIAR: solo las prendidas y libres, todas marcadas, y se
+    pueden desmarcar (pedido del dueño, 2026-10-22)."""
+
+    def setUp(self):
+        super().setUp()
+        self.otra_libre = pcs_repo.crear_estacion("PC4")
+        pcs_repo.registrar_conexion(self.otra_libre)
+        self.dialogo = DialogoReiniciar(pcs_repo.estado_estaciones())
+        self.addCleanup(self.dialogo.deleteLater)
+
+    def reiniciar(self, confirma=True):
+        with mock.patch("control_pcs.ui.pcs_reiniciar_dialogo.confirmar", return_value=confirma) as pregunta, \
+                mock.patch("control_pcs.ui.pcs_reiniciar_dialogo.mostrar_info") as aviso:
+            self.dialogo.boton_reiniciar.click()
+        return pregunta, aviso
+
+    def test_aparecen_solo_las_prendidas_y_libres_todas_marcadas(self):
+        self.assertEqual(self.dialogo._marcadas(), [(self.libre, "PC1"), (self.otra_libre, "PC4")])
+        self.assertEqual(self.dialogo.tabla.rowCount(), 2)
+
+    def test_reinicia_las_marcadas(self):
+        pregunta, aviso = self.reiniciar()
+
+        self.assertIn("PC1, PC4", pregunta.call_args.args[2])
+        self.assertIn("2 PC(s)", aviso.call_args.args[2])
+        for estacion_id in (self.libre, self.otra_libre):
+            self.assertEqual(self.pendiente(estacion_id), dominio.COMANDO_REINICIAR)
+
+    def test_una_desmarcada_no_se_reinicia(self):
+        self.dialogo.tabla.item(1, 0).setCheckState(Qt.Unchecked)
+        self.reiniciar()
+        self.assertEqual(self.pendiente(self.libre), dominio.COMANDO_REINICIAR)
+        self.assertIsNone(self.pendiente(self.otra_libre))
+
+    def test_desmarcar_todas_y_volver_a_marcar(self):
+        self.dialogo._marcar(Qt.Unchecked)
+        pregunta, _aviso = self.reiniciar()
+        pregunta.assert_not_called()
+        self.assertIn("al menos una", self.dialogo.etiqueta_estado.text())
+        self.assertIsNone(self.pendiente(self.libre))
+
+        self.dialogo._marcar(Qt.Checked)
+        self.assertEqual(len(self.dialogo._marcadas()), 2)
+
+    def test_si_dice_que_no_no_reinicia_nada(self):
+        self.reiniciar(confirma=False)
+        self.assertIsNone(self.pendiente(self.libre))
+        self.assertIsNone(self.pendiente(self.otra_libre))
