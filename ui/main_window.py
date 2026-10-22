@@ -242,8 +242,12 @@ class MainWindow(QMainWindow):
         Todos ven todos los botones (pedido del dueño, 2026-10-19: con solo los
         suyos la barra de una empleada quedaba muy vacía). Uno sin `habilitado`
         se ve igual que los demás pero no hace nada al apretarlo: no se lo
-        apaga con setEnabled(False) porque se vería gris, distinto del resto."""
-        boton = QPushButton(texto)
+        apaga con setEnabled(False) porque se vería gris, distinto del resto.
+
+        El texto va en mayúscula (y en negrita, por la hoja de estilos de main.py),
+        pedido del dueño 2026-10-22; acá y no en la hoja porque Qt no tiene
+        text-transform."""
+        boton = QPushButton(texto.upper())
         boton.setFixedHeight(38)
         # Los que no son ni "primario" ni "peligro" son teclas oscuras con relieve
         # (clase "barra", ver la hoja de estilos de main.py).
@@ -422,7 +426,7 @@ class MainWindow(QMainWindow):
         except Exception as error:
             registrar_error(error, "Contar las reservas de hoy")
             hoy = 0
-        self.boton_reservas.setText(f"📅  Reservas · {hoy} hoy" if hoy else "📅  Reservas")
+        self.boton_reservas.setText((f"📅  Reservas · {hoy} hoy" if hoy else "📅  Reservas").upper())
 
     def _abrir_configuracion_admin(self):
         ConfiguracionAdminWindow(self.usuario, self).exec()

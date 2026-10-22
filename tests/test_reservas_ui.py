@@ -209,4 +209,4 @@ class TestBotonDeLaBarra(_ConUnaReserva):
 
         textos = [boton.text() for boton in ventana.findChild(QFrame, "encabezadoInicio").findChildren(QPushButton)]
 
-        self.assertEqual(textos[textos.index("🧑  Miembros") + 1], "📅  Reservas")
+        self.assertEqual(textos[textos.index("🧑  MIEMBROS") + 1], "📅  RESERVAS")

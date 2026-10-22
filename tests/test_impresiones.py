@@ -306,9 +306,9 @@ class TestBotonEnLaBarra(_ConArticulo):
         botones = [boton for boton in barra.findChildren(QPushButton)]
         textos = [boton.text() for boton in botones]
 
-        i = textos.index("🖨️  Impresiones")
-        self.assertEqual(textos[i - 1], "🛒  Vender")
-        self.assertEqual(textos[i + 1], "📄  Trámites")
+        i = textos.index("🖨️  IMPRESIONES")
+        self.assertEqual(textos[i - 1], "🛒  VENDER")
+        self.assertEqual(textos[i + 1], "📄  TRÁMITES")
         self.assertEqual(botones[i].property("clase"), "barra")
 
     def test_abre_la_ventana_con_el_articulo(self):

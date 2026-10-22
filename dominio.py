@@ -168,6 +168,10 @@ ACTUALIZACION_FALLO = "fallo"
 ESTADOS_ACTUALIZACION_CLIENTE = (
     ACTUALIZACION_BAJANDO, ACTUALIZACION_DESCARGADA, ACTUALIZACION_ERROR, ACTUALIZACION_FALLO,
 )
+# Por qué una versión que la PC ya había copiado sigue sin ponerse después de reiniciarla
+# (pedido del dueño, 2026-10-22; ver actualizacion_cliente_repo.seguir_la_copia).
+NO_SE_PUSO_SE_BORRO = "se_borro"            # la copia desapareció con el reinicio (Shadow Defender)
+NO_SE_PUSO_SIN_LANZADOR = "sin_lanzador"    # la copia siguió ahí: la PC no arrancó con Lanzador.exe
 
 
 # --------------------------------------------------------------------

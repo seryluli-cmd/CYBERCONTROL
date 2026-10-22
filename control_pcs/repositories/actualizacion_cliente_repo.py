@@ -20,6 +20,9 @@ Cómo viaja una versión:
    Si recibe None (la desmarcaron), borra la que tenga copiada y sin poner.
 4. Cada PC cuenta en cada consulta su versión, su carpeta y cómo va (`registrar_reporte`), y eso
    se ve en la pantalla, en palabras (`estado_de_las_pcs` y `situacion`).
+5. Si una PC ya la copió, se reinició y sigue sin ponerla, la pantalla dice por qué (pedido del
+   dueño, 2026-10-22: muchas decían «Actualizada con éxito» y al reiniciarlas seguían igual):
+   `seguir_la_copia`, con los segundos que lleva prendida cada PC (`encendida`).
 
 Dónde vive: `data/cliente_pc/PCcliente.exe` y `data/cliente_pc/version.json` (el manifiesto y su
 firma), como el fondo de pantalla: fuera de la base y de git. Si se pierde `data/`, se vuelve a
@@ -44,7 +47,7 @@ import re
 import struct
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import database
@@ -86,6 +89,12 @@ _ultimo = {"clave": None, "paquete": None, "exe": None}
 _reportes = {}
 # Lo mismo para el número de versión que manda cada PC (estacion_id -> "1.2" o None).
 _numeros_de_version = {}
+# Y para el seguimiento de la copia que espera el reinicio (estacion_id -> dict o None).
+_seguimientos = {}
+# Cuánto más tarde tiene que haber arrancado Windows para contar como un reinicio: la hora de
+# arranque sale de restarle a la hora del mostrador los segundos que la PC lleva prendida, y
+# baila unos segundos de una consulta a otra.
+MARGEN_REINICIO_SEGUNDOS = 120
 _candado_reportes = threading.Lock()
 
 
@@ -311,12 +320,14 @@ def version_para_estacion(estacion_id: int):
 # --------------------------------------------------------------------
 # Lo que cuenta cada PC
 # --------------------------------------------------------------------
-def registrar_reporte(estacion_id: int, parametros: dict):
+def registrar_reporte(estacion_id: int, parametros: dict, ahora: datetime = None):
     """Guarda lo que contó la PC en su GET /estado (`parametros`: los de la consulta, ya de a uno):
     `version`, `carpeta`, `act`, `act_detalle` y `act_version` (la que está copiando o ya copió;
-    un Cliente PC de antes del 2026-10-19 no la manda). Un Cliente PC sin actualización automática
-    no manda nada de eso y no se toca nada. Aparte, `v`: su número de versión (lo manda desde la
-    V1, con lanzador o sin él; ver `_registrar_numero_de_version`). Solo escribe en la base si
+    un Cliente PC de antes del 2026-10-19 no la manda) y `lanzador`, el número de su Lanzador.exe
+    (desde la V1.4). Un Cliente PC sin actualización automática no manda nada de eso y no se toca
+    nada. Aparte, `v`: su número de versión (lo manda desde la V1, con lanzador o sin él; ver
+    `_registrar_numero_de_version`), y `encendida`, los segundos que lleva prendida la PC, para
+    seguir la copia a través de un reinicio (`_seguir_la_copia_de`). Solo escribe en la base si
     cambió algo."""
     _registrar_numero_de_version(estacion_id, parametros.get("v"))
     if "version" not in parametros:
@@ -327,7 +338,9 @@ def registrar_reporte(estacion_id: int, parametros: dict):
     if estado not in dominio.ESTADOS_ACTUALIZACION_CLIENTE:
         estado = ""
     detalle = str(parametros.get("act_detalle") or "")[:_TOPE_DETALLE] if estado else ""
-    nuevo = (version, carpeta, estado, detalle, _numero(parametros.get("act_version")) if estado else None)
+    bajada = _numero(parametros.get("act_version")) if estado else None
+    nuevo = (version, carpeta, estado, detalle, bajada, _numero(parametros.get("lanzador")))
+    _seguir_la_copia_de(estacion_id, estado, bajada, version, _numero(parametros.get("encendida")), ahora)
     with _candado_reportes:
         if _reportes.get(estacion_id) == nuevo:
             return
@@ -335,13 +348,88 @@ def registrar_reporte(estacion_id: int, parametros: dict):
         conexion.execute(
             """
             UPDATE estaciones SET version_cliente = ?, carpeta_cliente = ?, estado_actualizacion = ?,
-                                  detalle_actualizacion = ?, version_bajada = ?
+                                  detalle_actualizacion = ?, version_bajada = ?, numero_lanzador = ?
             WHERE id = ?
             """,
             (*nuevo, estacion_id),
         )
     with _candado_reportes:
         _reportes[estacion_id] = nuevo
+
+
+def seguir_la_copia(previo, estado: str, bajada, instalada, arranque):
+    """El seguimiento de la copia que espera el reinicio en una PC, con lo que contó en esta
+    consulta: `previo` (lo anterior, o None), su `estado`, la versión que copió (`bajada`), la
+    que tiene puesta (`instalada`) y cuándo arrancó Windows (`arranque`, un datetime, o None si su
+    Cliente PC no lo dice). Devuelve {"version", "arranque", "salio", "motivo"}, o None si no hay
+    nada que seguir.
+
+    La idea (pedido del dueño, 2026-10-22): una PC que copió la versión X la pone sola en el
+    próximo reinicio. Si después de un reinicio (Windows arrancó más tarde que cuando se la vio
+    copiada) sigue con X copiada y sin poner, hay dos causas, y se distinguen por lo que pasó en
+    el medio:
+    - se la vio sin X copiada (`salio`) y la volvió a copiar: el reinicio borró la copia, la
+      carpeta no está excluida en Shadow Defender -> NO_SE_PUSO_SE_BORRO;
+    - la copia siguió ahí todo el tiempo: nadie la puso, la PC arranca el Cliente PC sin pasar
+      por Lanzador.exe (la tarea programada apunta a otro lado) -> NO_SE_PUSO_SIN_LANZADOR.
+    El motivo queda hasta que la PC pone la versión o le toca otra."""
+    if estado == dominio.ACTUALIZACION_DESCARGADA and bajada is not None:
+        if not previo or previo.get("version") != bajada:
+            return {"version": bajada, "arranque": _iso(arranque), "salio": False, "motivo": ""}
+        antes = _fecha(previo.get("arranque"))
+        if arranque is not None and antes is None:
+            return {**previo, "arranque": _iso(arranque), "salio": False}
+        if arranque is not None and arranque > antes + timedelta(seconds=MARGEN_REINICIO_SEGUNDOS):
+            motivo = dominio.NO_SE_PUSO_SE_BORRO if previo.get("salio") else dominio.NO_SE_PUSO_SIN_LANZADOR
+            return {**previo, "arranque": _iso(arranque), "salio": False, "motivo": motivo}
+        # Sin reinicio de por medio (la desmarcaron y la volvieron a marcar): sigue como estaba.
+        return {**previo, "salio": False}
+    if not previo or (instalada is not None and instalada >= previo["version"]):
+        return None     # nada copiado, o ya la puso
+    if estado == dominio.ACTUALIZACION_FALLO:
+        return None     # la puso y no arrancó: eso ya lo dice el estado
+    return {**previo, "salio": True}
+
+
+def _seguir_la_copia_de(estacion_id: int, estado: str, bajada, instalada, encendida, ahora):
+    """`seguir_la_copia` para una PC, guardado en `estaciones.seguimiento_actualizacion` solo si
+    cambió (casi nunca: al copiar, al reiniciar y al ponerla)."""
+    arranque = (ahora or datetime.now()) - timedelta(seconds=encendida) if encendida is not None else None
+    with _candado_reportes:
+        conocido = estacion_id in _seguimientos
+        previo = _seguimientos.get(estacion_id)
+    if not conocido:
+        with conexion_db() as conexion:
+            fila = conexion.execute("SELECT seguimiento_actualizacion FROM estaciones WHERE id = ?",
+                                    (estacion_id,)).fetchone()
+        previo = _leer_seguimiento(fila["seguimiento_actualizacion"] if fila else None)
+    nuevo = seguir_la_copia(previo, estado, bajada, instalada, arranque)
+    if nuevo != previo:
+        with conexion_db() as conexion:
+            conexion.execute("UPDATE estaciones SET seguimiento_actualizacion = ? WHERE id = ?",
+                             (json.dumps(nuevo) if nuevo else None, estacion_id))
+    with _candado_reportes:
+        _seguimientos[estacion_id] = nuevo
+
+
+def _leer_seguimiento(texto):
+    """El seguimiento guardado (JSON), o None si no hay o está roto."""
+    try:
+        datos = json.loads(texto) if texto else None
+    except ValueError:
+        return None
+    return datos if isinstance(datos, dict) and isinstance(datos.get("version"), int) else None
+
+
+def _iso(momento):
+    return momento.isoformat(timespec="seconds") if momento is not None else None
+
+
+def _fecha(texto):
+    try:
+        return datetime.fromisoformat(texto) if texto else None
+    except (ValueError, TypeError):
+        return None
 
 
 def _registrar_numero_de_version(estacion_id: int, valor):
@@ -367,12 +455,15 @@ def olvidar_reportes():
     with _candado_reportes:
         _reportes.clear()
         _numeros_de_version.clear()
+        _seguimientos.clear()
 
 
 def estado_de_las_pcs(ahora: datetime = None) -> list:
     """Una fila por estación activa, en el orden de siempre: lo que contó su Cliente PC, si está
     marcada, qué versión le toca, si se conectó hace poco y si tiene una sesión en curso. `v` es
-    el número de versión que mandó la PC y `v_le_toca`, el de la versión que le toca."""
+    el número de versión que mandó la PC y `v_le_toca`, el de la versión que le toca; `lanzador`,
+    el número de su Lanzador.exe; `no_se_puso`, por qué la copia que tiene no se puso al
+    reiniciarla (uno de dominio.NO_SE_PUSO_*, o vacío; ver `seguir_la_copia`)."""
     from control_pcs.repositories import pcs_repo   # aquí: pcs_repo no depende de este repo
     seleccion = obtener_seleccion()
     cargada = paquete()
@@ -384,12 +475,16 @@ def estado_de_las_pcs(ahora: datetime = None) -> list:
     filas = []
     for estacion in pcs_repo.listar_estaciones():
         seleccionada = estacion["id"] in seleccion
+        seguimiento = _leer_seguimiento(estacion["seguimiento_actualizacion"]) or {}
         filas.append({
             "id": estacion["id"], "nombre": estacion["nombre"],
             "version": estacion["version_cliente"], "carpeta": estacion["carpeta_cliente"] or "",
             "estado": estacion["estado_actualizacion"] or "", "detalle": estacion["detalle_actualizacion"] or "",
             "version_bajada": estacion["version_bajada"],
             "v": estacion["numero_version_cliente"],
+            "lanzador": estacion["numero_lanzador"],
+            "no_se_puso": ((seguimiento.get("motivo") or "")
+                           if seguimiento.get("version") == estacion["version_bajada"] else ""),
             "ultima_conexion": estacion["ultima_conexion"],
             "conectada": _conectada(estacion["ultima_conexion"], ahora, pcs_repo.UMBRAL_ENLACE_SEGUNDOS),
             "seleccionada": seleccionada,
@@ -421,6 +516,8 @@ APAGADA = "apagada"
 COPIANDO = "copiando"
 ERROR = "error"                      # no la pudo copiar: reintenta sola al minuto
 ESPERANDO = "esperando"              # marcada, todavía no empezó (empieza en segundos)
+SE_BORRA = "se_borra"                # la copió, pero el reinicio la borra (Shadow Defender)
+SIN_LANZADOR = "sin_lanzador"        # la copió, pero al reiniciar nadie la pone (no arranca con Lanzador.exe)
 # Las que ya no necesitan nada: cuentan como "listas" en el resumen.
 SITUACIONES_LISTAS = (FUNCIONANDO, LISTA)
 
@@ -439,6 +536,11 @@ def situacion(pc: dict) -> str:
     if pc["estado"] == dominio.ACTUALIZACION_FALLO:
         return FALLO
     if pc["estado"] == dominio.ACTUALIZACION_DESCARGADA and pc["version_bajada"] in (None, pc["le_toca"]):
+        no_se_puso = pc.get("no_se_puso")
+        if no_se_puso == dominio.NO_SE_PUSO_SE_BORRO:
+            return SE_BORRA
+        if no_se_puso == dominio.NO_SE_PUSO_SIN_LANZADOR:
+            return SIN_LANZADOR
         return LISTA
     if not pc["conectada"]:
         return APAGADA

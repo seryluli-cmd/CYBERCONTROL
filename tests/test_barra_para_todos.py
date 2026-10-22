@@ -35,7 +35,7 @@ _app = QApplication.instance() or QApplication([])
 # Miembros no está acá: abre para cualquiera, como Vender (ver
 # test_miembros_abre_para_cualquier_empleada).
 _CON_PERMISO = {
-    "🛠️  Admin Kiosko": "AdministrarKioskoWindow",
+    "🛠️  ADMIN KIOSKO": "AdministrarKioskoWindow",
 }
 
 
@@ -93,8 +93,8 @@ class TestBarraParaTodos(_ConUsuarios):
 
         # Operar PCs y Miembros también la hace "encargada" (es uno de los
         # permisos de usuarios_repo.PERMISOS_EMPLEADA).
-        self.assertEqual(self._que_abre(con_pcs), {"🛠️  Admin Kiosko"})
-        self.assertEqual(self._que_abre(encargada), {"🛠️  Admin Kiosko"})
+        self.assertEqual(self._que_abre(con_pcs), {"🛠️  ADMIN KIOSKO"})
+        self.assertEqual(self._que_abre(encargada), {"🛠️  ADMIN KIOSKO"})
 
     def test_miembros_abre_para_cualquier_empleada(self):
         """Pedido del dueño, 2026-10-19: antes pedía permiso_control_pcs o Admin,
@@ -104,14 +104,14 @@ class TestBarraParaTodos(_ConUsuarios):
         botones = self._botones(empleada)
 
         with mock.patch("ui.main_window.MiembrosWindow") as clase:
-            botones["🧑  Miembros"].click()
+            botones["🧑  MIEMBROS"].click()
 
         clase.assert_called_once()
 
     def test_config_admin_abre_para_todos(self):
         for ventana in (self._ventana("Admin", dominio.ROL_ADMIN), self._ventana("TOBY", dominio.ROL_EMPLEADA)):
             with mock.patch("ui.main_window.ConfiguracionAdminWindow") as clase:
-                self._botones(ventana)["⚙️  Config ADMIN"].click()
+                self._botones(ventana)["⚙️  CONFIG ADMIN"].click()
             clase.assert_called_once()
 
 

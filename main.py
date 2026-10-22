@@ -455,14 +455,15 @@ HOJA_DE_ESTILOS = """
        relieve (el borde de abajo, más grueso y oscuro) que se prende en azul al
        pasarle el mouse y se hunde al apretarla (baja 2 px y pierde el relieve).
        Vender (primario) en azul lleno y Cerrar sesión (peligro) con borde rojo,
-       lejos de los demás. */
+       lejos de los demás. Todos en negrita y mayúscula (pedido del dueño, 2026-10-22;
+       la mayúscula la pone MainWindow._agregar_boton_barra). */
     QPushButton[clase="barra"] {
         background-color: #2C3345;
         border: 1px solid #3A4358;
         border-top-color: #4B5570;
         border-bottom: 3px solid #0B0D12;
         color: #E6EAF2;
-        font-weight: 600;
+        font-weight: 700;
         padding: 7px 12px;
     }
     QPushButton[clase="barra"]:hover {
@@ -487,7 +488,7 @@ HOJA_DE_ESTILOS = """
         border-top-color: #7AAAFF;
         border-bottom: 3px solid #173A85;
         color: #FFFFFF;
-        font-weight: 600;
+        font-weight: 700;
         padding: 7px 16px;
     }
     #encabezadoInicio QPushButton[clase="primario"]:hover {
@@ -503,7 +504,7 @@ HOJA_DE_ESTILOS = """
         border: 1px solid #8A3A42;
         border-bottom: 3px solid #4A1A1F;
         color: #FF8A93;
-        font-weight: 600;
+        font-weight: 700;
         padding: 7px 16px;
     }
     #encabezadoInicio QPushButton[clase="peligro"]:hover {
@@ -525,7 +526,7 @@ HOJA_DE_ESTILOS = """
         border-top-color: #FF8A93;
         border-bottom: 3px solid #6E141C;
         color: #FFFFFF;
-        font-weight: 600;
+        font-weight: 700;
         padding: 7px 12px;
     }
     QPushButton[clase="alerta"]:hover {

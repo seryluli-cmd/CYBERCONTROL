@@ -11,6 +11,10 @@ resultaba claro qué hacer ni cómo quedaba cada PC. Se refresca sola cada pocos
 Las versiones se muestran con su número (V1, V1.1...: pedido del dueño, 2026-10-19), el que trae
 cada PCcliente.exe desde la V1. Uno armado antes no tiene: se lo muestra por la fecha en que se
 cargó.
+
+Desde el 2026-10-22 (pedido del dueño) la tabla dice además el número del Lanzador.exe de cada PC
+(desde la V1.4 el Cliente PC se lo cambia solo) y, si una PC ya copió la versión, se reinició y
+sigue sin ponerla, por qué y qué hacer en esa PC (`repo.seguir_la_copia`).
 """
 
 import re
@@ -28,8 +32,8 @@ from ui.utils import (
 )
 
 FILTRO_EXE = "El Cliente PC (PCcliente.exe) (*.exe)"
-COLUMNAS = ["", "PC", "Estado", "Versión en uso"]
-COLUMNA_CASILLA, COLUMNA_PC, COLUMNA_ESTADO, COLUMNA_VERSION = range(4)
+COLUMNAS = ["", "PC", "Estado", "Versión en uso", "Lanzador"]
+COLUMNA_CASILLA, COLUMNA_PC, COLUMNA_ESTADO, COLUMNA_VERSION, COLUMNA_LANZADOR = range(5)
 # Cada cuánto se vuelve a leer cómo está cada PC (las PCs cuentan cada 5 s).
 REFRESCO_MS = 3000
 
@@ -41,7 +45,8 @@ _AMARILLO = (QColor("#FFF3CD"), QColor("#7A5300"))
 _GRIS = (None, QColor("#5F6B7A"))
 COLORES = {
     repo.FUNCIONANDO: _VERDE, repo.LISTA: _VERDE, repo.COPIANDO: _AZUL,
-    repo.ERROR: _ROJO, repo.FALLO: _ROJO, repo.ESPERANDO: _AMARILLO,
+    repo.ERROR: _ROJO, repo.FALLO: _ROJO, repo.SE_BORRA: _ROJO, repo.SIN_LANZADOR: _ROJO,
+    repo.ESPERANDO: _AMARILLO,
     repo.APAGADA: _GRIS, repo.NO_SELECCIONADA: _GRIS, repo.NUNCA_CONECTADA: _GRIS,
     repo.INSTALACION_VIEJA: _GRIS,
 }
@@ -50,6 +55,7 @@ _POR_QUE_FALTA = {
     repo.APAGADA: "apagada", repo.COPIANDO: "copiando", repo.ERROR: "error", repo.FALLO: "falló",
     repo.ESPERANDO: "esperando", repo.NUNCA_CONECTADA: "nunca se conectó",
     repo.INSTALACION_VIEJA: "instalación vieja",
+    repo.SE_BORRA: "se borra al reiniciar", repo.SIN_LANZADOR: "no arranca con el Lanzador",
 }
 
 # Un número de versión (AAAAMMDDhhmmss) dentro de un texto que manda la PC.
@@ -74,6 +80,14 @@ def texto_de_la_version(pc: dict) -> str:
     return "anterior a la V1" if pc.get("ultima_conexion") or pc.get("carpeta") else ""
 
 
+def texto_del_lanzador(pc: dict) -> str:
+    """La columna "Lanzador": el número del Lanzador.exe que manda la PC (desde la V1.4). Una con
+    lanzador que no lo manda tiene un Cliente PC anterior a la V1.4: "—"."""
+    if pc.get("lanzador"):
+        return str(pc["lanzador"])
+    return "—" if pc.get("carpeta") else ""
+
+
 def texto_de_la_version_cargada(paquete: dict) -> str:
     """"V1.2 (cargada el 19/10/2026 09:23)"; sin número, la fecha y que es de antes de la V1."""
     cuando = repo.texto_version(paquete["version"])
@@ -94,6 +108,10 @@ def texto_del_estado(pc: dict) -> str:
         repo.NO_SELECCIONADA: "No seleccionada",
         repo.FUNCIONANDO: funcionando,
         repo.LISTA: "Actualizada con éxito · se aplica en el próximo reinicio",
+        repo.SE_BORRA: ("No se puso: el reinicio borró la copia (la volvió a copiar). Excluí la carpeta del "
+                        "Cliente PC en Shadow Defender y reiniciala"),
+        repo.SIN_LANZADOR: ("No se puso al reiniciar: la PC no arranca con Lanzador.exe. Con Shadow Defender "
+                            "desactivado, abrí «Lanzador.exe --configurar» como Administrador"),
         repo.FALLO: f"Falló al arrancar: {detalle}",   # el detalle ya dice "volvió a la anterior"
         repo.APAGADA: "Apagada / sin conexión · se actualiza sola al prenderla",
         repo.COPIANDO: "Copiando…",
@@ -125,7 +143,8 @@ class DialogoActualizarCliente(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Actualizar el Cliente PC de las PCs")
-        self.resize(860, 600)
+        # Ancha para que entren los avisos de qué hacer en una PC que no la puso (2026-10-22).
+        self.resize(1100, 600)
         self.pcs = []
         self._armar_interfaz()
         self._cargar()
@@ -223,7 +242,7 @@ class DialogoActualizarCliente(QDialog):
                 casilla = QTableWidgetItem()
                 casilla.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
                 self.tabla.setItem(fila, COLUMNA_CASILLA, casilla)
-                for columna in (COLUMNA_PC, COLUMNA_ESTADO, COLUMNA_VERSION):
+                for columna in (COLUMNA_PC, COLUMNA_ESTADO, COLUMNA_VERSION, COLUMNA_LANZADOR):
                     self.tabla.setItem(fila, columna, QTableWidgetItem())
             if tildadas is None or not mismas:
                 marcada = pc["id"] in tildadas if tildadas is not None else pc["seleccionada"]
@@ -231,7 +250,7 @@ class DialogoActualizarCliente(QDialog):
                     Qt.CheckState.Checked if marcada else Qt.CheckState.Unchecked)
             self._llenar_fila(fila, pc)
         if not mismas:
-            for columna in (COLUMNA_CASILLA, COLUMNA_PC, COLUMNA_VERSION):
+            for columna in (COLUMNA_CASILLA, COLUMNA_PC, COLUMNA_VERSION, COLUMNA_LANZADOR):
                 self.tabla.resizeColumnToContents(columna)
         self.etiqueta_resumen.setText(texto_del_resumen(pcs, self._hay_version))
 
@@ -247,6 +266,9 @@ class DialogoActualizarCliente(QDialog):
         estado.setData(Qt.ItemDataRole.BackgroundRole, fondo)
         estado.setForeground(letra)
         self.tabla.item(fila, COLUMNA_VERSION).setText(texto_de_la_version(pc))
+        lanzador = self.tabla.item(fila, COLUMNA_LANZADOR)
+        lanzador.setText(texto_del_lanzador(pc))
+        lanzador.setToolTip("Su Cliente PC es anterior a la V1.4 y no lo dice" if lanzador.text() == "—" else "")
 
     def _ids_marcados(self) -> set:
         return {pc["id"] for fila, pc in enumerate(self.pcs)

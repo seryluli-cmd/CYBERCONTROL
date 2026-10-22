@@ -280,6 +280,86 @@ class TestAlcanceYReporte(_ConClaveDePrueba):
         self.assertEqual(pcs["PC1"]["version_bajada"], version)
         self.assertEqual([repo.situacion(pcs[n]) for n in nombres], [repo.LISTA, repo.APAGADA, repo.NO_SELECCIONADA])
 
+    def test_guarda_el_numero_de_lanzador(self):
+        reporte = {"version": "1", "carpeta": "C:\\c", "act": "", "act_detalle": ""}
+        repo.registrar_reporte(self.pc1, {**reporte, "lanzador": "2"})
+        repo.registrar_reporte(self.pc2, reporte)                       # Cliente PC anterior a la V1.4
+
+        self.assertEqual(self.estacion(self.pc1)["numero_lanzador"], 2)
+        self.assertIsNone(self.estacion(self.pc2)["numero_lanzador"])
+        pcs = {pc["nombre"]: pc for pc in repo.estado_de_las_pcs()}
+        self.assertEqual((pcs["PC1"]["lanzador"], pcs["PC2"]["lanzador"]), (2, None))
+
+    def reporte_de(self, estacion_id, estado, version, ahora, prendida_hace):
+        """Lo que manda una PC con la versión `version` copiada (o no, según `estado`) y Windows
+        prendido hace `prendida_hace` (un timedelta), visto a la hora `ahora`."""
+        repo.registrar_reporte(estacion_id, {
+            "version": "1", "carpeta": "C:\\c", "act": estado, "act_detalle": "",
+            "act_version": str(version) if estado else "",
+            "encendida": str(int(prendida_hace.total_seconds())),
+        }, ahora=ahora)
+
+    def situacion_de(self, nombre):
+        return repo.situacion({pc["nombre"]: pc for pc in repo.estado_de_las_pcs()}[nombre])
+
+    def test_copiada_y_reiniciada_sin_ponerse_dice_por_que(self):
+        version = repo.publicar(exe_de_cliente())["version"]
+        repo.guardar_seleccion([self.pc1, self.pc2])
+        a_las_10 = datetime(2026, 10, 22, 10, 0, 0)
+        for pc in (self.pc1, self.pc2):         # las dos la copian; Windows prendido desde las 8
+            self.reporte_de(pc, "descargada", version, a_las_10, timedelta(hours=2))
+        self.assertEqual((self.situacion_de("PC1"), self.situacion_de("PC2")), (repo.LISTA, repo.LISTA))
+
+        # Las 11: se reiniciaron (Windows prendido hace 1 minuto).
+        a_las_11 = datetime(2026, 10, 22, 11, 0, 0)
+        # PC1: Shadow Defender borró la copia; la PC la ve sin copiar y la vuelve a copiar.
+        self.reporte_de(self.pc1, "", version, a_las_11, timedelta(minutes=1))
+        self.reporte_de(self.pc1, "bajando", version, a_las_11 + timedelta(seconds=5), timedelta(minutes=1, seconds=5))
+        self.reporte_de(self.pc1, "descargada", version, a_las_11 + timedelta(seconds=10), timedelta(minutes=1, seconds=10))
+        # PC2: la copia siguió ahí y nadie la puso (arrancó sin Lanzador.exe).
+        self.reporte_de(self.pc2, "descargada", version, a_las_11, timedelta(minutes=1))
+
+        self.assertEqual((self.situacion_de("PC1"), self.situacion_de("PC2")), (repo.SE_BORRA, repo.SIN_LANZADOR))
+        repo.olvidar_reportes()                 # el mostrador se cerró y se volvió a abrir
+        self.assertEqual((self.situacion_de("PC1"), self.situacion_de("PC2")), (repo.SE_BORRA, repo.SIN_LANZADOR))
+
+        # Arreglada, la PC2 se reinicia y la pone: no queda nada que seguir.
+        repo.registrar_reporte(self.pc2, {"version": str(version), "carpeta": "C:\\c", "act": "", "act_detalle": "",
+                                          "encendida": "30"}, ahora=datetime(2026, 10, 22, 12, 0, 0))
+        self.assertEqual(self.situacion_de("PC2"), repo.FUNCIONANDO)
+        self.assertIsNone(self.estacion(self.pc2)["seguimiento_actualizacion"])
+
+    def test_sin_reinicio_o_sin_saber_cuando_arranco_no_dice_nada(self):
+        version = repo.publicar(exe_de_cliente())["version"]
+        repo.guardar_seleccion([self.pc1, self.pc2])
+        a_las_10 = datetime(2026, 10, 22, 10, 0, 0)
+        self.reporte_de(self.pc1, "descargada", version, a_las_10, timedelta(hours=2))
+        # La desmarcan y la vuelven a marcar (la descarta y la copia de nuevo) sin reiniciarla; y la
+        # cuenta de cuándo arrancó Windows baila unos segundos de una consulta a otra.
+        self.reporte_de(self.pc1, "", version, a_las_10 + timedelta(minutes=1), timedelta(hours=2, minutes=1, seconds=-3))
+        self.reporte_de(self.pc1, "descargada", version, a_las_10 + timedelta(minutes=2), timedelta(hours=2, minutes=2, seconds=4))
+        # Un Cliente PC que no manda `encendida`: no hay cómo saber si se reinició.
+        repo.registrar_reporte(self.pc2, {"version": "1", "carpeta": "C:\\c", "act": "descargada", "act_detalle": "",
+                                          "act_version": str(version)})
+
+        self.assertEqual((self.situacion_de("PC1"), self.situacion_de("PC2")), (repo.LISTA, repo.LISTA))
+
+    def test_el_motivo_es_de_la_copia_que_tiene(self):
+        # Le cargan otra versión: lo que se supo de la vieja no vale para la nueva.
+        vieja = 20261022090000
+        repo.publicar(exe_de_cliente())
+        repo.guardar_seleccion([self.pc1])
+        a_las_10 = datetime(2026, 10, 22, 10, 0, 0)
+        self.reporte_de(self.pc1, "descargada", vieja, a_las_10, timedelta(hours=2))
+        self.reporte_de(self.pc1, "descargada", vieja, a_las_10 + timedelta(hours=1), timedelta(minutes=1))
+        self.assertEqual(json.loads(self.estacion(self.pc1)["seguimiento_actualizacion"])["motivo"],
+                         dominio.NO_SE_PUSO_SIN_LANZADOR)
+        nueva = repo.version_publicada()
+
+        self.reporte_de(self.pc1, "descargada", nueva, a_las_10 + timedelta(hours=1, minutes=1), timedelta(minutes=2))
+
+        self.assertEqual(self.situacion_de("PC1"), repo.LISTA)
+
     def test_texto_de_una_version(self):
         self.assertEqual(repo.texto_version(20261018193005), "18/10/2026 19:30")
         self.assertEqual(repo.texto_version(7), "7")
@@ -383,6 +463,59 @@ class TestNumeroDeVersion(_ConClaveDePrueba):
         self.assertEqual((pcs["PC2"]["v"], pcs["PC2"]["v_le_toca"]), (None, None))   # sin marcar
 
 
+class TestSeguirLaCopia(unittest.TestCase):
+    """`seguir_la_copia`: si una PC que ya copió la versión se reinició sin ponerla, y por qué."""
+
+    ANTES = datetime(2026, 10, 22, 8, 0, 0)
+
+    def seguir(self, previo, estado, bajada=7, instalada=6, arranque=ANTES):
+        return repo.seguir_la_copia(previo, estado, bajada, instalada, arranque)
+
+    def test_al_copiarla_empieza_a_seguirla(self):
+        self.assertEqual(self.seguir(None, "descargada"),
+                         {"version": 7, "arranque": "2026-10-22T08:00:00", "salio": False, "motivo": ""})
+        self.assertIsNone(self.seguir(None, "bajando"))
+        self.assertIsNone(self.seguir(None, ""))
+
+    def test_reiniciada_con_la_copia_ahi_no_arranco_con_el_lanzador(self):
+        copiada = self.seguir(None, "descargada")
+        despues = self.seguir(copiada, "descargada", arranque=self.ANTES + timedelta(hours=1))
+        self.assertEqual(despues["motivo"], dominio.NO_SE_PUSO_SIN_LANZADOR)
+        self.assertEqual(despues["arranque"], "2026-10-22T09:00:00")
+
+    def test_reiniciada_y_copiada_de_nuevo_se_la_borro_el_reinicio(self):
+        copiada = self.seguir(None, "descargada")
+        sin_copia = self.seguir(copiada, "", bajada=None, arranque=self.ANTES + timedelta(hours=1))
+        self.assertTrue(sin_copia["salio"])
+        copiando = self.seguir(sin_copia, "bajando", arranque=self.ANTES + timedelta(hours=1))
+        despues = self.seguir(copiando, "descargada", arranque=self.ANTES + timedelta(hours=1))
+        self.assertEqual(despues["motivo"], dominio.NO_SE_PUSO_SE_BORRO)
+        self.assertFalse(despues["salio"])
+
+    def test_poca_diferencia_no_es_un_reinicio(self):
+        copiada = self.seguir(None, "descargada")
+        casi = self.seguir(copiada, "descargada", arranque=self.ANTES + timedelta(seconds=repo.MARGEN_REINICIO_SEGUNDOS))
+        self.assertEqual(casi["motivo"], "")
+
+    def test_sin_saber_cuando_arranco_no_decide_nada_y_lo_anota_cuando_lo_sabe(self):
+        copiada = self.seguir(None, "descargada", arranque=None)
+        self.assertEqual(self.seguir(copiada, "descargada", arranque=None), copiada)
+        sabido = self.seguir(copiada, "descargada")
+        self.assertEqual((sabido["arranque"], sabido["motivo"]), ("2026-10-22T08:00:00", ""))
+
+    def test_al_ponerla_o_si_fallo_deja_de_seguirla(self):
+        copiada = self.seguir(None, "descargada")
+        self.assertIsNone(self.seguir(copiada, "", bajada=None, instalada=7))
+        self.assertIsNone(self.seguir(copiada, "", bajada=None, instalada=8))
+        self.assertIsNone(self.seguir(copiada, "fallo", bajada=None))
+
+    def test_el_motivo_queda_hasta_que_la_pone(self):
+        copiada = self.seguir(None, "descargada")
+        con_motivo = self.seguir(copiada, "descargada", arranque=self.ANTES + timedelta(hours=1))
+        self.assertEqual(self.seguir(con_motivo, "descargada", arranque=self.ANTES + timedelta(hours=1))["motivo"],
+                         dominio.NO_SE_PUSO_SIN_LANZADOR)
+
+
 class TestSituacion(unittest.TestCase):
     """Cómo está cada PC con la versión cargada: lo que dice la pantalla, en palabras."""
 
@@ -404,6 +537,15 @@ class TestSituacion(unittest.TestCase):
         self.assertEqual(self.situacion(le_toca=None, seleccionada=False), repo.NO_SELECCIONADA)
         self.assertEqual(self.situacion(carpeta=""), repo.INSTALACION_VIEJA)
         self.assertEqual(self.situacion(carpeta="", ultima_conexion=None, conectada=False), repo.NUNCA_CONECTADA)
+
+    def test_copiada_que_no_se_puso_al_reiniciar(self):
+        lista = {"estado": "descargada", "version_bajada": 5}
+        self.assertEqual(self.situacion(**lista, no_se_puso=dominio.NO_SE_PUSO_SE_BORRO), repo.SE_BORRA)
+        self.assertEqual(self.situacion(**lista, no_se_puso=dominio.NO_SE_PUSO_SIN_LANZADOR), repo.SIN_LANZADOR)
+        self.assertEqual(self.situacion(**lista, no_se_puso=""), repo.LISTA)
+        self.assertEqual(self.situacion(**lista, no_se_puso=dominio.NO_SE_PUSO_SE_BORRO, conectada=False), repo.SE_BORRA)
+        self.assertNotIn(repo.SE_BORRA, repo.SITUACIONES_LISTAS)
+        self.assertNotIn(repo.SIN_LANZADOR, repo.SITUACIONES_LISTAS)
 
     def test_una_vieja_copiada_no_cuenta_como_lista_con_la_nueva(self):
         self.assertEqual(self.situacion(estado="descargada", version_bajada=3), repo.ESPERANDO)
@@ -668,6 +810,10 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
                          "Instalación vieja: hay que reinstalarla con el pendrive (preparar_pc.bat)")
         self.assertEqual(texto({**base, "estado": "fallo", "detalle": "La versión 20261018005701 se cerró"}),
                          "Falló al arrancar: La versión 18/10/2026 00:57 se cerró")
+        lista = {**base, "estado": "descargada", "version_bajada": 5}
+        self.assertIn("Shadow Defender y reiniciala", texto({**lista, "no_se_puso": dominio.NO_SE_PUSO_SE_BORRO}))
+        self.assertIn("«Lanzador.exe --configurar» como Administrador",
+                      texto({**lista, "no_se_puso": dominio.NO_SE_PUSO_SIN_LANZADOR}))
         version = pcs_actualizacion_dialogo.texto_de_la_version
         self.assertEqual(version({"v": "1.2", "version": 20261018193005, "carpeta": "C:\\c"}), "V1.2")
         self.assertEqual(version({"v": "2", "version": None, "carpeta": "", "ultima_conexion": "2026-10-19T12:00:00"}), "V2")
@@ -728,6 +874,17 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
 
         self.assertEqual([d.tabla.item(f, 3).text() for f in range(d.tabla.rowCount())], ["V1.2", "anterior a la V1"])
 
+    def test_la_columna_lanzador(self):
+        repo.registrar_reporte(self.pc1, {"version": "1", "carpeta": "C:\\c", "act": "", "act_detalle": "", "lanzador": "2"})
+        repo.registrar_reporte(self.pc2, {"version": "1", "carpeta": "C:\\c", "act": "", "act_detalle": ""})
+        d = self.dialogo()
+
+        columna = pcs_actualizacion_dialogo.COLUMNA_LANZADOR
+        self.assertEqual(d.tabla.horizontalHeaderItem(columna).text(), "Lanzador")
+        self.assertEqual([d.tabla.item(f, columna).text() for f in range(d.tabla.rowCount())], ["2", "—"])
+        self.assertIn("anterior a la V1.4", d.tabla.item(1, columna).toolTip())
+        self.assertEqual(pcs_actualizacion_dialogo.texto_del_lanzador({"lanzador": None, "carpeta": ""}), "")
+
     def test_el_resumen_dice_cuantas_estan_listas_y_que_les_falta(self):
         resumen = pcs_actualizacion_dialogo.texto_del_resumen
         base = {"estado": "", "detalle": "", "carpeta": "C:\\c", "le_toca": 5, "version": 4, "version_bajada": None,
@@ -738,6 +895,10 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
                {**base, "nombre": "PC4", "conectada": False},
                {**base, "nombre": "PC5", "le_toca": None, "seleccionada": False}]
         self.assertEqual(resumen(pcs, True), "2 de 4 listas · faltan: PC3 (copiando), PC4 (apagada)")
+        no_se_puso = [{**base, "nombre": "PC6", "estado": "descargada", "no_se_puso": dominio.NO_SE_PUSO_SE_BORRO},
+                      {**base, "nombre": "PC7", "estado": "descargada", "no_se_puso": dominio.NO_SE_PUSO_SIN_LANZADOR}]
+        self.assertEqual(resumen(no_se_puso, True),
+                         "0 de 2 listas · faltan: PC6 (se borra al reiniciar), PC7 (no arranca con el Lanzador)")
         self.assertEqual(resumen(pcs[:2], True), "✔ Las 2 PCs seleccionadas están actualizadas.")
         self.assertIn("Marcá las PCs", resumen(pcs[4:], True))
         self.assertIn("Primero cargá", resumen(pcs, False))

@@ -111,6 +111,10 @@ def _migrar_columnas_actualizacion_estaciones(conexion: sqlite3.Connection):
     copió y todavía no puso, para no confundir una vieja con la que le toca.
     `numero_version_cliente` (2026-10-19): el número de versión que manda la PC ("1.2" =
     V1.2; NULL = un Cliente PC armado antes de la V1), el que ve el dueño.
+    `numero_lanzador` (2026-10-22): el número del Lanzador.exe de la PC (NULL = no lo dice: un
+    Cliente PC anterior a la V1.4). `seguimiento_actualizacion` (2026-10-22): JSON con la copia
+    que la PC tiene esperando y cuándo arrancó Windows al verla, para saber si un reinicio no la
+    puso y por qué (ver actualizacion_cliente_repo.seguir_la_copia).
     """
     _agregar_columna_si_falta(conexion, "estaciones", "version_cliente", "INTEGER")
     _agregar_columna_si_falta(conexion, "estaciones", "carpeta_cliente", "TEXT")
@@ -118,6 +122,8 @@ def _migrar_columnas_actualizacion_estaciones(conexion: sqlite3.Connection):
     _agregar_columna_si_falta(conexion, "estaciones", "detalle_actualizacion", "TEXT")
     _agregar_columna_si_falta(conexion, "estaciones", "version_bajada", "INTEGER")
     _agregar_columna_si_falta(conexion, "estaciones", "numero_version_cliente", "TEXT")
+    _agregar_columna_si_falta(conexion, "estaciones", "numero_lanzador", "INTEGER")
+    _agregar_columna_si_falta(conexion, "estaciones", "seguimiento_actualizacion", "TEXT")
     conexion.commit()
 
 

@@ -95,10 +95,25 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         barra = ventana.findChild(QFrame, "encabezadoInicio")
         clases = {b.text().strip(): b.property("clase") for b in barra.findChildren(QPushButton)}
 
-        self.assertEqual(clases["Cerrar sesión"], "peligro")
-        self.assertEqual(clases["🛒  Vender"], "primario")
-        otros = [clase for texto, clase in clases.items() if texto not in ("Cerrar sesión", "🛒  Vender")]
+        self.assertEqual(clases["CERRAR SESIÓN"], "peligro")
+        self.assertEqual(clases["🛒  VENDER"], "primario")
+        otros = [clase for texto, clase in clases.items() if texto not in ("CERRAR SESIÓN", "🛒  VENDER")]
         self.assertTrue(otros and all(clase == "barra" for clase in otros), clases)
+
+    def test_los_botones_de_la_barra_de_arriba_van_en_mayuscula_y_negrita(self):
+        # Pedido del dueño (2026-10-22). Reservas pone su texto aparte (cuántas hay hoy).
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        ventana = MainWindow(admin, lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+
+        textos = [b.text() for b in ventana.findChild(QFrame, "encabezadoInicio").findChildren(QPushButton)]
+
+        self.assertIn("📅  RESERVAS", textos)
+        self.assertTrue(all(texto == texto.upper() for texto in textos), textos)
+        for selector in ('QPushButton[clase="barra"]', '#encabezadoInicio QPushButton[clase="primario"]',
+                         '#encabezadoInicio QPushButton[clase="peligro"]', 'QPushButton[clase="alerta"]'):
+            self.assertEqual(_regla(selector)["font-weight"], "700", selector)
 
     def test_cierre_de_turno_no_cambia_de_tamano_al_titilar(self):
         # Barra oscura (2026-10-19): el rojo de "alerta" lleva los mismos bordes,
@@ -140,18 +155,19 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
 
         titulo = next(e for e in barra.findChildren(QLabel) if e.text() == "Administrador: Sergio")
         botones = {boton.text(): boton for boton in barra.findChildren(QPushButton)}
-        for texto in ("🧑  Miembros", "🛠️  Admin Kiosko", "⚙️  Config ADMIN"):
+        for texto in ("🧑  MIEMBROS", "🛠️  ADMIN KIOSKO", "⚙️  CONFIG ADMIN"):
             self.assertIn(texto, botones)
         ventana.resize(1340, 700)
         ventana.show()
         QApplication.processEvents()
         self.addCleanup(ventana.close)
-        vender = botones["🛒  Vender"]
+        vender = botones["🛒  VENDER"]
         # Los botones van debajo del nombre, Vender primero a la izquierda.
         self.assertGreater(vender.mapTo(barra, vender.rect().topLeft()).y(), titulo.mapTo(barra, titulo.rect().topLeft()).y())
         self.assertLessEqual(vender.mapTo(barra, vender.rect().topLeft()).x(), titulo.mapTo(barra, titulo.rect().topLeft()).x())
-        # (Que entre en 1366 de ancho se midió con la pantalla real de Windows: acá,
-        # sin pantalla, las letras son otras y los anchos no sirven.)
+        # (El ancho se mide con la pantalla real de Windows: acá, sin pantalla, las letras
+        # son otras y los anchos no sirven. Con mayúscula y negrita, 2026-10-22, la ventana
+        # pide unos 1490 px; antes, unos 1370. El mostrador tiene 1920.)
 
     def test_los_montos_de_la_tarifa_de_socios_entran_en_su_fila(self):
         # Reportado por el dueño (2026-10-17): en "Tarifa por Hora para Socios" los
