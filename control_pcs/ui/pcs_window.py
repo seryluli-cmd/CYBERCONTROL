@@ -36,10 +36,10 @@ vive al lado:
 - `pcs_comandos_dialogos.py`: los diálogos del menú contextual (captura,
   cambiar red, intercambiar de máquina, volumen).
 - `pcs_congelado_dialogo.py`: congelar y descongelar PCs con Shadow Defender
-  (también del menú contextual, solo para el Admin).
-- `pcs_botones_libres.py`: los botones DESCONGELAR y REINICIAR de abajo del
-  mosaico, para todas las PCs prendidas y libres de una vez (REINICIAR abre
-  `pcs_reiniciar_dialogo.py`, para desmarcar las que no).
+  (del menú contextual, solo para el Admin, y del botón DESCONGELAR).
+- `pcs_botones_libres.py`: los botones DESCONGELAR y REINICIAR de debajo del
+  mosaico, para todas las PCs prendidas y libres de una vez, para cualquier
+  operador (REINICIAR abre `pcs_reiniciar_dialogo.py`, para desmarcar las que no).
 - `pcs_gestion_dialogos.py`: administrar el catálogo de Estaciones y de
   Bonos de Tiempo (solo se abren desde Configuración ADMIN, no desde acá).
 """
@@ -224,10 +224,6 @@ class PanelControlPcs(QWidget):
         self.aviso_reservas = AvisoDeReservasSinPcFija()
         layout_marco.addWidget(self.aviso_reservas)
         layout_marco.addWidget(self.mosaico, 1)
-        # Abajo a la izquierda, DESCONGELAR y REINICIAR para todas las PCs prendidas
-        # y libres (pedido del dueño, 2026-10-22): el mosaico se achica para dejarles lugar.
-        self.botones_libres = BotonesParaLasLibres(self.usuario, lambda: self._estados, self)
-        layout_marco.addWidget(self.botones_libres)
         marco.setLayout(layout_marco)
 
         self.panel_detalle = PanelDetalleEstacion(self.usuario, self._refrescar, self)
@@ -236,10 +232,17 @@ class PanelControlPcs(QWidget):
         fila_principal.addWidget(marco, 1)
         fila_principal.addWidget(self.panel_detalle)
 
+        # DESCONGELAR y REINICIAR para todas las PCs prendidas y libres (pedido del
+        # dueño, 2026-10-22), abajo a la izquierda y AFUERA del fondo negro: el fondo
+        # negro y el panel de la derecha terminan más arriba, parejos, y los botones
+        # quedan en su propia franja, sobre el gris claro.
+        self.botones_libres = BotonesParaLasLibres(lambda: self._estados, self)
+
         self.panel_actividad = PanelActividad()
 
         layout = QVBoxLayout()
         layout.addLayout(fila_principal, 1)
+        layout.addWidget(self.botones_libres)
         titulo_actividad = QLabel("Actividad reciente")
         titulo_actividad.setObjectName("tituloSeccion")
         layout.addWidget(titulo_actividad)

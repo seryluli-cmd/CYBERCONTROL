@@ -7,10 +7,15 @@ Los dos abren una ventana con esas PCs ya marcadas, donde se desmarcan las que
 no se quieren tocar (pedido del dueño, mismo día):
 
 - DESCONGELAR abre la ventana de Shadow Defender; desde ahí se descongelan o
-  se congelan. Lo ve solo el Admin, igual que "Congelar / descongelar..." del
-  clic derecho: pide la clave de Shadow Defender, que las empleadas no tienen.
-- REINICIAR abre pcs_reiniciar_dialogo. Lo puede usar cualquiera, como
-  "Reiniciar PC" del clic derecho.
+  se congelan (con la clave de Shadow Defender, que se escribe cada vez).
+- REINICIAR abre pcs_reiniciar_dialogo.
+
+Los dos son para cualquier operador (pedido del dueño, mismo día: el
+mantenimiento de las PCs lo suelen hacer los operadores). "Congelar /
+descongelar..." del clic derecho sigue siendo solo del Admin.
+
+Van debajo del fondo negro del mosaico, no adentro (pedido del dueño, mismo
+día): ver PanelControlPcs._armar_interfaz.
 
 Cuáles son las prendidas y libres lo decide pcs_libres_repo: las PCs con un
 cliente nunca se tocan.
@@ -18,7 +23,6 @@ cliente nunca se tocan.
 
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
-import dominio
 from control_pcs.repositories import pcs_libres_repo
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
 from control_pcs.ui.pcs_reiniciar_dialogo import DialogoReiniciar
@@ -26,7 +30,7 @@ from ui.utils import aplicar_clase, manejar_errores, mostrar_info
 
 
 class BotonesParaLasLibres(QWidget):
-    def __init__(self, usuario, estados, parent=None):
+    def __init__(self, estados, parent=None):
         """`estados` devuelve lo último que leyó la pantalla de PCs
         (pcs_repo.estado_estaciones): las PCs, sin la PlayStation 5."""
         super().__init__(parent)
@@ -35,10 +39,8 @@ class BotonesParaLasLibres(QWidget):
         layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-        # Mismas teclas en relieve que la barra de arriba, que también va sobre oscuro.
-        self.boton_descongelar = None
-        if dominio.es_admin(usuario):
-            self.boton_descongelar = self._agregar_boton(layout, "🧊  Descongelar", self._descongelar)
+        # Mismas teclas en relieve que la barra de arriba.
+        self.boton_descongelar = self._agregar_boton(layout, "🧊  Descongelar", self._descongelar)
         self.boton_reiniciar = self._agregar_boton(layout, "🔄  Reiniciar", self._reiniciar)
         layout.addStretch()
         self.setLayout(layout)

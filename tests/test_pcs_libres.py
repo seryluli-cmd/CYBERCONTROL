@@ -19,13 +19,13 @@ from control_pcs.repositories import comandos_pc_repo, pcs_libres_repo, pcs_repo
 from control_pcs.ui.pcs_botones_libres import BotonesParaLasLibres  # noqa: E402
 from control_pcs.ui.pcs_congelado_dialogo import COLUMNA_PC, DialogoCongelado  # noqa: E402
 from control_pcs.ui.pcs_reiniciar_dialogo import DialogoReiniciar  # noqa: E402
+from control_pcs.ui.pcs_window import PanelControlPcs  # noqa: E402
+from repositories import usuarios_repo  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 from test_congelado import ocupar  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
-ADMIN = {"id": 1, "nombre": "Admin", "rol": dominio.ROL_ADMIN}
-EMPLEADA = {"id": 2, "nombre": "TOBY", "rol": dominio.ROL_EMPLEADA}
 
 
 class _TresPcs(BaseConBaseTemporal):
@@ -76,26 +76,41 @@ class TestReiniciar(_TresPcs):
 
 
 class TestBotones(_TresPcs):
-    def botones(self, usuario):
-        botones = BotonesParaLasLibres(usuario, pcs_repo.estado_estaciones)
+    def botones(self):
+        botones = BotonesParaLasLibres(pcs_repo.estado_estaciones)
         self.addCleanup(botones.deleteLater)
         return botones
 
-    def test_descongelar_solo_lo_ve_el_admin_y_reiniciar_cualquiera(self):
-        self.assertIsNotNone(self.botones(ADMIN).boton_descongelar)
-        empleada = self.botones(EMPLEADA)
-        self.assertIsNone(empleada.boton_descongelar)
-        self.assertEqual(empleada.boton_reiniciar.text(), "🔄  REINICIAR")
+    def test_un_operador_ve_los_dos_afuera_del_fondo_negro(self):
+        # Pedido del dueño (2026-10-22): el mantenimiento lo suelen hacer los
+        # operadores; y los botones van debajo del fondo negro, no adentro.
+        operador = usuarios_repo.crear_usuario("TOBY", "1234", dominio.ROL_EMPLEADA)
+        panel = PanelControlPcs(usuarios_repo.obtener_usuario(operador))
+        panel.detener_actualizacion()
+        self.addCleanup(panel.deleteLater)
+
+        botones = panel.botones_libres
+        self.assertEqual(botones.boton_descongelar.text(), "🧊  DESCONGELAR")
+        self.assertEqual(botones.boton_reiniciar.text(), "🔄  REINICIAR")
+        fondo_negro = panel.mosaico.parentWidget()
+        self.assertEqual(fondo_negro.objectName(), "marcoMosaico")
+        self.assertFalse(fondo_negro.isAncestorOf(botones))
+
+    def test_descongelar_abre_la_ventana_de_shadow_defender(self):
+        botones = self.botones()
+        with mock.patch("control_pcs.ui.pcs_botones_libres.DialogoCongelado") as ventana:
+            botones.boton_descongelar.click()
+        ventana.return_value.exec.assert_called_once()
 
     def test_reiniciar_abre_la_ventana_para_elegir(self):
-        botones = self.botones(EMPLEADA)
+        botones = self.botones()
         with mock.patch("control_pcs.ui.pcs_botones_libres.DialogoReiniciar") as ventana:
             botones.boton_reiniciar.click()
         ventana.return_value.exec.assert_called_once()
 
     def test_sin_pcs_libres_avisa_y_no_abre_la_ventana(self):
         ocupar(self.libre)
-        botones = self.botones(EMPLEADA)
+        botones = self.botones()
         with mock.patch("control_pcs.ui.pcs_botones_libres.DialogoReiniciar") as ventana, \
                 mock.patch("control_pcs.ui.pcs_botones_libres.mostrar_info") as aviso:
             botones.boton_reiniciar.click()
