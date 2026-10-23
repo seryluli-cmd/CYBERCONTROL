@@ -1,15 +1,18 @@
 """
 pcs_reiniciar_dialogo.py
 ========================
-Reiniciar varias PCs de una vez (botón REINICIAR de abajo del mosaico de
-Control de PCs, pedido del dueño 2026-10-22). Aparecen solo las PCs prendidas
-y libres, todas marcadas: se desmarcan las que no se quieren reiniciar y se
-manda. Igual que la ventana de DESCONGELAR, que arranca con las mismas
-marcadas.
+Reiniciar o apagar varias PCs de una vez (botones REINICIAR y APAGAR de abajo
+del mosaico de Control de PCs, pedidos del dueño 2026-10-22 y 2026-10-23).
+Aparecen solo las PCs prendidas y libres, todas marcadas: se desmarcan las que
+no se quieren tocar y se manda. Igual que la ventana de DESCONGELAR, que
+arranca con las mismas marcadas.
+
+Las dos ventanas son la misma: DialogoApagar solo cambia los textos y qué se
+manda.
 
 Cuáles son las prendidas y libres, y volver a mirarlas antes de mandar, es de
 pcs_libres_repo: una PC donde se sentó un cliente mientras la ventana estaba
-abierta no se reinicia.
+abierta no se toca.
 """
 
 from PySide6.QtCore import Qt
@@ -20,15 +23,22 @@ from ui.utils import aplicar_clase, confirmar, crear_tabla, manejar_errores, mos
 
 
 class DialogoReiniciar(QDialog):
+    TITULO = "Reiniciar"
+    INFINITIVO = "reiniciar"            # "Desmarcá las que no quieras reiniciar"
+    PASADO = "reinició"                 # "No se reinició ninguna PC"
+    PASADO_PLURAL = "reiniciaron"       # "No se reiniciaron porque..."
+    AVISO = "Se pierde cualquier trabajo sin guardar en esas PCs."
+    FUNCION_DEL_REPO = "reiniciar"      # pcs_libres_repo.reiniciar
+
     def __init__(self, estados, parent=None):
         """`estados`: lo último que leyó la pantalla de PCs (pcs_repo.estado_estaciones)."""
         super().__init__(parent)
-        self.setWindowTitle("Reiniciar PCs prendidas y libres")
+        self.setWindowTitle(f"{self.TITULO} PCs prendidas y libres")
         self.resize(420, 560)
 
         explicacion = QLabel(
-            "Están marcadas todas las PCs prendidas y libres. Desmarcá las que no quieras "
-            "reiniciar. Las que tienen un cliente o están apagadas no aparecen."
+            f"Están marcadas todas las PCs prendidas y libres. Desmarcá las que no quieras "
+            f"{self.INFINITIVO}. Las que tienen un cliente o están apagadas no aparecen."
         )
         explicacion.setWordWrap(True)
 
@@ -51,13 +61,13 @@ class DialogoReiniciar(QDialog):
         fila_marcar.addWidget(boton_ninguna)
         fila_marcar.addStretch()
 
-        self.boton_reiniciar = QPushButton("Reiniciar las marcadas")
-        aplicar_clase(self.boton_reiniciar, "peligro")
-        self.boton_reiniciar.clicked.connect(self._reiniciar)
+        self.boton_mandar = QPushButton(f"{self.TITULO} las marcadas")
+        aplicar_clase(self.boton_mandar, "peligro")
+        self.boton_mandar.clicked.connect(self._mandar)
         boton_cerrar = QPushButton("Cerrar")
         boton_cerrar.clicked.connect(self.reject)
         fila_acciones = QHBoxLayout()
-        fila_acciones.addWidget(self.boton_reiniciar)
+        fila_acciones.addWidget(self.boton_mandar)
         fila_acciones.addStretch()
         fila_acciones.addWidget(boton_cerrar)
 
@@ -83,26 +93,36 @@ class DialogoReiniciar(QDialog):
         return [(celda.data(Qt.UserRole), celda.text()) for celda in celdas if celda.checkState() == Qt.Checked]
 
     @manejar_errores
-    def _reiniciar(self):
+    def _mandar(self):
         marcadas = self._marcadas()
         if not marcadas:
             self.etiqueta_estado.setText("Marcá al menos una PC.")
             return
         nombres = ", ".join(nombre for _id, nombre in marcadas)
         if not confirmar(
-            self, "Reiniciar",
-            f"Se van a reiniciar {len(marcadas)} PC(s):\n{nombres}\n\n"
-            "Se pierde cualquier trabajo sin guardar en esas PCs. ¿Seguir?",
+            self, self.TITULO,
+            f"Se van a {self.INFINITIVO} {len(marcadas)} PC(s):\n{nombres}\n\n{self.AVISO} ¿Seguir?",
         ):
             return
-        reiniciadas, salteadas = pcs_libres_repo.reiniciar([estacion_id for estacion_id, _nombre in marcadas])
-        if reiniciadas:
-            texto = (f"Se les va a avisar a {len(reiniciadas)} PC(s) en los próximos segundos.\n\n"
+        funcion = getattr(pcs_libres_repo, self.FUNCION_DEL_REPO)
+        mandadas, salteadas = funcion([estacion_id for estacion_id, _nombre in marcadas])
+        if mandadas:
+            texto = (f"Se les va a avisar a {len(mandadas)} PC(s) en los próximos segundos.\n\n"
                      f"Si alguna no lo recibe en {comandos_pc_repo.MINUTOS_VIGENCIA_REINICIO} minutos "
                      "(apagada o sin conexión), se descarta: así no le llega más tarde a otro cliente.")
         else:
-            texto = "No se reinició ninguna PC."
+            texto = f"No se {self.PASADO} ninguna PC."
         if salteadas:
-            texto += f"\n\nNo se reiniciaron porque ya no estaban libres: {', '.join(salteadas)}."
-        mostrar_info(self, "Reiniciar", texto)
+            texto += f"\n\nNo se {self.PASADO_PLURAL} porque ya no estaban libres: {', '.join(salteadas)}."
+        mostrar_info(self, self.TITULO, texto)
         self.accept()
+
+
+class DialogoApagar(DialogoReiniciar):
+    TITULO = "Apagar"
+    INFINITIVO = "apagar"
+    PASADO = "apagó"
+    PASADO_PLURAL = "apagaron"
+    AVISO = ("Se pierde cualquier trabajo sin guardar en esas PCs, y para volver a "
+             "prenderlas hay que ir hasta cada una.")
+    FUNCION_DEL_REPO = "apagar"
