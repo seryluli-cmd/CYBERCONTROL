@@ -37,9 +37,12 @@ vive al lado:
   cambiar red, intercambiar de máquina, volumen).
 - `pcs_congelado_dialogo.py`: congelar y descongelar PCs con Shadow Defender
   (del menú contextual, solo para el Admin, y del botón DESCONGELAR).
-- `pcs_botones_libres.py`: los botones DESCONGELAR y REINICIAR de debajo del
-  mosaico, para todas las PCs prendidas y libres de una vez, para cualquier
-  operador (REINICIAR abre `pcs_reiniciar_dialogo.py`, para desmarcar las que no).
+- `pcs_botones_libres.py`: los botones DESCONGELAR, REINICIAR y APAGAR de debajo
+  del mosaico, para todas las PCs prendidas y libres de una vez, para cualquier
+  operador (REINICIAR y APAGAR abren `pcs_reiniciar_dialogo.py`, para desmarcar
+  las que no).
+- `pcs_cometa.py`: el cometa celeste que da vueltas por el borde del fondo negro
+  (adorno, pedido del dueño 2026-10-23).
 - `pcs_gestion_dialogos.py`: administrar el catálogo de Estaciones y de
   Bonos de Tiempo (solo se abren desde Configuración ADMIN, no desde acá).
 """
@@ -62,6 +65,7 @@ from control_pcs.ui.pcs_comandos_dialogos import (
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
 from control_pcs.ui.pcs_programas_dialogo import DialogoMantenimiento, DialogoProgramas
 from control_pcs.ui.pcs_botones_libres import BotonesParaLasLibres
+from control_pcs.ui.pcs_cometa import CometaEnElBorde
 from control_pcs.ui.pcs_actividad import PanelActividad
 from control_pcs.ui.pcs_aviso_reservas import AvisoDeReservasSinPcFija
 from control_pcs.ui.pcs_cortes import resumen_de_cortes
@@ -200,12 +204,13 @@ class PanelControlPcs(QWidget):
         self._timer_cuenta_regresiva.start()
 
     def detener_actualizacion(self):
-        """Frena los timers (refresco, parpadeo y cuenta regresiva); lo llama
-        MainWindow al cerrarse para que no sigan corriendo contra widgets
-        destruidos."""
+        """Frena los timers (refresco, parpadeo, cuenta regresiva y el cometa del
+        borde); lo llama MainWindow al cerrarse para que no sigan corriendo contra
+        widgets destruidos."""
         self._timer.stop()
         self._timer_parpadeo.stop()
         self._timer_cuenta_regresiva.stop()
+        self.cometa.detener()
 
     def _armar_interfaz(self):
         self.mosaico = MosaicoDeEquipos()
@@ -228,6 +233,9 @@ class PanelControlPcs(QWidget):
         layout_marco.addWidget(self.aviso_reservas)
         layout_marco.addWidget(self.mosaico, 1)
         marco.setLayout(layout_marco)
+        # Un cometa que da vueltas por el borde del fondo negro (pedido del dueño,
+        # 2026-10-23). Solo adorno: deja pasar los clics a los monitores.
+        self.cometa = CometaEnElBorde(marco)
 
         self.panel_detalle = PanelDetalleEstacion(self.usuario, self._refrescar, self)
 
