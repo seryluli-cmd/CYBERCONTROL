@@ -27,8 +27,9 @@ from ui.utils import (
 
 class ArticulosWindow(QDialog):
     """Grilla de artículos con buscador; desde acá se abre el alta/edición,
-    los movimientos de stock, la gestión de rubros y, para el Admin, ORDENAR
-    Stock (`usuario` es quien la abrió; sin él no aparece ese botón)."""
+    los movimientos de stock, la gestión de rubros y, para el Admin, la de
+    marcas y ORDENAR Stock (`usuario` es quien la abrió; sin él no aparecen
+    esos dos botones)."""
 
     def __init__(self, parent=None, usuario=None):
         super().__init__(parent)
@@ -45,10 +46,11 @@ class ArticulosWindow(QDialog):
         self.boton_borrar = QPushButton("Borrar")
         self.boton_movimientos = QPushButton("Movimientos")
         self.boton_rubros = QPushButton("Gestionar Rubros")
+        self.boton_marcas = QPushButton("Gestionar Marcas")
         self.boton_ordenar_stock = QPushButton("ORDENAR Stock")
         self.boton_salir = QPushButton("Salir")
         for boton in (self.boton_nuevo, self.boton_modificar, self.boton_borrar,
-                      self.boton_movimientos, self.boton_rubros, self.boton_ordenar_stock,
+                      self.boton_movimientos, self.boton_rubros, self.boton_marcas, self.boton_ordenar_stock,
                       self.boton_salir):
             barra_botones.addWidget(boton)
         barra_botones.addStretch()
@@ -60,11 +62,14 @@ class ArticulosWindow(QDialog):
         self.boton_borrar.clicked.connect(self._borrar_articulo)
         self.boton_movimientos.clicked.connect(self._ver_movimientos)
         self.boton_rubros.clicked.connect(self._gestionar_rubros)
+        self.boton_marcas.clicked.connect(self._gestionar_marcas)
         self.boton_ordenar_stock.clicked.connect(self._ordenar_stock)
         self.boton_salir.clicked.connect(self.close)
         # Solo lo ve un Admin (pedido del dueño, 2026-10-20); una empleada con
         # permiso de Artículos no. El repo lo vuelve a exigir en cada cambio.
         self.boton_ordenar_stock.setVisible(dominio.es_admin(self.usuario))
+        # Corregir las marcas, también solo el Admin (pedido del dueño, 2026-10-23).
+        self.boton_marcas.setVisible(dominio.es_admin(self.usuario))
 
         self.campo_buscar = QLineEdit()
         self.campo_buscar.setPlaceholderText("Buscar por código o descripción...")
@@ -130,6 +135,10 @@ class ArticulosWindow(QDialog):
 
     def _gestionar_rubros(self):
         DialogoGestionRubros(self).exec()
+
+    def _gestionar_marcas(self):
+        DialogoGestionMarcas(self, self.usuario["id"]).exec()
+        self._cargar_grilla()   # la grilla muestra el nombre de la marca
 
     @manejar_errores
     def _ordenar_stock(self):
@@ -466,4 +475,131 @@ class DialogoGestionRubros(QDialog):
         if confirmar(self, "Confirmar borrado",
                      f"¿Borrar el rubro '{rubro['nombre']}'? Esta acción no se puede deshacer."):
             articulos_repo.borrar_rubro(rubro["id"])
+            self._cargar()
+
+
+class DialogoGestionMarcas(QDialog):
+    """
+    Corregir el catálogo de Marcas (pedido del dueño, 2026-10-23): solo el
+    Admin, que es el único que ve el botón (y articulos_repo lo vuelve a exigir
+    en cada cambio). Las marcas nuevas se siguen pudiendo escribir al cargar un
+    artículo; acá se agregan, se renombran, se borran las que no usa nadie y se
+    juntan dos que son la misma escrita distinto: al renombrar una con el
+    nombre de otra que ya existe, pregunta si juntarlas.
+    """
+
+    def __init__(self, parent, usuario_id: int):
+        super().__init__(parent)
+        self.usuario_id = usuario_id
+        self.setWindowTitle("Gestionar Marcas")
+        self.resize(420, 480)
+        self._armar_interfaz()
+        self._cargar()
+
+    def _armar_interfaz(self):
+        self.lista = crear_tabla(["Marca", "Artículos"], estirar=0, por_filas=True, una_sola=True)
+
+        self.campo_nuevo = QLineEdit()
+        self.campo_nuevo.setPlaceholderText("Nombre de la marca nueva...")
+        boton_agregar = QPushButton("Agregar")
+        aplicar_clase(boton_agregar, "primario")
+        boton_agregar.clicked.connect(self._agregar)
+        encadenar_enter(self.campo_nuevo, accion_final=self._agregar)
+
+        fila_agregar = QHBoxLayout()
+        fila_agregar.addWidget(self.campo_nuevo)
+        fila_agregar.addWidget(boton_agregar)
+
+        self.boton_renombrar = QPushButton("Renombrar seleccionada")
+        self.boton_renombrar.clicked.connect(self._renombrar)
+        self.boton_borrar = QPushButton("Borrar seleccionada")
+        aplicar_clase(self.boton_borrar, "peligro")
+        self.boton_borrar.clicked.connect(self._borrar)
+
+        fila_acciones = QHBoxLayout()
+        fila_acciones.addWidget(self.boton_renombrar)
+        fila_acciones.addWidget(self.boton_borrar)
+
+        boton_cerrar = QPushButton("Cerrar")
+        boton_cerrar.clicked.connect(self.close)
+
+        explicacion = QLabel(
+            "Marcas de los artículos. Si dos son la misma escrita distinto, renombrá una "
+            "con el nombre de la otra y se juntan."
+        )
+        explicacion.setWordWrap(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(explicacion)
+        layout.addWidget(self.lista)
+        layout.addLayout(fila_agregar)
+        layout.addLayout(fila_acciones)
+        layout.addWidget(boton_cerrar)
+        self.setLayout(layout)
+        sin_boton_por_defecto(self)
+
+        self.campo_nuevo.setFocus()
+
+    @manejar_errores
+    def _cargar(self):
+        self.marcas = articulos_repo.listar_marcas_con_cantidad()
+        self.lista.setRowCount(0)
+        for marca in self.marcas:
+            fila = self.lista.rowCount()
+            self.lista.insertRow(fila)
+            self.lista.setItem(fila, 0, QTableWidgetItem(marca["nombre"]))
+            cantidad = QTableWidgetItem(str(marca["cantidad"]))
+            cantidad.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.lista.setItem(fila, 1, cantidad)
+
+    def _marca_seleccionada(self):
+        fila = self.lista.currentRow()
+        if fila < 0:
+            mostrar_error(self, "Nada seleccionado", "Elegí primero una marca de la lista.")
+            return None
+        return self.marcas[fila]
+
+    @manejar_errores
+    def _agregar(self):
+        nombre = self.campo_nuevo.text().strip()
+        if not nombre:
+            mostrar_error(self, "Falta el nombre", "Escribí el nombre de la marca nueva.")
+            return
+        articulos_repo.crear_marca(self.usuario_id, nombre)
+        self.campo_nuevo.clear()
+        self._cargar()
+        self.campo_nuevo.setFocus()
+
+    @manejar_errores
+    def _renombrar(self):
+        marca = self._marca_seleccionada()
+        if marca is None:
+            return
+        nuevo_nombre, aceptado = QInputDialog.getText(
+            self, "Renombrar marca", "Nuevo nombre:", text=marca["nombre"]
+        )
+        nuevo_nombre = nuevo_nombre.strip()
+        if not aceptado or nuevo_nombre == marca["nombre"]:
+            return
+        otra = articulos_repo.buscar_marca_por_nombre(nuevo_nombre)
+        if otra is not None and otra["id"] != marca["id"]:
+            if confirmar(
+                self, "Juntar marcas",
+                f"Ya existe la marca '{otra['nombre']}'.\n\n¿Pasar los {marca['cantidad']} artículo(s) "
+                f"de '{marca['nombre']}' a '{otra['nombre']}' y borrar '{marca['nombre']}'?",
+            ):
+                articulos_repo.juntar_marcas(self.usuario_id, marca["id"], otra["id"])
+                self._cargar()
+            return
+        articulos_repo.renombrar_marca(self.usuario_id, marca["id"], nuevo_nombre)
+        self._cargar()
+
+    @manejar_errores
+    def _borrar(self):
+        marca = self._marca_seleccionada()
+        if marca is None:
+            return
+        if confirmar(self, "Confirmar borrado",
+                     f"¿Borrar la marca '{marca['nombre']}'? Esta acción no se puede deshacer."):
+            articulos_repo.borrar_marca(self.usuario_id, marca["id"])
             self._cargar()

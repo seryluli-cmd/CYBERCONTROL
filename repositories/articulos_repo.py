@@ -87,6 +87,96 @@ def borrar_rubro(rubro_id: int):
         )
 
 
+# Las marcas se crean solas al cargar un artículo (Marca es un desplegable donde
+# se puede escribir una nueva), pero corregirlas -crear, renombrar, juntar dos
+# que son la misma o borrar- es solo del Admin (pedido del dueño, 2026-10-23).
+# Se controla acá y no solo en la pantalla, como ORDENAR Stock: se relee el
+# usuario de la base en cada cambio.
+
+def listar_marcas_con_cantidad():
+    """Las marcas por nombre, cada una con cuántos artículos la tienen (`cantidad`)."""
+    with conexion_db() as conexion:
+        return conexion.execute(
+            """
+            SELECT m.id, m.nombre, COUNT(a.codigo) AS cantidad
+            FROM marcas m LEFT JOIN articulos a ON a.marca_id = m.id
+            GROUP BY m.id ORDER BY m.nombre
+            """
+        ).fetchall()
+
+
+def buscar_marca_por_nombre(nombre: str):
+    """La marca que se llama exactamente `nombre` (sin los espacios de las
+    puntas), o None."""
+    with conexion_db() as conexion:
+        return conexion.execute("SELECT * FROM marcas WHERE nombre = ?", ((nombre or "").strip(),)).fetchone()
+
+
+def crear_marca(usuario_id: int, nombre: str) -> int:
+    """Crea la marca y devuelve su id; si ya había una con ese nombre, devuelve
+    la que había."""
+    usuarios_repo.exigir_admin(usuario_id, "editar las marcas")
+    if not (nombre or "").strip():
+        raise ValueError("Escribí el nombre de la marca nueva.")
+    return _crear_o_buscar("marcas", nombre)
+
+
+def renombrar_marca(usuario_id: int, marca_id: int, nuevo_nombre: str):
+    """Le cambia el nombre a la marca: todos sus artículos pasan a mostrar el
+    nuevo. Si ya hay otra marca con ese nombre, ValueError (para eso está
+    juntar_marcas)."""
+    usuarios_repo.exigir_admin(usuario_id, "editar las marcas")
+    nuevo_nombre = (nuevo_nombre or "").strip()
+    if not nuevo_nombre:
+        raise ValueError("El nombre de la marca no puede quedar vacío.")
+    try:
+        with conexion_db() as conexion:
+            conexion.execute("UPDATE marcas SET nombre = ? WHERE id = ?", (nuevo_nombre, marca_id))
+    except sqlite3.IntegrityError:
+        raise ValueError(f"Ya existe una marca llamada '{nuevo_nombre}'.")
+
+
+def juntar_marcas(usuario_id: int, marca_id: int, destino_id: int) -> int:
+    """
+    Dos marcas que son la misma escrita distinto ("COCA" y "Coca"): pasa todos
+    los artículos de `marca_id` a `destino_id` y borra `marca_id`, todo junto.
+    Devuelve cuántos artículos cambiaron de marca.
+    """
+    usuarios_repo.exigir_admin(usuario_id, "editar las marcas")
+    if marca_id == destino_id:
+        raise ValueError("Es la misma marca.")
+    with conexion_db() as conexion:
+        existen = conexion.execute(
+            "SELECT COUNT(*) FROM marcas WHERE id IN (?, ?)", (marca_id, destino_id)
+        ).fetchone()[0]
+        if existen != 2:
+            raise ValueError("Esa marca ya no existe: cerrá y volvé a abrir Gestionar Marcas.")
+        cambiados = conexion.execute(
+            "UPDATE articulos SET marca_id = ? WHERE marca_id = ?", (destino_id, marca_id)
+        ).rowcount
+        conexion.execute("DELETE FROM marcas WHERE id = ?", (marca_id,))
+    return cambiados
+
+
+def borrar_marca(usuario_id: int, marca_id: int):
+    """Borra una marca que no tiene ningún artículo. Si tiene, la base no deja
+    borrarla y se avisa cuántos, con qué hacer."""
+    usuarios_repo.exigir_admin(usuario_id, "editar las marcas")
+    try:
+        with conexion_db() as conexion:
+            conexion.execute("DELETE FROM marcas WHERE id = ?", (marca_id,))
+    except sqlite3.IntegrityError:
+        with conexion_db() as conexion:
+            cantidad = conexion.execute(
+                "SELECT COUNT(*) FROM articulos WHERE marca_id = ?", (marca_id,)
+            ).fetchone()[0]
+        raise ValueError(
+            f"No se puede borrar esta marca: la tienen {cantidad} artículo(s). Si es la misma "
+            "que otra, renombrala con el nombre de la otra y se juntan; si no, cambiales la "
+            "marca desde 'Modificar' en Artículos."
+        )
+
+
 # ---------------------------------------------------------------------
 # Artículos
 # ---------------------------------------------------------------------
