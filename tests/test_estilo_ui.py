@@ -86,7 +86,7 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
 
         self.assertEqual(ventana.windowTitle(), f"CyberBIOS - Admin ({dominio.ROL_ADMIN})")
 
-    def test_la_barra_de_arriba_usa_teclas_de_barra_salvo_vender_y_cerrar_sesion(self):
+    def test_la_barra_de_arriba_usa_teclas_de_barra_salvo_vender_y_camb_operador(self):
         admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
         ventana = MainWindow(admin, lambda: None)
         self.addCleanup(ventana.deleteLater)
@@ -95,10 +95,44 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         barra = ventana.findChild(QFrame, "encabezadoInicio")
         clases = {b.text().strip(): b.property("clase") for b in barra.findChildren(QPushButton)}
 
-        self.assertEqual(clases["CERRAR SESIÓN"], "peligro")
+        # "CAMB OPERADOR" se llamaba "CERRAR SESIÓN" (pedido del dueño, 2026-10-23).
+        self.assertEqual(clases["CAMB OPERADOR"], "peligro")
+        self.assertNotIn("CERRAR SESIÓN", clases)
         self.assertEqual(clases["🛒  VENDER"], "primario")
-        otros = [clase for texto, clase in clases.items() if texto not in ("CERRAR SESIÓN", "🛒  VENDER")]
+        otros = [clase for texto, clase in clases.items() if texto not in ("CAMB OPERADOR", "🛒  VENDER")]
         self.assertTrue(otros and all(clase == "barra" for clase in otros), clases)
+
+    def test_camb_operador_vuelve_al_ingreso(self):
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        al_cerrar = []
+        ventana = MainWindow(admin, lambda: al_cerrar.append(True))
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+
+        barra = ventana.findChild(QFrame, "encabezadoInicio")
+        next(b for b in barra.findChildren(QPushButton) if b.text() == "CAMB OPERADOR").click()
+        self.assertEqual(al_cerrar, [True])
+
+    def test_camb_operador_va_pegado_a_la_derecha_de_clave(self):
+        # Pedido del dueño (2026-10-23): antes iba solo en la punta derecha y con
+        # la pantalla de 1920 del mostrador quedaba lejos de todo.
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        ventana = MainWindow(admin, lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+        ventana.setAttribute(Qt.WA_DontShowOnScreen)
+        ventana.resize(1920, 1000)
+        ventana.show()
+        self.addCleanup(ventana.hide)
+        _app.processEvents()
+
+        barra = ventana.findChild(QFrame, "encabezadoInicio")
+        botones = {b.text(): b for b in barra.findChildren(QPushButton)}
+        clave = next(boton for texto, boton in botones.items() if texto.endswith("CLAVE"))
+        operador = botones["CAMB OPERADOR"]
+        hueco = operador.geometry().left() - clave.geometry().right()
+        self.assertTrue(0 < hueco < 20, hueco)
+        self.assertEqual(max(b.geometry().right() for b in botones.values()), operador.geometry().right())
 
     def test_los_botones_de_la_barra_de_arriba_van_en_mayuscula_y_negrita(self):
         # Pedido del dueño (2026-10-22). Reservas pone su texto aparte (cuántas hay hoy).

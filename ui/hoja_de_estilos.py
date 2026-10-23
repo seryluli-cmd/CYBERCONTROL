@@ -387,8 +387,8 @@ HOJA_DE_ESTILOS = """
     /* Botones de la barra oscura de arriba (2026-10-19): cada uno es una tecla con
        relieve (el borde de abajo, más grueso y oscuro) que se prende en azul al
        pasarle el mouse y se hunde al apretarla (baja 2 px y pierde el relieve).
-       Vender (primario) en azul lleno y Cerrar sesión (peligro) con borde rojo,
-       lejos de los demás. Todos en negrita y mayúscula (pedido del dueño, 2026-10-22;
+       Vender (primario) en azul lleno y Camb Operador (peligro) con borde rojo,
+       pegado a la derecha de Clave. Todos en negrita y mayúscula (pedido del dueño, 2026-10-22;
        la mayúscula la pone MainWindow._agregar_boton_barra). */
     QPushButton[clase="barra"] {
         background-color: #2C3345;

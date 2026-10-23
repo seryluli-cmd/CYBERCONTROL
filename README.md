@@ -567,7 +567,7 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
 
 Explicación para el dueño, con ejemplos: [docs/TIEMPO_DE_LAS_PCS.md](docs/TIEMPO_DE_LAS_PCS.md).
 
-- **Cerrar sesión no toca a las PCs:** el servidor de red arranca con el programa
+- **Cambiar de operador ("Camb Operador", antes "Cerrar sesión") no toca a las PCs:** el servidor de red arranca con el programa
   (`main.main`) y sigue contestando sin nadie logueado.
 - **Una sesión que ya llegó a cero no se estira** (`pcs_repo._abrir_o_extender_sesion`):
   se cierra y se abre otra. Sin nadie logueado no hay pantalla que cierre las
