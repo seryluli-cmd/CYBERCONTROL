@@ -74,6 +74,12 @@ def _texto_evento(evento) -> str:
         if evento["segundos_sin_cliente"] is not None:
             texto += f" (estuvo {formato_tiempo(evento['segundos_sin_cliente'])} sin bloqueo)"
         return texto + "."
+    if tipo == "MANTENIMIENTO_REMOTO":
+        quien = evento["usuario_nombre"] or "alguien"
+        if evento["orden"] == dominio.MANTENIMIENTO_INICIAR:
+            return (f"{hora} — {evento['estacion_nombre']}: {quien} la puso en mantenimiento desde el mostrador "
+                    f"({dominio.MINUTOS_MANTENIMIENTO_PC} min sin bloqueo, después se bloquea sola).")
+        return f"{hora} — {evento['estacion_nombre']}: {quien} terminó el mantenimiento desde el mostrador."
     if tipo == "FILTRO":
         return (f"{hora} — {evento['estacion_nombre']}: el filtro cerró una página con "
                 f"\"{evento['palabra']}\" ({titulo_corto(evento['titulo'])}).")

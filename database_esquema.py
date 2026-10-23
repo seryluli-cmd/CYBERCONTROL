@@ -18,6 +18,7 @@ def inicializar_base_de_datos():
         _migrar_columna_ip_asentada_estaciones,
         _migrar_columna_cliente_cerrado_desde_estaciones, _migrar_columnas_actualizacion_estaciones,
         _migrar_columna_cliente_arranque_estaciones, _migrar_columnas_temperatura_estaciones,
+        _migrar_columna_mantenimiento_estaciones,
         _migrar_check_tipo_en_comandos_pc, _migrar_check_tipo_en_eventos_admin_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_columnas_aviso_fin_en_sesiones,
         _migrar_columna_whatsapp_en_miembros,
@@ -340,6 +341,7 @@ def inicializar_base_de_datos():
     _migrar_columnas_actualizacion_estaciones(conexion)
     _migrar_columna_cliente_arranque_estaciones(conexion)
     _migrar_columnas_temperatura_estaciones(conexion)
+    _migrar_columna_mantenimiento_estaciones(conexion)
     cursor.execute(_sql_tabla_de_bonos("bonos_tiempo"))
 
     # Una fila por uso continuo de una estación. Al vender un bono a una
@@ -620,6 +622,24 @@ def inicializar_base_de_datos():
     # borra los índices que tenía, y así se recrea sobre la tabla nueva.
     _migrar_check_tipo_en_comandos_pc(conexion)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_comandos_pc_estacion ON comandos_pc(estacion_id, estado)")
+    # Quién mandó cada "Hacer/Terminar mantenimiento" desde el clic derecho (ver
+    # control_pcs/repositories/mantenimiento_pc_repo.py): Actividad reciente lo muestra con su
+    # nombre cuando la PC contestó que lo hizo. "comando_id" no lleva REFERENCES a propósito: la
+    # migración del CHECK de comandos_pc la reconstruye con un RENAME, y SQLite movería la
+    # referencia a la tabla vieja. Nada se borra (regla 7).
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS mantenimientos_remotos_pc (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            comando_id   INTEGER NOT NULL UNIQUE,
+            estacion_id  INTEGER NOT NULL REFERENCES estaciones(id),
+            usuario_id   INTEGER REFERENCES usuarios(id),
+            orden        TEXT NOT NULL CHECK (orden IN ({_valores_sql(dominio.ORDENES_MANTENIMIENTO)})),
+            fecha_hora   TEXT NOT NULL
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mantenimientos_remotos_pc_fecha ON mantenimientos_remotos_pc(fecha_hora)"
+    )
 
     # -------------------------------------------------------------------
     # MIEMBROS (socios con saldo prepago de tiempo)

@@ -113,8 +113,9 @@ POST /comando_resultado   {"comando_id", "imagen_base64"} o {"comando_id", "text
     El Cliente PC lo llama después de ejecutar un comando que tiene algo
     para devolver: SCREENSHOT (sube la imagen) o CAMBIAR_RED (avisa si pudo
     cambiar de módem; a diferencia de reiniciar/apagar, esto sí puede
-    fallar del lado de la PC y el mostrador tiene que enterarse). Los demás
-    comandos no devuelven nada.
+    fallar del lado de la PC y el mostrador tiene que enterarse), y los de
+    Shadow Defender, "Programas y estado" y el mantenimiento (ver
+    comandos_pc_repo). Reiniciar, apagar, mensaje y volumen no devuelven nada.
 
 POST /admin/...
     La administración desde otra PC del local (el Administrador con su clave, no
@@ -133,8 +134,8 @@ from admin_remoto import servidor as admin_remoto_servidor
 from errores import registrar_error
 from control_pcs.repositories import (
     accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, cortes_pc_repo,
-    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, reconexion_repo, reinicios_pc_repo,
-    reservas_horario_repo, temperatura_pc_repo,
+    filtro_palabras_repo, fondo_repo, mantenimiento_pc_repo, miembros_repo, pcs_repo, reconexion_repo,
+    reinicios_pc_repo, reservas_horario_repo, temperatura_pc_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -289,6 +290,12 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 temperatura_pc_repo.registrar(item["estacion"]["id"], temperatura_pc_repo.leer_temperatura(parametros))
             except Exception as error:
                 registrar_error(error, "Servidor de red: registrar la temperatura de una PC")
+            try:
+                # Cuánto le queda al mantenimiento de esa PC (desde la V1.6), para ofrecer
+                # "Terminar mantenimiento" en el clic derecho. Nada que decida el bloqueo.
+                mantenimiento_pc_repo.registrar(item["estacion"]["id"], mantenimiento_pc_repo.leer_minutos(parametros))
+            except Exception as error:
+                registrar_error(error, "Servidor de red: registrar el mantenimiento de una PC")
             reinicio = reinicios_pc_repo.leer_reinicio(parametros)
             if reinicio is not None:
                 try:
@@ -696,7 +703,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
                 ruta_relativa = comandos_pc_repo.guardar_screenshot(comando_id, str(cuerpo["imagen_base64"]))
                 comandos_pc_repo.marcar_resultado(comando_id, ruta_relativa)
             elif "texto" in cuerpo:
-                comandos_pc_repo.marcar_resultado(comando_id, str(cuerpo["texto"])[:500])
+                comandos_pc_repo.guardar_texto(comando_id, cuerpo["texto"])
             else:
                 self._responder_error(400, _PEDIDO_INVALIDO)
                 return

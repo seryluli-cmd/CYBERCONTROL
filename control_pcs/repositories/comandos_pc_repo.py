@@ -25,6 +25,12 @@ Qué devuelve cada comando:
   enterarse sin ir hasta ahí a revisar.
 - DESCONGELAR / CONGELAR / ESTADO_CONGELADO (Shadow Defender, ver
   congelado_repo): un texto "OK: ..." o "ERROR: ...", igual que CAMBIAR_RED.
+- INFO_PC ("Programas y estado", ver programas_pc_repo): el estado de la PC, sus
+  programas abiertos y sus íconos, en JSON. Es el único texto largo: puede
+  llegar a TOPE_TEXTO_INFO (los demás, a TOPE_TEXTO; ver `guardar_texto`).
+- CERRAR_PROGRAMA / ABRIR_PROGRAMA / MANTENIMIENTO (ver programas_pc_repo y
+  mantenimiento_pc_repo): "OK: ..." o "ERROR: ...". Los cuatro, desde el
+  Cliente PC V1.6.
 
 Los comandos de Shadow Defender (`dominio.COMANDOS_CON_CLAVE`) llevan en el
 payload la clave de Shadow Defender, que NO puede quedar guardada en la base
@@ -39,7 +45,10 @@ REINICIAR y APAGAR también vencen (MINUTOS_VIGENCIA_REINICIO, revisión del
 (la que titila "SIN CLIENTE", o apagada) le llegaba cuando volvía, aunque fuera
 horas después y en medio de la partida de otro cliente: el Cliente PC lo hace
 sin preguntar. Una PC prendida lo pide en 5 s; si no lo pidió en 2 minutos, se
-da por no hecho y queda RESULTADO_REINICIO_VENCIDO.
+da por no hecho y queda RESULTADO_REINICIO_VENCIDO. Lo mismo los de "Programas
+y estado" y el mantenimiento (2026-10-22): cerrar o abrir un programa, o dejar
+la PC libre 15 minutos, horas después y a otro cliente, sería peor que no
+hacerlo; y un INFO_PC que nadie espera solo atrasaría a los que siguen.
 """
 
 import base64
@@ -60,6 +69,15 @@ TIPO_VOLUMEN = dominio.COMANDO_VOLUMEN
 TIPO_DESCONGELAR = dominio.COMANDO_DESCONGELAR
 TIPO_CONGELAR = dominio.COMANDO_CONGELAR
 TIPO_ESTADO_CONGELADO = dominio.COMANDO_ESTADO_CONGELADO
+TIPO_INFO_PC = dominio.COMANDO_INFO_PC
+TIPO_CERRAR_PROGRAMA = dominio.COMANDO_CERRAR_PROGRAMA
+TIPO_ABRIR_PROGRAMA = dominio.COMANDO_ABRIR_PROGRAMA
+TIPO_MANTENIMIENTO = dominio.COMANDO_MANTENIMIENTO
+
+# Cuánto texto se guarda de lo que contesta una PC (ver `guardar_texto`). Un "OK: ..." o
+# "ERROR: ..." es corto; el JSON de INFO_PC no (el Cliente PC lo arma por debajo de esto).
+TOPE_TEXTO = 500
+TOPE_TEXTO_INFO = 64000
 
 # Cuánto espera un comando con la clave de Shadow Defender a que su PC lo pida.
 # Una PC prendida lo pide en 5 s; la ventana de congelar deja de esperar
@@ -67,9 +85,11 @@ TIPO_ESTADO_CONGELADO = dominio.COMANDO_ESTADO_CONGELADO
 MINUTOS_VIGENCIA_CON_CLAVE = 2
 RESULTADO_VENCIDO = "ERROR: La PC no lo pidió a tiempo (¿apagada o sin conexión?). La clave no quedó guardada."
 
-# Cuánto espera un Reiniciar o un Apagar a que su PC lo pida (ver el docstring del módulo).
+# Cuánto espera un Reiniciar o un Apagar (y los de "Programas y estado" y el mantenimiento) a
+# que su PC lo pida (ver el docstring del módulo).
 MINUTOS_VIGENCIA_REINICIO = 2
-COMANDOS_QUE_VENCEN = (TIPO_REINICIAR, TIPO_APAGAR)
+COMANDOS_QUE_VENCEN = (TIPO_REINICIAR, TIPO_APAGAR, TIPO_INFO_PC, TIPO_CERRAR_PROGRAMA, TIPO_ABRIR_PROGRAMA,
+                       TIPO_MANTENIMIENTO)
 RESULTADO_REINICIO_VENCIDO = ("ERROR: La PC no lo pidió a tiempo (¿apagada o sin conexión?). "
                               "No se hizo, para que no le llegue más tarde a otro cliente.")
 
@@ -235,6 +255,15 @@ def guardar_screenshot(comando_id: int, imagen_base64: str) -> str:
     with open(ruta_completa, "wb") as archivo:
         archivo.write(base64.b64decode(imagen_base64))
     return os.path.join("screenshots", nombre_archivo)
+
+
+def guardar_texto(comando_id: int, texto: str):
+    """Guarda el texto que contestó la PC ("OK: ...", "ERROR: ..." o el JSON de INFO_PC), cortado
+    en TOPE_TEXTO, o en TOPE_TEXTO_INFO si es la respuesta de un INFO_PC."""
+    with conexion_db() as conexion:
+        fila = conexion.execute("SELECT tipo FROM comandos_pc WHERE id = ?", (comando_id,)).fetchone()
+        tope = TOPE_TEXTO_INFO if fila is not None and fila["tipo"] == TIPO_INFO_PC else TOPE_TEXTO
+        conexion.execute("UPDATE comandos_pc SET resultado = ? WHERE id = ?", (str(texto)[:tope], comando_id))
 
 
 def marcar_resultado(comando_id: int, ruta_relativa):

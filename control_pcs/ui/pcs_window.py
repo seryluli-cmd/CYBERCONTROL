@@ -53,11 +53,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
-from control_pcs.repositories import comandos_pc_repo, pcs_repo, playstation_repo, reservas_horario_repo
+from control_pcs.repositories import (
+    comandos_pc_repo, congelado_repo, mantenimiento_pc_repo, pcs_repo, playstation_repo, reservas_horario_repo,
+)
 from control_pcs.ui.pcs_comandos_dialogos import (
     DialogoCambiarRed, DialogoCaptura, DialogoTrasladarSesion, DialogoVolumen,
 )
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
+from control_pcs.ui.pcs_programas_dialogo import DialogoMantenimiento, DialogoProgramas
 from control_pcs.ui.pcs_botones_libres import BotonesParaLasLibres
 from control_pcs.ui.pcs_actividad import PanelActividad
 from control_pcs.ui.pcs_aviso_reservas import AvisoDeReservasSinPcFija
@@ -520,7 +523,9 @@ class PanelControlPcs(QWidget):
         cerrar la sesión ya (aunque tenga tiempo/saldo sin usar) y dejar
         la PC lista para el próximo cliente, reiniciar, apagar, mandar un
         mensaje, pedir una captura de pantalla, cambiar a qué módem
-        apunta su red o ajustar su volumen. No pasa por el panel lateral
+        apunta su red, ajustar su volumen, ver sus programas y su estado
+        (cerrar uno trabado, abrir uno del escritorio) o ponerla en
+        mantenimiento (pcs_programas_dialogo.py). No pasa por el panel lateral
         porque son acciones sobre la PC física (o que necesitan efecto
         inmediato), no sobre la sesión de tiempo como elegir un bono.
         Reiniciar/Apagar/Mensaje/Captura/Cambiar red/Volumen viajan al
@@ -560,6 +565,20 @@ class PanelControlPcs(QWidget):
         menu.addSeparator()
         accion_cambiar_red = menu.addAction("🌐 Cambiar red...")
         accion_volumen = menu.addAction("🔊 Ajustar volumen...")
+        menu.addSeparator()
+        # 📋 y no el 🧰 de la maqueta: los emojis más nuevos (🧊, 🧰) salen como rectángulo en el
+        # Windows del mostrador.
+        accion_programas = menu.addAction("📋 Programas y estado...")
+        # El mantenimiento de la "A", a distancia: solo con la PC libre. Si ya está en
+        # mantenimiento (lo cuenta su Cliente PC), se ofrece terminarlo.
+        minutos_mantenimiento = mantenimiento_pc_repo.minutos_vigentes(estacion, item["enlazada"])
+        if minutos_mantenimiento is None:
+            accion_mantenimiento = menu.addAction(f"🛠️ Hacer mantenimiento ({dominio.MINUTOS_MANTENIMIENTO_PC} min)")
+            accion_mantenimiento.setEnabled(not congelado_repo.esta_ocupada(item))
+            orden_mantenimiento = dominio.MANTENIMIENTO_INICIAR
+        else:
+            accion_mantenimiento = menu.addAction(f"🛠️ Terminar mantenimiento (quedan {minutos_mantenimiento} min)")
+            orden_mantenimiento = dominio.MANTENIMIENTO_TERMINAR
         # Shadow Defender: solo el Admin lo ve. Igual pide su clave, que las
         # empleadas no tienen; así no les aparece algo que no pueden usar.
         accion_congelar = None
@@ -608,8 +627,25 @@ class PanelControlPcs(QWidget):
             DialogoCambiarRed(estacion, self).exec()
         elif elegida == accion_volumen:
             DialogoVolumen(estacion, self).exec()
+        elif elegida == accion_programas:
+            DialogoProgramas(estacion, self).exec()
+        elif elegida == accion_mantenimiento:
+            self._mantenimiento(estacion, orden_mantenimiento)
         elif accion_congelar is not None and elegida == accion_congelar:
             DialogoCongelado(estacion, self._estados, self).exec()
+
+    @manejar_errores
+    def _mantenimiento(self, estacion, orden):
+        """Empieza o termina a distancia el mantenimiento de la PC (el de la "A" del Cliente PC),
+        después de preguntar."""
+        if orden == dominio.MANTENIMIENTO_INICIAR:
+            pregunta = (f"¿Poner '{estacion['nombre']}' en mantenimiento?\n\n"
+                        f"Queda libre (sin bloqueo y con el Administrador de tareas) hasta que se termine "
+                        f"o pasen {dominio.MINUTOS_MANTENIMIENTO_PC} minutos, y después se bloquea sola.")
+        else:
+            pregunta = f"¿Terminar el mantenimiento de '{estacion['nombre']}'? Se bloquea ya."
+        if confirmar(self, "Mantenimiento", pregunta):
+            DialogoMantenimiento(estacion, orden, self.usuario, self).exec()
 
     @manejar_errores
     def _cerrar_sesion_y_reiniciar(self, estacion, sesion, segundos_restantes):

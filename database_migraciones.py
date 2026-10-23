@@ -152,6 +152,17 @@ def _migrar_columnas_temperatura_estaciones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columna_mantenimiento_estaciones(conexion: sqlite3.Connection):
+    """
+    Agrega estaciones.mant_min (pedido del dueño, 2026-10-22): los minutos que le quedan al
+    mantenimiento de esa PC, según su Cliente PC (lo manda desde la V1.6; NULL = no está en
+    mantenimiento, o un Cliente PC viejo). Con eso el clic derecho ofrece "Terminar
+    mantenimiento" (ver mantenimiento_pc_repo).
+    """
+    _agregar_columna_si_falta(conexion, "estaciones", "mant_min", "INTEGER")
+    conexion.commit()
+
+
 def _migrar_columna_miembro_en_sesiones(conexion: sqlite3.Connection):
     """
     Para una base creada antes de que existiera "Miembros": agrega

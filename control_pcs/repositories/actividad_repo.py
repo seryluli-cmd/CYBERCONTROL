@@ -3,8 +3,8 @@
 import dominio
 from database import conexion_db
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, avisos_fin_pc_repo, cortes_pc_repo, filtro_palabras_repo, playstation_repo,
-    reconexion_repo, reinicios_pc_repo,
+    accesos_admin_pc_repo, avisos_fin_pc_repo, cortes_pc_repo, filtro_palabras_repo, mantenimiento_pc_repo,
+    playstation_repo, reconexion_repo, reinicios_pc_repo,
 )
 
 
@@ -102,6 +102,13 @@ def actividad_reciente(limite: int = 30):
                              "evento_admin": fila["tipo"],
                              "estacion_nombre": fila["estacion_nombre"],
                              "segundos_sin_cliente": fila["segundos_sin_cliente"]})
+
+        # El mantenimiento que un operador mandó desde el clic derecho y la PC hizo (el de la
+        # "A" llega como ADMIN_PC, de arriba).
+        for fila in mantenimiento_pc_repo.listar_recientes(limite):
+            eventos.append({"fecha": fila["fecha_hora"], "tipo": "MANTENIMIENTO_REMOTO",
+                            "estacion_nombre": fila["estacion_nombre"], "orden": fila["orden"],
+                            "usuario_nombre": fila["usuario_nombre"]})
 
         for fila in filtro_palabras_repo.listar_recientes(limite):
             eventos.append({"fecha": fila["fecha_hora"], "tipo": "FILTRO",
