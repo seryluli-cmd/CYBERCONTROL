@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import dominio  # noqa: E402
 from control_pcs.repositories import comandos_pc_repo, pcs_libres_repo, pcs_repo  # noqa: E402
-from control_pcs.ui.pcs_botones_libres import BotonesParaLasLibres  # noqa: E402
+from control_pcs.ui.pcs_botones_libres import COLOR_APAGAR, BotonesParaLasLibres  # noqa: E402
 from control_pcs.ui.pcs_congelado_dialogo import COLUMNA_PC, DialogoCongelado  # noqa: E402
 from control_pcs.ui.pcs_reiniciar_dialogo import DialogoApagar, DialogoReiniciar  # noqa: E402
 from control_pcs.ui.pcs_window import PanelControlPcs  # noqa: E402
@@ -109,20 +109,28 @@ class TestBotones(_TresPcs):
         self.assertEqual([fila.itemAt(i).widget() for i in range(3)],
                          [botones.boton_descongelar, botones.boton_reiniciar, botones.boton_apagar])
         self.assertEqual(botones.boton_descongelar.text(), " DESCONGELAR")
-        self.assertEqual(botones.boton_reiniciar.text(), "🔄  REINICIAR")
+        self.assertEqual(botones.boton_reiniciar.text(), " REINICIAR")
         self.assertEqual(botones.boton_apagar.text(), " APAGAR")
         fondo_negro = panel.mosaico.parentWidget()
         self.assertEqual(fondo_negro.objectName(), "marcoMosaico")
         self.assertFalse(fondo_negro.isAncestorOf(botones))
 
-    def test_el_copo_de_nieve_y_el_de_apagar_son_dibujos_no_emojis(self):
-        # El 🧊 salía como un rectángulo en la PC del mostrador (2026-10-23).
+    def test_el_copo_de_nieve_reiniciar_y_apagar_son_dibujos_no_emojis(self):
+        # El 🧊 salía como un rectángulo en la PC del mostrador (2026-10-23). REINICIAR era el 🔄
+        # azul, igual al de Operador: ahora son flechas rojas dibujadas (2026-10-24).
         botones = self.botones()
-        for boton in (botones.boton_descongelar, botones.boton_apagar):
+        for boton in (botones.boton_descongelar, botones.boton_reiniciar, botones.boton_apagar):
             self.assertFalse(boton.icon().isNull())
             imagen = boton.icon().pixmap(18, 18).toImage()
             pintados = sum(imagen.pixelColor(x, y).alpha() > 0 for x in range(18) for y in range(18))
             self.assertGreater(pintados, 20)
+
+    def test_las_flechas_de_reiniciar_son_del_rojo_de_apagar(self):
+        botones = self.botones()
+        imagen = botones.boton_reiniciar.icon().pixmap(64, 64).toImage()
+        colores = {imagen.pixelColor(x, y).name() for x in range(64) for y in range(64)
+                   if imagen.pixelColor(x, y).alpha() == 255}
+        self.assertEqual(colores, {COLOR_APAGAR.lower()})
 
     def test_descongelar_abre_la_ventana_de_shadow_defender(self):
         botones = self.botones()

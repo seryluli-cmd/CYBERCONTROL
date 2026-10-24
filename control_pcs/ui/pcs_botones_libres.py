@@ -17,7 +17,9 @@ clic derecho sigue siendo solo del Admin.
 El copo de nieve de DESCONGELAR y el símbolo de APAGAR se dibujan acá (pedido
 del dueño, 2026-10-23): el emoji del cubito de hielo 🧊 salía como un
 rectángulo en la PC del mostrador, porque su Windows no lo trae, y al de
-apagar ⏻ le pasa lo mismo. Así se ven igual en cualquier PC.
+apagar ⏻ le pasa lo mismo. Así se ven igual en cualquier PC. Las flechas
+rojas de REINICIAR también (pedido del dueño, 2026-10-24): antes era el 🔄
+azul, el mismo que quedó en el botón Operador de la barra de arriba.
 
 Van debajo del fondo negro del mosaico, no adentro (pedido del dueño, mismo
 día): ver PanelControlPcs._armar_interfaz.
@@ -29,7 +31,7 @@ cliente nunca se tocan.
 import math
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from control_pcs.repositories import pcs_libres_repo
@@ -43,6 +45,8 @@ _LADO_DIBUJO = 64
 TAMANO_ICONO = QSize(18, 18)
 COLOR_HIELO = "#8FD8FF"
 COLOR_APAGAR = "#FF6B6B"
+# El mismo rojo que APAGAR (pedido del dueño, 2026-10-24: era el 🔄 azul, igual al de Operador).
+COLOR_REINICIAR = COLOR_APAGAR
 
 
 def _lienzo(color: str, grosor: float):
@@ -91,6 +95,27 @@ def icono_apagar() -> QIcon:
     return QIcon(dibujo)
 
 
+def icono_reiniciar() -> QIcon:
+    """Dos flechas que giran en círculo, contra el reloj, cada una con su punta."""
+    dibujo, pincel = _lienzo(COLOR_REINICIAR, 6)
+    margen = 11
+    centro, radio = _LADO_DIBUJO / 2, _LADO_DIBUJO / 2 - margen
+    circulo = QRectF(margen, margen, 2 * radio, 2 * radio)
+    pincel.setBrush(QColor(COLOR_REINICIAR))
+    for desde in (25, 205):
+        pincel.drawArc(circulo, desde * 16, 125 * 16)
+        fin = math.radians(desde + 125)
+        punta = QPointF(centro + radio * math.cos(fin), centro - radio * math.sin(fin))
+        avance = QPointF(-math.sin(fin), -math.cos(fin))   # hacia donde gira
+        afuera = QPointF(math.cos(fin), -math.sin(fin))
+        trazo = pincel.pen()
+        pincel.setPen(Qt.NoPen)
+        pincel.drawPolygon(QPolygonF([punta + avance * 11, punta + afuera * 9, punta - afuera * 9]))
+        pincel.setPen(trazo)
+    pincel.end()
+    return QIcon(dibujo)
+
+
 class BotonesParaLasLibres(QWidget):
     def __init__(self, estados, parent=None):
         """`estados` devuelve lo último que leyó la pantalla de PCs
@@ -104,7 +129,7 @@ class BotonesParaLasLibres(QWidget):
         # Mismas teclas en relieve que la barra de arriba.
         self.boton_descongelar = self._agregar_boton(layout, " Descongelar", self._descongelar,
                                                      icono_copo_de_nieve())
-        self.boton_reiniciar = self._agregar_boton(layout, "🔄  Reiniciar", self._reiniciar)
+        self.boton_reiniciar = self._agregar_boton(layout, " Reiniciar", self._reiniciar, icono_reiniciar())
         self.boton_apagar = self._agregar_boton(layout, " Apagar", self._apagar, icono_apagar())
         # Sin estirarse al final: a la derecha de APAGAR va CONTROL DE STOCK, en la
         # misma fila (la arma PanelControlPcs._armar_interfaz).
