@@ -145,6 +145,10 @@ _servidor = None  # el servidor en marcha, o None si no arrancó (ver iniciar_se
 # Mensajes de error que se repiten en varios endpoints.
 _PEDIDO_INVALIDO = "Pedido inválido."
 _ERROR_INTERNO = "Error interno."
+# El cuerpo de un POST rechazado se lee y se tira (ver _descartar_cuerpo) solo si es chico
+# (los de los Clientes PC son de unos cientos de bytes) y esperándolo poco.
+_TOPE_CUERPO_DESCARTADO = 64 * 1024
+_ESPERA_CUERPO_DESCARTADO_SEG = 2
 
 
 def _estado_a_json(item):
@@ -453,6 +457,22 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         largo = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(largo).decode("utf-8"))
 
+    def _descartar_cuerpo(self):
+        """
+        Lee y tira el cuerpo de un POST que se rechaza sin mirarlo (sin clave, ruta que no
+        existe). Si quedaba sin leer, al cerrar la conexión Windows la corta con un "reset" y
+        la otra punta a veces no llega a leer la respuesta (WinError 10053; lo mide
+        test_control_pcs.test_un_post_rechazado_lee_el_cuerpo_antes_de_contestar). Solo uno
+        chico y sin esperar de más: un pedido sin clave no puede tener ocupado al servidor.
+        """
+        try:
+            largo = int(self.headers.get("Content-Length", 0))
+            if 0 < largo <= _TOPE_CUERPO_DESCARTADO:
+                self.connection.settimeout(_ESPERA_CUERPO_DESCARTADO_SEG)
+                self.rfile.read(largo)
+        except (ValueError, OSError):
+            pass  # no llegó o vino mal: se contesta igual
+
     def _resolver_estacion(self, nombre_estacion: str):
         """
         Busca la estación (por nombre o, si no, por la IP asentada: misma regla
@@ -492,6 +512,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self._responder_error(500, _ERROR_INTERNO)
             return
         if not autorizado:
+            self._descartar_cuerpo()
             self._responder_vacio(403)
             return
 
@@ -507,6 +528,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         elif ruta.path == "/comando_resultado":
             self._manejar_comando_resultado()
         else:
+            self._descartar_cuerpo()
             self._responder_error(404, "No existe.")
 
     def _manejar_admin_remoto(self):

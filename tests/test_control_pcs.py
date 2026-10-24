@@ -13,8 +13,10 @@ import base64
 import http.client
 import json
 import os
+import socket
 import sqlite3
 import threading
+import time
 import unittest
 from datetime import datetime
 from http.server import ThreadingHTTPServer
@@ -1786,6 +1788,33 @@ class TestServidorRedRespuestasDeError(_ConServidorRed):
         for token in (None, "", "clave-equivocada"):
             self.assertEqual(self._crudo("GET", "/estado?estacion=PC+1", token=token), (403, ""))
             self.assertEqual(self._crudo("POST", "/login", "{}", token=token), (403, ""))
+
+    def _post_con_el_cuerpo_tarde(self, ruta: str, cabeceras=()):
+        """Un POST cuyo cuerpo llega 0,3 s después de las cabeceras, como puede pasar en la red.
+        Devuelve lo que se pudo leer de la respuesta (o la excepción, si se cortó)."""
+        with socket.create_connection(("127.0.0.1", self._puerto), timeout=5) as conexion:
+            lineas = [f"POST {ruta} HTTP/1.1", "Host: x", *cabeceras,
+                      "Content-Type: application/json", "Content-Length: 2", "", ""]
+            conexion.sendall("\r\n".join(lineas).encode())
+            time.sleep(0.3)
+            conexion.sendall(b"{}")
+            time.sleep(0.2)
+            try:
+                return conexion.recv(4096)
+            except OSError as error:
+                return error
+
+    def test_un_post_rechazado_lee_el_cuerpo_antes_de_contestar(self):
+        # Si contestaba sin leer el cuerpo, Windows cortaba la conexión con un "reset" y la otra
+        # punta a veces no llegaba a leer la respuesta (WinError 10053): la prueba de arriba
+        # fallaba al azar. Lo mismo con una ruta que no existe.
+        respuesta = self._post_con_el_cuerpo_tarde("/login")
+        self.assertIsInstance(respuesta, bytes, respuesta)
+        self.assertTrue(respuesta.startswith(b"HTTP/1.0 403"), respuesta)
+
+        respuesta = self._post_con_el_cuerpo_tarde("/no-existe", [f"Authorization: Bearer {self._clave}"])
+        self.assertIsInstance(respuesta, bytes, respuesta)
+        self.assertTrue(respuesta.startswith(b"HTTP/1.0 404"), respuesta)
 
     def test_la_clave_correcta_pero_sin_la_palabra_bearer_tampoco_sirve(self):
         for cabecera in (self._clave, "Basic " + self._clave, "bearer " + self._clave):
