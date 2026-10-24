@@ -438,6 +438,11 @@ TIPOS_MOVIMIENTO_SALDO = (
     MOVIMIENTO_IMPORTACION,
 )
 
+# Desde cuántos días sin venir un socio se marca en naranja en Miembros (columna
+# "No viene hace", pedido del dueño 2026-10-24), y con cuántos arranca el filtro
+# "No vienen hace más de N días" (ver ultima_visita_repo).
+DIAS_SIN_VENIR_AVISO = 15
+
 
 def segundos_restantes(fin_previsto: datetime, ahora: datetime) -> int:
     """

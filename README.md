@@ -654,7 +654,11 @@ cualquier operador logueado, igual que la grilla de PCs). También el
 "Historial de Cargas" de Miembros (al lado de Cargar Saldo, 2026-10-24:
 `control_pcs/ui/miembros_historial_cargas.py` + `historial_cargas_repo`),
 que lista cada carga de saldo con el socio, el tiempo, la plata y cómo se
-pagó, quién la cargó y cuándo, con filtros, totales e Imprimir. Usuarios,
+pagó, quién la cargó y cuándo, con filtros, totales e Imprimir. Y la
+columna "No viene hace" de la lista de Miembros (`ultima_visita_repo`,
+mismo día): días desde su última sesión de PC con su usuario o su última
+carga, en naranja pasados 15 días, con el filtro "No vienen hace más de N
+días" y orden con un clic en el título. Usuarios,
 Configuración ADMIN y Anular Venta permanecen exclusivos del Admin.
 
 ⚠️ No hay cifrado de la base ni protección contra acceso directo al

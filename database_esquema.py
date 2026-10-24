@@ -788,6 +788,9 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesion_bonos_venta ON sesion_bonos(venta_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesion_pcstream_bonos_venta ON sesion_pcstream_bonos(venta_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_saldo_miembro_fecha ON movimientos_saldo_miembro(fecha)")
+    # "No viene hace" de Miembros (2026-10-24, ultima_visita_repo): la última
+    # sesión de cada socio, sin recorrer todas las sesiones de la historia.
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_pc_miembro ON sesiones_pc(miembro_id, fecha_inicio)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_traslados_sesion_fecha ON traslados_sesion(fecha)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_playstation_inicio ON sesiones_playstation(fecha_inicio)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_playstation_fin_real ON sesiones_playstation(fecha_fin_real)")

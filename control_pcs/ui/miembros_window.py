@@ -10,7 +10,10 @@ logueado (pedido del dueño, 2026-10-19: antes pedía permiso_control_pcs o
 Admin, pero cargarle saldo a un socio tiene que poder hacerlo cualquiera)
 — son tareas de *usar* el catálogo (cargar saldo con la tarifa y los
 bonos ya definidos), no de editarlo. "Historial de Cargas" (al lado de
-Cargar Saldo, 2026-10-24) abre miembros_historial_cargas.py.
+Cargar Saldo, 2026-10-24) abre miembros_historial_cargas.py. La columna
+"No viene hace" (mismo día) y su filtro salen de ultima_visita_repo: en
+naranja pasados dominio.DIAS_SIN_VENIR_AVISO días, y se ordena con un clic
+en su título.
 
 La configuración de la tabla de tramos de tarifa $/hora (ver
 config_repo.obtener_tramos_tarifa_hora_miembro) y la gestión del
@@ -22,16 +25,19 @@ acá porque son del dominio de Miembros, pero el botón que las abre está
 en ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 """
 
+from datetime import datetime
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QLabel, QComboBox, QCheckBox, QFormLayout,
-    QHeaderView, QDoubleSpinBox, QStackedWidget, QWidget
+    QHeaderView, QDoubleSpinBox, QSpinBox, QStackedWidget, QWidget
 )
 
 import dominio
 from repositories import config_repo
-from control_pcs.repositories import miembros_repo, bonos_miembro_repo
+from control_pcs.repositories import miembros_repo, bonos_miembro_repo, ultima_visita_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from control_pcs.ui.miembros_historial_cargas import VentanaHistorialCargas
 from ui.dialogo_pago import cobrar
@@ -43,6 +49,40 @@ from ui.utils import (
 
 # Alto de la lista de socios (ver MiembrosWindow).
 ALTO_DE_LA_VENTANA = 960
+
+COLUMNAS_MIEMBROS = ["Usuario", "Nombre", "DNI", "Celular", "WhatsApp", "Saldo", "No viene hace", "Estado"]
+COLUMNA_NO_VIENE = 6
+COLUMNA_ESTADO = 7
+# "No viene hace" pasados dominio.DIAS_SIN_VENIR_AVISO días, y "Nunca vino".
+COLOR_NO_VIENE = QColor("#D35400")
+COLOR_NUNCA_VINO = QColor("#8A94A6")
+
+
+def texto_no_viene(dias) -> str:
+    """Lo que dice la columna "No viene hace" (de ultima_visita_repo.dias_sin_venir)."""
+    if dias is None:
+        return "Nunca vino"
+    if dias == 0:
+        return "Hoy"
+    if dias == 1:
+        return "Ayer"
+    if dias < 60:
+        return f"{dias} días"
+    return f"{dias // 30} meses"
+
+
+def detalle_de_la_visita(visita) -> str:
+    """Lo que se ve al pasar el mouse por "No viene hace": cuándo y qué hizo."""
+    if visita is None:
+        return "Nunca entró a una PC con su usuario ni se le cargó saldo."
+    partes = []
+    if visita["pc"] is not None:
+        desde = visita["pc_desde"].strftime("%d/%m %H:%M")
+        partes.append(f"Está usando la {visita['pc']} desde el {desde}" if visita["jugando"]
+                      else f"Entró a la {visita['pc']} el {desde}")
+    if visita["carga"] is not None:
+        partes.append(f"Última carga {visita['carga'].strftime('%d/%m %H:%M')}")
+    return " · ".join(partes)
 
 
 class MiembrosWindow(QDialog):
@@ -58,6 +98,9 @@ class MiembrosWindow(QDialog):
         if self.screen() is not None:
             alto = min(alto, self.screen().availableGeometry().height() - 80)
         self.resize(860, alto)
+        # Orden por "No viene hace" (clic en el título): None = por usuario, como
+        # siempre; Qt.DescendingOrder = los que hace más que no vienen arriba.
+        self._orden_sin_venir = None
         self._armar_interfaz()
         self._cargar_grilla()
 
@@ -102,13 +145,27 @@ class MiembrosWindow(QDialog):
         fila_buscar.addWidget(self.campo_buscar)
         fila_buscar.addSpacing(16)
         fila_buscar.addWidget(self.check_inactivos)
+        # Los que no vienen hace más de N días (pedido del dueño, 2026-10-24): para
+        # armar la lista de a quién escribirle por WhatsApp.
+        self.check_sin_venir = QCheckBox("No vienen hace más de")
+        self.check_sin_venir.stateChanged.connect(self._cargar_grilla)
+        self.campo_dias_sin_venir = QSpinBox()
+        self.campo_dias_sin_venir.setRange(1, 999)
+        self.campo_dias_sin_venir.setValue(dominio.DIAS_SIN_VENIR_AVISO)
+        self.campo_dias_sin_venir.setSuffix(" días")
+        # Sin flechitas, como la cantidad de Impresiones: con esta hoja de estilos
+        # salían como una rayita, y el número se escribe.
+        self.campo_dias_sin_venir.setButtonSymbols(QSpinBox.NoButtons)
+        self.campo_dias_sin_venir.setFixedWidth(90)
+        self.campo_dias_sin_venir.valueChanged.connect(self._al_cambiar_los_dias)
+        fila_buscar.addSpacing(16)
+        fila_buscar.addWidget(self.check_sin_venir)
+        fila_buscar.addWidget(self.campo_dias_sin_venir)
         fila_buscar.addStretch()
 
-        self.tabla = crear_tabla(
-            ["Usuario", "Nombre", "DNI", "Celular", "WhatsApp", "Saldo", "Estado"],
-            estirar=1, por_filas=True,
-        )
+        self.tabla = crear_tabla(COLUMNAS_MIEMBROS, estirar=1, por_filas=True)
         self.tabla.doubleClicked.connect(self._modificar_miembro)
+        self.tabla.horizontalHeader().sectionClicked.connect(self._ordenar_por_columna)
 
         layout = QVBoxLayout()
         layout.addLayout(barra_botones)
@@ -123,9 +180,21 @@ class MiembrosWindow(QDialog):
     def _cargar_grilla(self, _=None):
         # El "_=None" absorbe lo que mandan textChanged y stateChanged (ver
         # ArticulosWindow._cargar_grilla).
-        self.miembros = miembros_repo.listar_miembros(
+        miembros = miembros_repo.listar_miembros(
             incluir_inactivos=self.check_inactivos.isChecked(), texto_busqueda=self.campo_buscar.text(),
         )
+        visitas = ultima_visita_repo.ultimas_visitas()
+        ahora = datetime.now()
+        dias = {m["id"]: ultima_visita_repo.dias_sin_venir(visitas.get(m["id"]), ahora) for m in miembros}
+        if self.check_sin_venir.isChecked():
+            limite = self.campo_dias_sin_venir.value()
+            miembros = [m for m in miembros if ultima_visita_repo.no_viene_hace_mas_de(dias[m["id"]], limite)]
+        if self._orden_sin_venir is not None:
+            # El que nunca vino cuenta como el que hace más que no viene.
+            miembros = sorted(miembros, key=lambda m: float("inf") if dias[m["id"]] is None else dias[m["id"]],
+                              reverse=self._orden_sin_venir == Qt.DescendingOrder)
+        # Lo que se ve, en el mismo orden: _seleccionado lee de acá por número de fila.
+        self.miembros = miembros
         self.tabla.setRowCount(0)
         for miembro in self.miembros:
             fila = self.tabla.rowCount()
@@ -142,9 +211,38 @@ class MiembrosWindow(QDialog):
             self.tabla.setItem(fila, 3, QTableWidgetItem(miembro["telefono"]))
             self.tabla.setItem(fila, 4, QTableWidgetItem(miembro["whatsapp"]))
             self.tabla.setItem(fila, 5, QTableWidgetItem(formato_tiempo(miembro["saldo_minutos"] * 60)))
-            self.tabla.setItem(fila, 6, QTableWidgetItem("Activo" if miembro["activo"] else "Inactivo"))
-        # Con el ancho fijo de siempre, un WhatsApp con +54 9 se veía cortado.
-        self.tabla.resizeColumnsToContents()
+            sin_venir = dias[miembro["id"]]
+            item_no_viene = QTableWidgetItem(texto_no_viene(sin_venir))
+            item_no_viene.setToolTip(detalle_de_la_visita(visitas.get(miembro["id"])))
+            if sin_venir is None:
+                item_no_viene.setForeground(COLOR_NUNCA_VINO)
+            elif sin_venir > dominio.DIAS_SIN_VENIR_AVISO:
+                item_no_viene.setForeground(COLOR_NO_VIENE)
+            self.tabla.setItem(fila, COLUMNA_NO_VIENE, item_no_viene)
+            self.tabla.setItem(fila, COLUMNA_ESTADO, QTableWidgetItem("Activo" if miembro["activo"] else "Inactivo"))
+        # Con el ancho fijo de siempre, un WhatsApp con +54 9 se veía cortado. Todas
+        # menos Nombre, la que se estira: achicarla a su texto dejaba la tabla más
+        # angosta que la ventana después de cada búsqueda.
+        for columna in range(len(COLUMNAS_MIEMBROS)):
+            if columna != 1:
+                self.tabla.resizeColumnToContents(columna)
+
+    def _al_cambiar_los_dias(self, _dias):
+        if self.check_sin_venir.isChecked():
+            self._cargar_grilla()
+
+    def _ordenar_por_columna(self, columna):
+        """Clic en "No viene hace": primero los que hace más que no vienen, otro
+        clic al revés, y otro vuelve al orden por usuario. Las demás columnas no
+        ordenan. La flecha va en el título (el indicador de Qt ordenaría solo)."""
+        if columna != COLUMNA_NO_VIENE:
+            return
+        self._orden_sin_venir = {None: Qt.DescendingOrder, Qt.DescendingOrder: Qt.AscendingOrder}.get(
+            self._orden_sin_venir
+        )
+        flecha = {Qt.DescendingOrder: " ▼", Qt.AscendingOrder: " ▲"}.get(self._orden_sin_venir, "")
+        self.tabla.horizontalHeaderItem(COLUMNA_NO_VIENE).setText(COLUMNAS_MIEMBROS[COLUMNA_NO_VIENE] + flecha)
+        self._cargar_grilla()
 
     def _seleccionado(self):
         fila = self.tabla.currentRow()
