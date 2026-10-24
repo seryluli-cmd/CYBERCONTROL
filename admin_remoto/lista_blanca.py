@@ -36,7 +36,7 @@ from repositories import (
 )
 from control_pcs.repositories import (
     accesos_admin_pc_repo, bonos_miembro_repo, clientes_repo, filtro_palabras_repo, fondo_repo, miembros_repo,
-    pcs_repo, pcstream_repo, playstation_repo,
+    pcs_repo, pcstream_repo, playstation_repo, socios_bonos_repo,
 )
 
 # Sube si cambia CÓMO se hablan las dos copias (no la lista): las dos tienen que
@@ -63,6 +63,7 @@ _MODULOS = {
     "pcs_repo": pcs_repo,
     "pcstream_repo": pcstream_repo,
     "playstation_repo": playstation_repo,
+    "socios_bonos_repo": socios_bonos_repo,
 }
 
 _CATALOGO_DE_BONOS = ("listar_bonos", "crear_bono", "modificar_bono", "desactivar_bono")
@@ -118,6 +119,8 @@ FUNCIONES = {
     "accesos_admin_pc_repo": ("listar_eventos",),
     # Los catálogos de bonos (y Reportes > PCSTREAM)
     "pcstream_repo": ("uso_por_dia",) + _CATALOGO_DE_BONOS,
+    # Reportes > PCs: Socios y Bonos
+    "socios_bonos_repo": ("comparar",),
     "playstation_repo": _CATALOGO_DE_BONOS,
     "bonos_miembro_repo": _CATALOGO_DE_BONOS,
 }

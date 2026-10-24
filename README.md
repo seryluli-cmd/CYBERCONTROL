@@ -506,7 +506,14 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   Admin con la caja de una empleada abierta: queda a nombre de ella
   (`cajas_repo._quien_vende`). El turno se rotula con
   `turnos.dia_en_que_empezo_el_turno` (una venta del lunes a la 01:00 es
-  "Domingo T2", no "Noche").
+  "Domingo T2", no "Noche"). Después de PCSTREAM, **PCs: Socios y Bonos**
+  (`ui/reportes_socios_bonos.py` + `control_pcs/repositories/socios_bonos_repo.py`;
+  pedido del dueño 2026-10-24): lo que dejaron las PCs separado en cargas de
+  saldo a socios y bonos del mostrador (walk-ins, PCSTREAM y reservas de PCs),
+  con una tarjeta para cada uno (plata, qué parte del total, cuántos, tiempo
+  vendido y cuánto deja cada hora), una barra que los compara, quién dejó más, y
+  la tabla por período (rango, día, semana o turno). Las dos partes suman justo
+  "Alquiler de PCs" de Totales: la de bonos sale por resta.
 - **Control de Cierres de Turno** (`control_cierres_window.py`,
   `ControlCierresWindow`; se reexporta desde `caja_window.py`) — lista
   `turnos_repo.listar_cierres()` (que vive en `control_cierres_repo.py`):

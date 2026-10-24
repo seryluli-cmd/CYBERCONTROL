@@ -20,6 +20,8 @@ Reportes, una pestaña por cada pregunta que se le hace a las ventas:
   hora (en su propio archivo, ui/reportes_operador.py).
 - PCSTREAM: cuánto se usa la PC de streaming, en tiempo y en plata, día por día
   (en su propio archivo, ui/reportes_pcstream.py).
+- PCs: Socios y Bonos: lo que dejaron las PCs, separado en cargas a socios y
+  bonos del mostrador, y comparado (ui/reportes_socios_bonos.py).
 
 Las usa el Admin o una Empleada con `permiso_reportes`.
 """
@@ -38,6 +40,7 @@ from repositories import reportes_repo
 from ui.reportes_resumen_dia import PestañaResumenDelDia
 from ui.reportes_operador import PestañaPorOperador
 from ui.reportes_pcstream import PestañaPcstream
+from ui.reportes_socios_bonos import PestañaSociosYBonos
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, manejar_errores, sin_boton_por_defecto,
     crear_tabla, rango_de_fechas, hoy_del_local,
@@ -70,6 +73,7 @@ class ReportesWindow(QDialog):
         pestañas.addTab(PestañaRanking(), "Ranking de Ventas")
         pestañas.addTab(PestañaPorOperador(), "Por Operador")
         pestañas.addTab(PestañaPcstream(), dominio.NOMBRE_PCSTREAM)
+        pestañas.addTab(PestañaSociosYBonos(), "PCs: Socios y Bonos")
 
         # Cómo se cuenta un día en TODAS las pestañas (pedido del dueño): sin
         # esto, ver la madrugada del 2 sumada en el día 1 parecería un error.
