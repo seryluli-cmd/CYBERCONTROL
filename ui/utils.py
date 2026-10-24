@@ -4,7 +4,8 @@ utils.py
 Funciones chiquitas que se repiten en varias pantallas: dar formato a
 números (pesos argentinos, tiempos), mostrar cuadros de mensaje (avisos,
 errores, confirmaciones), un decorador para que ningún error inesperado
-rompa una pantalla en silencio, y los ajustes de widgets que hay que
+rompa una pantalla en silencio, otro para lo que desde otra PC solo avisa
+que se hace en el mostrador, y los ajustes de widgets que hay que
 repetir en cada formulario (clase de botón, salto con Enter, sin botón
 por defecto).
 """
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTableWidget, QWidget,
 )
 
+from admin_remoto import modo as modo_remoto
 from errores import registrar_error
 from turnos import dia_en_que_empezo_el_turno
 
@@ -63,6 +65,34 @@ def manejar_errores(func):
             registrar_error(error)
             _mostrar_error_seguro(self, error)
     return wrapper
+
+
+def solo_en_el_mostrador(func):
+    """
+    Decorador para lo que vende, cobra o atiende una PC (Vender, Cobrar un bono,
+    Finalizar Sesión, Reiniciar...). En la copia para administrar desde otra PC
+    (admin_remoto/) la pantalla se ve igual que en el mostrador (pedido del dueño,
+    2026-10-24: "quiero que se vea tal cual"), pero eso lo hace la operadora en el
+    mostrador: el botón está, y al apretarlo avisa y no hace nada. En el
+    mostrador no cambia nada.
+    """
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if modo_remoto.es_copia_remota():
+            avisar_que_es_en_el_mostrador(self)
+            return None
+        return func(self, *args, **kwargs)
+    return wrapper
+
+
+def avisar_que_es_en_el_mostrador(padre):
+    """El aviso de `solo_en_el_mostrador` (también para el menú del clic derecho de
+    una PC, que elige qué hacer recién después de abrirse)."""
+    mostrar_info(
+        padre, "Se hace en el mostrador",
+        "Esto se hace en el mostrador.\n\nDesde esta PC ves todo como en el mostrador, pero vender, "
+        "cobrar y atender las PCs lo hace la operadora allá.",
+    )
 
 
 def _mostrar_error_seguro(padre, error):

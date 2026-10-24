@@ -11,10 +11,14 @@ Administrar Kiosko entero (Artículos, Compras, Consulta de Ventas con anular,
 Reportes, Control de Cierres con la carga del sobre, Usuarios), Configuración
 ADMIN (estaciones, los cuatro catálogos de bonos, tarifa de socios, trámites,
 accesos de admin, fondo y filtro de palabras de las PCs) y Caja para mirar.
+Y, para MIRAR, la pantalla principal igual que en el mostrador (pedido del
+dueño, 2026-10-24: "quiero que se vea tal cual"): la grilla de PCs en vivo,
+Actividad reciente, las reservas de hoy y CONTROL DE STOCK.
 
 Lo que NO está, a propósito, y sigue solo en el mostrador: vender y cobrar
 (Ventas, Trámites, bonos de PCs, carga de saldo), abrir/cerrar cajas y turnos,
-la grilla de PCs y Actualizar el Cliente PC.
+atender las PCs (finalizar, reiniciar, mensajes...) y Actualizar el Cliente PC.
+En la otra PC esos botones están, pero avisan (ui.utils.solo_en_el_mostrador).
 
 `ACTOR` dice, para cada función que recibe "quién lo hace", cuál es ese
 parámetro: el mostrador lo completa SIEMPRE con el Administrador que entró, sin
@@ -36,7 +40,7 @@ from repositories import (
 )
 from control_pcs.repositories import (
     accesos_admin_pc_repo, bonos_miembro_repo, clientes_repo, filtro_palabras_repo, fondo_repo, miembros_repo,
-    pcs_repo, pcstream_repo, playstation_repo, socios_bonos_repo,
+    pcs_repo, pcstream_repo, playstation_repo, reservas_horario_repo, reservas_repo, socios_bonos_repo,
 )
 
 # Sube si cambia CÓMO se hablan las dos copias (no la lista): las dos tienen que
@@ -63,6 +67,8 @@ _MODULOS = {
     "pcs_repo": pcs_repo,
     "pcstream_repo": pcstream_repo,
     "playstation_repo": playstation_repo,
+    "reservas_horario_repo": reservas_horario_repo,
+    "reservas_repo": reservas_repo,
     "socios_bonos_repo": socios_bonos_repo,
 }
 
@@ -78,6 +84,8 @@ FUNCIONES = {
         "listar_marcas_con_cantidad", "buscar_marca_por_nombre",
         "crear_marca", "renombrar_marca", "juntar_marcas", "borrar_marca",
         "comprobar_clave_para_ordenar_stock", "ajustar_stock", "cambiar_codigo",
+        # CONTROL DE STOCK, el botón de debajo de la grilla (solo mira)
+        "listar_para_control_de_stock",
     ),
     # Compras
     "compras_repo": ("proximo_numero_compra", "registrar_compra"),
@@ -109,9 +117,10 @@ FUNCIONES = {
         "obtener_tramos_tarifa_hora_miembro", "guardar_tramos_tarifa_hora_miembro",
     ),
     # Configuración ADMIN > Gestionar Estaciones (con fondo y filtro de las PCs)
+    # (y la grilla de PCs de la pantalla principal, con Actividad reciente)
     "pcs_repo": (
         "listar_estaciones", "ips_asentadas_repetidas", "crear_estacion", "renombrar_estacion",
-        "desactivar_estacion", "borrar_ip_asentada", "estado_estaciones",
+        "desactivar_estacion", "borrar_ip_asentada", "estado_estaciones", "actividad_reciente",
     ) + _CATALOGO_DE_BONOS,
     "clientes_repo": ("establecer_clave_admin_pcs",),
     "fondo_repo": ("obtener", "guardar_jpeg", "quitar"),
@@ -121,8 +130,12 @@ FUNCIONES = {
     "pcstream_repo": ("uso_por_dia",) + _CATALOGO_DE_BONOS,
     # Reportes > PCs: Socios y Bonos
     "socios_bonos_repo": ("comparar",),
-    "playstation_repo": _CATALOGO_DE_BONOS,
+    # La consola en la grilla (estado) y su catálogo
+    "playstation_repo": ("estado",) + _CATALOGO_DE_BONOS,
     "bonos_miembro_repo": _CATALOGO_DE_BONOS,
+    # Las reservas en la grilla y el número del botón Reservas (solo leen)
+    "reservas_horario_repo": ("reservas_para_la_grilla",),
+    "reservas_repo": ("reservas_de_hoy",),
 }
 
 # (repo, función) -> el parámetro que dice quién lo hace (ver el comentario del módulo).
@@ -130,6 +143,7 @@ ACTOR = {
     ("articulos_repo", "comprobar_clave_para_ordenar_stock"): "usuario_id",
     ("articulos_repo", "ajustar_stock"): "usuario_id",
     ("articulos_repo", "cambiar_codigo"): "usuario_id",
+    ("articulos_repo", "listar_para_control_de_stock"): "usuario_id",
     ("articulos_repo", "crear_marca"): "usuario_id",
     ("articulos_repo", "renombrar_marca"): "usuario_id",
     ("articulos_repo", "juntar_marcas"): "usuario_id",

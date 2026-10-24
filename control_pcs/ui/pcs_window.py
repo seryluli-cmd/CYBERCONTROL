@@ -47,8 +47,14 @@ vive al lado:
   (adorno, pedido del dueño 2026-10-23).
 - `pcs_gestion_dialogos.py`: administrar el catálogo de Estaciones y de
   Bonos de Tiempo (solo se abren desde Configuración ADMIN, no desde acá).
+
+Desde otra PC (la copia para administrar, admin_remoto/) se ve igual, con los
+datos del mostrador (pedido del dueño, 2026-10-24): lo que atiende una PC o
+cobra avisa que se hace en el mostrador (`ui.utils.solo_en_el_mostrador`), y
+las sesiones vencidas las da de baja solo el mostrador.
 """
 
+import time
 from datetime import datetime
 
 from PySide6.QtGui import QColor
@@ -58,6 +64,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
+from admin_remoto import modo as modo_remoto
 from control_pcs.repositories import (
     comandos_pc_repo, congelado_repo, mantenimiento_pc_repo, pcs_repo, playstation_repo, reservas_horario_repo,
 )
@@ -78,12 +85,17 @@ from control_pcs.ui.pcs_mosaico import (
 )
 from ui.control_stock_window import BotonControlStock
 from ui.utils import (
-    formato_tiempo, formato_transcurrido, mostrar_info, confirmar, manejar_errores,
+    avisar_que_es_en_el_mostrador, formato_tiempo, formato_transcurrido, mostrar_info, confirmar, manejar_errores,
+    solo_en_el_mostrador,
 )
 
 # Cada cuántos milisegundos se recalcula el tiempo restante de las
 # estaciones activas y se dan de baja solas las sesiones vencidas.
 INTERVALO_REFRESCO_MS = 5000
+
+# Desde otra PC, sin respuesta del mostrador: cada cuántos segundos se vuelve a
+# probar (ver _refrescar_desde_otra_pc).
+REINTENTO_SIN_CONEXION_SEG = 30
 
 # Por debajo de este tiempo restante, una PC en uso pasa a mostrarse en
 # naranja (⚠) en vez de amarillo, como aviso de que hay que renovarla pronto.
@@ -181,6 +193,12 @@ class PanelControlPcs(QWidget):
         self._filas_en_alerta = []
         self._filas_calientes = []      # las PCs con el procesador caliente: "CALIENTE" titila
         self._parpadeo_encendido = True
+        # Desde otra PC (ver _refrescar_desde_otra_pc): cuándo llegó la consola, desde
+        # cuándo no contesta el mostrador y cuándo se vuelve a probar.
+        self._remota = modo_remoto.es_copia_remota()
+        self._playstation_recibida_a = datetime.now()
+        self._sin_conexion_desde = None
+        self._reintentar_a_las = 0.0
         self._armar_interfaz()
         self._refrescar()
 
@@ -230,6 +248,13 @@ class PanelControlPcs(QWidget):
         layout_marco.setContentsMargins(12, 12, 12, 8)
         layout_marco.setSpacing(8)
         layout_marco.addWidget(LeyendaDeColores(LEYENDA))
+        # Solo desde otra PC, cuando el mostrador no contesta: que se note que lo
+        # que se ve puede no estar al día (estilo "#avisoSinConexionMosaico").
+        self.aviso_sin_conexion = QLabel()
+        self.aviso_sin_conexion.setObjectName("avisoSinConexionMosaico")
+        self.aviso_sin_conexion.setWordWrap(True)
+        self.aviso_sin_conexion.setVisible(False)
+        layout_marco.addWidget(self.aviso_sin_conexion)
         # Las reservas de "Cualquier PC disponible": no apartan ninguna PC, así que
         # se avisan acá arriba (decisión del dueño). Escondido si no hay ninguna.
         self.aviso_reservas = AvisoDeReservasSinPcFija()
@@ -274,29 +299,72 @@ class PanelControlPcs(QWidget):
 
     @manejar_errores
     def _refrescar(self):
-        estados = pcs_repo.estado_estaciones()
-        # Cualquier sesión que ya llegó a 0 se da de baja acá mismo, sin
-        # esperar a que alguien abra la pantalla de nuevo: es el "job de
-        # vencimiento" de este módulo (mismo criterio que
-        # turnos.turno_vencimiento, se resuelve por comparación de
-        # fecha en cada refresco, no con un temporizador que dispare una
-        # alarma en el medio).
+        if self._remota:
+            self._refrescar_desde_otra_pc()
+            return
+        self._traer_y_redibujar()
+
+    def _traer_y_redibujar(self):
+        estados = self._dar_de_baja_las_vencidas(pcs_repo.estado_estaciones())
+        self._estados = estados
+        # La PlayStation 5 NO entra en el "job de vencimiento": al llegar a cero
+        # no se libera sola, queda avisando en rojo hasta que el operador la
+        # libera (ver playstation_repo).
+        self._item_playstation = playstation_repo.estado()
+        self._playstation_recibida_a = datetime.now()
+        self.aviso_reservas.actualizar(reservas_horario_repo.reservas_para_la_grilla(), estados)
+        self._redibujar_mosaico()
+        self.panel_actividad.actualizar()
+
+    def _dar_de_baja_las_vencidas(self, estados):
+        """
+        Cualquier sesión que ya llegó a 0 se da de baja acá mismo, sin esperar
+        a que alguien abra la pantalla de nuevo: es el "job de vencimiento" de
+        este módulo (mismo criterio que turnos.turno_vencimiento, se resuelve
+        por comparación de fecha en cada refresco, no con un temporizador que
+        dispare una alarma en el medio). Devuelve los estados al día.
+
+        Desde otra PC no: esa copia solo mira, y lo hace el mostrador.
+        """
+        if self._remota:
+            return estados
         alguna_vencio = False
         for item in estados:
             if item["sesion"] is not None and item["segundos_restantes"] == 0:
                 pcs_repo.finalizar_sesion(item["sesion"]["id"])
                 alguna_vencio = True
-        if alguna_vencio:
-            estados = pcs_repo.estado_estaciones()
+        return pcs_repo.estado_estaciones() if alguna_vencio else estados
 
-        self._estados = estados
-        # La PlayStation 5 NO entra en el "job de vencimiento" de arriba: al
-        # llegar a cero no se libera sola, queda avisando en rojo hasta que el
-        # operador la libera (ver playstation_repo).
-        self._item_playstation = playstation_repo.estado()
-        self.aviso_reservas.actualizar(reservas_horario_repo.reservas_para_la_grilla(), estados)
-        self._redibujar_mosaico()
-        self.panel_actividad.actualizar()
+    def _refrescar_desde_otra_pc(self):
+        """
+        Desde otra PC todo llega del mostrador por la red. Si no contesta (se
+        cortó la red, se cerró el programa del mostrador, o se reinició y se
+        perdió la sesión) queda a la vista lo último que llegó, con un aviso
+        rojo arriba del mosaico, y se vuelve a probar cada
+        REINTENTO_SIN_CONEXION_SEG y no cada 5: cada intento sin respuesta traba
+        la ventana un momento (ver admin_remoto.cliente.ESPERA_CONECTAR_SEGUNDOS).
+        Sin carteles que se apilen cada 5 segundos.
+        """
+        if time.monotonic() < self._reintentar_a_las:
+            return
+        try:
+            self._traer_y_redibujar()
+        except (ValueError, PermissionError) as error:
+            self._reintentar_a_las = time.monotonic() + REINTENTO_SIN_CONEXION_SEG
+            if self._sin_conexion_desde is None:
+                self._sin_conexion_desde = datetime.now()
+            if isinstance(error, PermissionError):
+                texto = ("⚠ El mostrador cortó la sesión desde esta PC (por ejemplo, porque se reinició "
+                         "su programa): apretá OPERADOR y volvé a entrar. Lo que ves no está al día.")
+            else:
+                texto = (f"⚠ Sin conexión con el mostrador desde las {self._sin_conexion_desde:%H:%M}: "
+                         "lo que ves puede no estar al día. Se vuelve a probar sola.")
+            self.aviso_sin_conexion.setText(texto)
+            self.aviso_sin_conexion.setVisible(True)
+            return
+        self._reintentar_a_las = 0.0
+        self._sin_conexion_desde = None
+        self.aviso_sin_conexion.setVisible(False)
 
     @staticmethod
     def _ficha_de_pc(item):
@@ -485,15 +553,24 @@ class PanelControlPcs(QWidget):
         el vencimiento guardado, así que no deriva ni depende de cuántas veces
         corrió. Cuando llega a cero pide un refresco completo: ahí pasa a
         "TIEMPO AGOTADO" y arranca a titilar en rojo (ver _ficha_de_playstation).
+
+        Desde otra PC cuenta desde lo que dijo el mostrador en el último
+        refresco (el reloj de esta PC puede no ser el del mostrador) y al llegar
+        a cero espera el refresco de siempre: si no hay red, pedirlo cada
+        segundo trabaría la ventana.
         """
         item = self._item_playstation
         if item is None or item["sesion"] is None or item["tiempo_agotado"]:
             return
-        fin_previsto = datetime.fromisoformat(item["sesion"]["fecha_fin_prevista"])
-        segundos = dominio.segundos_restantes(fin_previsto, datetime.now())
-        if segundos == 0:
-            self._refrescar()
-            return
+        if self._remota:
+            pasaron = (datetime.now() - self._playstation_recibida_a).total_seconds()
+            segundos = max(0, int(item["segundos_restantes"] - pasaron))
+        else:
+            fin_previsto = datetime.fromisoformat(item["sesion"]["fecha_fin_prevista"])
+            segundos = dominio.segundos_restantes(fin_previsto, datetime.now())
+            if segundos == 0:
+                self._refrescar()
+                return
         # La consola es siempre el primer casillero (ver _redibujar_mosaico).
         if self.mosaico.count() > 0:
             self.mosaico.cambiar_restante(0, formato_tiempo(segundos, con_segundos=True))
@@ -622,6 +699,10 @@ class PanelControlPcs(QWidget):
             self._timer.start()
             self._timer_cuenta_regresiva.start()
 
+        # Desde otra PC el menú se ve igual, pero todo esto se hace en el mostrador.
+        if elegida is not None and self._remota:
+            avisar_que_es_en_el_mostrador(self)
+            return
         if elegida == accion_cerrar_sesion:
             self._cerrar_sesion_y_reiniciar(estacion, sesion, segundos_restantes)
         elif elegida == accion_trasladar:
@@ -654,6 +735,7 @@ class PanelControlPcs(QWidget):
         elif accion_congelar is not None and elegida == accion_congelar:
             DialogoCongelado(estacion, self._estados, self).exec()
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _mantenimiento(self, estacion, orden):
         """Empieza o termina a distancia el mantenimiento de la PC (el de la "A" del Cliente PC),
@@ -667,6 +749,7 @@ class PanelControlPcs(QWidget):
         if confirmar(self, "Mantenimiento", pregunta):
             DialogoMantenimiento(estacion, orden, self.usuario, self).exec()
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _cerrar_sesion_y_reiniciar(self, estacion, sesion, segundos_restantes):
         """
@@ -701,6 +784,7 @@ class PanelControlPcs(QWidget):
         )
         self._refrescar()
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _confirmar_y_encolar(self, estacion, tipo, texto_confirmacion):
         if not confirmar(self, "Confirmar", texto_confirmacion):
@@ -713,6 +797,7 @@ class PanelControlPcs(QWidget):
             "conexión), se descarta: así no le llega más tarde a otro cliente.",
         )
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _enviar_mensaje(self, estacion):
         texto, aceptado = QInputDialog.getMultiLineText(

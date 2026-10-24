@@ -25,7 +25,7 @@ from ui.dialogo_pago import cobrar
 from ui.utils import (
     aplicar_clase, confirmar, encadenar_enter, fila_guardar_cancelar, formato_pesos,
     formato_tiempo, formato_transcurrido, manejar_errores, mostrar_error, mostrar_info,
-    sin_boton_por_defecto,
+    sin_boton_por_defecto, solo_en_el_mostrador,
 )
 
 
@@ -145,6 +145,8 @@ class PanelDetalleEstacion(QFrame):
     La PlayStation 5 la opera cualquier operador logueado (pedido del dueño,
     2026-10-19; ver playstation_repo.puede_operar). PCSTREAM no se abre con
     Miembro (los socios no la pueden usar).
+    Desde otra PC el panel se ve igual, y los tres botones avisan que eso se
+    hace en el mostrador (pedido del dueño, 2026-10-24).
     """
 
     def __init__(self, usuario, avisar_cambio, parent=None):
@@ -352,6 +354,7 @@ class PanelDetalleEstacion(QFrame):
             texto += "\n" + texto_de_la_reserva(item)
         self.etiqueta_estado.setText(texto)
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _cobrar_bono(self):
         # Todo se decide con el equipo elegido AHORA (`item`): de esa foto sale
@@ -399,6 +402,7 @@ class PanelDetalleEstacion(QFrame):
             pcs_repo.asignar_bono(item["estacion"]["id"], bono["id"], self.usuario["id"], pagos)
         self._avisar_cambio()
 
+    @solo_en_el_mostrador
     def _abrir_con_miembro(self):
         if self.item is None or es_playstation(self.item) or self._es_pcstream(self.item):
             return
@@ -406,6 +410,7 @@ class PanelDetalleEstacion(QFrame):
         if dialogo.exec():
             self._avisar_cambio()
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _finalizar_sesion(self):
         item = self.item

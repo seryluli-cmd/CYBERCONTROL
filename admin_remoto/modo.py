@@ -15,7 +15,8 @@ Para probar (o con una copia del .exe en la otra PC), se puede decir a mano a
 qué PC hablarle: CyberBios.exe --mostrador 192.168.0.10
 
 No usa Qt ni la base: lo pregunta main.py antes de abrir nada, y las pantallas
-(con es_copia_remota) para esconder lo que solo se hace en el mostrador.
+(con es_copia_remota) para lo que solo se hace en el mostrador: unas cosas se
+esconden y otras están pero avisan (ui.utils.solo_en_el_mostrador).
 """
 
 import ctypes
@@ -100,8 +101,8 @@ def desactivar():
 
 
 def es_copia_remota() -> bool:
-    """True en la copia de la otra PC: las pantallas esconden lo que solo se
-    hace en el mostrador (vender, cerrar turno, la grilla de PCs...)."""
+    """True en la copia de la otra PC: lo que solo se hace en el mostrador
+    (vender, cerrar turno, atender las PCs...) avisa o no aparece."""
     return _mostrador_en_uso is not None
 
 

@@ -12,7 +12,8 @@ desmarcan las que no se quieren tocar (pedido del dueño, 2026-10-22):
 
 Son para cualquier operador (pedido del dueño, 2026-10-22: el mantenimiento
 de las PCs lo suelen hacer los operadores). "Congelar / descongelar..." del
-clic derecho sigue siendo solo del Admin.
+clic derecho sigue siendo solo del Admin. Desde otra PC se ven igual y avisan
+que eso se hace en el mostrador (pedido del dueño, 2026-10-24).
 
 El copo de nieve de DESCONGELAR y el símbolo de APAGAR se dibujan acá (pedido
 del dueño, 2026-10-23): el emoji del cubito de hielo 🧊 salía como un
@@ -37,7 +38,7 @@ from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 from control_pcs.repositories import pcs_libres_repo
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
 from control_pcs.ui.pcs_reiniciar_dialogo import DialogoApagar, DialogoReiniciar
-from ui.utils import aplicar_clase, manejar_errores, mostrar_info
+from ui.utils import aplicar_clase, manejar_errores, mostrar_info, solo_en_el_mostrador
 
 # Los íconos se dibujan grandes y Qt los achica al tamaño del botón: así salen
 # prolijos también en un monitor con la escala de Windows al 125 % o al 150 %.
@@ -146,14 +147,17 @@ class BotonesParaLasLibres(QWidget):
         layout.addWidget(boton)
         return boton
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _descongelar(self):
         DialogoCongelado(None, self._estados(), self).exec()
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _reiniciar(self):
         self._abrir_si_hay_libres(DialogoReiniciar)
 
+    @solo_en_el_mostrador
     @manejar_errores
     def _apagar(self):
         self._abrir_si_hay_libres(DialogoApagar)

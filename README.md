@@ -626,11 +626,19 @@ y decisiones en [docs/ADMIN_REMOTO.md](docs/ADMIN_REMOTO.md).
   un tope de 20 claves mal en 15 minutos para todas juntas); en cada pedido
   vuelve a mirar que la entrada siga prendida y el usuario siga siendo Admin; y
   el "quién lo hizo" (`lista_blanca.ACTOR`) lo pone el mostrador.
+- **Qué se ve:** la pantalla principal igual que en el mostrador (pedido del
+  dueño, 2026-10-24), con la grilla de PCs en vivo, Actividad reciente, las
+  reservas de hoy, la caja y CONTROL DE STOCK. Si el mostrador no contesta queda
+  lo último que llegó, con un aviso rojo arriba del mosaico, y se vuelve a probar
+  cada 30 s (`PanelControlPcs._refrescar_desde_otra_pc`; conectar espera 2 s como
+  mucho, `cliente.ESPERA_CONECTAR_SEGUNDOS`, y nunca pasa por un proxy).
 - **Qué no se puede desde otra PC:** vender, cobrar, abrir/cerrar cajas y
-  turnos, la grilla de PCs, Miembros, Actualizar el
-  Cliente PC y las Copias de Seguridad (las pantallas lo esconden con
-  `modo.es_copia_remota()`, y la lista blanca lo rechaza igual). El cierre
-  forzoso de la caja lo hace solo el mostrador.
+  turnos, atender las PCs (finalizar, reiniciar, mensajes...), Miembros,
+  Actualizar el Cliente PC y las Copias de Seguridad. En la pantalla principal
+  esos botones están y avisan "Esto se hace en el mostrador"
+  (`ui.utils.solo_en_el_mostrador`); en las demás se esconden con
+  `modo.es_copia_remota()`; y la lista blanca lo rechaza igual. El cierre
+  forzoso de la caja y dar de baja las sesiones vencidas lo hace solo el mostrador.
 - **Las dos copias tienen que ser el mismo .exe:** `lista_blanca.huella()`
   (funciones, parámetros y actores) se compara al entrar.
 

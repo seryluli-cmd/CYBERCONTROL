@@ -296,6 +296,15 @@ HOJA_DE_ESTILOS = """
         padding: 5px 12px;
         font-size: 12px;
     }
+    /* Desde otra PC, con el mostrador sin contestar (ver PanelControlPcs._refrescar_desde_otra_pc). */
+    QLabel#avisoSinConexionMosaico {
+        background-color: #FDECEC;
+        color: #B42318;
+        border-radius: 6px;
+        padding: 5px 12px;
+        font-size: 13px;
+        font-weight: 700;
+    }
     QListWidget#mosaicoPcs QScrollBar:vertical {
         background: #181B21;
     }

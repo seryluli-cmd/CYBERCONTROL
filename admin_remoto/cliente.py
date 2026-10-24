@@ -24,6 +24,7 @@ SinConexion (un ValueError: las pantallas lo muestran como un aviso, no como un
 error del programa).
 """
 
+import http.client
 import json
 import os
 import sys
@@ -37,6 +38,35 @@ from servidor_red import PUERTO_SERVIDOR as PUERTO
 # Un reporte de un año puede tardar unos segundos en armarse en el mostrador.
 ESPERA_LLAMADA_SEGUNDOS = 60
 ESPERA_HOLA_SEGUNDOS = 6
+# Cuánto se espera para CONECTAR con el mostrador (en la red del local tarda
+# milisegundos). Con el programa del mostrador cerrado, Windows no rechaza: no
+# contesta nada, y cada pedido esperaba la espera entera. Con la grilla de PCs,
+# que pide cada 5 segundos, la ventana quedaba trabada.
+ESPERA_CONECTAR_SEGUNDOS = 2
+
+
+class _ConexionHttp(http.client.HTTPConnection):
+    """Conecta con ESPERA_CONECTAR_SEGUNDOS; la respuesta se espera con la espera
+    del pedido."""
+
+    def connect(self):
+        espera = self.timeout
+        self.timeout = ESPERA_CONECTAR_SEGUNDOS
+        try:
+            super().connect()
+        finally:
+            self.timeout = espera
+        self.sock.settimeout(espera)
+
+
+class _ManejadorHttp(urllib.request.HTTPHandler):
+    def http_open(self, pedido):
+        return self.do_open(_ConexionHttp, pedido)
+
+
+# Sin proxy: el mostrador está en la red del local, y un proxy puesto en Windows
+# (Opciones de Internet) se llevaría el pedido afuera.
+_abrir = urllib.request.build_opener(urllib.request.ProxyHandler({}), _ManejadorHttp).open
 
 
 class SinConexion(ValueError):
@@ -71,7 +101,7 @@ class ConexionConElMostrador:
             self._base + ruta, data=datos, method="POST", headers={"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(pedido, timeout=espera) as respuesta:
+            with _abrir(pedido, timeout=espera) as respuesta:
                 contenido = respuesta.read()
         except urllib.error.HTTPError as error:
             # 400/404/500 vienen igual con su explicación en JSON.

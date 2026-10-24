@@ -26,10 +26,26 @@ Si lo querés revisar con ChatGPT, este archivo se puede adjuntar tal cual.
   se lo pide al CyberBIOS del mostrador por la red del local (el mismo camino
   que ya usan las PCs del cyber, puerto 8899). El único que toca la base es el
   mostrador, como siempre.
-- En la otra PC la ventana principal muestra un cartel ("Estás administrando
-  desde otra PC...") en lugar de la grilla de PCs, y arriba el número de la caja
-  abierta en el mostrador.
-- La operadora no ve nada ni se le traba la pantalla.
+- **En la otra PC la ventana principal se ve igual que en el mostrador**
+  (pedido tuyo del 24/10/2026: "quiero que se vea tal cual, como se ve en la PC
+  original"): la grilla de PCs en vivo, con las ocupadas, los tiempos, la
+  PlayStation 5, las reservas, Actividad reciente, la caja abierta arriba y
+  todos los botones. Se actualiza cada 5 segundos, como en el mostrador. Hasta
+  ese día iba un cartel en lugar de la grilla.
+- Los botones que venden, cobran o atienden una PC (Vender, Impresiones,
+  Trámites, Miembros, Reservas, Cierre de Turno, Cobrar, Abrir con Miembro,
+  Finalizar Sesión, el clic derecho de una PC, Descongelar, Reiniciar y Apagar)
+  están, pero al apretarlos avisan **"Esto se hace en el mostrador"** y no hacen
+  nada. CONTROL DE STOCK sí abre (solo mira).
+- Si el mostrador deja de contestar (se cortó la red, se cerró el programa del
+  mostrador o se reinició), arriba de la grilla aparece un aviso rojo: lo que se
+  ve es lo último que llegó y puede no estar al día. Se vuelve a probar sola cada
+  30 segundos. Si se reinició el programa del mostrador, el aviso dice que
+  aprietes OPERADOR y vuelvas a entrar. Dos detalles para que la ventana no se
+  trabe esperando: para conectarse espera 2 segundos como mucho (en la red del
+  local tarda milésimas) y nunca pasa por un proxy de Windows.
+- La operadora no ve nada ni se le traba la pantalla. Las sesiones que llegan
+  a cero las sigue dando de baja solo el mostrador.
 
 ### Qué se puede hacer desde la otra PC
 
@@ -39,11 +55,13 @@ Si lo querés revisar con ChatGPT, este archivo se puede adjuntar tal cual.
 - **Configuración ADMIN:** estaciones, los cuatro catálogos de bonos, tarifa de
   socios, trámites, Accesos de Admin, fondo y filtro de palabras de las PCs.
 - **Caja** (solo mirar) y **Clave** (cambiar la propia).
+- **Mirar la grilla de PCs** como en el mostrador, y CONTROL DE STOCK.
 
 ### Qué sigue solo en el mostrador
 
 Vender, cobrar (bonos, trámites, carga de saldo), Cierre de Turno y las cajas,
-la grilla de PCs, Miembros, Actualizar el Cliente PC (se
+atender las PCs (finalizar, reiniciar, apagar, mensajes, mantenimiento,
+descongelar), Miembros, Actualizar el Cliente PC (se
 firma con la clave que vive en la PC del mostrador), Copia de Seguridad y prender
 o apagar la entrada desde otra PC. El cierre forzoso de la caja también lo hace
 solo el mostrador.
@@ -80,7 +98,7 @@ abre la base de esa carpeta: le habla al programa del mostrador.
   entrar desde otra PC un rato; nunca para entrar.
 - La sesión vale solo desde la PC que entró, vence a las 3 horas sin uso y se
   pierde si se cierra el programa del mostrador. Ojo: con la ventana abierta en
-  la otra PC cuenta como "en uso" (mira la caja cada 10 segundos). **Al
+  la otra PC cuenta como "en uso" (mira la grilla y la caja cada pocos segundos). **Al
   terminar, cerrá sesión o cerrá el programa**, sobre todo si es una PC del
   cyber: si no, el próximo cliente de esa PC la encontraría abierta.
 - Solo se pueden pedir las funciones de una **lista cerrada**; cualquier otra se
@@ -136,6 +154,16 @@ abre la base de esa carpeta: le habla al programa del mostrador.
 - Una prueba revisa las pantallas que se abren desde otra PC: si alguna empieza
   a usar una función que no está en la lista, falla y dice cuál.
 - La suite completa del programa sigue pasando (723 pruebas).
+- **La pantalla principal igual que en el mostrador (24/10/2026),** 7 pruebas
+  más: la copia remota muestra las PCs del mostrador de prueba (una con un
+  bono, otra libre, la PlayStation 5) y su Actividad reciente; los 17 botones y
+  opciones que venden, cobran o atienden una PC solo avisan, sin abrir ninguna
+  ventana y sin tocar la base del mostrador (se comprobó que la prueba falla si
+  a Vender le falta el aviso); sin red queda lo último con el aviso rojo y vuelve
+  sola; no da de baja sesiones vencidas; la cuenta de la PlayStation 5 sale de
+  lo que dice el mostrador; conectar espera poco y no pasa por un proxy. Otra
+  prueba revisa la pantalla principal: todo lo que le pide al mostrador está en
+  la lista, o el botón avisa.
 
 ## Para probarlo en el local
 

@@ -483,13 +483,54 @@ class TestPorLaRed(_ConServidor):
         self.assertIn("no es el mismo", str(error.exception))
 
     def test_sin_mostrador_avisa_que_no_lo_encuentra(self):
-        enchufe = socket.socket()
-        enchufe.bind(("127.0.0.1", 0))
-        puerto_libre = enchufe.getsockname()[1]
-        enchufe.close()
         with self.assertRaises(cliente.SinConexion) as error:
-            cliente.conectar("127.0.0.1", puerto_libre)
+            cliente.conectar("127.0.0.1", _puerto_libre())
         self.assertIn("No encuentro el CyberBIOS del mostrador", str(error.exception))
+
+    def test_conectar_espera_poco_y_la_respuesta_lo_de_siempre(self):
+        # Con el programa del mostrador cerrado, Windows no contesta nada: cada pedido
+        # esperaba la espera entera y la grilla de PCs trababa la ventana.
+        esperas = []
+        crear = socket.create_connection
+
+        def anotar(direccion, espera, *args, **kwargs):
+            enchufe = crear(direccion, espera, *args, **kwargs)
+            esperas.append(espera)
+            return _EnchufeQueAnota(enchufe, esperas)
+
+        with mock.patch.object(socket, "create_connection", anotar):
+            cliente.conectar("127.0.0.1", self.puerto)
+        self.assertEqual(esperas, [cliente.ESPERA_CONECTAR_SEGUNDOS, cliente.ESPERA_HOLA_SEGUNDOS])
+
+    def test_no_pasa_por_un_proxy_puesto_en_windows(self):
+        # Un proxy de las Opciones de Internet se llevaría el pedido afuera de la red del local.
+        proxy = f"http://127.0.0.1:{_puerto_libre()}"
+        with mock.patch.dict(os.environ, {"HTTP_PROXY": proxy, "http_proxy": proxy}):
+            conexion = cliente.conectar("127.0.0.1", self.puerto)
+        self.assertEqual(conexion.nombres_para_entrar(), ["Administrador"])
+
+
+def _puerto_libre() -> int:
+    """Un puerto donde no atiende nadie."""
+    enchufe = socket.socket()
+    enchufe.bind(("127.0.0.1", 0))
+    puerto = enchufe.getsockname()[1]
+    enchufe.close()
+    return puerto
+
+
+class _EnchufeQueAnota:
+    """Un enchufe de verdad que anota la espera que le ponen después de conectar."""
+
+    def __init__(self, enchufe, esperas):
+        self._enchufe, self._esperas = enchufe, esperas
+
+    def settimeout(self, espera):
+        self._esperas.append(espera)
+        self._enchufe.settimeout(espera)
+
+    def __getattr__(self, nombre):
+        return getattr(self._enchufe, nombre)
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +576,63 @@ _SE_USAN_SIN_IR_AL_MOSTRADOR = {
 }
 
 
+# La pantalla principal también se abre desde otra PC, igual que en el mostrador
+# (pedido del dueño, 2026-10-24), pero ahí hay de todo: lo que mira y lo que vende
+# o atiende una PC. (archivo, clases o funciones que se revisan; None = el archivo
+# entero.) Lo que no está: ventanas que solo se abren desde algo que avisa.
+_PANTALLA_PRINCIPAL = [
+    ("ui/main_window.py", {"MainWindow"}),
+    ("ui/control_stock_window.py", None),
+    ("control_pcs/ui/pcs_window.py", None),
+    ("control_pcs/ui/pcs_detalle.py", {"PanelDetalleEstacion", "_ListaDeBonos", "texto_de_la_reserva",
+                                       "es_playstation"}),
+    ("control_pcs/ui/pcs_actividad.py", None),
+    ("control_pcs/ui/pcs_aviso_reservas.py", None),
+    ("control_pcs/ui/pcs_botones_libres.py", None),
+    ("control_pcs/ui/pcs_cometa.py", None),
+    ("control_pcs/ui/pcs_cortes.py", None),
+    ("control_pcs/ui/pcs_mosaico.py", None),
+]
+# Cuentas con lo que ya llegó del mostrador: se hacen en esta PC, sin base.
+_NO_VAN_A_LA_BASE = {
+    ("usuarios_repo", "tiene_permiso"), ("playstation_repo", "puede_operar"),
+    ("reservas_horario_repo", "texto_de_la_hora"), ("reservas_horario_repo", "sin_pc_fija"),
+    ("reservas_horario_repo", "pcs_libres"), ("mantenimiento_pc_repo", "minutos_vigentes"),
+    ("congelado_repo", "esta_ocupada"), ("pcs_libres_repo", "prendidas_y_libres"),
+}
+# Las que miran `self._remota` antes de tocar la base (el cierre forzoso y dar de
+# baja las sesiones vencidas los hace solo el mostrador).
+_SE_SALTEAN_DESDE_OTRA_PC = {"_revisar_la_caja", "_dar_de_baja_las_vencidas"}
+
+
 class TestLasPantallasSoloPidenLoQueEstaEnLaLista(unittest.TestCase):
+    def test_la_pantalla_principal_pide_solo_lo_de_la_lista_y_lo_demas_avisa(self):
+        faltan = []
+        for archivo, nombres in _PANTALLA_PRINCIPAL:
+            arbol = ast.parse((RAIZ / archivo).read_text(encoding="utf-8"))
+            nodos = [arbol] if nombres is None else [
+                nodo for nodo in arbol.body
+                if isinstance(nodo, (ast.ClassDef, ast.FunctionDef)) and nodo.name in nombres
+            ]
+            if nombres is not None:
+                self.assertEqual({nodo.name for nodo in nodos}, nombres, archivo)
+            funciones = [f for nodo in nodos for f in ast.walk(nodo) if isinstance(f, ast.FunctionDef)]
+            for funcion in funciones:
+                avisa = any(isinstance(d, ast.Name) and d.id == "solo_en_el_mostrador" for d in funcion.decorator_list)
+                if avisa or funcion.name in _SE_SALTEAN_DESDE_OTRA_PC:
+                    continue
+                for uso in ast.walk(funcion):
+                    if not (isinstance(uso, ast.Attribute) and isinstance(uso.value, ast.Name)):
+                        continue
+                    repo, nombre = uso.value.id, uso.attr
+                    if not repo.endswith("_repo") or nombre.isupper():
+                        continue  # no es un repo, o es una constante (TIPO_REINICIAR...)
+                    if lista_blanca.permitida(repo, nombre) or (repo, nombre) in _NO_VAN_A_LA_BASE:
+                        continue
+                    faltan.append(f"{archivo}: {funcion.name} usa {repo}.{nombre}")
+        self.assertEqual(faltan, [], "Sumala a admin_remoto/lista_blanca.py si solo mira, o ponele "
+                                     "@solo_en_el_mostrador a lo que vende, cobra o atiende una PC")
+
     def test_cada_funcion_de_un_repo_que_usan_esta_en_la_lista(self):
         faltan = []
         for archivo, clases in _PANTALLAS_DE_OTRA_PC:
@@ -723,6 +820,174 @@ class TestCopiaRemota(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self._carpeta_mostrador.name, "fondo_bloqueo.jpg")))
         self.assertTrue(fondo_repo.quitar())
 
+    # --- la pantalla principal, igual que en el mostrador (2026-10-24) ---------
+
+    @staticmethod
+    def _juntando(errores, avisos):
+        """Junta los carteles en vez de mostrarlos: los errores en `errores` y los
+        avisos (su título) en `avisos`."""
+        import contextlib
+        import ui.utils
+        pila = contextlib.ExitStack()
+        pila.enter_context(mock.patch.object(ui.utils, "mostrar_error", lambda _p, _t, texto: errores.append(texto)))
+        pila.enter_context(mock.patch.object(ui.utils, "_mostrar_error_seguro",
+                                             lambda _p, error: errores.append(repr(error))))
+        pila.enter_context(mock.patch.object(ui.utils, "registrar_error", lambda error, *_: errores.append(repr(error))))
+        pila.enter_context(mock.patch.object(ui.utils, "mostrar_info", lambda _p, titulo, _t: avisos.append(titulo)))
+        return pila
+
+    def _ventana_principal(self):
+        from ui.main_window import MainWindow
+        errores = []
+        with self._juntando(errores, []):
+            ventana = MainWindow(self.usuario, al_cerrar_sesion=lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.close)  # frena los relojes de la grilla
+        self.assertEqual(errores, [])
+        return ventana
+
+    def test_la_pantalla_principal_se_ve_como_en_el_mostrador(self):
+        from control_pcs.ui.pcs_detalle import es_playstation
+        ventana = self._ventana_principal()
+        panel = ventana.panel_pcs
+
+        nombres = [item["nombre"] if es_playstation(item) else item["estacion"]["nombre"]
+                   for item in panel._items_en_grilla]
+        self.assertEqual(nombres, [dominio.NOMBRE_PLAYSTATION, mostrador_de_prueba.PC_OCUPADA,
+                                   mostrador_de_prueba.PC_LIBRE])
+        ocupada, libre = panel._items_en_grilla[1:]
+        self.assertEqual(panel._ficha_de_pc(ocupada).quien, "Bono")
+        self.assertIsNone(libre["sesion"])
+        self.assertIn(mostrador_de_prueba.PC_OCUPADA, panel.panel_actividad.toPlainText())
+        self.assertTrue(panel.aviso_sin_conexion.isHidden())
+
+        botones = [boton.text() for boton in ventana.findChildren(QPushButton)]
+        for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "MIEMBROS", "RESERVAS", "ADMIN KIOSKO", "CONFIG ADMIN",
+                      "CAJA", "CIERRE DE TURNO", "CLAVE", "OPERADOR", "DESCONGELAR", "REINICIAR", "APAGAR",
+                      "CONTROL DE STOCK", "Cobrar", "Abrir con Miembro...", "Finalizar Sesión"):
+            self.assertTrue(any(texto in boton for boton in botones), texto)
+
+    def test_lo_que_vende_cobra_o_atiende_una_pc_solo_avisa(self):
+        from PySide6.QtCore import QPoint, QTimer
+        from PySide6.QtWidgets import QMenu
+        from control_pcs.ui import pcs_window
+
+        def contar(base, tabla):
+            return base.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0]
+
+        base = self._base_del_mostrador()
+        ventas_antes = contar(base, "ventas")
+        ventana = self._ventana_principal()
+        panel = ventana.panel_pcs
+        ocupada = panel._items_en_grilla[1]
+        estacion, sesion = ocupada["estacion"], ocupada["sesion"]
+
+        class MenuQueEligeLaPrimera(QMenu):
+            def exec(self, *_args):
+                return next(accion for accion in self.actions() if accion.isEnabled() and not accion.isSeparator())
+
+        # Si algo abriera su ventana en vez de avisar, se la cierra y se anota.
+        abiertas = []
+
+        def cerrar_la_que_se_abrio():
+            for abierta in (_app.activeModalWidget(), _app.activePopupWidget()):
+                if abierta is not None:
+                    abiertas.append(abierta.windowTitle() or type(abierta).__name__)
+                    abierta.close()
+
+        vigia = QTimer()
+        vigia.timeout.connect(cerrar_la_que_se_abrio)
+        vigia.start(50)
+        self.addCleanup(vigia.stop)
+
+        errores, avisos = [], []
+        with self._juntando(errores, avisos), \
+                mock.patch.object(pcs_window, "QMenu", MenuQueEligeLaPrimera), \
+                mock.patch.object(panel.mosaico, "fila_en", return_value=1):
+            for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "MIEMBROS", "RESERVAS", "CIERRE DE TURNO",
+                          "DESCONGELAR", "REINICIAR", "APAGAR"):
+                next(boton for boton in ventana.findChildren(QPushButton) if texto in boton.text()).click()
+            panel.panel_detalle.mostrar(ocupada)
+            for boton in (panel.panel_detalle.boton_cobrar, panel.panel_detalle.boton_miembro,
+                          panel.panel_detalle.boton_finalizar):
+                self.assertTrue(boton.isEnabled(), boton.text())
+                boton.click()
+            panel._mostrar_menu_contextual(QPoint(0, 0))  # elige "Cerrar sesión y reiniciar"
+            panel._cerrar_sesion_y_reiniciar(estacion, sesion, 600)
+            panel._confirmar_y_encolar(estacion, dominio.COMANDO_REINICIAR, "¿Reiniciar?")
+            panel._enviar_mensaje(estacion)
+            panel._mantenimiento(estacion, dominio.MANTENIMIENTO_INICIAR)
+
+        self.assertEqual(errores, [])
+        self.assertEqual(abiertas, [])
+        self.assertEqual(avisos, ["Se hace en el mostrador"] * 17)
+        base = self._base_del_mostrador()
+        activa = base.execute("SELECT estado FROM sesiones_pc WHERE id = ?", (sesion["id"],)).fetchone()
+        self.assertEqual(activa["estado"], dominio.SESION_ACTIVA)
+        self.assertEqual(contar(base, "comandos_pc"), 0)
+        self.assertEqual(contar(base, "ventas"), ventas_antes)
+
+    def test_sin_respuesta_del_mostrador_queda_lo_ultimo_con_un_aviso(self):
+        ventana = self._ventana_principal()
+        panel = ventana.panel_pcs
+        antes = list(panel._items_en_grilla)
+        direccion, token = self.conexion._base, self.conexion._token
+        self.addCleanup(setattr, self.conexion, "_base", direccion)
+        self.addCleanup(setattr, self.conexion, "_token", token)
+
+        errores = []
+        with self._juntando(errores, []):
+            self.conexion._base = f"http://127.0.0.1:{_puerto_libre()}/admin/"
+            panel._refrescar()
+            self.assertFalse(panel.aviso_sin_conexion.isHidden())
+            self.assertIn("Sin conexión con el mostrador", panel.aviso_sin_conexion.text())
+            self.assertEqual(panel._items_en_grilla, antes)
+            # No vuelve a probar enseguida: cada intento sin respuesta traba la ventana un momento.
+            with mock.patch.object(panel, "_traer_y_redibujar") as traer:
+                panel._refrescar()
+            traer.assert_not_called()
+
+            # Vuelve la red: en el próximo intento se va el aviso.
+            self.conexion._base = direccion
+            panel._reintentar_a_las = 0.0
+            panel._refrescar()
+            self.assertTrue(panel.aviso_sin_conexion.isHidden())
+
+            # Se reinició el programa del mostrador y la sesión de esta PC ya no existe.
+            self.conexion._token = "una-que-ya-no-existe"
+            panel._refrescar()
+            self.assertIn("volvé a entrar", panel.aviso_sin_conexion.text())
+        self.assertEqual(errores, [])
+
+    def test_desde_aca_no_se_dan_de_baja_las_vencidas_y_la_consola_cuenta_con_lo_del_mostrador(self):
+        from datetime import timedelta
+        from control_pcs.repositories import pcs_repo
+        from ui.utils import formato_tiempo
+        panel = self._ventana_principal().panel_pcs
+
+        vencida = {"sesion": {"id": 99}, "segundos_restantes": 0}
+        with mock.patch.object(pcs_repo, "finalizar_sesion") as finalizar:
+            self.assertEqual(panel._dar_de_baja_las_vencidas([vencida]), [vencida])
+        finalizar.assert_not_called()
+
+        # 100 segundos según el mostrador, hace 30; la hora de fin, con el reloj de otra PC.
+        panel._item_playstation = {
+            "dispositivo": dominio.DISPOSITIVO_PLAYSTATION, "nombre": dominio.NOMBRE_PLAYSTATION,
+            "sesion": {"fecha_fin_prevista": "2000-01-01T00:00:00"}, "segundos_restantes": 100,
+            "tiempo_agotado": False, "reserva": None,
+        }
+        panel._playstation_recibida_a = datetime.now() - timedelta(seconds=30)
+        with mock.patch.object(panel.mosaico, "cambiar_restante") as cambiar, \
+                mock.patch.object(panel, "_refrescar") as refrescar:
+            panel._actualizar_cuenta_regresiva()
+            self.assertIn(cambiar.call_args.args[1],
+                          {formato_tiempo(69, con_segundos=True), formato_tiempo(70, con_segundos=True)})
+            # A cero espera el refresco de siempre (sin red, pedirlo cada segundo trabaría la ventana).
+            panel._item_playstation["segundos_restantes"] = 5
+            panel._actualizar_cuenta_regresiva()
+            self.assertEqual(cambiar.call_args.args[1], formato_tiempo(0, con_segundos=True))
+        refrescar.assert_not_called()
+
     def test_las_pantallas_de_administracion_abren_sin_errores(self):
         from control_pcs.ui.accesos_admin_pc_tab import PestañaAccesosAdminPc  # noqa: F401 (la abre Accesos)
         from control_pcs.ui.miembros_window import DialogoGestionBonosMiembro, DialogoTramosTarifaMiembro
@@ -737,8 +1002,9 @@ class TestCopiaRemota(unittest.TestCase):
         from ui.caja_window import CajaWindow, ControlCierresWindow
         from ui.compras_window import ComprasWindow
         from ui.consulta_ventas_window import ConsultaVentasWindow
+        from ui.control_stock_window import VentanaControlStock
         from ui.login_window import LoginWindow
-        from ui.main_window import AdministrarKioskoWindow, ConfiguracionAdminWindow, MainWindow
+        from ui.main_window import AdministrarKioskoWindow, ConfiguracionAdminWindow
         from ui.ordenar_stock_window import OrdenarStockWindow
         from ui.reportes_window import ReportesWindow
         from ui.tramites_window import DialogoGestionTramites
@@ -749,15 +1015,7 @@ class TestCopiaRemota(unittest.TestCase):
         with mock.patch.object(ui.utils, "mostrar_error", lambda _p, titulo, texto: errores.append(texto)), \
                 mock.patch.object(ui.utils, "_mostrar_error_seguro", lambda _p, error: errores.append(repr(error))), \
                 mock.patch.object(ui.utils, "registrar_error", lambda error, *_: errores.append(repr(error))):
-            ventana = MainWindow(self.usuario, al_cerrar_sesion=lambda: None)
-            self.addCleanup(ventana.deleteLater)
-            barra = [boton.text() for boton in ventana.findChildren(QPushButton)]
-            self.assertIsNone(ventana.panel_pcs)
-            self.assertIsNone(ventana.boton_cierre_turno)
-            self.assertFalse(any(
-                "Vender" in texto or "Impresiones" in texto or "Trámites" in texto or "Miembros" in texto
-                for texto in barra
-            ))
+            ventana = self._ventana_principal()
             self.assertIn("Sin caja abierta", ventana.etiqueta_caja.text())
 
             pantallas = [
@@ -775,6 +1033,7 @@ class TestCopiaRemota(unittest.TestCase):
                 DialogoFiltroPalabras(ventana), DialogoFondoPantalla(ventana),
                 ArticulosWindow(ventana, self.usuario),
                 OrdenarStockWindow(ventana, self.usuario["id"], mostrador_de_prueba.CLAVE_ORDENAR_STOCK),
+                VentanaControlStock(self.usuario["id"], ventana),
             ]
             for pantalla in pantallas:
                 self.addCleanup(pantalla.deleteLater)

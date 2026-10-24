@@ -52,11 +52,13 @@ turno el botón Cierre de Turno titila en rojo, y a los 30 minutos del fin
 (turnos.MINUTOS_PARA_CIERRE_FORZOSO) el programa cierra la caja solo (cierre
 forzoso, ver _revisar_la_caja).
 
-Desde otra PC del local (la copia para administrar, ver admin_remoto/): solo
-Administrar Kiosko, Configuración ADMIN, Caja (para mirar) y Clave. Vender,
-cobrar, cerrar el turno y la grilla de PCs siguen en el mostrador, y el cierre
-forzoso de la caja también lo hace el mostrador (si lo hicieran las dos, la
-misma caja se intentaría cerrar dos veces).
+Desde otra PC del local (la copia para administrar, ver admin_remoto/) se ve
+igual que en el mostrador, con la grilla de PCs en vivo (pedido del dueño,
+2026-10-24: "quiero que se vea tal cual"). Se usan Administrar Kiosko,
+Configuración ADMIN, Caja (para mirar) y Clave; Vender, cobrar, cerrar el turno
+y atender las PCs están, pero al apretarlos avisan que se hace en el mostrador
+(`ui.utils.solo_en_el_mostrador`). El cierre forzoso de la caja lo hace solo el
+mostrador (si lo hicieran las dos, la misma caja se intentaría cerrar dos veces).
 """
 
 from PySide6.QtWidgets import (
@@ -89,7 +91,9 @@ from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMi
 from control_pcs.ui.reservas_window import ReservasWindow
 from control_pcs.repositories import reservas_repo
 from ui.ingreso_caja import mensaje_del_sobre
-from ui.utils import aplicar_clase, icono_de_emoji, mostrar_error, mostrar_info, sin_boton_por_defecto
+from ui.utils import (
+    aplicar_clase, icono_de_emoji, mostrar_error, mostrar_info, sin_boton_por_defecto, solo_en_el_mostrador,
+)
 
 # Cada cuánto se mira cómo está la caja (si tiene que titilar el botón, o si ya
 # toca el cierre forzoso). Es una consulta chica, con su índice.
@@ -189,16 +193,16 @@ class MainWindow(QMainWindow):
         self._armar_botones_de_la_barra(botones)
         barra.setLayout(layout_barra)
 
-        # Desde otra PC no va la grilla de PCs (eso se atiende en el mostrador):
-        # un cartel que dice dónde se está trabajando.
-        self.panel_pcs = None if self._remota else PanelControlPcs(self.usuario, self)
+        # Desde otra PC también: la misma grilla, en vivo, con los datos del
+        # mostrador (pedido del dueño, 2026-10-24; hasta ese día iba un cartel).
+        self.panel_pcs = PanelControlPcs(self.usuario, self)
 
         contenedor = QWidget()
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
         layout.addWidget(barra)
-        layout.addWidget(self.panel_pcs if self.panel_pcs is not None else _cartel_de_otra_pc(), 1)
+        layout.addWidget(self.panel_pcs, 1)
         contenedor.setLayout(layout)
         self.setCentralWidget(contenedor)
 
@@ -210,22 +214,24 @@ class MainWindow(QMainWindow):
         "Cerrar sesión": el dueño pidió que diga lo que hace de verdad, volver
         al ingreso para que entre otro operador. Primero fue "Camb Operador"; el
         2026-10-24 pasó a las flechas en círculo + "Operador" (el dueño eligió
-        🔄 entre cinco dibujitos)."""
-        self.boton_reservas = None
-        if not self._remota:
-            self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
-            # Cobro rápido de impresiones, sin entrar a Vender (pedido del dueño, 2026-10-19).
-            self._agregar_boton_barra(layout_barra, "🖨️  Impresiones", self._abrir_impresiones)
-            self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
-            # Una sola carita (2026-10-18): el emoji de "dos personas" de antes,
-            # en el Windows del mostrador, se veía como tres caras sueltas.
-            # Abre para cualquier operador logueado (pedido del dueño, 2026-10-19):
-            # antes pedía permiso_control_pcs o Admin, pero cargarle saldo a un socio
-            # es una venta más y cualquiera tiene que poder hacerlo.
-            self._agregar_boton_barra(layout_barra, "🧑  Miembros", self._abrir_miembros)
-            # Reservas de PCs, PCSTREAM y PlayStation 5 (pedido del dueño, 2026-10-20): cobra,
-            # así que solo en el mostrador. Dice cuántas esperan hoy (ver _actualizar_boton_reservas).
-            self.boton_reservas = self._agregar_boton_barra(layout_barra, "", self._abrir_reservas)
+        🔄 entre cinco dibujitos).
+
+        Desde otra PC van los mismos botones (pedido del dueño, 2026-10-24): los
+        que venden, cobran o cierran el turno avisan que eso se hace en el
+        mostrador (ver los `_abrir_...` con `solo_en_el_mostrador`)."""
+        self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
+        # Cobro rápido de impresiones, sin entrar a Vender (pedido del dueño, 2026-10-19).
+        self._agregar_boton_barra(layout_barra, "🖨️  Impresiones", self._abrir_impresiones)
+        self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
+        # Una sola carita (2026-10-18): el emoji de "dos personas" de antes,
+        # en el Windows del mostrador, se veía como tres caras sueltas.
+        # Abre para cualquier operador logueado (pedido del dueño, 2026-10-19):
+        # antes pedía permiso_control_pcs o Admin, pero cargarle saldo a un socio
+        # es una venta más y cualquiera tiene que poder hacerlo.
+        self._agregar_boton_barra(layout_barra, "🧑  Miembros", self._abrir_miembros)
+        # Reservas de PCs, PCSTREAM y PlayStation 5 (pedido del dueño, 2026-10-20): cobra,
+        # así que se abre solo en el mostrador. Dice cuántas esperan hoy (ver _actualizar_boton_reservas).
+        self.boton_reservas = self._agregar_boton_barra(layout_barra, "", self._abrir_reservas)
         # Nombres cortos en la barra (pedido del dueño, 2026-10-18); las ventanas
         # que abren siguen con su nombre entero.
         self._agregar_boton_barra(
@@ -234,11 +240,7 @@ class MainWindow(QMainWindow):
         # Abre para todos: un Operador solo usa Gestionar Estaciones (ver ConfiguracionAdminWindow).
         self._agregar_boton_barra(layout_barra, "⚙️  Config ADMIN", self._abrir_configuracion_admin)
         self._agregar_boton_barra(layout_barra, "💵  Caja", self._abrir_caja)
-        self.boton_cierre_turno = None
-        if not self._remota:
-            self.boton_cierre_turno = self._agregar_boton_barra(
-                layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno
-            )
+        self.boton_cierre_turno = self._agregar_boton_barra(layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno)
         self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
         # Tres espacios entre el dibujito y el texto: uno más que en los otros botones (pedido del dueño).
         boton_operador = self._agregar_boton_barra(layout_barra, "   Operador", self._cerrar_sesion, clase="peligro")
@@ -275,8 +277,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, evento):
         # QMainWindow no tiene la señal `finished` de los QDialog, así que
         # el refresco automático de la grilla de PCs se frena acá, al cerrar.
-        if self.panel_pcs is not None:
-            self.panel_pcs.detener_actualizacion()
+        self.panel_pcs.detener_actualizacion()
         self._timer_caja.stop()
         self._timer_parpadeo.stop()
         super().closeEvent(evento)
@@ -317,9 +318,8 @@ class MainWindow(QMainWindow):
     def _parpadear(self):
         """Titila en rojo (alterna con su color de siempre) mientras toca
         cerrar; si no, se queda con su color de siempre. El rojo es la clase
-        "alerta" de la hoja de estilos (ui/hoja_de_estilos.py)."""
-        if self.boton_cierre_turno is None:  # desde otra PC no hay Cierre de Turno
-            return
+        "alerta" de la hoja de estilos (ui/hoja_de_estilos.py). Desde otra PC
+        titila igual, con la caja del mostrador."""
         self._encendido = self._titilar and not self._encendido
         clase = "alerta" if self._encendido else "barra"
         if self.boton_cierre_turno.property("clase") != clase:
@@ -349,13 +349,13 @@ class MainWindow(QMainWindow):
         quien atiende vuelve a la pantalla de ingreso como con un cierre normal;
         el Admin se queda donde estaba (no estaba atendiendo esa caja).
 
-        Desde otra PC solo se actualiza el número de caja: el cierre forzoso lo
-        hace el mostrador.
+        Desde otra PC solo se actualizan el número de caja (y el titileo) y las
+        reservas de hoy: el cierre forzoso lo hace el mostrador.
         """
+        self._actualizar_boton_reservas()
         if self._remota:
             self._mostrar_la_caja_del_mostrador()
             return
-        self._actualizar_boton_reservas()
         try:
             estado = self._actualizar_estado_de_la_caja()
             if estado is None or not estado["vencida"] or self._hay_un_cobro_a_medias():
@@ -389,9 +389,11 @@ class MainWindow(QMainWindow):
     # Abrir cada módulo (diálogos modales)
     # -----------------------------------------------------------------
 
+    @solo_en_el_mostrador
     def _abrir_ventas(self):
         VentasWindow(self.usuario, self).exec()
 
+    @solo_en_el_mostrador
     def _abrir_impresiones(self):
         articulo = impresiones_repo.articulo_impresiones()
         if articulo is None:
@@ -399,12 +401,14 @@ class MainWindow(QMainWindow):
             return
         DialogoImpresiones(self.usuario, articulo, self).exec()
 
+    @solo_en_el_mostrador
     def _abrir_tramites(self):
         DialogoTramites(self.usuario, self).exec()
 
     def _abrir_caja(self):
         CajaWindow(self).exec()
 
+    @solo_en_el_mostrador
     def _abrir_cierre_turno(self):
         dialogo = CierreTurnoWindow(self.usuario, self)
         dialogo.exec()
@@ -423,9 +427,11 @@ class MainWindow(QMainWindow):
     def _abrir_administrar_kiosko(self):
         AdministrarKioskoWindow(self.usuario, self.es_admin, self).exec()
 
+    @solo_en_el_mostrador
     def _abrir_miembros(self):
         MiembrosWindow(self.usuario, self).exec()
 
+    @solo_en_el_mostrador
     def _abrir_reservas(self):
         ReservasWindow(self.usuario, self).exec()
         self._actualizar_boton_reservas()
@@ -434,11 +440,11 @@ class MainWindow(QMainWindow):
         """"Reservas · 3 hoy" con las que esperan hoy (reservas_repo.reservas_de_hoy),
         o solo "Reservas" si no hay. Se mira al abrir, en cada revisión de la caja y al
         cerrar la ventana de Reservas. Un fallo de la base no puede tirar el mostrador."""
-        if self.boton_reservas is None:
-            return
         try:
             hoy = reservas_repo.reservas_de_hoy()
         except Exception as error:
+            if self._remota and isinstance(error, (ValueError, PermissionError)):
+                return  # sin red con el mostrador: queda lo último (la barra ya dice "Sin conexión")
             registrar_error(error, "Contar las reservas de hoy")
             hoy = 0
         self.boton_reservas.setText((f"📅  Reservas · {hoy} hoy" if hoy else "📅  Reservas").upper())
@@ -449,20 +455,6 @@ class MainWindow(QMainWindow):
     def _cerrar_sesion(self):
         self.close()
         self._al_cerrar_sesion()
-
-
-def _cartel_de_otra_pc() -> QLabel:
-    """Lo que se ve en lugar de la grilla de PCs en la copia para administrar
-    desde otra PC."""
-    cartel = QLabel(
-        f"Estás administrando desde otra PC, con los datos del mostrador ({modo_remoto.mostrador_en_uso()}).\n\n"
-        "Lo que guardes acá queda guardado en el mostrador al instante. Vender, cobrar, cerrar el turno "
-        "y atender las PCs se hace en el mostrador: la operadora sigue trabajando normal."
-    )
-    cartel.setAlignment(Qt.AlignCenter)
-    cartel.setWordWrap(True)
-    cartel.setStyleSheet("font-size: 15px; color: #4A5568; padding: 40px;")
-    return cartel
 
 
 class _VentanaDeBotones(QDialog):
