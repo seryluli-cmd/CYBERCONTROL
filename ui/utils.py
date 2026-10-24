@@ -12,7 +12,8 @@ por defecto).
 import functools
 from datetime import datetime
 
-from PySide6.QtCore import QDate, QEvent, QObject, Qt
+from PySide6.QtCore import QDate, QEvent, QObject, QRect, QSize, Qt
+from PySide6.QtGui import QFont, QGuiApplication, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QComboBox, QDateEdit, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
     QPushButton, QTableWidget, QWidget,
@@ -445,3 +446,30 @@ def confirmar(padre, titulo: str, mensaje: str) -> bool:
         padre, titulo, mensaje, QMessageBox.Yes | QMessageBox.No, QMessageBox.No
     )
     return respuesta == QMessageBox.Yes
+
+
+def icono_de_emoji(emoji: str, tamano_px: float):
+    """
+    El emoji dibujado como ícono, recortado justo a su borde: (QIcon, QSize). Sirve para un
+    dibujito más grande que la letra del botón (un emoji dentro del texto mide lo que la letra).
+    `tamano_px` es el tamaño de letra con que se lo dibuja; se dibuja a la escala de la pantalla
+    para que no salga borroso.
+    """
+    pantalla = QGuiApplication.primaryScreen()
+    escala = pantalla.devicePixelRatio() if pantalla is not None else 1.0
+    letra = QFont("Segoe UI Emoji")
+    letra.setPixelSize(max(1, round(tamano_px * escala)))
+    lado = 2 * letra.pixelSize()
+    imagen = QImage(lado, lado, QImage.Format_ARGB32_Premultiplied)
+    imagen.fill(Qt.transparent)
+    pintor = QPainter(imagen)
+    pintor.setFont(letra)
+    pintor.drawText(QRect(0, 0, lado, lado), Qt.AlignCenter, emoji)
+    pintor.end()
+    pintados = [(x, y) for y in range(lado) for x in range(lado) if imagen.pixelColor(x, y).alpha()]
+    if pintados:
+        xs, ys = [x for x, _y in pintados], [y for _x, y in pintados]
+        imagen = imagen.copy(min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1)
+    dibujo = QPixmap.fromImage(imagen)
+    dibujo.setDevicePixelRatio(escala)
+    return QIcon(dibujo), QSize(round(imagen.width() / escala), round(imagen.height() / escala))

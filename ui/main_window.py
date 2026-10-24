@@ -89,13 +89,17 @@ from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMi
 from control_pcs.ui.reservas_window import ReservasWindow
 from control_pcs.repositories import reservas_repo
 from ui.ingreso_caja import mensaje_del_sobre
-from ui.utils import aplicar_clase, mostrar_error, mostrar_info, sin_boton_por_defecto
+from ui.utils import aplicar_clase, icono_de_emoji, mostrar_error, mostrar_info, sin_boton_por_defecto
 
 # Cada cuánto se mira cómo está la caja (si tiene que titilar el botón, o si ya
 # toca el cierre forzoso). Es una consulta chica, con su índice.
 INTERVALO_REVISION_CAJA_MS = 10_000
 # Cada cuánto cambia de color el botón Cierre de Turno mientras titila.
 INTERVALO_PARPADEO_MS = 600
+# El dibujito del botón Operador (lo eligió el dueño entre cinco, 2026-10-24) y cuánto más grande
+# va que los de los otros botones de la barra.
+DIBUJITO_OPERADOR = "🔄"
+AGRANDAR_DIBUJITO_OPERADOR = 1.25
 
 
 class MainWindow(QMainWindow):
@@ -236,7 +240,14 @@ class MainWindow(QMainWindow):
                 layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno
             )
         self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
-        self._agregar_boton_barra(layout_barra, "🔄  Operador", self._cerrar_sesion, clase="peligro")
+        # Tres espacios entre el dibujito y el texto: uno más que en los otros botones (pedido del dueño).
+        boton_operador = self._agregar_boton_barra(layout_barra, "   Operador", self._cerrar_sesion, clase="peligro")
+        # Su dibujito va un 25% más grande que los de los otros botones (pedido del dueño,
+        # 2026-10-24): uno dentro del texto mide lo que la letra, así que este va como ícono.
+        boton_operador.ensurePolished()
+        icono, tamano = icono_de_emoji(DIBUJITO_OPERADOR, boton_operador.fontInfo().pixelSize() * AGRANDAR_DIBUJITO_OPERADOR)
+        boton_operador.setIcon(icono)
+        boton_operador.setIconSize(tamano)
         layout_barra.addStretch()
 
     def _agregar_boton_barra(self, layout, texto, funcion, clase=None, habilitado=True):

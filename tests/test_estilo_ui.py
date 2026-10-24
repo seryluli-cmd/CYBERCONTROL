@@ -32,7 +32,7 @@ import main as programa  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from ui.login_window import LoginWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
-from ui.utils import crear_tabla  # noqa: E402
+from ui.utils import crear_tabla, icono_de_emoji  # noqa: E402
 from control_pcs.ui.miembros_window import DialogoTramosTarifaMiembro  # noqa: E402
 from control_pcs.ui.pcs_detalle import PanelDetalleEstacion  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
@@ -96,11 +96,11 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         clases = {b.text().strip(): b.property("clase") for b in barra.findChildren(QPushButton)}
 
         # Se llamó "CERRAR SESIÓN" y después "CAMB OPERADOR" (pedidos del dueño, 2026-10-23 y 24).
-        self.assertEqual(clases["🔄  OPERADOR"], "peligro")
+        self.assertEqual(clases["OPERADOR"], "peligro")
         self.assertNotIn("CERRAR SESIÓN", clases)
         self.assertNotIn("CAMB OPERADOR", clases)
         self.assertEqual(clases["🛒  VENDER"], "primario")
-        otros = [clase for texto, clase in clases.items() if texto not in ("🔄  OPERADOR", "🛒  VENDER")]
+        otros = [clase for texto, clase in clases.items() if texto not in ("OPERADOR", "🛒  VENDER")]
         self.assertTrue(otros and all(clase == "barra" for clase in otros), clases)
 
     def test_operador_vuelve_al_ingreso(self):
@@ -111,8 +111,33 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         self.addCleanup(ventana.panel_pcs.detener_actualizacion)
 
         barra = ventana.findChild(QFrame, "encabezadoInicio")
-        next(b for b in barra.findChildren(QPushButton) if b.text() == "🔄  OPERADOR").click()
+        next(b for b in barra.findChildren(QPushButton) if b.text().strip() == "OPERADOR").click()
         self.assertEqual(al_cerrar, [True])
+
+    def test_el_dibujito_de_operador_es_un_25_por_ciento_mas_grande(self):
+        # Pedido del dueño (2026-10-24): el 🔄 que eligió, un 25% más grande que los dibujitos de
+        # los otros botones (que miden lo que la letra). Va como ícono, no en el texto. Se mira el
+        # tamaño que se pide y no lo dibujado: la plataforma "offscreen" no tiene la letra de los
+        # emojis (con la de Windows, 13 px dan 13 de alto y 16,25 px dan 17; foto en el mostrador).
+        pedidos = []
+
+        def icono_anotado(emoji, tamano_px):
+            pedidos.append((emoji, tamano_px))
+            return icono_de_emoji(emoji, tamano_px)
+
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        with mock.patch("ui.main_window.icono_de_emoji", icono_anotado):
+            ventana = MainWindow(admin, lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+
+        barra = ventana.findChild(QFrame, "encabezadoInicio")
+        operador = next(b for b in barra.findChildren(QPushButton) if b.text().strip() == "OPERADOR")
+        clave = next(b for b in barra.findChildren(QPushButton) if b.text().endswith("CLAVE"))
+        self.assertFalse(operador.icon().isNull())
+        self.assertNotIn("🔄", operador.text())
+        self.assertEqual(pedidos, [("🔄", clave.fontInfo().pixelSize() * 1.25)])
+        self.assertEqual(operador.iconSize(), icono_de_emoji(*pedidos[0])[1])
 
     def test_operador_va_pegado_a_la_derecha_de_clave(self):
         # Pedido del dueño (2026-10-23): antes iba solo en la punta derecha y con
@@ -130,7 +155,7 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         barra = ventana.findChild(QFrame, "encabezadoInicio")
         botones = {b.text(): b for b in barra.findChildren(QPushButton)}
         clave = next(boton for texto, boton in botones.items() if texto.endswith("CLAVE"))
-        operador = botones["🔄  OPERADOR"]
+        operador = botones["   OPERADOR"]
         hueco = operador.geometry().left() - clave.geometry().right()
         self.assertTrue(0 < hueco < 20, hueco)
         self.assertEqual(max(b.geometry().right() for b in botones.values()), operador.geometry().right())
