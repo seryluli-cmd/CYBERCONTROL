@@ -604,6 +604,14 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self._responder_json(200, {"ok": True})
             return
 
+        if item["sesion"]["miembro_id"] is None:
+            # Solo los socios cierran su sesión desde la PC (pedido del dueño, 2026-10-24: el que
+            # viene con un bono y no conoce el local creía que "Cerrar sesión" era para salir del
+            # juego). Desde la V1.7 el Cliente PC ni muestra el botón con un bono; esto ataja a
+            # las PCs que todavía tienen una versión anterior.
+            self._responder_error(400, "Las sesiones con bono se cierran en el mostrador.")
+            return
+
         try:
             pcs_repo.finalizar_sesion(item["sesion"]["id"])
         except Exception as error:

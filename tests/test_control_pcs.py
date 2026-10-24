@@ -1427,20 +1427,52 @@ class TestServidorRedLogout(_ConServidorRed):
         self.assertIsNotNone(item["sesion"], "la sesion de Maria no tenia que haberse cerrado")
         self.assertEqual(item["sesion"]["id"], sesion_2_id)
 
+    def _entrar_como_socio(self):
+        usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        pcs_repo.crear_estacion("PC 8")
+        miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE miembros SET saldo_minutos = 60 WHERE id = ?", (miembro_id,))
+        status, _datos = self._post("/login", {"estacion": "PC 8", "usuario": "juan", "clave": "clave123"})
+        self.assertEqual(status, 200)
+
     def test_logout_sin_sesion_id_sigue_cerrando_lo_que_este_activo(self):
         # Compatibilidad con un Cliente PC viejo que todavía no manda
         # sesion_id: se sigue comportando como antes (cierra lo que esté
         # activo en la estación).
-        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
-        estacion_id = pcs_repo.crear_estacion("PC 8")
-        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
-        pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": 3000}])
+        self._entrar_como_socio()
 
         status, datos = self._post("/logout", {"estacion": "PC 8"})
 
         self.assertEqual(status, 200)
         self.assertTrue(datos["ok"])
         self.assertIsNone(pcs_repo.estado_estaciones()[0]["sesion"])
+
+    def test_logout_del_socio_con_su_sesion_id_la_cierra(self):
+        self._entrar_como_socio()
+        sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+
+        status, datos = self._post("/logout", {"estacion": "PC 8", "sesion_id": sesion_id})
+
+        self.assertEqual((status, datos), (200, {"ok": True}))
+        self.assertIsNone(pcs_repo.estado_estaciones()[0]["sesion"])
+
+    def test_una_sesion_con_bono_no_se_cierra_desde_la_pc(self):
+        # Pedido del dueño, 2026-10-24: con un bono, "Cerrar sesión" no está (el que no conoce
+        # el local creía que era para salir del juego). Un Cliente PC anterior a la V1.7 todavía
+        # muestra el botón: el Servidor no la cierra y le dice por qué.
+        usuario_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
+        estacion_id = pcs_repo.crear_estacion("PC 8")
+        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
+        pcs_repo.asignar_bono(estacion_id, bono_id, usuario_id, [{"metodo": "EFECTIVO", "monto": 3000}])
+        sesion_id = pcs_repo.estado_estaciones()[0]["sesion"]["id"]
+
+        for cuerpo in ({"estacion": "PC 8", "sesion_id": sesion_id}, {"estacion": "PC 8"}):
+            status, datos = self._post("/logout", cuerpo)
+
+            self.assertEqual(status, 400)
+            self.assertEqual(datos, {"ok": False, "error": "Las sesiones con bono se cierran en el mostrador."})
+            self.assertEqual(pcs_repo.estado_estaciones()[0]["sesion"]["id"], sesion_id)
 
     def test_estado_y_login_devuelven_el_sesion_id(self):
         usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
