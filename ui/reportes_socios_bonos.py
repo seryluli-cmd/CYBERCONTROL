@@ -5,7 +5,8 @@ Pestaña "PCs: Socios y Bonos" de Reportes (pedido del dueño, 2026-10-24): lo
 que dejaron las PCs, separado en cargas de saldo a socios y bonos vendidos en
 el mostrador, y comparado: arriba una tarjeta para cada uno (plata, qué parte
 del total, cuántos, tiempo vendido y cuánto deja cada hora) con una barra que
-los pone lado a lado, y abajo la tabla por período. Las cuentas son de
+los pone lado a lado, y abajo la tabla por período, que se puede bajar a
+Excel (ui/excel.py). Las cuentas son de
 socios_bonos_repo.comparar; acá solo se muestran. Vive aparte de
 reportes_window.py, como "PCSTREAM" y "Por Operador" (CLAUDE.md, regla 12).
 """
@@ -13,10 +14,11 @@ reportes_window.py, como "PCSTREAM" y "Por Operador" (CLAUDE.md, regla 12).
 from PySide6.QtCore import QDate, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QTableWidgetItem, QVBoxLayout, QWidget,
+    QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QPushButton, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from control_pcs.repositories import socios_bonos_repo
+from ui import excel
 from ui.utils import (
     armar_filtro_por_fechas, crear_tabla, formato_pesos, formato_tiempo, hoy_del_local, manejar_errores,
     rango_de_fechas, sin_boton_por_defecto,
@@ -151,6 +153,12 @@ class PestañaSociosYBonos(QWidget):
             self._buscar, QDate(hoy.year(), hoy.month(), 1), extras=[("Agrupar:", self.combo_agrupar)],
             solo_hoy=True, dias_del_local=True,
         )
+        # A la derecha de los filtros (pedido del dueño, 2026-10-24): la tabla de
+        # abajo, con números que Excel suma (ver ui/excel.py).
+        self.boton_excel = QPushButton("📊  Bajar a Excel")
+        self.boton_excel.clicked.connect(self._bajar_a_excel)
+        filtros.addWidget(self.boton_excel)
+        self._resultado = None
 
         self.tarjeta_socios = TarjetaParte("CARGAS A SOCIOS", COLOR_SOCIOS, "cargas")
         self.tarjeta_bonos = TarjetaParte("BONOS EN EL MOSTRADOR", COLOR_BONOS, "bonos")
@@ -210,6 +218,7 @@ class PestañaSociosYBonos(QWidget):
         desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
         agrupar_por = self.combo_agrupar.currentData()
         resultado = socios_bonos_repo.comparar(desde, hasta, agrupar_por)
+        self._resultado = resultado
         total = resultado["total"]
 
         self.tarjeta_socios.mostrar(total["socios"])
@@ -222,3 +231,29 @@ class PestañaSociosYBonos(QWidget):
             self._agregar_fila(fila_datos)
         if agrupar_por != "rango" and len(resultado["filas"]) > 1:
             self._agregar_fila(total, negrita=True)
+
+    def datos_para_excel(self):
+        """(columnas, filas, totales) para excel.guardar_xlsx: la tabla, con el
+        tiempo vendido de cada parte, y la fila TOTAL."""
+        columnas = [
+            ("Período", excel.TEXTO), ("Socios", excel.PESOS), ("Cargas", excel.ENTERO),
+            ("Tiempo cargado", excel.HORAS), ("Bonos", excel.PESOS), ("Bonos vendidos", excel.ENTERO),
+            ("Tiempo de bonos", excel.HORAS), ("Total PCs", excel.PESOS),
+            ("% Socios", excel.PORCENTAJE), ("% Bonos", excel.PORCENTAJE),
+        ]
+
+        def renglon(datos):
+            socios, bonos = datos["socios"], datos["bonos"]
+            return [datos["etiqueta"], socios["plata"], socios["cantidad"], socios["minutos"], bonos["plata"],
+                    bonos["cantidad"], bonos["minutos"], datos["total"], socios["porcentaje"], bonos["porcentaje"]]
+
+        filas = [renglon(fila) for fila in self._resultado["filas"]]
+        return columnas, filas, renglon(self._resultado["total"])
+
+    @manejar_errores
+    def _bajar_a_excel(self):
+        if self._resultado is None:
+            return
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
+        titulo = "PCs Socios y Bonos"
+        excel.bajar_a_excel(self, excel.nombre_de_archivo(titulo, desde, hasta), titulo, *self.datos_para_excel())

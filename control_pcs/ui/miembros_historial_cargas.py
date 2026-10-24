@@ -11,17 +11,20 @@ Con un socio marcado en la lista de Miembros abre con las cargas de ese socio
 (del último año); sin ninguno, con las de todos desde el 1 del mes. Filtros:
 Desde/Hasta con "Solo Hoy" (días del local, de 06:00 a 06:00) y un buscador
 por socio que filtra mientras se escribe. Abajo, los totales sin las
-anuladas, y el botón Imprimir (vista previa de ui/imprimir.py).
+anuladas, "Bajar a Excel" (ui/excel.py) e Imprimir (vista previa de
+ui/imprimir.py).
 
 Qué entra y qué no lo decide historial_cargas_repo; acá solo se muestra.
 """
+
+from datetime import datetime
 
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidgetItem, QVBoxLayout
 
 from control_pcs.repositories import historial_cargas_repo
-from ui import imprimir
+from ui import excel, imprimir
 from ui.utils import (
     aplicar_clase, armar_filtro_por_fechas, crear_tabla, formato_fecha_hora, formato_pesos, formato_tiempo,
     hoy_del_local, manejar_errores, rango_de_fechas, sin_boton_por_defecto,
@@ -108,10 +111,15 @@ class VentanaHistorialCargas(QDialog):
         self.boton_imprimir.setToolTip("Abre la vista previa para imprimir lo que se ve (o guardarlo en PDF).")
         aplicar_clase(self.boton_imprimir, "primario")
         self.boton_imprimir.clicked.connect(self._imprimir)
+        # Bajar a Excel (pedido del dueño, 2026-10-24): lo mismo que se ve, con
+        # números que Excel suma (ver ui/excel.py).
+        self.boton_excel = QPushButton("📊  Bajar a Excel")
+        self.boton_excel.clicked.connect(self._bajar_a_excel)
         boton_cerrar = QPushButton("Cerrar")
         boton_cerrar.clicked.connect(self.close)
         fila_abajo = QHBoxLayout()
         fila_abajo.addWidget(self.etiqueta_totales, 1)
+        fila_abajo.addWidget(self.boton_excel)
         fila_abajo.addWidget(self.boton_imprimir)
         fila_abajo.addWidget(boton_cerrar)
 
@@ -146,6 +154,7 @@ class VentanaHistorialCargas(QDialog):
                 self.tabla.resizeColumnToContents(columna)
         self.etiqueta_totales.setText(_texto_totales(historial_cargas_repo.totales(self._cargas)))
         self.boton_imprimir.setEnabled(bool(self._cargas))
+        self.boton_excel.setEnabled(bool(self._cargas))
 
     def _subtitulo(self) -> str:
         desde, hasta = (fecha.date().toString("dd/MM/yyyy") for fecha in (self.fecha_desde, self.fecha_hasta))
@@ -163,3 +172,26 @@ class VentanaHistorialCargas(QDialog):
     def _imprimir(self):
         if self._cargas:
             imprimir.vista_previa(self, self.html_para_imprimir(), TITULO)
+
+    def datos_para_excel(self):
+        """(columnas, filas, totales) para excel.guardar_xlsx: los mismos renglones
+        que la tabla, con la fecha, el tiempo y la plata como números."""
+        columnas = list(zip(COLUMNAS, (excel.FECHA_HORA, excel.TEXTO, excel.HORAS, excel.PESOS,
+                                        excel.TEXTO, excel.TEXTO, excel.TEXTO, excel.TEXTO)))
+        filas = [
+            [datetime.fromisoformat(carga["fecha"]), carga["socio"], carga["minutos"], carga["monto"],
+             carga["medio"], carga["bono"] or "Monto libre", carga["operador"], _estado(carga)]
+            for carga in self._cargas
+        ]
+        suma = historial_cargas_repo.totales(self._cargas)
+        cargas = "1 carga" if suma["cantidad"] == 1 else f"{suma['cantidad']} cargas"
+        totales = ["TOTAL", cargas, suma["minutos"], suma["monto"], None, None, None,
+                   "sin las anuladas" if suma["anuladas"] else None]
+        return columnas, filas, totales
+
+    @manejar_errores
+    def _bajar_a_excel(self):
+        if not self._cargas:
+            return
+        desde, hasta = rango_de_fechas(self.fecha_desde, self.fecha_hasta)
+        excel.bajar_a_excel(self, excel.nombre_de_archivo(TITULO, desde, hasta), TITULO, *self.datos_para_excel())

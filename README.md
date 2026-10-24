@@ -513,7 +513,10 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   con una tarjeta para cada uno (plata, qué parte del total, cuántos, tiempo
   vendido y cuánto deja cada hora), una barra que los compara, quién dejó más, y
   la tabla por período (rango, día, semana o turno). Las dos partes suman justo
-  "Alquiler de PCs" de Totales: la de bonos sale por resta.
+  "Alquiler de PCs" de Totales: la de bonos sale por resta. Esa tabla y el
+  Historial de Cargas de Miembros tienen **"📊 Bajar a Excel"** (`ui/excel.py`:
+  un .xlsx escrito sin librerías aparte, con números que Excel suma, filtros y
+  la fila TOTAL; arranca en el Escritorio y ofrece abrirlo).
 - **Control de Cierres de Turno** (`control_cierres_window.py`,
   `ControlCierresWindow`; se reexporta desde `caja_window.py`) — lista
   `turnos_repo.listar_cierres()` (que vive en `control_cierres_repo.py`):
