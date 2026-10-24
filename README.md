@@ -650,7 +650,11 @@ Artículos, Compras, Consulta de Ventas (sin anular), Reportes, Control de
 Cierres y operación de PCs/Miembros; la lista única está en
 `usuarios_repo.PERMISOS_EMPLEADA` (ese último permiso ya no gobierna nada
 funcional desde el 2026-10-19: Miembros y la PlayStation 5 abren para
-cualquier operador logueado, igual que la grilla de PCs). Usuarios,
+cualquier operador logueado, igual que la grilla de PCs). También el
+"Historial de Cargas" de Miembros (al lado de Cargar Saldo, 2026-10-24:
+`control_pcs/ui/miembros_historial_cargas.py` + `historial_cargas_repo`),
+que lista cada carga de saldo con el socio, el tiempo, la plata y cómo se
+pagó, quién la cargó y cuándo, con filtros, totales e Imprimir. Usuarios,
 Configuración ADMIN y Anular Venta permanecen exclusivos del Admin.
 
 ⚠️ No hay cifrado de la base ni protección contra acceso directo al

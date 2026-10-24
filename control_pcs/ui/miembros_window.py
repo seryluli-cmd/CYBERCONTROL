@@ -9,7 +9,8 @@ de la barra superior ("Miembros"), accesible para cualquier operador
 logueado (pedido del dueño, 2026-10-19: antes pedía permiso_control_pcs o
 Admin, pero cargarle saldo a un socio tiene que poder hacerlo cualquiera)
 — son tareas de *usar* el catálogo (cargar saldo con la tarifa y los
-bonos ya definidos), no de editarlo.
+bonos ya definidos), no de editarlo. "Historial de Cargas" (al lado de
+Cargar Saldo, 2026-10-24) abre miembros_historial_cargas.py.
 
 La configuración de la tabla de tramos de tarifa $/hora (ver
 config_repo.obtener_tramos_tarifa_hora_miembro) y la gestión del
@@ -32,6 +33,7 @@ import dominio
 from repositories import config_repo
 from control_pcs.repositories import miembros_repo, bonos_miembro_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
+from control_pcs.ui.miembros_historial_cargas import VentanaHistorialCargas
 from ui.dialogo_pago import cobrar
 from ui.utils import (
     formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
@@ -69,10 +71,14 @@ class MiembrosWindow(QDialog):
         boton_cargar_saldo = QPushButton("Cargar Saldo")
         aplicar_clase(boton_cargar_saldo, "primario")
         boton_cargar_saldo.clicked.connect(self._cargar_saldo)
+        # Al lado de Cargar Saldo (pedido del dueño, 2026-10-24): qué se le cargó a
+        # cada socio, cuánto, quién y cuándo (ver miembros_historial_cargas.py).
+        self.boton_historial = QPushButton("📜  Historial de Cargas")
+        self.boton_historial.clicked.connect(self._ver_historial_de_cargas)
         boton_desactivar = QPushButton("Desactivar")
         aplicar_clase(boton_desactivar, "peligro")
         boton_desactivar.clicked.connect(self._desactivar_miembro)
-        botones = [boton_nuevo, boton_modificar, boton_cargar_saldo, boton_desactivar]
+        botones = [boton_nuevo, boton_modificar, boton_cargar_saldo, self.boton_historial, boton_desactivar]
         boton_salir = QPushButton("Salir")
         boton_salir.clicked.connect(self.close)
         botones.append(boton_salir)
@@ -164,6 +170,13 @@ class MiembrosWindow(QDialog):
             return
         if DialogoCargarSaldo(self.usuario_operador, miembro, self).exec():
             self._cargar_grilla()
+
+    def _ver_historial_de_cargas(self):
+        # Con un socio marcado (resaltado) abre con sus cargas; si no, con las de
+        # todos. No usa _seleccionado(): sin ninguno no es un error.
+        filas = self.tabla.selectionModel().selectedRows()
+        miembro = self.miembros[filas[0].row()] if filas else None
+        VentanaHistorialCargas(self, miembro).exec()
 
     @manejar_errores
     def _desactivar_miembro(self):
