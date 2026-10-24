@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         """
         `usuario` es la fila del usuario logueado (con su rol).
         `al_cerrar_sesion` es una función que se llama al elegir
-        "Camb Operador", para volver a la pantalla de login.
+        "🔄 Operador", para volver a la pantalla de login.
         """
         super().__init__()
         self.usuario = usuario
@@ -200,11 +200,13 @@ class MainWindow(QMainWindow):
 
     def _armar_botones_de_la_barra(self, layout_barra):
         """El renglón de botones, de izquierda a derecha empezando por Vender y
-        terminando en "Camb Operador", pegado a la derecha de Clave (pedido del
+        terminando en "🔄 Operador", pegado a la derecha de Clave (pedido del
         dueño, 2026-10-23; hasta ese día iba solo en la punta derecha y, con la
         pantalla de 1920 del mostrador, quedaba lejos de todo). Se llamaba
         "Cerrar sesión": el dueño pidió que diga lo que hace de verdad, volver
-        al ingreso para que entre otro operador."""
+        al ingreso para que entre otro operador. Primero fue "Camb Operador"; el
+        2026-10-24 pasó a las flechas en círculo + "Operador" (el dueño eligió
+        🔄 entre cinco dibujitos)."""
         self.boton_reservas = None
         if not self._remota:
             self._agregar_boton_barra(layout_barra, "🛒  Vender", self._abrir_ventas, clase="primario")
@@ -234,7 +236,7 @@ class MainWindow(QMainWindow):
                 layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno
             )
         self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
-        self._agregar_boton_barra(layout_barra, "Camb Operador", self._cerrar_sesion, clase="peligro")
+        self._agregar_boton_barra(layout_barra, "🔄  Operador", self._cerrar_sesion, clase="peligro")
         layout_barra.addStretch()
 
     def _agregar_boton_barra(self, layout, texto, funcion, clase=None, habilitado=True):
@@ -397,7 +399,7 @@ class MainWindow(QMainWindow):
         dialogo.exec()
         # Cerrar un turno implica que ya llegó el relevo -- en vez de
         # dejar la sesión de quien cerró abierta, se vuelve sola al Login
-        # (mismo camino que el botón "Camb Operador") para que la próxima
+        # (mismo camino que el botón "🔄 Operador") para que la próxima
         # persona entre con su propio usuario. Si se canceló el diálogo
         # sin confirmar el cierre (turno_cerrado sigue en False), no pasa
         # nada -- sigue todo como estaba.
