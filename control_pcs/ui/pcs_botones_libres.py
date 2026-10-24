@@ -106,7 +106,8 @@ class BotonesParaLasLibres(QWidget):
                                                      icono_copo_de_nieve())
         self.boton_reiniciar = self._agregar_boton(layout, "🔄  Reiniciar", self._reiniciar)
         self.boton_apagar = self._agregar_boton(layout, " Apagar", self._apagar, icono_apagar())
-        layout.addStretch()
+        # Sin estirarse al final: a la derecha de APAGAR va CONTROL DE STOCK, en la
+        # misma fila (la arma PanelControlPcs._armar_interfaz).
         self.setLayout(layout)
 
     @staticmethod

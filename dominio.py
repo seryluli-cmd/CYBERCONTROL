@@ -23,6 +23,7 @@ que ya existe necesita además una migración que reconstruya esa tabla (como
 """
 
 import re
+import unicodedata
 from datetime import datetime, timedelta
 
 
@@ -363,6 +364,16 @@ NOMBRE_PLAYSTATION = "PLAYSTATION 5"
 # máquina". Se la reconoce solo por el nombre (pedido del dueño, 2026-10-17):
 # si el Admin la renombra a otra cosa, vuelve a ser una PC común.
 NOMBRE_PCSTREAM = "PCSTREAM"
+
+
+def sin_acentos(texto) -> str:
+    """El texto en minúscula y sin acentos: para buscar ("perez" encuentra
+    "Pérez") y para ordenar como lo haría una persona (en el orden de la
+    computadora las mayúsculas van antes que las minúsculas y "Álamo" queda
+    después de la "z")."""
+    return "".join(
+        letra for letra in unicodedata.normalize("NFD", (texto or "").lower()) if not unicodedata.combining(letra)
+    )
 
 
 def es_pcstream(nombre_estacion: str) -> bool:

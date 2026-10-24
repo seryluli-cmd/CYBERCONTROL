@@ -424,6 +424,16 @@ Usuarios y las configuraciones de catálogos son exclusivos del Admin.
   o escribir, Enter y confirmar): `articulos_repo.cambiar_codigo` lleva sus
   ventas, compras y ajustes al código nuevo y lo anota en `cambios_codigo` y en
   Movimientos. Es el único lugar donde se cambia un código.
+- **CONTROL DE STOCK** (`control_stock_window.py`, `BotonControlStock` y
+  `VentanaControlStock`; pedido del dueño 2026-10-24) — botón de debajo del
+  mosaico de Control de PCs, a la derecha de APAGAR. Lo ven todos, pero solo el
+  Admin lo abre (con otro operador no hace nada, como Admin Kiosko en la barra).
+  Muestra los artículos con stock de 1 para arriba, de la A a la Z sin mirar
+  mayúsculas ni acentos (`articulos_repo.listar_para_control_de_stock`, que
+  vuelve a exigir Admin), con sus unidades, y los imprime (vista previa de
+  `ui/imprimir.py`) con una columna "Contado" vacía para que la supervisora
+  anote a mano lo que hay en el estante. Solo muestra: corregir es de ORDENAR
+  Stock.
 - **Compras** (`compras_window.py`, `ComprasWindow`) — carga de mercadería
   por escaneo (mismos F5/F6/F7 que Ventas). Al escanear pide cantidad y
   costo (precargado con el `precio_compra` actual) por `QInputDialog`.

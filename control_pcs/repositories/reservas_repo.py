@@ -38,7 +38,6 @@ Cobrar es del mostrador: nada de esto está en lo que se puede pedir desde otra
 PC (admin_remoto/lista_blanca.py) y la ventana no se abre allá.
 """
 
-import unicodedata
 from datetime import datetime, timedelta
 
 import dominio
@@ -345,21 +344,14 @@ def _armar(fila) -> dict:
     return reserva
 
 
-def _sin_acentos(texto: str) -> str:
-    """Para buscar sin mayúsculas ni acentos ("perez" encuentra "Pérez")."""
-    return "".join(
-        letra for letra in unicodedata.normalize("NFD", (texto or "").lower()) if not unicodedata.combining(letra)
-    )
-
-
 def _coincide(reserva: dict, buscar: str) -> bool:
     """Si la reserva es de un cliente o un celular que se parece a `buscar`: el
     nombre sin mayúsculas ni acentos, o los números del celular sin espacios ni
     guiones."""
-    buscado = _sin_acentos(buscar).strip()
+    buscado = dominio.sin_acentos(buscar).strip()
     if not buscado:
         return True
-    if buscado in _sin_acentos(reserva["cliente"]):
+    if buscado in dominio.sin_acentos(reserva["cliente"]):
         return True
     digitos = "".join(c for c in buscado if c.isdigit())
     return bool(digitos) and digitos in "".join(c for c in reserva["celular"] if c.isdigit())

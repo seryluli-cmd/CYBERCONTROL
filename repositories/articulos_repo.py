@@ -440,6 +440,26 @@ def cambiar_codigo(usuario_id: int, codigo_actual: str, codigo_nuevo, clave: str
     return {"codigo_anterior": codigo_actual, "codigo_nuevo": nuevo}
 
 
+# ---------------------------------------------------------------------
+# CONTROL DE STOCK (botón de debajo del mosaico; pedido del dueño, 2026-10-24)
+# ---------------------------------------------------------------------
+
+def listar_para_control_de_stock(usuario_id: int):
+    """
+    Los artículos que tienen stock (de 1 para arriba), en orden alfabético
+    como lo haría una persona (sin mayúsculas ni acentos, ver
+    dominio.sin_acentos), para que la supervisora los cuente con la lista
+    impresa en la mano. Los que están en 0 o en negativo no salen (pedido
+    del dueño): no hay nada que contar en el estante.
+
+    Solo un Admin activo: el botón lo ven todos, pero solo el Admin lo abre.
+    """
+    usuarios_repo.exigir_admin(usuario_id, "ver el Control de Stock")
+    with conexion_db() as conexion:
+        articulos = conexion.execute(_SELECT_ARTICULOS + " WHERE a.stock > 0").fetchall()
+    return sorted(articulos, key=lambda articulo: (dominio.sin_acentos(articulo["descripcion"]), articulo["codigo"]))
+
+
 def obtener_movimientos(codigo: str, desde: str, hasta: str):
     """
     Arma el historial de "Movimientos" de un artículo: junta las líneas

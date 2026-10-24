@@ -41,6 +41,8 @@ vive al lado:
   del mosaico, para todas las PCs prendidas y libres de una vez, para cualquier
   operador (REINICIAR y APAGAR abren `pcs_reiniciar_dialogo.py`, para desmarcar
   las que no).
+  A su derecha va CONTROL DE STOCK (`ui/control_stock_window.py`, del kiosko:
+  solo el Admin lo abre).
 - `pcs_cometa.py`: el cometa celeste que da vueltas por el borde del fondo negro
   (adorno, pedido del dueño 2026-10-23).
 - `pcs_gestion_dialogos.py`: administrar el catálogo de Estaciones y de
@@ -74,6 +76,7 @@ from control_pcs.ui.pcs_mosaico import (
     MosaicoDeEquipos, LeyendaDeColores, Ficha,
     DIBUJO_NINGUNO, DIBUJO_RELOJ, DIBUJO_SOCIO, DIBUJO_ALERTA, DIBUJO_CANDADO_ABIERTO,
 )
+from ui.control_stock_window import BotonControlStock
 from ui.utils import (
     formato_tiempo, formato_transcurrido, mostrar_info, confirmar, manejar_errores,
 )
@@ -248,12 +251,21 @@ class PanelControlPcs(QWidget):
         # negro y el panel de la derecha terminan más arriba, parejos, y los botones
         # quedan en su propia franja, sobre el gris claro.
         self.botones_libres = BotonesParaLasLibres(lambda: self._estados, self)
+        # CONTROL DE STOCK a la derecha de APAGAR (pedido del dueño, 2026-10-24): la
+        # lista del kiosko para que la supervisora cuente el estante. Lo ven todos y
+        # solo el Admin lo abre (ver ui/control_stock_window.py).
+        self.boton_control_stock = BotonControlStock(self.usuario, self)
+        fila_botones = QHBoxLayout()
+        fila_botones.setSpacing(10)
+        fila_botones.addWidget(self.botones_libres)
+        fila_botones.addWidget(self.boton_control_stock)
+        fila_botones.addStretch()
 
         self.panel_actividad = PanelActividad()
 
         layout = QVBoxLayout()
         layout.addLayout(fila_principal, 1)
-        layout.addWidget(self.botones_libres)
+        layout.addLayout(fila_botones)
         titulo_actividad = QLabel("Actividad reciente")
         titulo_actividad.setObjectName("tituloSeccion")
         layout.addWidget(titulo_actividad)
