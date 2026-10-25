@@ -109,12 +109,15 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
         return _grabar_venta_kiosko(conexion, usuario_id, lineas, pagos)
 
 
-def _grabar_venta_kiosko(conexion, usuario_id: int, lineas: list, pagos: list) -> int:
+def _grabar_venta_kiosko(conexion, usuario_id: int, lineas: list, pagos: list, descontar_stock: bool = True) -> int:
     """
     Núcleo de confirmar_venta sobre una conexión YA ABIERTA: lo usa también
     impresiones_repo.cobrar_impresiones, que lee el precio del artículo en la
     misma transacción en que graba la venta. Único lugar donde se hace el
     INSERT INTO venta_detalle y se descuenta el stock por una venta.
+
+    `descontar_stock` en False es solo para el cobro de la Cuenta de la PC
+    (cuentas_pc_repo.cobrar): esos artículos ya bajaron el stock al anotarlos.
     """
     venta_id = _insertar_cabecera_venta(
         conexion, datetime.now(), usuario_id, total_carrito(lineas), dominio.ORIGEN_KIOSKO
@@ -132,10 +135,11 @@ def _grabar_venta_kiosko(conexion, usuario_id: int, lineas: list, pagos: list) -
         )
         # Restamos el stock. Se permite que quede en negativo (ver
         # database.py / articulos_repo.py para la explicación completa).
-        conexion.execute(
-            "UPDATE articulos SET stock = stock - ? WHERE codigo = ?",
-            (linea["cantidad"], linea["codigo"]),
-        )
+        if descontar_stock:
+            conexion.execute(
+                "UPDATE articulos SET stock = stock - ? WHERE codigo = ?",
+                (linea["cantidad"], linea["codigo"]),
+            )
 
     _insertar_pagos(conexion, venta_id, pagos)
     return venta_id

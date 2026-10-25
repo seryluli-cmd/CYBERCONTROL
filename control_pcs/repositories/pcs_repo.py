@@ -38,7 +38,7 @@ import dominio
 from database import conexion_db
 from repositories import ventas_repo
 from control_pcs.repositories import (
-    avisos_fin_pc_repo, cortes_pc_repo, pcstream_repo, reservas_horario_repo, temperatura_pc_repo,
+    avisos_fin_pc_repo, cortes_pc_repo, deudas_pc_repo, pcstream_repo, reservas_horario_repo, temperatura_pc_repo,
 )
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 from control_pcs.repositories.actividad_repo import actividad_reciente  # noqa: F401 (API de las pantallas y las pruebas)
@@ -260,6 +260,11 @@ def estado_estaciones():
 
     Y "fin_sin_aviso": si a una PC sin sesión se le terminó la última y no se enteró
     (su Cliente PC no volvió a preguntar), ver avisos_fin_pc_repo.fin_sin_aviso.
+
+    Y "deuda": lo que se debe en esa PC por la Cuenta de la PC (ver
+    deudas_pc_repo.por_estacion), o None si no debe nada. Con "de_la_sesion", la
+    cuenta de la sesión en curso (o None): las demás son de clientes anteriores
+    que se fueron debiendo.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
@@ -276,6 +281,7 @@ def estado_estaciones():
         cortes = cortes_pc_repo.cortes_de_sesiones(conexion, [sesion["id"] for sesion in sesiones])
         reservas = reservas_horario_repo.pendientes(conexion, ahora)
         fines_pendientes = avisos_fin_pc_repo.pendientes(conexion)
+        deudas = deudas_pc_repo.por_estacion(conexion)
 
     sesiones_por_estacion = {sesion["estacion_id"]: sesion for sesion in sesiones}
 
@@ -286,6 +292,13 @@ def estado_estaciones():
         estado = _estado_para_estacion(estacion, sesion, ahora, cortes_de_la_sesion,
                                        fines_pendientes.get(estacion["id"]))
         estado["reserva"] = reservas_horario_repo.proxima(reservas, estacion)
+        deuda = deudas.get(estacion["id"])
+        if deuda is not None:
+            deuda["de_la_sesion"] = next(
+                (cuenta for cuenta in deuda["cuentas"] if sesion is not None and cuenta["sesion_id"] == sesion["id"]),
+                None,
+            )
+        estado["deuda"] = deuda
         estados.append(estado)
     return estados
 
@@ -345,6 +358,8 @@ def _estado_para_estacion(estacion, sesion, ahora, cortes=(), fin_pendiente=None
         # Solo la completa estado_estaciones (la grilla): al Cliente PC le llega
         # aparte, en su propio try (servidor_red, "reserva"), para que nunca toque el bloqueo.
         "reserva": None,
+        # Solo la completa estado_estaciones: la Cuenta de la PC es cosa del mostrador.
+        "deuda": None,
     }
 
 

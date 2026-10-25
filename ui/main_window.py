@@ -83,6 +83,7 @@ from ui.reportes_window import ReportesWindow
 from ui.tramites_window import DialogoTramites, DialogoGestionTramites
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs
+from control_pcs.ui.cuenta_pc_reglas_dialogo import DialogoReglasCuentaPc
 from control_pcs.ui.pcs_gestion_dialogos import (
     DialogoGestionEstaciones, DialogoGestionBonos, DialogoGestionBonosPlaystation,
     DialogoGestionBonosPcstream,
@@ -564,7 +565,8 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
     Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
     Tiempo (walk-in), Bonos de PlayStation 5, Bonos de PCSTREAM, Tarifa por Hora
-    de Socios, Bonos de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
+    de Socios, las Reglas de Cuenta de PC (el tope de lo que puede deber una PC,
+    2026-10-25), Bonos de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
     de administrador, ver ui/accesos_admin_window.py) y, en el mostrador, "Entrar desde
     otra PC" (ui/admin_remoto_dialogo.py). La abre
     cualquiera, pero un Operador solo puede usar Gestionar Estaciones (pedido del
@@ -581,7 +583,7 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
     """
 
     def __init__(self, usuario, parent=None):
-        super().__init__("Configuración ADMIN", 740, parent)
+        super().__init__("Configuración ADMIN", 800, parent)
         self.usuario = usuario
         botones = [
             ("🖥️  Gestionar Estaciones", self._abrir_estaciones),
@@ -589,6 +591,7 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
             ("🎮  Gestionar Bonos de PlayStation 5", self._abrir_bonos_playstation),
             (f"🎥  Gestionar Bonos de {dominio.NOMBRE_PCSTREAM}", self._abrir_bonos_pcstream),
             ("💲  Tarifa por Hora de Socios", self._configurar_tarifa),
+            ("💳  Reglas de Cuenta de PC", self._abrir_reglas_cuenta_pc),
             ("🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro),
             ("📄  Gestionar Trámites", self._abrir_tramites),
             ("🔐  Accesos de Admin", self._abrir_accesos_admin),
@@ -615,6 +618,9 @@ class ConfiguracionAdminWindow(_VentanaDeBotones):
 
     def _configurar_tarifa(self):
         DialogoTramosTarifaMiembro(self).exec()
+
+    def _abrir_reglas_cuenta_pc(self):
+        DialogoReglasCuentaPc(self.usuario, self).exec()
 
     def _abrir_bonos_miembro(self):
         DialogoGestionBonosMiembro(self).exec()

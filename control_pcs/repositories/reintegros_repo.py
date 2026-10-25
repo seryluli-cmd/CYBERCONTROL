@@ -34,25 +34,38 @@ def contribuciones_de_sesion(conexion, sesion_id: int):
     extender la sesión (pcs_repo._abrir_o_extender_sesion) como para grabar su
     propio registro -- ver reintegros_por_miembro, el único que usa esto. Un
     bono de PCSTREAM cuenta como cualquier bono: no reintegra.
+
+    Un bono anotado en la Cuenta de la PC (cuentas_pc_repo) también es un bono:
+    mientras no se cobra no tiene fila en sesion_bonos, así que sale de
+    cuenta_pc_items; ya cobrado, su fila de sesion_bonos va con la hora en que
+    se ANOTÓ (cuando se sumó el tiempo), no con la del cobro. Uno quitado por
+    un Admin no cuenta (ya se le sacó el tiempo).
     """
     return conexion.execute(
         """
-        SELECT 'BONO' AS tipo, NULL AS miembro_id, sb.minutos AS minutos, v.fecha AS fecha
+        SELECT 'BONO' AS tipo, NULL AS miembro_id, sb.minutos AS minutos, COALESCE(ci.fecha, v.fecha) AS fecha
         FROM sesion_bonos sb
         JOIN ventas v ON v.id = sb.venta_id
+        LEFT JOIN cuenta_pc_items ci ON ci.sesion_bono_id = sb.id
         WHERE sb.sesion_id = ?
         UNION ALL
-        SELECT 'BONO' AS tipo, NULL AS miembro_id, spb.minutos AS minutos, v.fecha AS fecha
+        SELECT 'BONO' AS tipo, NULL AS miembro_id, spb.minutos AS minutos, COALESCE(ci.fecha, v.fecha) AS fecha
         FROM sesion_pcstream_bonos spb
         JOIN ventas v ON v.id = spb.venta_id
+        LEFT JOIN cuenta_pc_items ci ON ci.sesion_pcstream_bono_id = spb.id
         WHERE spb.sesion_id = ?
+        UNION ALL
+        SELECT 'BONO' AS tipo, NULL AS miembro_id, ci.minutos AS minutos, ci.fecha AS fecha
+        FROM cuenta_pc_items ci
+        JOIN cuentas_pc c ON c.id = ci.cuenta_id
+        WHERE c.sesion_id = ? AND ci.tipo = ? AND ci.venta_id IS NULL AND ci.quitado_fecha IS NULL
         UNION ALL
         SELECT 'SOCIO' AS tipo, m.miembro_id AS miembro_id, m.minutos AS minutos, m.fecha AS fecha
         FROM movimientos_saldo_miembro m
         WHERE m.sesion_id = ? AND m.tipo = ?
         ORDER BY fecha
         """,
-        (sesion_id, sesion_id, sesion_id, dominio.MOVIMIENTO_CONSUMO),
+        (sesion_id, sesion_id, sesion_id, dominio.ITEM_CUENTA_BONO, sesion_id, dominio.MOVIMIENTO_CONSUMO),
     ).fetchall()
 
 

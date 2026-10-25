@@ -502,6 +502,58 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
+    # CUENTA DE LA PC (pedido del dueño, 2026-10-25)
+    # -------------------------------------------------------------------
+    # Lo que un cliente que está jugando pide sin pagar (un pancho, más tiempo)
+    # queda anotado en la cuenta de SU SESIÓN, no de la PC: así, si se cambia de
+    # máquina (trasladar_sesion), la cuenta se va con él sin tocar nada, y si se
+    # va debiendo, el próximo cliente de esa PC arranca una cuenta propia. La PC
+    # donde se ve es la de la sesión (sesiones_pc.estacion_id). Nada se borra:
+    # una cuenta se cobra o la da por perdida un Admin, con el motivo.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS cuentas_pc (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            sesion_id            INTEGER NOT NULL UNIQUE REFERENCES sesiones_pc(id),
+            nombre               TEXT NOT NULL DEFAULT '',
+            estado               TEXT NOT NULL CHECK (estado IN ({_valores_sql(dominio.ESTADOS_CUENTA_PC)})),
+            fecha_apertura       TEXT NOT NULL,
+            usuario_apertura_id  INTEGER NOT NULL REFERENCES usuarios(id),
+            fecha_cierre         TEXT,
+            usuario_cierre_id    INTEGER REFERENCES usuarios(id),
+            motivo_perdida       TEXT
+        )
+    """)
+    # Cada cosa anotada, con su precio del momento (foto, como un renglón de
+    # venta). Un artículo baja el stock al anotarlo (el pancho ya salió); al
+    # cobrar se graba su venta de kiosko SIN volver a bajarlo. Un bono suma el
+    # tiempo al anotarlo y al cobrar se graba su venta de Alquiler de PCs y su
+    # vínculo en sesion_bonos/sesion_pcstream_bonos (sesion_bono_id...). Un
+    # renglón anotado por error lo quita un Admin (quitado_*): no se borra.
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS cuenta_pc_items (
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            cuenta_id                INTEGER NOT NULL REFERENCES cuentas_pc(id),
+            tipo                     TEXT NOT NULL CHECK (tipo IN ({_valores_sql(dominio.TIPOS_ITEM_CUENTA_PC)})),
+            fecha                    TEXT NOT NULL,
+            usuario_id               INTEGER NOT NULL REFERENCES usuarios(id),
+            descripcion              TEXT NOT NULL,
+            cantidad                 INTEGER NOT NULL,
+            precio_unitario          REAL NOT NULL,
+            subtotal                 REAL NOT NULL,
+            articulo_codigo          TEXT REFERENCES articulos(codigo),
+            bono_tiempo_id           INTEGER REFERENCES bonos_tiempo(id),
+            bono_pcstream_id         INTEGER REFERENCES bonos_pcstream(id),
+            minutos                  INTEGER,
+            venta_id                 INTEGER REFERENCES ventas(id),
+            sesion_bono_id           INTEGER REFERENCES sesion_bonos(id),
+            sesion_pcstream_bono_id  INTEGER REFERENCES sesion_pcstream_bonos(id),
+            quitado_fecha            TEXT,
+            quitado_por              INTEGER REFERENCES usuarios(id),
+            quitado_motivo           TEXT
+        )
+    """)
+
+    # -------------------------------------------------------------------
     # PLAYSTATION 5 (una única consola, se alquila por tiempo como una PC)
     # -------------------------------------------------------------------
     # La consola NO es una fila de "estaciones": una estación es una PC con su
@@ -809,6 +861,16 @@ def inicializar_base_de_datos():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_sesiones_pc_aviso_revisado ON sesiones_pc(aviso_fin_revisado_fecha)"
     )
+    # Las cuentas que se deben (las PCs que titilan en fucsia): se buscan en cada
+    # refresco de la pantalla de PCs, y son pocas. Y los renglones de cada una, y
+    # los que se cobraron (reintegros_repo los busca por su vínculo con el bono).
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cuentas_pc_estado ON cuentas_pc(estado)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cuenta_pc_items_cuenta ON cuenta_pc_items(cuenta_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cuenta_pc_items_sesion_bono ON cuenta_pc_items(sesion_bono_id)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cuenta_pc_items_sesion_pcstream_bono ON cuenta_pc_items(sesion_pcstream_bono_id)"
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cuenta_pc_items_articulo ON cuenta_pc_items(articulo_codigo)")
 
     conexion.commit()
 

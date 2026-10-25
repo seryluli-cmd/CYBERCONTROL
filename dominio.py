@@ -438,6 +438,57 @@ TIPOS_MOVIMIENTO_SALDO = (
     MOVIMIENTO_IMPORTACION,
 )
 
+# La "Cuenta de la PC" (pedido del dueño, 2026-10-25): lo que un cliente que está
+# jugando pide sin pagar en el momento (un pancho, más tiempo) se anota en la
+# cuenta de su sesión y se cobra después, todo junto. Ver cuentas_pc_repo.
+CUENTA_ABIERTA = "ABIERTA"    # debe: su PC titila en fucsia
+CUENTA_COBRADA = "COBRADA"
+CUENTA_PERDIDA = "PERDIDA"    # se fue sin pagar: la dio por perdida un Admin, con el motivo
+ESTADOS_CUENTA_PC = (CUENTA_ABIERTA, CUENTA_COBRADA, CUENTA_PERDIDA)
+# Qué es cada renglón de la cuenta: un artículo del kiosko o un bono de tiempo.
+ITEM_CUENTA_ARTICULO = "ARTICULO"
+ITEM_CUENTA_BONO = "BONO"
+TIPOS_ITEM_CUENTA_PC = (ITEM_CUENTA_ARTICULO, ITEM_CUENTA_BONO)
+# Qué pasa si con lo que se anota la PC debería más que el tope (lo elige el
+# Admin en Configuración ADMIN > Reglas de Cuenta de PC): no se deja, o se deja
+# con la clave de un Admin.
+TOPE_CUENTA_NO_DEJA = "NO_DEJA"
+TOPE_CUENTA_CON_CLAVE_ADMIN = "CLAVE_ADMIN"
+ACCIONES_TOPE_CUENTA_PC = (TOPE_CUENTA_NO_DEJA, TOPE_CUENTA_CON_CLAVE_ADMIN)
+# Con lo que arranca (decisión del dueño: "para empezar un tope de 10.000").
+TOPE_CUENTA_PC_INICIAL = 10000.0
+
+
+def repartir_pagos(pagos: list, montos: list) -> list:
+    """
+    Reparte un cobro entre varias ventas: `pagos` es lo que devolvió la ventana
+    de cobro (netos de vuelto, ver cuenta_del_cobro: suman justo el total) y
+    `montos`, lo que vale cada venta. Devuelve, para cada monto, sus filas de
+    pago. Se va llenando cada venta en orden con el efectivo primero y después
+    lo digital, así cada medio suma en la caja exactamente lo que se cobró en
+    él. Lo usa el cobro de la Cuenta de la PC, que graba el kiosko y cada bono
+    como ventas separadas (cada una con su origen).
+    """
+    total = round(sum(montos), 2)
+    if abs(round(sum(pago["monto"] for pago in pagos), 2) - total) > 0.009:
+        raise ValueError("Lo cobrado no coincide con lo que se debe.")
+    quedan = [{"metodo": pago["metodo"], "monto": round(pago["monto"], 2)}
+              for pago in sorted(pagos, key=lambda pago: pago["metodo"] != PAGO_EFECTIVO)]
+    repartidos = []
+    for monto in montos:
+        falta = round(monto, 2)
+        filas = []
+        for pago in quedan:
+            toma = round(min(pago["monto"], falta), 2)
+            if toma <= 0:
+                continue
+            filas.append({"metodo": pago["metodo"], "monto": toma})
+            pago["monto"] = round(pago["monto"] - toma, 2)
+            falta = round(falta - toma, 2)
+        repartidos.append(filas)
+    return repartidos
+
+
 # Desde cuántos días sin venir un socio se marca en naranja en Miembros (columna
 # "No viene hace", pedido del dueño 2026-10-24), y con cuántos arranca el filtro
 # "No vienen hace más de N días" (ver ultima_visita_repo).

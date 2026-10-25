@@ -4,22 +4,25 @@ pcs_detalle.py
 Panel lateral de "Control de PCs" (`PanelDetalleEstacion`): todas las
 acciones sobre lo que esté seleccionado en la grilla de pcs_window.py — una
 PC o la PlayStation 5 — vender/agregar un bono, abrir con Miembro (solo PCs),
-finalizar la sesión — y el diálogo con el que un socio se loguea solo
-(`DialogoLoginMiembro`).
+finalizar la sesión, la Cuenta de la PC (lo que debe, cobrarlo y anotarle un
+bono, ver cuenta_pc_dialogos.py) — y el diálogo con el que un socio se loguea
+solo (`DialogoLoginMiembro`).
 """
 
 from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QButtonGroup, QDialog, QFrame, QLabel, QLineEdit, QPushButton, QScrollArea,
+    QButtonGroup, QDialog, QFrame, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
     QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
 from control_pcs.repositories import (
-    avisos_fin_pc_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo, reservas_horario_repo,
+    avisos_fin_pc_repo, cuentas_pc_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
+    reservas_horario_repo,
 )
+from control_pcs.ui.cuenta_pc_dialogos import DialogoCuentaPc, anotar_en_la_cuenta
 from control_pcs.ui.pcs_cortes import texto_para_el_panel
 from ui.dialogo_pago import cobrar
 from ui.utils import (
@@ -147,6 +150,11 @@ class PanelDetalleEstacion(QFrame):
     Miembro (los socios no la pueden usar).
     Desde otra PC el panel se ve igual, y los tres botones avisan que eso se
     hace en el mostrador (pedido del dueño, 2026-10-24).
+
+    La Cuenta de la PC (pedido del dueño, 2026-10-25): si la PC debe algo, un
+    recuadro fucsia dice cuánto y de quién, y "Cobrar cuenta" abre lo que debe
+    renglón por renglón (desde otra PC se mira; cobrar avisa). "Agregar bono a
+    cuenta" le suma a la sesión en curso el bono elegido, sin cobrarlo.
     """
 
     def __init__(self, usuario, avisar_cambio, parent=None):
@@ -218,10 +226,23 @@ class PanelDetalleEstacion(QFrame):
         aplicar_clase(self.boton_finalizar, "peligro")
         self.boton_finalizar.clicked.connect(self._finalizar_sesion)
 
+        # La Cuenta de la PC: lo que debe (recuadro fucsia) y los dos botones.
+        self.etiqueta_cuenta = QLabel("")
+        self.etiqueta_cuenta.setObjectName("cuentaPendiente")  # el recuadro, en ui/hoja_de_estilos.py
+        self.etiqueta_cuenta.setWordWrap(True)
+        self.boton_cuenta = QPushButton("Cobrar cuenta")
+        aplicar_clase(self.boton_cuenta, "cuenta")
+        self.boton_cuenta.clicked.connect(self._abrir_cuenta)
+        self.boton_bono_a_cuenta = QPushButton("Agregar bono a cuenta")
+        self.boton_bono_a_cuenta.clicked.connect(self._agregar_bono_a_cuenta)
+
         layout = QVBoxLayout()
         layout.addWidget(self.etiqueta_titulo)
         layout.addWidget(self.etiqueta_estado)
+        layout.addWidget(self.etiqueta_cuenta)
         layout.addWidget(self.area_bonos, 1)
+        layout.addWidget(self.boton_cuenta)
+        layout.addWidget(self.boton_bono_a_cuenta)
         layout.addWidget(self.boton_cobrar)
         layout.addWidget(self.boton_miembro)
         layout.addWidget(self.boton_finalizar)
@@ -273,9 +294,10 @@ class PanelDetalleEstacion(QFrame):
             QTimer.singleShot(0, lambda: self._llevar_el_scroll_a(lista_activa))
         self._equipo_mostrado = equipo
 
+        self._mostrar_cuenta(item if es_pc else None)
         if item is None:
             self.etiqueta_titulo.setText("Elegí una estación de la grilla")
-            for widget in (self.boton_cobrar, self.boton_miembro, self.boton_finalizar):
+            for widget in (self.boton_cobrar, self.boton_miembro, self.boton_finalizar, self.boton_bono_a_cuenta):
                 widget.setEnabled(False)
             return
 
@@ -321,10 +343,91 @@ class PanelDetalleEstacion(QFrame):
         else:
             self.boton_finalizar.setText("Finalizar Sesión")
         self.boton_cobrar.setEnabled(puede and bool(lista.bonos))
+        # A cuenta solo se le suma tiempo a un cliente que está jugando (la PC sin
+        # tiempo sigue bloqueada, como siempre: cuentas_pc_repo.anotar_bono).
+        self.boton_bono_a_cuenta.setEnabled(es_pc and sesion is not None and bool(lista.bonos))
         self.boton_finalizar.setEnabled(puede and (sesion is not None or fin_sin_aviso))
         # Abrir con el saldo de un socio es cosa de las PCs: la consola y
         # PCSTREAM se venden solo con sus bonos (miembros_repo también lo rechaza).
         self.boton_miembro.setEnabled(es_pc and not es_pcstream)
+
+    def _mostrar_cuenta(self, item):
+        """El recuadro fucsia y "Cobrar cuenta" de una PC que debe algo (ver
+        pcs_repo.estado_estaciones, "deuda"); escondidos si no debe o no es una PC."""
+        deuda = item.get("deuda") if item is not None else None
+        self.etiqueta_cuenta.setVisible(deuda is not None)
+        self.boton_cuenta.setVisible(deuda is not None)
+        if deuda is None:
+            return
+        renglones = []
+        de_ahora = (deuda.get("de_la_sesion") or {}).get("id")
+        for cuenta in deuda["cuentas"]:
+            quien = cuenta["nombre"] or "sin nombre"
+            de_cuando = "" if cuenta["id"] == de_ahora else " (se fue debiendo)"
+            renglones.append(f"{quien}{de_cuando}: {formato_pesos(cuenta['total'])}")
+        self.etiqueta_cuenta.setText("💳 Debe " + formato_pesos(deuda["total"]) + "\n" + "\n".join(renglones))
+        self.boton_cuenta.setText(f"Cobrar cuenta {formato_pesos(deuda['total'])}")
+
+    @manejar_errores
+    def _abrir_cuenta(self):
+        """Lo que debe la PC elegida, para cobrarlo (desde otra PC, para mirarlo)."""
+        item = self.item
+        if item is None or es_playstation(item):
+            return
+        DialogoCuentaPc(self.usuario, item["estacion"], self).exec()
+        self._avisar_cambio()
+
+    @solo_en_el_mostrador
+    @manejar_errores
+    def _agregar_bono_a_cuenta(self):
+        # Mismo criterio que _cobrar_bono: todo sale del equipo elegido AHORA.
+        item = self.item
+        if item is None or es_playstation(item) or item["sesion"] is None:
+            return
+        bono = self._lista_del_equipo(item).bono_elegido()
+        if bono is None:
+            mostrar_error(self, "Sin bonos", "Elegí un bono de la lista.")
+            return
+        nombre_pc = item["estacion"]["nombre"]
+        # Como al cobrar un bono: si lo deja ocupado a la hora de una reserva, avisa (no frena).
+        aviso = reservas_horario_repo.aviso_al_vender(item["estacion"]["id"], bono["minutos"])
+        if aviso and not confirmar(self, "Equipo reservado", aviso):
+            return
+        if not confirmar(self, "Agregar bono a cuenta",
+                         f"¿Anotar '{bono['nombre']}' ({formato_pesos(bono['precio'])}) en la cuenta de "
+                         f"'{nombre_pc}'?\n\nEl tiempo se le suma ya y se cobra después."):
+            return
+        resultado = anotar_en_la_cuenta(
+            self, item,
+            lambda **datos: cuentas_pc_repo.anotar_bono(item["estacion"]["id"], bono["id"], self.usuario["id"], **datos),
+        )
+        if resultado is not None:
+            a_nombre = f" ({resultado['nombre']})" if resultado["nombre"] else ""
+            mostrar_info(self, "Anotado", f"Anotado en la cuenta de {resultado['estacion']}{a_nombre}.\n"
+                                          f"Debe ahora {formato_pesos(resultado['debe'])}.")
+        self._avisar_cambio()
+
+    def _cobrar_la_cuenta_antes_de_cerrar(self, item) -> bool:
+        """Si la PC debe algo, pregunta si se cobra antes de cerrarle la sesión.
+        False si al final no hay que cerrarla (canceló, o abrió el cobro y no cobró)."""
+        deuda = item.get("deuda")
+        if deuda is None:
+            return True
+        pregunta = QMessageBox(self)
+        pregunta.setWindowTitle("Debe su cuenta")
+        pregunta.setText(f"'{item['estacion']['nombre']}' debe {formato_pesos(deuda['total'])} de su cuenta.\n\n"
+                         "¿La cobrás antes de cerrar? Si no, la PC sigue titilando hasta que se cobre.")
+        cobrar_ahora = pregunta.addButton("Cobrar ahora", QMessageBox.AcceptRole)
+        cerrar_igual = pregunta.addButton("Cerrar sin cobrar", QMessageBox.DestructiveRole)
+        pregunta.addButton("Cancelar", QMessageBox.RejectRole)
+        pregunta.exec()
+        if pregunta.clickedButton() is cerrar_igual:
+            return True
+        if pregunta.clickedButton() is not cobrar_ahora:
+            return False
+        dialogo = DialogoCuentaPc(self.usuario, item["estacion"], self)
+        dialogo.exec()
+        return dialogo.cobro_hecho
 
     def _llevar_el_scroll_a(self, lista):
         """Sube o baja el área de bonos hasta el título de `lista`. Corre un
@@ -441,6 +544,9 @@ class PanelDetalleEstacion(QFrame):
                 self._avisar_cambio()
             return
 
+        if not self._cobrar_la_cuenta_antes_de_cerrar(item):
+            self._avisar_cambio()
+            return
         estacion_nombre = item["estacion"]["nombre"]
         # Caso típico: el cliente pidió un bono de 3hs y se va antes -- el
         # mostrador tiene que poder cerrarle la PC ya mismo aunque le

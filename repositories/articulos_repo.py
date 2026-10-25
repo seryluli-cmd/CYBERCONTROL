@@ -379,7 +379,9 @@ def ajustar_stock(usuario_id: int, codigo: str, stock_nuevo, clave: str) -> dict
 # Las tablas que guardan el código de un artículo (todas con REFERENCES
 # articulos(codigo)): cambiar_codigo las corrige todas juntas. Una tabla nueva
 # que apunte a un artículo va acá; tests/test_ordenar_stock.py lo vigila.
-_TABLAS_CON_CODIGO_DE_ARTICULO = ("venta_detalle", "compra_detalle", "ajustes_stock", "cambios_codigo")
+_TABLAS_CON_CODIGO_DE_ARTICULO = (
+    "venta_detalle", "compra_detalle", "ajustes_stock", "cambios_codigo", "cuenta_pc_items",
+)
 
 
 def cambiar_codigo(usuario_id: int, codigo_actual: str, codigo_nuevo, clave: str) -> dict:
@@ -468,6 +470,11 @@ def obtener_movimientos(codigo: str, desde: str, hasta: str):
     los cambios de código (cantidad 0, con el código de antes y el nuevo)
     dentro de un rango de fechas, y las devuelve ordenadas por fecha. Las
     ventas anuladas no aparecen: ya repusieron su stock.
+
+    Lo anotado en la Cuenta de la PC bajó el stock al anotarse (cuentas_pc_repo):
+    mientras no se cobra sale como "cuenta de PC 1 sin cobrar", y si se dio por
+    perdida, como "cuenta perdida". Ya cobrado lo muestra su venta (una sola vez:
+    esa venta no volvió a bajar el stock); quitado por un Admin, volvió al stock.
     """
     with conexion_db() as conexion:
         return conexion.execute(
@@ -501,10 +508,25 @@ def obtener_movimientos(codigo: str, desde: str, hasta: str):
             FROM cambios_codigo
             WHERE articulo_codigo = ? AND date(fecha) BETWEEN date(?) AND date(?)
 
+            UNION ALL
+
+            SELECT cuenta_pc_items.fecha AS fecha,
+                   CASE WHEN cuentas_pc.estado = ? THEN 'cuenta perdida (' || estaciones.nombre || ')'
+                        ELSE 'cuenta de ' || estaciones.nombre || ' sin cobrar' END AS comprobante,
+                   cuentas_pc.id AS numero, -cuenta_pc_items.cantidad AS cantidad
+            FROM cuenta_pc_items
+            JOIN cuentas_pc ON cuentas_pc.id = cuenta_pc_items.cuenta_id
+            JOIN sesiones_pc ON sesiones_pc.id = cuentas_pc.sesion_id
+            JOIN estaciones ON estaciones.id = sesiones_pc.estacion_id
+            WHERE cuenta_pc_items.articulo_codigo = ?
+              AND cuenta_pc_items.venta_id IS NULL AND cuenta_pc_items.quitado_fecha IS NULL
+              AND date(cuenta_pc_items.fecha) BETWEEN date(?) AND date(?)
+
             -- El número desempata lo que pasó en el mismo segundo (dos ajustes
             -- seguidos del mismo artículo): sin él, podían salir al revés.
             ORDER BY fecha, numero
             """,
             (codigo, desde, hasta, codigo, dominio.VENTA_CONFIRMADA, desde, hasta,
-             codigo, desde, hasta, codigo, desde, hasta),
+             codigo, desde, hasta, codigo, desde, hasta,
+             dominio.CUENTA_PERDIDA, codigo, desde, hasta),
         ).fetchall()

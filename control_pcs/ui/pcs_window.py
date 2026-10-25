@@ -80,13 +80,13 @@ from control_pcs.ui.pcs_aviso_reservas import AvisoDeReservasSinPcFija
 from control_pcs.ui.pcs_cortes import resumen_de_cortes
 from control_pcs.ui.pcs_detalle import PanelDetalleEstacion, es_playstation, texto_de_la_reserva
 from control_pcs.ui.pcs_mosaico import (
-    MosaicoDeEquipos, LeyendaDeColores, Ficha,
+    MosaicoDeEquipos, LeyendaDeColores, Ficha, COLOR_DEBE,
     DIBUJO_NINGUNO, DIBUJO_RELOJ, DIBUJO_SOCIO, DIBUJO_ALERTA, DIBUJO_CANDADO_ABIERTO,
 )
 from ui.control_stock_window import BotonControlStock
 from ui.utils import (
-    avisar_que_es_en_el_mostrador, formato_tiempo, formato_transcurrido, mostrar_info, confirmar, manejar_errores,
-    solo_en_el_mostrador,
+    avisar_que_es_en_el_mostrador, formato_pesos, formato_pesos_corto, formato_tiempo, formato_transcurrido,
+    mostrar_info, confirmar, manejar_errores, solo_en_el_mostrador,
 )
 
 # Cada cuántos milisegundos se recalcula el tiempo restante de las
@@ -151,6 +151,7 @@ LEYENDA = [
     (COLOR_DESCONECTADA, "Sin conexión"),
     (COLOR_CLIENTE_CERRADO_ADMIN, "Sin bloqueo"),
     (COLOR_ALERTA_SESION_SIN_CLIENTE, "Alerta (titila)"),
+    (COLOR_DEBE, "Debe (titila)"),
 ]
 
 # Cada cuánto alterna el parpadeo de un equipo en alerta -- rápido a
@@ -192,6 +193,7 @@ class PanelControlPcs(QWidget):
         self._seleccion = None          # clave de la fila elegida (ver _clave_de_item)
         self._filas_en_alerta = []
         self._filas_calientes = []      # las PCs con el procesador caliente: "CALIENTE" titila
+        self._filas_que_deben = []      # las que deben algo de su Cuenta de la PC: borde fucsia
         self._parpadeo_encendido = True
         # Desde otra PC (ver _refrescar_desde_otra_pc): cuándo llegó la consola, desde
         # cuándo no contesta el mostrador y cuándo se vuelve a probar.
@@ -460,6 +462,11 @@ class PanelControlPcs(QWidget):
         if item["cortes"]:
             # Solo en el cartelito: el monitor dibujado no cambia (el detalle, en el panel).
             estado += f"\n⚠ {resumen_de_cortes(item['cortes'])}"
+        deuda = item.get("deuda")
+        if deuda is not None:
+            # La Cuenta de la PC: borde fucsia titilando hasta que se cobre (pcs_mosaico).
+            nombres = ", ".join(cuenta["nombre"] for cuenta in deuda["cuentas"] if cuenta["nombre"])
+            estado += f"\n💳 Debe {formato_pesos(deuda['total'])}" + (f" ({nombres})" if nombres else "")
 
         return Ficha(
             clave=_clave_de_item(item),
@@ -475,6 +482,7 @@ class PanelControlPcs(QWidget):
             con_termometro=True,
             temperatura=temperatura["cpu"],
             nivel_temperatura=nivel_temperatura,
+            debe=formato_pesos_corto(deuda["total"]) if deuda is not None else "",
         )
 
     @staticmethod
@@ -525,6 +533,7 @@ class PanelControlPcs(QWidget):
         ]
         self._filas_en_alerta = [fila for fila, ficha in enumerate(fichas) if ficha.en_alerta]
         self._filas_calientes = [fila for fila, ficha in enumerate(fichas) if ficha.caliente]
+        self._filas_que_deben = [fila for fila, ficha in enumerate(fichas) if ficha.debe]
         self._parpadeo_encendido = True
 
         claves = [ficha.clave for ficha in fichas]
@@ -582,13 +591,14 @@ class PanelControlPcs(QWidget):
         Alterna la pantalla de los equipos en `self._filas_en_alerta` entre
         rojo fuerte y blanco cada INTERVALO_PARPADEO_MS -- ver
         COLOR_ALERTA_SESION_SIN_CLIENTE --, y prende y apaga el "CALIENTE" de
-        los de `self._filas_calientes`. Corre en un timer aparte del
+        los de `self._filas_calientes` y el borde fucsia de los que deben
+        (`self._filas_que_deben`, la Cuenta de la PC). Corre en un timer aparte del
         refresco de 5s (`_redibujar_mosaico` ya deja los índices
         actualizados cada vez que corre); si no hay ningún equipo en
         alerta ni caliente no hace nada, así que dejarlo corriendo siempre
         no cuesta nada.
         """
-        if not self._filas_en_alerta and not self._filas_calientes:
+        if not self._filas_en_alerta and not self._filas_calientes and not self._filas_que_deben:
             return
         self._parpadeo_encendido = not self._parpadeo_encendido
         color = (
@@ -602,6 +612,9 @@ class PanelControlPcs(QWidget):
         for fila in self._filas_calientes:
             if fila < self.mosaico.count():
                 self.mosaico.titilar_calor(fila, self._parpadeo_encendido)
+        for fila in self._filas_que_deben:
+            if fila < self.mosaico.count():
+                self.mosaico.titilar_deuda(fila, self._parpadeo_encendido)
 
     @manejar_errores
     def _al_cambiar_seleccion(self):

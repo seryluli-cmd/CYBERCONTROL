@@ -13,7 +13,8 @@ ADMIN (estaciones, los cuatro catálogos de bonos, tarifa de socios, trámites,
 accesos de admin, fondo y filtro de palabras de las PCs) y Caja para mirar.
 Y, para MIRAR, la pantalla principal igual que en el mostrador (pedido del
 dueño, 2026-10-24: "quiero que se vea tal cual"): la grilla de PCs en vivo,
-Actividad reciente, las reservas de hoy y CONTROL DE STOCK.
+Actividad reciente, las reservas de hoy, CONTROL DE STOCK y lo que debe cada PC
+(la Cuenta de la PC, 2026-10-25: se mira, pero anotar y cobrar es del mostrador).
 
 Lo que NO está, a propósito, y sigue solo en el mostrador: vender y cobrar
 (Ventas, Trámites, bonos de PCs, carga de saldo), abrir/cerrar cajas y turnos,
@@ -39,8 +40,9 @@ from repositories import (
     turnos_repo, usuarios_repo, ventas_repo,
 )
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, bonos_miembro_repo, clientes_repo, filtro_palabras_repo, fondo_repo, miembros_repo,
-    pcs_repo, pcstream_repo, playstation_repo, reservas_horario_repo, reservas_repo, socios_bonos_repo,
+    accesos_admin_pc_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo, filtro_palabras_repo, fondo_repo,
+    miembros_repo, pcs_repo, pcstream_repo, playstation_repo, reservas_horario_repo, reservas_repo,
+    socios_bonos_repo,
 )
 
 # Sube si cambia CÓMO se hablan las dos copias (no la lista): las dos tienen que
@@ -61,6 +63,7 @@ _MODULOS = {
     "accesos_admin_pc_repo": accesos_admin_pc_repo,
     "bonos_miembro_repo": bonos_miembro_repo,
     "clientes_repo": clientes_repo,
+    "cuentas_pc_repo": cuentas_pc_repo,
     "filtro_palabras_repo": filtro_palabras_repo,
     "fondo_repo": fondo_repo,
     "miembros_repo": miembros_repo,
@@ -136,6 +139,9 @@ FUNCIONES = {
     # Las reservas en la grilla y el número del botón Reservas (solo leen)
     "reservas_horario_repo": ("reservas_para_la_grilla",),
     "reservas_repo": ("reservas_de_hoy",),
+    # La Cuenta de la PC: mirar lo que debe una PC (anotar y cobrar, solo en el
+    # mostrador) y Configuración ADMIN > Reglas de Cuenta de PC
+    "cuentas_pc_repo": ("cuentas_de_la_estacion", "obtener_reglas", "guardar_reglas"),
 }
 
 # (repo, función) -> el parámetro que dice quién lo hace (ver el comentario del módulo).
@@ -157,6 +163,7 @@ ACTOR = {
     ("playstation_repo", "crear_bono"): "usuario_id",
     ("playstation_repo", "modificar_bono"): "usuario_id",
     ("playstation_repo", "desactivar_bono"): "usuario_id",
+    ("cuentas_pc_repo", "guardar_reglas"): "usuario_id",
 }
 
 

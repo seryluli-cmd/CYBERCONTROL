@@ -16,6 +16,9 @@ Reglas de permisos, tal como se definieron:
 - Solo el rol ADMIN puede modificar el precio de un renglón en el
   momento de facturar (doble clic en la columna "$ Unit."). Una
   EMPLEADA nunca puede tocar precios.
+- "A cuenta de una PC..." (pedido del dueño, 2026-10-25): en vez de cobrar,
+  anota el carrito en la Cuenta de la PC de un cliente que está jugando y se
+  cobra después (ver control_pcs/repositories/cuentas_pc_repo.py).
 """
 
 from PySide6.QtWidgets import (
@@ -27,6 +30,8 @@ from PySide6.QtGui import QShortcut, QKeySequence
 from datetime import datetime
 
 import dominio
+from control_pcs.repositories import cuentas_pc_repo
+from control_pcs.ui.cuenta_pc_dialogos import DialogoElegirPc, anotar_en_la_cuenta
 from repositories import articulos_repo, ventas_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
@@ -100,10 +105,14 @@ class VentasWindow(QDialog):
         boton_cancelar = QPushButton("Cancelar Venta")
         aplicar_clase(boton_cancelar, "peligro")
         boton_cancelar.clicked.connect(self._cancelar_venta)
+        self.boton_a_cuenta = QPushButton("A cuenta de una PC...")
+        aplicar_clase(self.boton_a_cuenta, "cuenta")
+        self.boton_a_cuenta.clicked.connect(self._anotar_a_cuenta)
 
         pie = QHBoxLayout()
         pie.addWidget(boton_cancelar)
         pie.addStretch()
+        pie.addWidget(self.boton_a_cuenta)
         pie.addWidget(self.boton_aceptar)
 
         layout = QVBoxLayout()
@@ -268,6 +277,34 @@ class VentasWindow(QDialog):
             self.etiqueta_aviso_stock.setText("")
             self._refrescar_tabla()
             self.campo_codigo.setFocus()
+
+    @manejar_errores
+    def _anotar_a_cuenta(self):
+        """El carrito no se cobra: se anota en la Cuenta de la PC que se elija y
+        se cobra después (el stock baja ya, ver cuentas_pc_repo.anotar_articulos)."""
+        if not self.carrito:
+            mostrar_error(self, "Venta vacía", "Todavía no escaneaste ningún producto.")
+            return
+        elegir = DialogoElegirPc(self._total_carrito(), self)
+        if not elegir.exec():
+            return
+        item = elegir.item
+        resultado = anotar_en_la_cuenta(
+            self, item,
+            lambda **datos: cuentas_pc_repo.anotar_articulos(
+                item["estacion"]["id"], self.carrito, self.usuario["id"], **datos
+            ),
+        )
+        if resultado is None:
+            return
+        a_nombre = f" ({resultado['nombre']})" if resultado["nombre"] else ""
+        mostrar_info(self, "Anotado en la cuenta",
+                     f"Anotado en la cuenta de {resultado['estacion']}{a_nombre}.\n"
+                     f"Debe ahora {formato_pesos(resultado['debe'])}: su PC titila en fucsia hasta que se cobre.")
+        self.carrito = []
+        self.etiqueta_aviso_stock.setText("")
+        self._refrescar_tabla()
+        self.campo_codigo.setFocus()
 
     def _cancelar_venta(self):
         """

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBu
 from PySide6.QtCore import Qt
 
 import dominio
+from control_pcs.repositories import cuentas_pc_repo
 from repositories import turnos_repo
 from ui.control_cierres_window import ControlCierresWindow, DialogoDetalleCierre  # noqa: F401 (API de main_window y las pruebas)
 from ui.tarjeta_cierre import (
@@ -170,6 +171,15 @@ class CierreTurnoWindow(QDialog):
 
     def _armar_interfaz(self):
         self.tarjeta = TarjetaCierreDeTurno()
+        # Lo que quedó sin cobrar en las Cuentas de las PCs (pedido del dueño,
+        # 2026-10-25): no entra en este cierre (nunca se cobró) y no lo frena, pero
+        # quien cierra y quien entra tienen que saberlo.
+        self.aviso_cuentas = QLabel("")
+        self.aviso_cuentas.setWordWrap(True)
+        self.aviso_cuentas.setStyleSheet(
+            "background: #FFF0FA; border: 2px solid #FF3EC8; border-radius: 8px; padding: 6px 8px; color: #1E2330;"
+        )
+        self.aviso_cuentas.setVisible(False)
 
         boton_cerrar_turno = QPushButton("Confirmar Cierre de Turno")
         aplicar_clase(boton_cerrar_turno, "primario")
@@ -184,6 +194,7 @@ class CierreTurnoWindow(QDialog):
 
         layout = QVBoxLayout()
         layout.addWidget(self.tarjeta)
+        layout.addWidget(self.aviso_cuentas)
         layout.addStretch()
         layout.addLayout(botones)
         self.setLayout(layout)
@@ -192,6 +203,20 @@ class CierreTurnoWindow(QDialog):
     @manejar_errores
     def _refrescar_vista_previa(self):
         self.tarjeta.mostrar(turnos_repo.resumen_turno_actual())
+        cuentas = cuentas_pc_repo.cuentas_abiertas()
+        self.aviso_cuentas.setVisible(bool(cuentas))
+        if cuentas:
+            renglones = [
+                f"{cuenta['estacion']}: {formato_pesos(cuenta['total'])}"
+                + (f" ({cuenta['nombre']})" if cuenta["nombre"] else "") + f", anotó {cuenta['abrio']}"
+                for cuenta in cuentas
+            ]
+            self.aviso_cuentas.setText(
+                "💳 Quedan cuentas de PCs sin cobrar (no entran en este cierre):\n" + "\n".join(renglones)
+            )
+            # Con el aviso, la ventana crece lo que haga falta: si no, aprieta la tarjeta y
+            # los importes de abajo se cortan.
+            self.resize(self.width(), max(self.height(), self.sizeHint().height()))
 
     @manejar_errores
     def _cerrar_turno(self):

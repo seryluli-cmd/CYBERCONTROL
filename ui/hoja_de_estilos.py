@@ -375,6 +375,27 @@ HOJA_DE_ESTILOS = """
     QFrame#panelDetalle > QPushButton[clase="peligro"]:pressed {
         background-color: #F3D3D3;
     }
+    /* La Cuenta de la PC (2026-10-25): fucsia, el color que eligió el dueño para la
+       PC que debe (el mismo del borde que titila en el mosaico). */
+    QPushButton[clase="cuenta"], QFrame#panelDetalle > QPushButton[clase="cuenta"] {
+        background-color: #FF3EC8;
+        border: 1px solid #E52DB2;
+        color: #3A0030;
+        font-weight: 600;
+    }
+    QPushButton[clase="cuenta"]:hover, QFrame#panelDetalle > QPushButton[clase="cuenta"]:hover {
+        background-color: #FF66D4;
+    }
+    QPushButton[clase="cuenta"]:pressed, QFrame#panelDetalle > QPushButton[clase="cuenta"]:pressed {
+        background-color: #E52DB2;
+    }
+    QFrame#panelDetalle > QLabel#cuentaPendiente {
+        background-color: #FFFFFF;
+        border: 2px solid #FF3EC8;
+        border-radius: 8px;
+        color: #1E2330;
+        padding: 6px 8px;
+    }
     QFrame#panelDetalle > QPushButton:disabled, QWidget#contenedorBonos > QPushButton:disabled,
     QFrame#panelDetalle > QPushButton[clase="peligro"]:disabled {
         background-color: #6B7078;

@@ -14,6 +14,11 @@ A la izquierda de cada PC, un termómetro con la temperatura del procesador
 ese caso el renglón de abajo dice "CALIENTE" titilando. Vacío y con una raya si
 la PC no la manda (Cliente PC viejo, sin PawnIO, o PC sin conexión).
 
+Una PC que debe algo de su Cuenta de la PC (pedido del dueño, 2026-10-25: "esa PC
+debería quedar titilando hasta que realmente se le cobre"; eligió el fucsia) lleva
+un borde fucsia que titila alrededor del casillero y "DEBE $ 2.300" debajo del
+nombre. La pantalla del monitor sigue con el color de su estado.
+
 Este archivo solo DIBUJA: qué estado, color y dibujito le toca a cada equipo lo
 decide `pcs_window.PanelControlPcs` y llega acá armado como una `Ficha`. Los
 monitores se pintan con QPainter (no son imágenes): así cualquier color de
@@ -67,6 +72,8 @@ _ROL_COLOR = Qt.UserRole + 1
 # Si "CALIENTE" se ve AHORA (titila con el mismo reloj que las alertas, ver
 # pcs_window._alternar_parpadeo). Sin dato cuenta como que se ve.
 _ROL_CALOR_VISIBLE = Qt.UserRole + 2
+# Lo mismo para el borde fucsia y el "DEBE" de una PC que debe (mismo reloj).
+_ROL_DEUDA_VISIBLE = Qt.UserRole + 3
 
 _COLOR_TEXTO = QColor("#F3F5F9")
 _COLOR_TEXTO_SUAVE = QColor("#AEB5C2")
@@ -74,6 +81,8 @@ _COLOR_MARCO_MONITOR = QColor("#2B2F38")
 _COLOR_BORDE_MONITOR = QColor("#0C0E12")
 _COLOR_TRAZO_DIBUJO = QColor(18, 20, 24, 225)
 _COLOR_SELECCION = QColor("#4F8EF7")
+# La PC que debe algo de su cuenta: el fucsia que eligió el dueño (2026-10-25).
+COLOR_DEBE = QColor("#FF3EC8")
 
 # El termómetro: el tubo, el líquido según el nivel y el de una PC sin dato.
 _COLOR_TUBO = QColor("#2B2F38")
@@ -104,6 +113,7 @@ class Ficha:
     con_termometro: bool = False  # las PCs sí; la PlayStation 5 no
     temperatura: int = None       # grados del procesador (None = no llega)
     nivel_temperatura: str = None  # dominio.nivel_de_temperatura(temperatura)
+    debe: str = ""                # lo que debe su Cuenta de la PC ("$ 2.300"), o vacío
 
     @property
     def caliente(self) -> bool:
@@ -182,6 +192,7 @@ class MosaicoDeEquipos(QListWidget):
         casillero.setData(_ROL_FICHA, ficha)
         casillero.setData(_ROL_COLOR, QColor(ficha.color))
         casillero.setData(_ROL_CALOR_VISIBLE, True)
+        casillero.setData(_ROL_DEUDA_VISIBLE, True)
 
     def ficha(self, fila) -> Ficha:
         return self.item(fila).data(_ROL_FICHA)
@@ -201,6 +212,13 @@ class MosaicoDeEquipos(QListWidget):
     def calor_visible(self, fila) -> bool:
         return self.item(fila).data(_ROL_CALOR_VISIBLE) is not False
 
+    def titilar_deuda(self, fila, visible):
+        """Prende o apaga el borde fucsia y el "DEBE" de ese equipo (lo usa el parpadeo)."""
+        self.item(fila).setData(_ROL_DEUDA_VISIBLE, bool(visible))
+
+    def deuda_visible(self, fila) -> bool:
+        return self.item(fila).data(_ROL_DEUDA_VISIBLE) is not False
+
     def cambiar_restante(self, fila, texto):
         """Cambia solo el tiempo que le queda (la cuenta regresiva de cada segundo)."""
         casillero = self.item(fila)
@@ -208,9 +226,11 @@ class MosaicoDeEquipos(QListWidget):
         nueva = replace(ficha, restante=texto)
         color_actual = casillero.data(_ROL_COLOR)
         calor_actual = casillero.data(_ROL_CALOR_VISIBLE)
+        deuda_actual = casillero.data(_ROL_DEUDA_VISIBLE)
         self._poner_ficha(casillero, nueva)
         casillero.setData(_ROL_COLOR, color_actual)
         casillero.setData(_ROL_CALOR_VISIBLE, calor_actual)
+        casillero.setData(_ROL_DEUDA_VISIBLE, deuda_actual)
 
     def fila_en(self, posicion) -> int:
         """La fila del equipo bajo ese punto (coordenadas del viewport), o -1."""
@@ -247,6 +267,11 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
         pintor.setRenderHint(QPainter.Antialiasing)
 
         self._pintar_fondo_del_casillero(pintor, caja, opcion)
+        deuda_visible = indice.data(_ROL_DEUDA_VISIBLE) is not False
+        if ficha.debe and deuda_visible:
+            pintor.setPen(QPen(COLOR_DEBE, 3))
+            pintor.setBrush(Qt.NoBrush)
+            pintor.drawRoundedRect(caja.adjusted(2.5, 2.5, -2.5, -2.5), 10, 10)
 
         # El monitor se dibuja con medidas fijas alrededor de x=0 y se escala
         # con ESCALA_MONITOR; los textos van después, sin escalar.
@@ -281,7 +306,8 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
                                 marco.width() * e, marco.height() * e)
             _pintar_termometro(pintor, marco_real, ficha, calor_visible)
 
-        self._pintar_textos(pintor, caja, caja.top() + _ALTO_MONITOR * ESCALA_MONITOR, ficha, calor_visible)
+        self._pintar_textos(pintor, caja, caja.top() + _ALTO_MONITOR * ESCALA_MONITOR, ficha, calor_visible,
+                            deuda_visible)
         pintor.restore()
 
     @staticmethod
@@ -297,7 +323,7 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
             pintor.drawRoundedRect(fondo, 10, 10)
 
     @staticmethod
-    def _pintar_textos(pintor, caja, arriba, ficha, calor_visible=True):
+    def _pintar_textos(pintor, caja, arriba, ficha, calor_visible=True, deuda_visible=True):
         ancho = caja.width() - 10
         izquierda = caja.left() + 5
 
@@ -321,6 +347,15 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
                 pintor.setPen(_COLOR_TEMPERATURA[dominio.TEMPERATURA_CALIENTE_NIVEL])
                 pintor.drawText(QRectF(izquierda, arriba + 32, ancho, 14), Qt.AlignCenter,
                                 f"CALIENTE {ficha.temperatura}°")
+        elif ficha.debe:
+            # Pisa al aviso de siempre hasta que se cobre (el cartelito lo sigue diciendo
+            # todo); el borde fucsia se ve igual con CALIENTE.
+            if deuda_visible:
+                fuente.setPixelSize(11)
+                pintor.setFont(fuente)
+                pintor.setPen(COLOR_DEBE)
+                debe = pintor.fontMetrics().elidedText(f"DEBE {ficha.debe}", Qt.ElideRight, int(ancho))
+                pintor.drawText(QRectF(izquierda, arriba + 32, ancho, 14), Qt.AlignCenter, debe)
         elif ficha.aviso:
             fuente.setBold(False)
             fuente.setPixelSize(11)

@@ -127,6 +127,13 @@ def formato_pesos(monto) -> str:
     return f"$ {texto}"
 
 
+def formato_pesos_corto(monto) -> str:
+    """Como formato_pesos, sin los centavos cuando son cero ("$ 2.300"): para
+    lugares angostos, como el "DEBE" del casillero de una PC en el mosaico."""
+    texto = formato_pesos(monto)
+    return texto[:-3] if texto.endswith(",00") else texto
+
+
 def formato_fecha_hora(fecha) -> str:
     """
     Una fecha con hora como se graba en la base ("2026-10-16T22:13:28.123456")

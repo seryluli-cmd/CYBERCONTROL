@@ -563,6 +563,7 @@ _PANTALLAS_DE_OTRA_PC = [
     ("control_pcs/ui/pcs_gestion_dialogos.py", None),
     ("control_pcs/ui/pcs_filtro_dialogo.py", None),
     ("control_pcs/ui/pcs_fondo_dialogo.py", None),
+    ("control_pcs/ui/cuenta_pc_reglas_dialogo.py", None),
     ("control_pcs/ui/miembros_window.py", {"DialogoTramosTarifaMiembro", "DialogoBonoMiembro",
                                            "DialogoGestionBonosMiembro"}),
 ]
@@ -592,6 +593,8 @@ _PANTALLA_PRINCIPAL = [
     ("control_pcs/ui/pcs_cometa.py", None),
     ("control_pcs/ui/pcs_cortes.py", None),
     ("control_pcs/ui/pcs_mosaico.py", None),
+    # Lo que debe una PC (la Cuenta de la PC): se mira; cobrar, quitar y perder avisan.
+    ("control_pcs/ui/cuenta_pc_dialogos.py", {"DialogoCuentaPc"}),
 ]
 # Cuentas con lo que ya llegó del mostrador: se hacen en esta PC, sin base.
 _NO_VAN_A_LA_BASE = {
@@ -679,6 +682,8 @@ class TestLasPantallasSoloPidenLoQueEstaEnLaLista(unittest.TestCase):
             ("playstation_repo", "vender_bono"), ("miembros_repo", "cargar_saldo_por_monto"),
             ("relevo_repo", "cierre_forzoso_si_corresponde"), ("relevo_repo", "abrir_caja"),
             ("tramites_repo", "registrar_tramite"),
+            ("cuentas_pc_repo", "anotar_articulos"), ("cuentas_pc_repo", "anotar_bono"),
+            ("cuentas_pc_repo", "cobrar"), ("cuentas_pc_repo", "dar_por_perdida"),
         ]:
             self.assertFalse(lista_blanca.permitida(repo, nombre), (repo, nombre))
 
