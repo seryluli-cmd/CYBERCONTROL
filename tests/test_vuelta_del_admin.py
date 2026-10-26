@@ -1,12 +1,12 @@
 """
 tests/test_vuelta_del_admin.py
 ===============================
-La sesión del Administrador vuelve sola a los 10 minutos (pedido del dueño,
-2026-10-26: entra como Administrador para algo rápido y se olvida de volver a
-cambiar de usuario). A quién vuelve lo decide repositories/vuelta_admin_repo.py
-(la empleada que estaba, si su caja sigue abierta a su nombre; si no, la
-pantalla de ingreso); el reloj, el cartel y la vuelta están en
-ui/vuelta_del_admin.py. Las pantallas se prueban sin abrir ninguna ventana
+La sesión del Administrador vuelve sola, en silencio, a los 10 minutos (pedido
+del dueño, 2026-10-26: entra como Administrador para algo rápido y se olvida de
+volver a cambiar de usuario). A quién vuelve lo decide
+repositories/vuelta_admin_repo.py (la empleada que estaba, si su caja sigue
+abierta a su nombre; si no, la pantalla de ingreso); el reloj y la vuelta están
+en ui/vuelta_del_admin.py. Las pantallas se prueban sin abrir ninguna ventana
 (plataforma "offscreen") y con un reloj de mentira.
 
 Se ejecutan con:
@@ -20,7 +20,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import dominio  # noqa: E402
 import main  # noqa: E402
@@ -28,14 +28,13 @@ from database import conexion_db  # noqa: E402
 from repositories import relevo_repo, turnos_repo, usuarios_repo, vuelta_admin_repo  # noqa: E402
 from ui import vuelta_del_admin  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
-from ui.vuelta_del_admin import CartelVueltaDelAdmin, VueltaDelAdmin  # noqa: E402
+from ui.vuelta_del_admin import VueltaDelAdmin  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
 LUNES = date(2026, 1, 5)
-MINUTOS = dominio.MINUTOS_ADMIN_VUELVE_SOLO
-AVISO = dominio.SEGUNDOS_AVISO_VUELTA_ADMIN
+DIEZ_MINUTOS = dominio.MINUTOS_ADMIN_VUELVE_SOLO * 60
 
 
 def _a_las(hora, minuto=0):
@@ -73,9 +72,6 @@ class TestAQuienVuelve(_ConEmpleadas):
     def test_vuelve_a_la_empleada_si_su_caja_sigue_abierta(self):
         relevo_repo.abrir_caja(self.toby_id, 50000.0, _a_las(5, 55))
 
-        self.assertEqual(vuelta_admin_repo.a_quien_volver(self.toby_id, _a_las(9))["nombre"], "TOBY")
-        self.assertEqual(self._ingresos(self.toby_id), [])  # mirar no anota nada
-
         usuario = vuelta_admin_repo.volver(self.toby_id, _a_las(9))
 
         self.assertEqual(usuario["nombre"], "TOBY")
@@ -83,7 +79,6 @@ class TestAQuienVuelve(_ConEmpleadas):
         self.assertEqual([fila["desde_ip"] for fila in self._ingresos(self.toby_id)], [None])
 
     def test_sin_nadie_antes_va_al_ingreso(self):
-        self.assertIsNone(vuelta_admin_repo.a_quien_volver(None))
         self.assertIsNone(vuelta_admin_repo.volver(None))
 
     def test_no_vuelve_a_una_empleada_dada_de_baja(self):
@@ -107,8 +102,8 @@ class TestAQuienVuelve(_ConEmpleadas):
         caja = relevo_repo.abrir_caja(self.toby_id, 50000.0, _a_las(5, 55))
         relevo_repo.recibir_caja(self.gaby_id, caja["caja_numero"], 50000.0, _a_las(10))
 
-        self.assertIsNone(vuelta_admin_repo.a_quien_volver(self.toby_id, _a_las(10, 5)))
-        self.assertEqual(vuelta_admin_repo.a_quien_volver(self.gaby_id, _a_las(10, 5))["nombre"], "GABRIELA")
+        self.assertIsNone(vuelta_admin_repo.volver(self.toby_id, _a_las(10, 5)))
+        self.assertEqual(vuelta_admin_repo.volver(self.gaby_id, _a_las(10, 5))["nombre"], "GABRIELA")
 
     def test_si_su_turno_ya_vencio_va_al_ingreso(self):
         # La Mañana termina a las 14 y la caja se cierra sola a los 30 minutos: a
@@ -118,41 +113,8 @@ class TestAQuienVuelve(_ConEmpleadas):
         self.assertIsNone(vuelta_admin_repo.volver(self.toby_id, _a_las(15)))
 
 
-class TestElCartel(BaseConBaseTemporal):
-    def _cartel(self, destino, reloj):
-        cartel = CartelVueltaDelAdmin(destino, None, reloj)
-        self.addCleanup(cartel.deleteLater)
-        return cartel
-
-    def test_cuenta_para_atras_y_a_cero_vuelve(self):
-        reloj = _Reloj()
-        cartel = self._cartel("TOBY", reloj)
-        self.assertEqual(cartel.titulo.text(), f"EN {AVISO} SEGUNDOS VUELVE TOBY")
-
-        reloj.pasar(AVISO - 15)
-        cartel._tic()
-        self.assertEqual(cartel.titulo.text(), "EN 15 SEGUNDOS VUELVE TOBY")
-
-        reloj.pasar(15)
-        cartel._tic()
-        self.assertEqual(cartel.result(), QDialog.Rejected)
-
-    def test_sin_nadie_a_quien_volver_dice_que_vuelve_el_ingreso(self):
-        cartel = self._cartel(None, _Reloj())
-        self.assertEqual(cartel.titulo.text(), f"EN {AVISO} SEGUNDOS VUELVE LA PANTALLA DE INGRESO")
-
-    def test_seguir_es_lo_unico_que_deja_al_administrador(self):
-        cartel = self._cartel("TOBY", _Reloj())
-        self.assertEqual(cartel.tecla_seguir.text(), f"SEGUIR COMO ADMIN ({MINUTOS} MIN MÁS)")
-        # Un Enter suelto no la aprieta.
-        self.assertFalse(cartel.tecla_seguir.isDefault() or cartel.tecla_seguir.autoDefault())
-
-        cartel.tecla_seguir.click()
-        self.assertEqual(cartel.result(), QDialog.Accepted)
-
-
 class TestElReloj(BaseConBaseTemporal):
-    """El reloj del Administrador con el cartel y el repo de mentira."""
+    """El reloj del Administrador con el repo de mentira."""
 
     def setUp(self):
         super().setUp()
@@ -160,81 +122,56 @@ class TestElReloj(BaseConBaseTemporal):
         self.vueltas = []
         self.cobro_a_medias = mock.Mock(return_value=False)
         self.repo = mock.patch.object(vuelta_del_admin, "vuelta_admin_repo").start()
-        self.repo.a_quien_volver.return_value = {"nombre": "TOBY"}
         self.repo.volver.return_value = {"id": 7, "nombre": "TOBY"}
-        self.cartel = mock.patch.object(vuelta_del_admin, "CartelVueltaDelAdmin").start()
-        self.cartel.return_value.exec.return_value = QDialog.Rejected   # no se toca nada
         self.addCleanup(mock.patch.stopall)
         self.vuelta = VueltaDelAdmin(None, 7, self.vueltas.append, self.cobro_a_medias, self.reloj)
         self.addCleanup(self.vuelta.detener)
 
-    def test_antes_del_aviso_no_pasa_nada(self):
-        self.reloj.pasar(MINUTOS * 60 - AVISO - 1)
+    def test_antes_de_los_diez_minutos_no_pasa_nada(self):
+        self.reloj.pasar(DIEZ_MINUTOS - 1)
         self.vuelta._revisar()
 
-        self.cartel.assert_not_called()
+        self.repo.volver.assert_not_called()
         self.assertEqual(self.vueltas, [])
 
-    def test_un_minuto_antes_avisa_y_si_no_se_toca_nada_vuelve_a_la_empleada(self):
-        self.reloj.pasar(MINUTOS * 60 - AVISO)
+    def test_a_los_diez_minutos_vuelve_en_silencio_a_la_empleada(self):
+        self.reloj.pasar(DIEZ_MINUTOS)
         self.vuelta._revisar()
 
-        self.assertEqual(self.cartel.call_args[0][0], "TOBY")
         self.repo.volver.assert_called_once_with(7)
         self.assertEqual(self.vueltas, [{"id": 7, "nombre": "TOBY"}])
+        # Ningún cartel: no quedó ninguna ventana abierta encima.
+        self.assertIsNone(QApplication.activeModalWidget())
 
-    def test_seguir_da_otros_diez_minutos(self):
-        self.cartel.return_value.exec.return_value = QDialog.Accepted
-        self.reloj.pasar(MINUTOS * 60 - AVISO)
+    def test_vuelve_una_sola_vez(self):
+        self.reloj.pasar(DIEZ_MINUTOS)
         self.vuelta._revisar()
-        self.assertEqual(self.vueltas, [])
+        self.vuelta._revisar()
 
-        self.cartel.reset_mock()
-        self.reloj.pasar(MINUTOS * 60 - AVISO - 1)
-        self.vuelta._revisar()
-        self.cartel.assert_not_called()
-
-        self.reloj.pasar(1)
-        self.vuelta._revisar()
-        self.cartel.assert_called_once()
+        self.assertEqual(len(self.vueltas), 1)
 
     def test_sin_nadie_a_quien_volver_va_al_ingreso(self):
-        self.repo.a_quien_volver.return_value = None
         self.repo.volver.return_value = None
-        self.reloj.pasar(MINUTOS * 60)
+        self.reloj.pasar(DIEZ_MINUTOS)
         self.vuelta._revisar()
 
-        self.assertIsNone(self.cartel.call_args[0][0])
         self.assertEqual(self.vueltas, [None])
 
     def test_con_algo_a_medias_espera_a_que_se_cierre(self):
-        formulario = mock.Mock(spec=["reject"])   # un artículo a medio editar: no se cierra solo
-        self.reloj.pasar(MINUTOS * 60 + 300)
-        with mock.patch.object(vuelta_del_admin.QApplication, "activeModalWidget", return_value=formulario):
-            self.vuelta._revisar()
-        self.cartel.assert_not_called()
-
-        self.vuelta._revisar()   # ya lo cerró: recién ahí sale el cartel
-        self.cartel.assert_called_once()
-        self.assertEqual(len(self.vueltas), 1)
-
-    def test_encima_de_ventas_vacia_avisa_y_la_cierra_antes_de_volver(self):
-        ventas = mock.Mock()
-        ventas.se_puede_cerrar_sola.return_value = True
-        self.cobro_a_medias.side_effect = [True, False]   # la primera vez cierra Ventas
-        self.reloj.pasar(MINUTOS * 60)
-        with mock.patch.object(vuelta_del_admin.QApplication, "activeModalWidget", return_value=ventas):
-            self.vuelta._revisar()
-        self.cartel.assert_called_once()
+        # Un cobro o un formulario abierto: espera. Ventas vacía o Caja se cierran
+        # solas (eso lo hace _hay_un_cobro_a_medias) y vuelve en la próxima revisión.
+        self.cobro_a_medias.side_effect = [True, True, False]
+        self.reloj.pasar(DIEZ_MINUTOS + 300)
+        self.vuelta._revisar()
+        self.vuelta._revisar()
         self.assertEqual(self.vueltas, [])
 
         self.vuelta._revisar()
         self.assertEqual(len(self.vueltas), 1)
-        self.cartel.assert_called_once()   # no vuelve a preguntar
 
     def test_si_falla_la_base_no_queda_abierto_el_administrador(self):
         self.repo.volver.side_effect = RuntimeError("disco lleno")
-        self.reloj.pasar(MINUTOS * 60)
+        self.reloj.pasar(DIEZ_MINUTOS)
         with mock.patch.object(vuelta_del_admin, "registrar_error"):
             self.vuelta._revisar()
 
@@ -306,16 +243,12 @@ class TestDeTobyAlAdministradorYDeVuelta(_ConEmpleadas):
             self.addCleanup(admin.panel_pcs.detener_actualizacion)
             self.assertEqual(admin._vuelta._volver_a_id, self.toby_id)
 
-            # Pasan los 10 minutos y nadie toca el cartel.
-            admin._vuelta._vence = 0
-            with mock.patch.object(vuelta_del_admin, "CartelVueltaDelAdmin") as cartel:
-                cartel.return_value.exec.return_value = QDialog.Rejected
-                admin._vuelta._revisar()
+            admin._vuelta._vence = 0   # pasaron los 10 minutos
+            admin._vuelta._revisar()
 
             de_vuelta = aplicacion.ventana_principal
             self.addCleanup(de_vuelta.deleteLater)
             self.addCleanup(de_vuelta.panel_pcs.detener_actualizacion)
-        self.assertEqual(cartel.call_args[0][0], "TOBY")
         self.assertEqual(de_vuelta.usuario["nombre"], "TOBY")
         self.assertIsNone(de_vuelta._vuelta)
         self.assertEqual(len(self._ingresos(self.toby_id)), 1)

@@ -504,11 +504,9 @@ MINUTOS_POSPONER_AVISO_CUENTAS = 5
 
 # El Administrador en el mostrador (pedido del dueño, 2026-10-26: entra para algo
 # rápido y se olvida de volver a cambiar de usuario): a estos minutos de entrar, la
-# sesión vuelve sola a la empleada que estaba antes, o a la pantalla de ingreso
-# (ver ui/vuelta_del_admin.py). Estos segundos antes sale el cartel con la cuenta
-# regresiva y "SEGUIR COMO ADMIN", que da otros MINUTOS_ADMIN_VUELVE_SOLO.
+# sesión vuelve sola y en silencio a la empleada que estaba antes, o a la pantalla
+# de ingreso (ver ui/vuelta_del_admin.py).
 MINUTOS_ADMIN_VUELVE_SOLO = 10
-SEGUNDOS_AVISO_VUELTA_ADMIN = 60
 
 
 def repartir_pagos(pagos: list, montos: list) -> list:

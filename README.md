@@ -743,11 +743,12 @@ algo rápido y muchas veces se olvidaba de volver a cambiar de usuario, y el
 mostrador quedaba abierto como Administrador.
 
 - **Cuándo:** a los `dominio.MINUTOS_ADMIN_VUELVE_SOLO` (10) de entrar, aunque
-  esté usando el programa. Un minuto antes sale el cartel "EN 60 SEGUNDOS VUELVE
-  TOBY" con "SEGUIR COMO ADMIN (10 MIN MÁS)"; si no se toca nada, o se lo cierra,
-  vuelve. Con una ventana abierta que no se cierra sola (un cobro, un formulario)
-  el cartel espera; Ventas con el carrito vacío y Caja se cierran solas, como
-  para el cierre forzoso.
+  esté usando el programa, y en silencio: sin cartel ni aviso (lo pidió así el
+  dueño; la primera versión avisaba un minuto antes con "SEGUIR COMO ADMIN").
+  Para seguir, se vuelve a entrar como Administrador y los minutos arrancan de
+  nuevo. Con una ventana abierta que no se cierra sola (un cobro, un formulario)
+  espera; Ventas con el carrito vacío y Caja se cierran solas, como para el
+  cierre forzoso.
 - **A quién:** a quien dejó el mostrador con "🔄 Operador" antes de que entrara
   el Administrador (`MainWindow.a_quien_volveria`, lo guarda `main.Aplicacion`),
   sin pedirle la clave y con su ingreso anotado en `sesiones` como cualquier otro.

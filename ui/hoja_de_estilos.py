@@ -1002,14 +1002,6 @@ HOJA_DE_ESTILOS = """
     QLabel#tituloEnvio[estado="enviado"] { color: #1E9E50; }
     QLabel#tituloEnvio[estado="error"] { color: #C62828; }
     QLabel#detalleEnvio { color: #5A6F96; }
-    /* El cartel de la vuelta sola del Administrador (ui/vuelta_del_admin.py). */
-    QLabel#tituloVueltaAdmin {
-        color: #1D4FA8;
-        font-size: 16px;
-        font-weight: 800;
-        letter-spacing: 1px;
-    }
-    QLabel#detalleVueltaAdmin { color: #5A6F96; }
     QLabel#tituloCifra {
         font-size: 11px;
         font-weight: 700;

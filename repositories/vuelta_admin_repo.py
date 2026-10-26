@@ -5,8 +5,8 @@ La sesión del Administrador vuelve sola a la empleada (pedido del dueño,
 2026-10-26): el dueño entra como Administrador con "🔄 Operador" para algo
 rápido y muchas veces se olvida de volver a cambiar de usuario, y el programa
 quedaba abierto como Administrador, con todo habilitado. A los
-dominio.MINUTOS_ADMIN_VUELVE_SOLO la pantalla principal del mostrador vuelve a la
-empleada que estaba antes (el reloj y el cartel están en ui/vuelta_del_admin.py);
+dominio.MINUTOS_ADMIN_VUELVE_SOLO la pantalla principal del mostrador vuelve, en
+silencio, a la empleada que estaba antes (el reloj está en ui/vuelta_del_admin.py);
 acá se decide SI se puede volver a ella:
 
 - tiene que seguir activa y no ser Admin;
@@ -40,19 +40,11 @@ def _se_puede_volver(conexion, usuario_id, ahora: datetime):
     return usuario
 
 
-def a_quien_volver(usuario_id, ahora: datetime = None):
-    """Para el cartel de la cuenta regresiva: la empleada a la que se volvería
-    ahora, o None (se iría a la pantalla de ingreso). No anota nada."""
-    with conexion_db() as conexion:
-        return _se_puede_volver(conexion, usuario_id, ahora or datetime.now())
-
-
 def volver(usuario_id, ahora: datetime = None):
     """
     Vuelve a `usuario_id`: si todavía se puede, anota su ingreso y devuelve su
-    fila; si no, None y no anota nada. Se vuelve a mirar acá, en la misma
-    transacción que anota el ingreso, porque entre el cartel y la vuelta pasó
-    un minuto (y pudo cerrarse su caja).
+    fila; si no, None y no anota nada. Se mira en la misma transacción que anota
+    el ingreso, así no se vuelve a una caja que se cerró recién.
     """
     with conexion_db() as conexion:
         usuario = _se_puede_volver(conexion, usuario_id, ahora or datetime.now())
