@@ -64,7 +64,7 @@ import database
 import dominio
 from database import conexion_db
 from errores import registrar_error
-from repositories import cajas_repo, usuarios_repo
+from repositories import control_cierres_repo, usuarios_repo
 from turnos import etiqueta_turno, turno_para_la_app_de_gastos
 
 # La app de gastos: su proyecto de Firebase y la clave PÚBLICA con que entra cada
@@ -201,8 +201,13 @@ def datos_del_cierre(conexion, cierre_id: int) -> dict:
     Lo que se asienta allá de un cierre, con las claves de la app (ver el
     comentario del módulo): importe, efectivo, digital, turno, registradoPor,
     fecha (date: el día en que arrancó el turno), creadoEn (datetime: la hora
-    real del cierre), más origen, cierreId, caja (None sin caja), forzoso y
-    cerradoPor.
+    real del cierre), más origen, cierreId, caja (None sin caja), forzoso,
+    enAusencia, cerradoPor y "detalle": el resumen tal como lo muestra la tarjeta
+    del Cierre de Turno (pedido del dueño, 2026-10-26: tocar el cierre en la app
+    y ver lo mismo que en el programa): el Cambio Fijo, lo que había que retirar,
+    cada negocio de dominio.NEGOCIOS_DEL_CIERRE con su efectivo y su digital, qué
+    fueron los pagos de reservas y de qué hora a qué hora va el turno. Sale de
+    control_cierres_repo._resumen_del_cierre, el mismo que usa Control de Cierres.
     """
     cierre = conexion.execute(
         """
@@ -214,7 +219,9 @@ def datos_del_cierre(conexion, cierre_id: int) -> dict:
     ).fetchone()
     if cierre is None:
         raise ValueError(f"No existe el cierre Nº {cierre_id}.")
-    caja = cajas_repo._caja_del_cierre(conexion, cierre_id)
+    caja = control_cierres_repo._datos_de_la_caja(conexion, cierre)
+    desde = control_cierres_repo._desde_del_cierre(conexion, cierre_id)
+    resumen = control_cierres_repo._resumen_del_cierre(conexion, cierre, desde, caja)
     efectivo = round(cierre["ventas_efectivo"], 2)
     digital = round(cierre["ventas_digital"], 2)
     return {
@@ -223,16 +230,54 @@ def datos_del_cierre(conexion, cierre_id: int) -> dict:
         "digital": digital,
         "turno": turno_para_la_app_de_gastos(cierre["fecha"], cierre["turno"]),
         # La responsable de la caja al cerrarse, no quien apretó el botón: si el
-        # Admin cierra en ausencia de Gabriela, allá figura Gabriela.
-        "registradoPor": caja["responsable"] if caja is not None else cierre["cerrado_por"],
+        # Admin cierra en ausencia de Gabriela, allá figura Gabriela (sin caja,
+        # _datos_de_la_caja ya pone a quien cerró).
+        "registradoPor": caja["responsable"],
         "fecha": date.fromisoformat(cierre["fecha"][:10]),
         "creadoEn": datetime.fromisoformat(cierre["fecha_cierre"]),
         "origen": ORIGEN,
         "cierreId": cierre_id,
-        "caja": caja["id"] if caja is not None else None,
-        "forzoso": bool(caja["cierre_forzoso"]) if caja is not None else False,
+        "caja": caja["caja_numero"],
+        "forzoso": bool(caja["cierre_forzoso"]),
+        "enAusencia": bool(caja["cerrada_en_ausencia"]),
         "cerradoPor": cierre["cerrado_por"],
+        "detalle": {
+            "cambioFijo": round(resumen["cambio_inicial"], 2),
+            "aRetirar": efectivo,
+            "negocios": [
+                {
+                    "clave": clave, "nombre": nombre,
+                    "efectivo": round(resumen[f"{clave}_efectivo"], 2),
+                    "digital": round(resumen[f"{clave}_digital"], 2),
+                }
+                for clave, nombre in dominio.NEGOCIOS_DEL_CIERRE
+            ],
+            "reservasPorTipo": [
+                {"clase": pago["clase"], "cantidad": pago["cantidad"], "monto": round(pago["monto"], 2)}
+                for pago in resumen["reservas_por_tipo"]
+            ],
+            "desde": resumen["desde"],
+            "hasta": resumen["hasta"],
+        },
     }
+
+
+def _valor(valor) -> dict:
+    """Cualquier dato del cierre con el tipo de Firestore (el detalle es un mapa con
+    una lista de mapas adentro)."""
+    if valor is None:
+        return {"nullValue": None}
+    if isinstance(valor, bool):  # antes que int: un bool también es un int
+        return {"booleanValue": valor}
+    if isinstance(valor, (int, float)):
+        return _numero(valor)
+    if isinstance(valor, str):
+        return {"stringValue": valor}
+    if isinstance(valor, (list, tuple)):
+        return {"arrayValue": {"values": [_valor(elemento) for elemento in valor]}}
+    if isinstance(valor, dict):
+        return {"mapValue": {"fields": {clave: _valor(elemento) for clave, elemento in valor.items()}}}
+    raise TypeError(f"No sé mandar un {type(valor).__name__} a la app de gastos.")
 
 
 def _momento_utc(momento: datetime) -> str:
@@ -262,7 +307,9 @@ def a_campos_firestore(datos: dict) -> dict:
         "origen": {"stringValue": datos["origen"]},
         "cierreId": {"integerValue": str(datos["cierreId"])},
         "forzoso": {"booleanValue": bool(datos["forzoso"])},
+        "enAusencia": {"booleanValue": bool(datos["enAusencia"])},
         "cerradoPor": {"stringValue": datos["cerradoPor"]},
+        "detalle": _valor(datos["detalle"]),
     }
     if datos["caja"] is not None:
         campos["caja"] = {"integerValue": str(datos["caja"])}

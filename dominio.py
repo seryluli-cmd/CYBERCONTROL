@@ -744,3 +744,19 @@ ENVIO_PENDIENTE = "PENDIENTE"   # recién cerrado, todavía no se mandó
 ENVIO_ENVIADO = "ENVIADO"       # la app de gastos lo aceptó: no se vuelve a mandar
 ENVIO_ERROR = "ERROR"           # falló; se vuelve a probar solo
 ESTADOS_ENVIO_PWA = (ENVIO_PENDIENTE, ENVIO_ENVIADO, ENVIO_ERROR)
+
+# Los renglones de "de dónde vino la plata" de un Cierre de Turno, en orden:
+# (clave, nombre). La clave con "_efectivo" o "_digital" detrás es lo que trae
+# turnos_repo.resumen_turno_actual (Kiosko sin impresiones ni trámites, pedido
+# del dueño 2026-10-19; Alquiler de PCs y PlayStation 5 sin sus reservas,
+# 2026-10-20). Los usan la tarjeta del cierre (ui/tarjeta_cierre.py, con su
+# dibujito) y lo que viaja a la app de gastos (envio_pwa_repo): un solo lugar
+# para que las dos muestren lo mismo.
+NEGOCIOS_DEL_CIERRE = (
+    ("kiosko_solo", NOMBRE_ORIGEN_VENTA[ORIGEN_KIOSKO]),
+    ("impresiones", "Impresiones"),
+    ("tramites", "Trámites"),
+    ("pcs_solo", NOMBRE_ORIGEN_VENTA[ORIGEN_ALQUILER_PCS]),
+    ("playstation_solo", NOMBRE_ORIGEN_VENTA[ORIGEN_PLAYSTATION]),
+    ("reservas", "Reservas"),
+)

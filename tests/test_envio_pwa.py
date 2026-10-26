@@ -175,11 +175,45 @@ class TestLoQueViaja(_BaseDeEnvios):
 
         datos = self._datos(cierre["id"])
 
-        self.assertEqual(datos, {
+        esperado = {
             "importe": 1600.0, "efectivo": 1000.0, "digital": 600.0, "turno": "mañana", "registradoPor": "TOBY",
             "fecha": LUNES, "creadoEn": _a_las(14, 0), "origen": "cybercontrol", "cierreId": cierre["id"],
-            "caja": cierre["caja_numero"], "forzoso": False, "cerradoPor": "TOBY",
-        })
+            "caja": cierre["caja_numero"], "forzoso": False, "enAusencia": False, "cerradoPor": "TOBY",
+        }
+        self.assertEqual({clave: datos[clave] for clave in esperado}, esperado)
+
+    def test_viaja_el_desglose_por_negocio_como_en_la_tarjeta(self):
+        from ui.tarjeta_cierre import NEGOCIOS
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+
+        detalle = self._datos(cierre["id"])["detalle"]
+
+        self.assertEqual((detalle["cambioFijo"], detalle["aRetirar"]), (50000.0, 1000.0))
+        self.assertEqual([(n["clave"], n["nombre"]) for n in detalle["negocios"]],
+                         [(clave, nombre) for clave, _dibujito, nombre in NEGOCIOS])
+        por_clave = {n["clave"]: (n["efectivo"], n["digital"]) for n in detalle["negocios"]}
+        self.assertEqual(por_clave["kiosko_solo"], (1000.0, 600.0))
+        self.assertEqual({clave: montos for clave, montos in por_clave.items() if clave != "kiosko_solo"},
+                         {clave: (0.0, 0.0) for clave in por_clave if clave != "kiosko_solo"})
+        self.assertEqual(detalle["reservasPorTipo"], [])
+        self.assertEqual(datetime.fromisoformat(detalle["hasta"]), _a_las(14, 0))
+
+    def test_el_desglose_viaja_como_mapa_de_firestore(self):
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+
+        campos = envio_pwa_repo.a_campos_firestore(self._datos(cierre["id"]))["fields"]
+
+        detalle = campos["detalle"]["mapValue"]["fields"]
+        self.assertEqual(detalle["cambioFijo"], {"integerValue": "50000"})
+        kiosko = detalle["negocios"]["arrayValue"]["values"][0]["mapValue"]["fields"]
+        self.assertEqual((kiosko["nombre"], kiosko["efectivo"], kiosko["digital"]),
+                         ({"stringValue": "Kiosko"}, {"integerValue": "1000"}, {"integerValue": "600"}))
+        self.assertEqual(detalle["reservasPorTipo"], {"arrayValue": {"values": []}})
+        self.assertEqual(campos["enAusencia"], {"booleanValue": False})
+        # json.dumps lo tiene que poder escribir entero (es lo que viaja).
+        json.dumps(campos)
 
     def test_si_el_admin_cierra_en_ausencia_alla_figura_la_responsable(self):
         self._turno_de_toby()
@@ -187,7 +221,8 @@ class TestLoQueViaja(_BaseDeEnvios):
 
         datos = self._datos(cierre["id"])
 
-        self.assertEqual((datos["registradoPor"], datos["cerradoPor"], datos["forzoso"]), ("TOBY", "Dueño", False))
+        self.assertEqual((datos["registradoPor"], datos["cerradoPor"], datos["forzoso"], datos["enAusencia"]),
+                         ("TOBY", "Dueño", False, True))
 
     def test_el_cierre_forzoso_va_marcado_y_a_nombre_de_la_responsable(self):
         self._turno_de_toby()

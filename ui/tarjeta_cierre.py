@@ -47,18 +47,14 @@ _NOMBRES_DE_PAGO_DE_RESERVA = {
     dominio.PAGO_RESERVA_DEVOLUCION: ("devolución", "devoluciones"),
 }
 
-# Los renglones de la tabla, en este orden: (clave, dibujito, nombre). La clave con
-# "_efectivo" o "_digital" detrás es lo que trae turnos_repo.resumen_turno_actual:
-# Kiosko sin impresiones ni trámites (pedido del dueño, 2026-10-19) y Alquiler de PCs y
-# PlayStation 5 sin sus reservas (variante A, 2026-10-20). Primero lo del kiosko,
-# después lo de las PCs y la consola. Los dibujitos son los de los botones de la barra.
-NEGOCIOS = (
-    ("kiosko_solo", "🛒", dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_KIOSKO]),
-    ("impresiones", "🖨️", "Impresiones"),
-    ("tramites", "📄", "Trámites"),
-    ("pcs_solo", "🖥️", dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_ALQUILER_PCS]),
-    ("playstation_solo", "🎮", dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION]),
-    ("reservas", "📅", "Reservas"),
+# Los renglones de la tabla, en este orden: (clave, dibujito, nombre). Las claves y los
+# nombres son dominio.NEGOCIOS_DEL_CIERRE (los mismos que viajan a la app de gastos del
+# dueño, envio_pwa_repo): primero lo del kiosko, después lo de las PCs y la consola. Los
+# dibujitos son los de los botones de la barra.
+_DIBUJITOS = ("🛒", "🖨️", "📄", "🖥️", "🎮", "📅")
+NEGOCIOS = tuple(
+    (clave, dibujito, nombre)
+    for (clave, nombre), dibujito in zip(dominio.NEGOCIOS_DEL_CIERRE, _DIBUJITOS, strict=True)
 )
 
 

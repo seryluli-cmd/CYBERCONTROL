@@ -175,7 +175,7 @@ class ControlCierresWindow(QDialog):
         # Mandar (o volver a mandar) un cierre a la app de gastos del dueño (pedido
         # suyo, 2026-10-26): para uno hecho con el envío apagado o borrado por error
         # allá. Solo el Admin, como el sobre.
-        self.boton_mandar = QPushButton("Mandar a la app de gastos")
+        self.boton_mandar = QPushButton("Mandar este cierre a la PWA")
         self.boton_mandar.clicked.connect(self._mandar_a_la_app)
         self.boton_mandar.setVisible(dominio.es_admin(self.usuario))
         boton_salir = QPushButton("Salir")
