@@ -17,7 +17,8 @@ proyectos). La parte 1, la plata, está en reservas_repo.py.
   (aviso_al_vender). Es un aviso, no un freno: decide el operador.
 - Un socio entra a una PC reservada solo hasta la hora de la reserva
   (minutos_para_el_socio, lo usa miembros_repo.abrir_estacion_por_miembro): se
-  le descuenta solo ese tiempo y lo demás le queda en el saldo.
+  le descuenta solo ese tiempo y lo demás le queda en el saldo. Su propia
+  reserva (las de socios, reservas_socios_repo) no lo corta.
 - Las de "Cualquier PC disponible" no apartan ninguna PC (decisión del dueño):
   se ven en un aviso arriba del mosaico (sin_pc_fija), con cuántas PCs libres
   hay (pcs_libres).
@@ -48,13 +49,14 @@ def pendientes(conexion, ahora: datetime) -> list:
     Las reservas Pendientes cuyo cliente todavía puede llegar (su hora +
     MINUTOS_TOLERANCIA_RESERVA no pasó), de la más próxima a la más lejana. Cada
     una como {"id", "cliente", "equipo", "estacion_id", "inicio" (datetime),
-    "minutos", "marcada"}; "marcada" es si el equipo ya se ve RESERVADO (faltan
-    MINUTOS_EQUIPO_RESERVADO_ANTES o menos).
+    "minutos", "marcada", "miembro_id"}; "marcada" es si el equipo ya se ve
+    RESERVADO (faltan MINUTOS_EQUIPO_RESERVADO_ANTES o menos) y "miembro_id", el
+    socio de una reserva de socio (None en una común).
     """
     desde = ahora - timedelta(minutes=dominio.MINUTOS_TOLERANCIA_RESERVA)
     filas = conexion.execute(
         """
-        SELECT id, cliente, equipo, estacion_id, fecha_reserva, minutos FROM reservas
+        SELECT id, cliente, equipo, estacion_id, fecha_reserva, minutos, miembro_id FROM reservas
         WHERE estado = ? AND fecha_reserva >= ?
         ORDER BY fecha_reserva, id
         """,
@@ -67,7 +69,7 @@ def pendientes(conexion, ahora: datetime) -> list:
         reservas.append({
             "id": fila["id"], "cliente": fila["cliente"], "equipo": fila["equipo"],
             "estacion_id": fila["estacion_id"], "inicio": inicio, "minutos": fila["minutos"],
-            "marcada": inicio - antes <= ahora,
+            "marcada": inicio - antes <= ahora, "miembro_id": fila["miembro_id"],
         })
     return reservas
 
@@ -192,7 +194,8 @@ def aviso_al_vender(estacion_id, minutos: int, ahora: datetime = None):
     )
 
 
-def minutos_para_el_socio(conexion, estacion_id: int, saldo_minutos: int, ahora: datetime) -> tuple:
+def minutos_para_el_socio(conexion, estacion_id: int, saldo_minutos: int, ahora: datetime,
+                          miembro_id: int = None) -> tuple:
     """
     Cuántos minutos de su saldo usa un socio que entra a esa PC: todo el saldo,
     salvo que la PC tenga una reserva antes de que se le termine; entonces solo
@@ -203,11 +206,16 @@ def minutos_para_el_socio(conexion, estacion_id: int, saldo_minutos: int, ahora:
     Levanta ValueError (con un mensaje para el socio) si hasta la reserva le
     quedarían menos de MINUTOS_MINIMOS_SOCIO_ANTES_DE_RESERVA. Corre dentro de la
     transacción de abrir_estacion_por_miembro.
+
+    Una reserva del mismo socio (`miembro_id`, ver reservas_socios_repo) no lo
+    corta: es su turno. La de otro que venga después, sí.
     """
     estacion = conexion.execute("SELECT * FROM estaciones WHERE id = ?", (estacion_id,)).fetchone()
     if estacion is None:
         return saldo_minutos, None
-    reserva = proxima(pendientes(conexion, ahora), estacion)
+    ajenas = [reserva for reserva in pendientes(conexion, ahora)
+              if miembro_id is None or reserva["miembro_id"] != miembro_id]
+    reserva = proxima(ajenas, estacion)
     if reserva is None:
         return saldo_minutos, None
 

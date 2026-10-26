@@ -114,6 +114,17 @@ def _abrir_en_una_pc(conexion, reserva, estacion_id: int, venta_id: int, ahora: 
     return sesion_id, estacion["nombre"]
 
 
+def _no_es_de_socio(reserva):
+    """La de un socio no se habilita desde acá: abriría la PC sin pasar por su
+    saldo. Entra con su usuario y su clave, y queda habilitada sola
+    (reservas_socios_repo.marcar_llegada)."""
+    if reserva["miembro_id"] is not None:
+        raise ValueError(
+            "Es la reserva de un socio: que entre a la PC con su usuario y su clave (o abrila con \"Abrir PC "
+            "con Miembro\"). La reserva queda habilitada sola cuando entra."
+        )
+
+
 def _falta(conexion, reserva) -> float:
     return max(0.0, round(reserva["precio"] - reservas_repo._pagado(conexion, reserva["id"]), 2))
 
@@ -127,6 +138,7 @@ def preparar_habilitacion(reserva_id: int, estacion_id) -> float:
     ahora = datetime.now()
     with conexion_db() as conexion:
         reserva = reservas_repo._reserva_abierta(conexion, reserva_id)
+        _no_es_de_socio(reserva)
         if reserva["equipo"] != dominio.EQUIPO_RESERVA_PLAYSTATION:
             _revisar_pc(conexion, reserva, estacion_id, ahora)
         return _falta(conexion, reserva)
@@ -149,6 +161,7 @@ def habilitar(reserva_id: int, usuario_id: int, estacion_id, pagos: list) -> dic
     with conexion_db() as conexion:
         conexion.execute("BEGIN IMMEDIATE")
         reserva = reservas_repo._reserva_abierta(conexion, reserva_id)
+        _no_es_de_socio(reserva)
         falta = _falta(conexion, reserva)
         if falta:
             if sum(pago["monto"] for pago in pagos) < falta - 0.01:

@@ -22,7 +22,7 @@ def inicializar_base_de_datos():
         _migrar_check_tipo_en_comandos_pc, _migrar_check_tipo_en_eventos_admin_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_columnas_aviso_fin_en_sesiones,
         _migrar_columna_whatsapp_en_miembros,
-        _migrar_columna_desde_ip_en_sesiones,
+        _migrar_columna_desde_ip_en_sesiones, _migrar_columna_miembro_en_reservas,
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
         _migrar_check_origen_en_ventas, _migrar_borrar_clave_vieja_de_clientes_pc, _cargar_datos_iniciales,
@@ -642,7 +642,9 @@ def inicializar_base_de_datos():
     # PlayStation 5, que son una sola). Al habilitarla queda dónde se usó y con
     # qué sesión. "estado_desde"/"estado_por" dicen desde cuándo está como está y
     # quién la pasó (NULL = el programa solo, al vencer la tolerancia o los días
-    # para reprogramar).
+    # para reprogramar). "miembro_id" (2026-10-26) es el socio de una reserva de
+    # socio: no paga nada y no tiene bono (bono_id 0, precio 0; ver
+    # reservas_socios_repo); NULL en la reserva común de siempre.
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS reservas (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -663,9 +665,11 @@ def inicializar_base_de_datos():
             estacion_habilitada_id  INTEGER REFERENCES estaciones(id),
             sesion_pc_id            INTEGER REFERENCES sesiones_pc(id),
             sesion_playstation_id   INTEGER REFERENCES sesiones_playstation(id),
-            motivo_devolucion       TEXT
+            motivo_devolucion       TEXT,
+            miembro_id              INTEGER REFERENCES miembros(id)
         )
     """)
+    _migrar_columna_miembro_en_reservas(conexion)
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS reservas_pagos (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -12,6 +12,8 @@ estado de cada reserva como una pastilla de color.
 
 Los formularios están en reservas_dialogos.py y las reglas en
 control_pcs/repositories/reservas_repo.py. Se abre solo en el mostrador: cobra.
+"RESERVA DE SOCIO" (2026-10-26) abre reservas_socio_dialogo.py: un socio con
+saldo reserva sin seña; en la lista se ve "(socio)" y no tiene plata.
 """
 
 from datetime import datetime
@@ -26,9 +28,11 @@ from PySide6.QtWidgets import (
 import dominio
 from turnos import dia_en_que_empezo_el_turno
 from control_pcs.repositories import reservas_repo
+from control_pcs.repositories import reservas_socios_repo
 from control_pcs.ui.reservas_dialogos import (
     DialogoDevolver, DialogoHabilitarReserva, DialogoNuevaReserva, DialogoReprogramar, texto_dia_y_hora,
 )
+from control_pcs.ui.reservas_socio_dialogo import DialogoReservaDeSocio
 from ui.piezas_ventana import (
     TONO_AZUL, TONO_CELESTE, TONO_NARANJA, agregar_pastilla, cabecera_oscura, linea_divisoria, tecla,
 )
@@ -59,9 +63,16 @@ COLOR_FALTA = "#C2620A"
 _DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 
 
+def _texto_del_minimo() -> str:
+    """El saldo que necesita un socio para reservar ("5 hs"), para la ayuda de abajo."""
+    return reservas_socios_repo.texto_de_horas(reservas_socios_repo.horas_para_reservar() * 60)
+
+
 def texto_estado(reserva: dict) -> str:
     """Cómo está una reserva, en palabras."""
     estado = reserva["estado"]
+    if estado == dominio.RESERVA_PENDIENTE and reserva["es_de_socio"]:
+        return "Pendiente · socio"
     if estado == dominio.RESERVA_PENDIENTE:
         return "Pendiente · pagada" if not reserva["falta"] else "Pendiente"
     if estado == dominio.RESERVA_HABILITADA:
@@ -135,6 +146,7 @@ class ReservasWindow(QDialog):
         botones = QHBoxLayout()
         botones.setSpacing(8)
         botones.addWidget(tecla("＋  NUEVA RESERVA", self._nueva, "teclaAzul"))
+        botones.addWidget(tecla("👤  RESERVA DE SOCIO", self._nueva_de_socio, "teclaAzul"))
         botones.addWidget(tecla("▶  HABILITAR", self._habilitar, "teclaVerde"))
         botones.addWidget(tecla("🗓️  REPROGRAMAR", self._reprogramar))
         botones.addSpacing(6)
@@ -187,7 +199,9 @@ class ReservasWindow(QDialog):
             "ⓘ&nbsp; <b>No vino con seña:</b> la pierde. &nbsp;·&nbsp; <b>Pagó el 100%:</b> queda A reprogramar "
             f"(vence a los {dominio.DIAS_PARA_REPROGRAMAR_RESERVA} días) y ese día va a cualquier PC disponible. "
             f"&nbsp;·&nbsp; A los {dominio.MINUTOS_TOLERANCIA_RESERVA} minutos de la hora pasa sola. "
-            "&nbsp;·&nbsp; <b>Devolver plata:</b> solo el Admin; sale de la caja de quien la entrega."
+            "&nbsp;·&nbsp; <b>Devolver plata:</b> solo el Admin; sale de la caja de quien la entrega. "
+            f"&nbsp;·&nbsp; <b>Socio</b> (con {_texto_del_minimo()} o más de saldo): no paga nada; entra con su "
+            "usuario y usa su saldo."
         )
         ayuda.setWordWrap(True)
         capa_ayuda.addWidget(ayuda)
@@ -222,11 +236,18 @@ class ReservasWindow(QDialog):
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
             sin_dia = reserva["estado"] == dominio.RESERVA_A_REPROGRAMAR
+            if reserva["es_de_socio"]:
+                # Sin plata: el precio y lo pagado no dicen nada.
+                cliente = f"{reserva['cliente']} (socio)"
+                bono = f"{reserva['bono_nombre']} · {reservas_socios_repo.texto_de_horas(reserva['minutos'])}"
+                precio = pago = "—"
+            else:
+                cliente, bono = reserva["cliente"], reserva["bono_nombre"]
+                precio, pago = formato_pesos(reserva["precio"]), formato_pesos(reserva["pagado"])
             textos = (
                 str(reserva["id"]),
                 "Sin día" if sin_dia else texto_dia_y_hora(reserva["fecha_reserva"]),
-                reserva["cliente"], reserva["celular"], reserva["equipo_nombre"], reserva["bono_nombre"],
-                formato_pesos(reserva["precio"]), formato_pesos(reserva["pagado"]),
+                cliente, reserva["celular"], reserva["equipo_nombre"], bono, precio, pago,
                 formato_pesos(reserva["falta"]) if reserva["falta"] else "—",
                 texto_estado(reserva),
             )
@@ -296,10 +317,21 @@ class ReservasWindow(QDialog):
         if dialogo.exec():
             self._cargar(elegir=dialogo.reserva_id)
 
+    def _nueva_de_socio(self):
+        dialogo = DialogoReservaDeSocio(self.usuario, self)
+        if dialogo.exec():
+            self._cargar(elegir=dialogo.reserva_id)
+
     @manejar_errores
     def _habilitar(self):
         reserva = self._elegida_o_aviso()
         if reserva is None:
+            return
+        if reserva["es_de_socio"]:
+            # Abrirle la PC desde acá la dejaría sin pasar por su saldo.
+            mostrar_info(self, "Reserva de socio",
+                         f"{reserva['cliente']} es socio: que entre a la PC con su usuario y su clave (o abrila "
+                         "con \"Abrir PC con Miembro\"). La reserva queda habilitada sola cuando entra.")
             return
         if DialogoHabilitarReserva(self.usuario, reserva["id"], self).exec():
             self._cargar(elegir=reserva["id"])
@@ -319,7 +351,9 @@ class ReservasWindow(QDialog):
         if reserva["estado"] != dominio.RESERVA_PENDIENTE:
             mostrar_error(self, "Ya está marcada", "Esta reserva ya quedó A reprogramar: reprogramala.")
             return
-        if reserva["falta"]:
+        if reserva["es_de_socio"]:
+            que_pasa = "Es socio: no pagó nada, así que no pierde nada."
+        elif reserva["falta"]:
             que_pasa = (f"Dejó {formato_pesos(reserva['pagado'])} de seña: la pierde y la reserva queda "
                         "terminada (No vino).")
         else:

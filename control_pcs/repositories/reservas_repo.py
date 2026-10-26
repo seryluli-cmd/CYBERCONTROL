@@ -34,6 +34,10 @@ proyectos). La parte 2 (la PC marcada RESERVADA en el mosaico, el aviso al
 venderle un bono que se pase de la hora, el socio que se corta a la hora y el
 cartel en la pantalla de bloqueo) está en reservas_horario_repo.py.
 
+Un socio de Miembros reserva sin seña si tiene saldo (2026-10-26): esas reglas
+están en reservas_socios_repo.py. Su reserva tiene `miembro_id`, no tiene bono ni
+plata, y si no viene queda No vino sin perder nada.
+
 Cobrar es del mostrador: nada de esto está en lo que se puede pedir desde otra
 PC (admin_remoto/lista_blanca.py) y la ventana no se abre allá.
 """
@@ -265,7 +269,11 @@ def _pagado(conexion, reserva_id: int) -> float:
 
 
 def _estado_si_no_viene(conexion, reserva) -> str:
-    """Con seña la pierde (No vino); si pagó todo, A reprogramar (decisión del dueño)."""
+    """Con seña la pierde (No vino); si pagó todo, A reprogramar (decisión del dueño).
+    Un socio no pagó nada: No vino, sin perder nada (su precio es 0, así que si no
+    se mirara antes parecería "pagó todo")."""
+    if reserva["miembro_id"] is not None:
+        return dominio.RESERVA_NO_VINO
     if _pagado(conexion, reserva["id"]) >= round(reserva["precio"], 2) - 0.009:
         return dominio.RESERVA_A_REPROGRAMAR
     return dominio.RESERVA_NO_VINO
@@ -328,8 +336,10 @@ _SELECT_RESERVAS = """
 def _armar(fila) -> dict:
     """Una fila de reservas lista para la pantalla: sus columnas más "equipo_nombre"
     (la PC pedida, "Cualquier PC disponible", PCSTREAM o la consola),
-    "habilitada_en", "pagado", "falta" y, si está A reprogramar, "vence"."""
+    "habilitada_en", "pagado", "falta", "es_de_socio" y, si está A reprogramar,
+    "vence"."""
     reserva = dict(fila)
+    reserva["es_de_socio"] = reserva["miembro_id"] is not None
     reserva["equipo_nombre"] = dominio.nombre_equipo_reservado(reserva["equipo"], reserva["estacion_nombre"])
     reserva["habilitada_en"] = (
         dominio.NOMBRE_PLAYSTATION if reserva["sesion_playstation_id"] is not None else reserva["habilitada_nombre"]

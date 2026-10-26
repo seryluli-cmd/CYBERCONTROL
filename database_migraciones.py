@@ -213,6 +213,16 @@ def _migrar_columna_desde_ip_en_sesiones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columna_miembro_en_reservas(conexion: sqlite3.Connection):
+    """
+    Agrega reservas.miembro_id (pedido del dueño, 2026-10-26: un socio reserva sin
+    seña si tiene saldo; ver control_pcs/repositories/reservas_socios_repo.py).
+    NULL = la reserva común de siempre, como todas las de antes.
+    """
+    _agregar_columna_si_falta(conexion, "reservas", "miembro_id", "INTEGER REFERENCES miembros(id)")
+    conexion.commit()
+
+
 # --- Reconstruir una tabla (cambiar un CHECK o un REFERENCES) ---
 
 # Columnas de movimientos_saldo_miembro, para copiarlas al reconstruir la tabla.

@@ -634,6 +634,14 @@ MINUTOS_EQUIPO_RESERVADO_ANTES = 120
 # Un socio entra a una PC reservada solo hasta la hora de la reserva (decisión del
 # dueño); si le quedaría menos que esto, no entra y se le pide que use otra PC.
 MINUTOS_MINIMOS_SOCIO_ANTES_DE_RESERVA = 15
+# Reservas de socios (pedido del dueño, 2026-10-26; ver
+# control_pcs/repositories/reservas_socios_repo.py): reserva sin seña solo un socio
+# con por lo menos estas horas de saldo. Es el valor de arranque: el Admin lo cambia
+# en Miembros > "$ Para Reserva", entre 1 y HORAS_MAXIMAS_SALDO_PARA_RESERVAR.
+HORAS_SALDO_PARA_RESERVAR = 5
+HORAS_MAXIMAS_SALDO_PARA_RESERVAR = 99
+# Lo más largo que reserva un socio (además, nunca más que su saldo).
+HORAS_MAXIMAS_RESERVA_SOCIO = 12
 
 
 # --------------------------------------------------------------------

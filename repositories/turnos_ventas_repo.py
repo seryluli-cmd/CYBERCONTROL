@@ -331,6 +331,7 @@ def _reservas_habilitadas_sin_cobro(conexion, desde: str, hasta: str) -> list:
     ningún renglón, pero el Cierre de Turno las nombra para que se entienda por
     qué se habilitó un equipo sin plata. Cada una: {"numero", "cliente", "lugar",
     "pagada_el" (fecha del primer pago), "pagada_a" (a nombre de quién quedó)}.
+    Las de socios no van: no tienen nada que ver con plata (el socio usa su saldo).
     """
     filas = conexion.execute(
         """
@@ -343,6 +344,7 @@ def _reservas_habilitadas_sin_cobro(conexion, desde: str, hasta: str) -> list:
             WHERE reservas_pagos.reserva_id = reservas.id AND reservas_pagos.tipo = ?)
         LEFT JOIN usuarios ON usuarios.id = primer_pago.usuario_id
         WHERE reservas.estado = ?
+          AND reservas.miembro_id IS NULL
           AND reservas.estado_desde > ?
           AND reservas.estado_desde <= ?
           AND NOT EXISTS (SELECT 1 FROM reservas_pagos

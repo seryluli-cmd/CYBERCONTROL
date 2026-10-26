@@ -10,7 +10,8 @@ logueado (pedido del dueño, 2026-10-19: antes pedía permiso_control_pcs o
 Admin, pero cargarle saldo a un socio tiene que poder hacerlo cualquiera)
 — son tareas de *usar* el catálogo (cargar saldo con la tarifa y los
 bonos ya definidos), no de editarlo. "Historial de Cargas" (al lado de
-Cargar Saldo, 2026-10-24) abre miembros_historial_cargas.py. La columna
+Cargar Saldo, 2026-10-24) abre miembros_historial_cargas.py. "$ Para Reserva"
+(2026-10-26, solo el Admin) abre reservas_socio_dialogo.DialogoSaldoParaReserva. La columna
 "No viene hace" (mismo día) y su filtro salen de ultima_visita_repo: en
 naranja pasados dominio.DIAS_SIN_VENIR_AVISO días, y se ordena con un clic
 en su título.
@@ -40,6 +41,7 @@ from repositories import config_repo
 from control_pcs.repositories import miembros_repo, bonos_miembro_repo, ultima_visita_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from control_pcs.ui.miembros_historial_cargas import VentanaHistorialCargas
+from control_pcs.ui.reservas_socio_dialogo import DialogoSaldoParaReserva
 from ui.dialogo_pago import cobrar
 from ui.utils import (
     CampoPesos, formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
@@ -121,7 +123,17 @@ class MiembrosWindow(QDialog):
         boton_desactivar = QPushButton("Desactivar")
         aplicar_clase(boton_desactivar, "peligro")
         boton_desactivar.clicked.connect(self._desactivar_miembro)
-        botones = [boton_nuevo, boton_modificar, boton_cargar_saldo, self.boton_historial, boton_desactivar]
+        # Cuántas horas de saldo necesita un socio para reservar sin seña (pedido del
+        # dueño, 2026-10-26): lo cambia solo el Admin; los demás lo ven en gris y con candado.
+        es_admin = dominio.es_admin(self.usuario_operador)
+        self.boton_saldo_para_reserva = QPushButton("$ Para Reserva" if es_admin else "$ Para Reserva  🔒")
+        self.boton_saldo_para_reserva.setEnabled(es_admin)
+        self.boton_saldo_para_reserva.setToolTip(
+            "Las horas de saldo que necesita un socio para reservar" if es_admin else "Solo el Administrador")
+        self.boton_saldo_para_reserva.clicked.connect(
+            lambda: DialogoSaldoParaReserva(self.usuario_operador, self).exec())
+        botones = [boton_nuevo, boton_modificar, boton_cargar_saldo, self.boton_historial,
+                   self.boton_saldo_para_reserva, boton_desactivar]
         boton_salir = QPushButton("Salir")
         boton_salir.clicked.connect(self.close)
         botones.append(boton_salir)

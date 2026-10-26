@@ -36,7 +36,7 @@ from datetime import datetime
 import dominio
 from database import conexion_db, hash_clave, verificar_clave
 from repositories import config_repo, ventas_repo
-from control_pcs.repositories import pcs_repo, bonos_miembro_repo, reservas_horario_repo
+from control_pcs.repositories import pcs_repo, bonos_miembro_repo, reservas_horario_repo, reservas_socios_repo
 
 # El saldo se carga, se devuelve y se pide como mínimo en bloques de 30 minutos.
 # Se gasta entero, salvo en una PC reservada: ahí se gasta justo hasta la hora de
@@ -299,7 +299,7 @@ def _sumar_carga_a_la_sesion(conexion, miembro_id: int, minutos: int, ahora: dat
         return None
     try:
         minutos_a_usar, _corte = reservas_horario_repo.minutos_para_el_socio(
-            conexion, sesion["estacion_id"], minutos, ahora
+            conexion, sesion["estacion_id"], minutos, ahora, miembro_id=miembro_id
         )
     except ValueError:
         return None
@@ -316,6 +316,8 @@ def _sumar_carga_a_la_sesion(conexion, miembro_id: int, minutos: int, ahora: dat
         (miembro_id, dominio.MOVIMIENTO_CONSUMO, minutos_a_usar, ahora.isoformat(timespec="microseconds"),
          sesion["id"]),
     )
+    # Con la carga, la sesión puede llegar ahora a la hora de una reserva suya.
+    reservas_socios_repo.marcar_llegada(conexion, miembro_id, sesion["estacion_id"], sesion["id"], ahora)
     return {"estacion": sesion["estacion_nombre"], "minutos": minutos_a_usar}
 
 
@@ -545,7 +547,8 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
     entra solo hasta la hora de la reserva y se le descuenta solo ese tiempo; lo
     demás le queda en el saldo (reservas_horario_repo.minutos_para_el_socio, que
     lo rechaza si quedaría muy poco). "hasta_la_reserva" en lo que devuelve es esa
-    hora ("10:00"), o None si usó todo su saldo.
+    hora ("10:00"), o None si usó todo su saldo. Si la reserva es SUYA (2026-10-26,
+    reservas_socios_repo) no lo corta, y al entrar queda habilitada.
     """
     ahora = datetime.now()
     # Microsegundos, no segundos: esta "fecha" es la que
@@ -581,7 +584,7 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
             )
         # Antes de los datos del primer ingreso: que no escriba el DNI si la PC está reservada.
         minutos_a_usar, corte = reservas_horario_repo.minutos_para_el_socio(
-            conexion, estacion_id, miembro["saldo_minutos"], ahora
+            conexion, estacion_id, miembro["saldo_minutos"], ahora, miembro_id=miembro["id"]
         )
         if pedir_datos and not tiene_dni(miembro):
             if datos_socio is None:
@@ -601,6 +604,7 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
             """,
             (miembro["id"], dominio.MOVIMIENTO_CONSUMO, minutos_a_usar, ahora_iso, sesion_id),
         )
+        reservas_socios_repo.marcar_llegada(conexion, miembro["id"], estacion_id, sesion_id, ahora)
 
     return {"miembro": miembro["nombre"], "minutos_usados": minutos_a_usar, "sesion_id": sesion_id,
             "hasta_la_reserva": f"{corte:%H:%M}" if corte is not None else None}

@@ -1074,4 +1074,13 @@ HOJA_DE_ESTILOS = """
         color: #B0242F;
         font-weight: 600;
     }
+
+    /* Reserva de socio: la lista de socios (control_pcs/ui/reservas_socio_dialogo.py). */
+    QListWidget#listaSociosReserva::item {
+        padding: 5px 8px;
+    }
+    QListWidget#listaSociosReserva::item:selected {
+        background-color: #DCE8FF;
+        color: #1E2330;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)

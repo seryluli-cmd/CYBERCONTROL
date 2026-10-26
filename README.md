@@ -127,7 +127,9 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   en `reservas_pagos` con su tipo (`ANTICIPO` al reservar, `RESTO` al habilitar,
   `DEVOLUCION`, una venta en negativo): la plata queda en la caja de quien la
   cobra y no hace falta otro origen de venta. Ver
-  `control_pcs/repositories/reservas_repo.py`.
+  `control_pcs/repositories/reservas_repo.py`. Desde el 2026-10-26 `miembro_id`
+  dice si es la reserva de un socio (sin bono ni plata: `bono_id` 0 y precio 0;
+  ver `reservas_socios_repo.py`).
 - **`cierres_turno`** — `fecha`/`turno` del cierre, `usuario_id` (quién
   cerró), `fecha_cierre` (momento exacto — es el límite "desde" del
   próximo turno), `fondo_cambio`/`ventas_efectivo`/`ventas_digital`/
@@ -358,6 +360,20 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   hora avisa antes de cobrar; un socio entra solo hasta la hora y lo demás le
   queda en el saldo. Las de "Cualquier PC disponible" van en un aviso arriba del
   mosaico, con cuántas PCs libres hay.
+  **Reserva de socio** (2026-10-26, botón "👤 RESERVA DE SOCIO",
+  `control_pcs/ui/reservas_socio_dialogo.py` y
+  `control_pcs/repositories/reservas_socios_repo.py`): un socio de Miembros
+  reserva una PC común sin pagar nada; su saldo es la garantía. Solo reserva
+  quien tiene 5 hs de saldo o más (el número lo cambia solo el Admin, en Miembros
+  → "$ Para Reserva"; los demás lo ven en gris con candado), y nunca más horas que
+  las que tiene. No se descuenta nada al reservar: cuando llega entra con su
+  usuario y su clave (o "Abrir PC con Miembro") y usa su saldo como siempre; su
+  propia reserva no lo corta y queda habilitada sola (en cualquier PC, si su
+  sesión llega a la hora de la reserva). Habilitar desde la ventana Reservas no
+  la abre: explica que entre con su usuario. Si no viene queda "No vino" y no
+  pierde nada. El mínimo cuenta al reservar: si ese día tiene menos, entra igual
+  con lo que tenga. PCSTREAM y la PlayStation 5 no se reservan así (no se usan
+  con saldo de socio).
 - **Caja** (`caja_window.py`, `CajaWindow`) — solo lectura, resumen del
   turno en curso vía `turnos_repo.resumen_turno_actual()` (número de caja y
   responsable, caja inicial = el cambio con que arrancó la caja, caja actual =
@@ -727,7 +743,7 @@ Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, reservas (`tests/test_reservas.py`,
-`tests/test_reservas_ui.py`), servidor de red (con el fondo de pantalla
+`tests/test_reservas_ui.py`, `tests/test_reservas_socios.py`), servidor de red (con el fondo de pantalla
 y el filtro de palabras de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.
 

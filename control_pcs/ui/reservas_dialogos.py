@@ -477,11 +477,12 @@ class DialogoReprogramar(QDialog):
 
         layout = QVBoxLayout()
         layout.addWidget(_encabezado(f"Reprogramar reserva Nº {reserva['id']}"))
-        layout.addWidget(aviso_azul(
-            f"{reserva['bono_nombre']} · pagó {formato_pesos(reserva['pagado'])} de "
-            f"{formato_pesos(reserva['precio'])}. Lo pagado y el precio no cambian.",
-            reserva["cliente"],
-        ))
+        if reserva["es_de_socio"]:
+            que_pago = "Es socio: no pagó nada, usa su saldo cuando llega."
+        else:
+            que_pago = (f"{reserva['bono_nombre']} · pagó {formato_pesos(reserva['pagado'])} de "
+                        f"{formato_pesos(reserva['precio'])}. Lo pagado y el precio no cambian.")
+        layout.addWidget(aviso_azul(que_pago, reserva["cliente"]))
         layout.addLayout(formulario)
         layout.addStretch()
         layout.addLayout(botones)
