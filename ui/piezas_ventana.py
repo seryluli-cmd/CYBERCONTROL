@@ -3,10 +3,11 @@ ui/piezas_ventana.py
 ====================
 Las piezas del diseño "clara con cabecera cyber" que eligió el dueño el 2026-10-26
 (maqueta A, en PROPUESTA_VENTANAS_ADMIN) para Configuración ADMIN, Gestionar
-Estaciones y Reservas: la cabecera oscura como la barra de arriba del mostrador, con
+Estaciones y Reservas, y después Administrar Kiosko, Caja y Cierre de Turno: la cabecera oscura como la barra de arriba del mostrador, con
 una estela celeste como la del cometa del mosaico y pastillas con números; paneles
 blancos con títulos de sección; tarjetas de menú (un botón con dibujito, título y una
-línea de para qué es) y teclas con relieve.
+línea de para qué es); cifras destacadas (un monto grande en un recuadro verde o azul) y
+teclas con relieve.
 
 Solo arman widgets con su objectName o su "clase": los colores están en
 ui/hoja_de_estilos.py. Ninguna regla de esas va por tipo de widget, así que las
@@ -18,8 +19,10 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLay
 
 from ui.utils import aplicar_clase
 
-# Colores de las pastillas de la cabecera (QLabel#pastillaCabecera[tono=...]).
+# Colores de las pastillas de la cabecera (QLabel#pastillaCabecera[tono=...]) y de las
+# cifras destacadas (QFrame#cifraDestacada[tono=...], solo azul y verde).
 TONO_AZUL = "azul"
+TONO_VERDE = "verde"
 TONO_CELESTE = "celeste"
 TONO_NARANJA = "naranja"
 TONO_ROJO = "rojo"
@@ -83,6 +86,28 @@ def panel_blanco() -> tuple:
     capa.setContentsMargins(16, 14, 16, 16)
     capa.setSpacing(10)
     return panel, capa
+
+
+def cifra_destacada(titulo: str, aclaracion: str, tono: str) -> QFrame:
+    """Un recuadro de color con un monto grande: el título chiquito arriba, la cifra y
+    una línea que aclara qué suma ("Incluye el cambio"). Es lo primero
+    que se lee en Caja y en Cierre de Turno. `cifra.valor` es la etiqueta del monto."""
+    cifra = QFrame()
+    cifra.setObjectName("cifraDestacada")
+    cifra.setProperty("tono", tono)
+    capa = QVBoxLayout(cifra)
+    capa.setContentsMargins(16, 12, 16, 12)
+    capa.setSpacing(0)
+    etiqueta_titulo = QLabel(titulo)
+    etiqueta_titulo.setObjectName("tituloCifra")
+    cifra.valor = QLabel()
+    cifra.valor.setObjectName("valorCifra")
+    cifra.aclaracion = QLabel(aclaracion)
+    cifra.aclaracion.setObjectName("aclaracionCifra")
+    capa.addWidget(etiqueta_titulo)
+    capa.addWidget(cifra.valor)
+    capa.addWidget(cifra.aclaracion)
+    return cifra
 
 
 def titulo_de_seccion(texto: str) -> QLabel:

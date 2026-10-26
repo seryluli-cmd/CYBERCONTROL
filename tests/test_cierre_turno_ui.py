@@ -29,6 +29,11 @@ from base import BaseConBaseTemporal  # noqa: E402
 _app = QApplication.instance() or QApplication([])
 
 
+def _montos(renglon):
+    """Lo que muestra un renglón de la tabla de dónde vino la plata: (efectivo, digital)."""
+    return renglon.efectivo.text(), renglon.digital.text()
+
+
 class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
     def setUp(self):
         super().setUp()
@@ -54,8 +59,8 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
 
         ventana = self._abrir()
 
-        self.assertEqual(ventana.tarjeta.valor_impresiones.text(), "$ 450 ef. + $ 0 dig.")
-        self.assertEqual(ventana.tarjeta.valor_kiosko.text(), "$ 10 ef. + $ 0 dig.")
+        self.assertEqual(_montos(ventana.tarjeta.renglon("impresiones")), ("$ 450", "$ 0"))
+        self.assertEqual(_montos(ventana.tarjeta.renglon("kiosko_solo")), ("$ 10", "$ 0"))
         # El efectivo a retirar sigue siendo todo: separarlas es solo cómo se muestra.
         self.assertEqual(ventana.tarjeta.valor_retirar.text(), "$ 460")
 
@@ -86,14 +91,14 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
 
         ventana = self._abrir()
 
-        self.assertEqual(ventana.tarjeta.valor_tramites.text(), "$ 2.500 ef. + $ 0 dig.")
-        self.assertEqual(ventana.tarjeta.valor_kiosko.text(), "$ 10 ef. + $ 0 dig.")
+        self.assertEqual(_montos(ventana.tarjeta.renglon("tramites")), ("$ 2.500", "$ 0"))
+        self.assertEqual(_montos(ventana.tarjeta.renglon("kiosko_solo")), ("$ 10", "$ 0"))
         self.assertEqual(ventana.tarjeta.valor_total.text(), "$ 2.510")      # cuenta una sola vez
 
     def test_sin_impresiones_muestra_cero(self):
         self._vender("COD9", "Producto", 1, 10.0)
 
-        self.assertEqual(self._abrir().tarjeta.valor_impresiones.text(), "$ 0 ef. + $ 0 dig.")
+        self.assertEqual(_montos(self._abrir().tarjeta.renglon("impresiones")), ("$ 0", "$ 0"))
 
     def test_el_cambio_fijo_no_se_llama_fondo_en_ningun_texto_de_la_pantalla(self):
         textos = [etiqueta.text() for etiqueta in self._abrir().findChildren(QLabel)]
@@ -122,31 +127,43 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         textos += [control.tabla.horizontalHeaderItem(c).text() for c in range(control.tabla.columnCount())]
 
         self.assertFalse([t for t in textos if "fondo" in t.lower()], textos)
-        self.assertIn("CAJA INICIAL (Cambio Fijo)", textos)
+        self.assertIn("Caja inicial (Cambio Fijo)", textos)
         self.assertIn("Configurar Cambio Fijo", textos)
         self.assertIn("Cambio Fijo", [control.tabla.horizontalHeaderItem(c).text() for c in range(control.tabla.columnCount())])
 
-    def test_a_retirar_en_efectivo_va_en_negrita_con_el_monto_en_verde(self):
+    def _cifra(self, ventana, titulo):
+        """El recuadro de la cifra grande que tiene ese título (ui/piezas_ventana.cifra_destacada)."""
+        etiqueta = next(e for e in ventana.findChildren(QLabel) if e.text() == titulo)
+        return etiqueta.parentWidget()
+
+    def test_a_retirar_en_efectivo_es_la_cifra_grande_verde(self):
         """Pedido del dueño (2026-10-20): es lo que se guarda en el sobre, tiene que
-        resaltar. Mismo estilo que la Caja Actual de la pantalla Caja."""
+        resaltar. En verde, como la Caja Actual de la pantalla Caja."""
         ventana = self._abrir()
 
-        titulo = next(e for e in ventana.findChildren(QLabel) if e.text() == "A RETIRAR EN EFECTIVO")
+        cifra = self._cifra(ventana, "A RETIRAR EN EFECTIVO")
 
-        self.assertTrue(titulo.font().bold())
-        self.assertIn("#000000", titulo.styleSheet())
-        self.assertTrue(ventana.tarjeta.valor_retirar.font().bold())
-        self.assertIn("#2FB457", ventana.tarjeta.valor_retirar.styleSheet())
+        self.assertEqual(cifra.objectName(), "cifraDestacada")
+        self.assertEqual(cifra.property("tono"), "verde")
+        self.assertIs(ventana.tarjeta.valor_retirar.parentWidget(), cifra)
 
-    def test_el_total_dice_que_suma_y_va_en_negrita_con_el_monto_azul(self):
+    def test_el_total_dice_que_suma_y_es_la_cifra_grande_azul(self):
         ventana = self._abrir()
 
-        titulo = next(e for e in ventana.findChildren(QLabel) if e.text() == "TOTAL (EFECTIVO + DIGITAL)")
+        cifra = self._cifra(ventana, "TOTAL (EFECTIVO + DIGITAL)")
 
-        self.assertTrue(titulo.font().bold())
-        self.assertIn("#000000", titulo.styleSheet())
-        self.assertTrue(ventana.tarjeta.valor_total.font().bold())
-        self.assertIn("#2F6FED", ventana.tarjeta.valor_total.styleSheet())
+        self.assertEqual(cifra.property("tono"), "azul")
+        self.assertIs(ventana.tarjeta.valor_total.parentWidget(), cifra)
+
+    def test_un_negocio_sin_ventas_se_ve_apagado(self):
+        """Así salta a la vista de dónde vino la plata del turno."""
+        self._vender("COD9", "Producto", 1, 10.0)
+
+        tarjeta = self._abrir().tarjeta
+
+        self.assertFalse(tarjeta.renglon("kiosko_solo").efectivo.property("vacio"))
+        self.assertTrue(tarjeta.renglon("tramites").efectivo.property("vacio"))
+        self.assertTrue(tarjeta.renglon("tramites").nombre.property("vacio"))
 
     def test_la_pantalla_caja_se_parece_al_cierre_y_aclara_que_la_caja_actual_incluye_el_cambio(self):
         """Pedido del dueño (2026-10-20): Caja con los mismos renglones que el Cierre de Turno,
@@ -168,11 +185,11 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.assertEqual(caja.valor_digital.text(), "$ 10")
         self.assertEqual(caja.valor_total.text(), "$ 460")           # efectivo + digital, sin el cambio
         self.assertEqual(caja.valor_actual.text(), formato_pesos(50000.0 + 450.0))   # el cambio SÍ entra
-        for titulo in ("CAJA INICIAL (Cambio Fijo)", "Efectivo", "Digital", "TOTAL (EFECTIVO + DIGITAL)",
+        for titulo in ("Caja inicial (Cambio Fijo)", "Efectivo", "Digital", "TOTAL (EFECTIVO + DIGITAL)",
                        "CAJA ACTUAL (solo efectivo)", "Incluye el cambio"):
             self.assertIn(titulo, textos)
         self.assertFalse([t for t in textos if "Suma Total" in t], textos)
-        self.assertTrue(caja.nota.isHidden())
+        self.assertEqual(self._cifra(caja, "CAJA ACTUAL (solo efectivo)").property("tono"), "verde")
 
     def test_el_aviso_al_cerrar_habla_de_cambio_fijo(self):
         ventana = self._abrir()

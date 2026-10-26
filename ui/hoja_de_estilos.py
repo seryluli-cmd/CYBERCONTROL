@@ -963,4 +963,115 @@ HOJA_DE_ESTILOS = """
         color: #5B6472;
         font-size: 12px;
     }
+
+    /* Caja y Cierre de Turno (y el detalle de un cierre en Control de Cierres) con el
+       mismo diseño, 2026-10-26 (ui/tarjeta_cierre.py). Las cifras grandes: la verde es
+       el efectivo del cajón o del sobre, la azul el TOTAL (los colores que eligió el
+       dueño el 2026-10-20). */
+    QFrame#cifraDestacada {
+        border-radius: 12px;
+    }
+    QFrame#cifraDestacada[tono="verde"] {
+        background-color: #ECF8F0;
+        border: 1px solid #BCE3CA;
+    }
+    QFrame#cifraDestacada[tono="azul"] {
+        background-color: #EDF3FF;
+        border: 1px solid #C4D6F8;
+    }
+    QFrame#cifraDestacada > QLabel {
+        background: transparent;
+    }
+    QLabel#tituloCifra {
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel#valorCifra {
+        font-size: 30px;
+        font-weight: 700;
+    }
+    QLabel#aclaracionCifra {
+        font-size: 11px;
+    }
+    QFrame#cifraDestacada[tono="verde"] > QLabel#tituloCifra { color: #1D6B3D; }
+    QFrame#cifraDestacada[tono="verde"] > QLabel#valorCifra { color: #1E9E50; }
+    QFrame#cifraDestacada[tono="verde"] > QLabel#aclaracionCifra { color: #4F7A60; }
+    QFrame#cifraDestacada[tono="azul"] > QLabel#tituloCifra { color: #1D4FA8; }
+    QFrame#cifraDestacada[tono="azul"] > QLabel#valorCifra { color: #2F6FED; }
+    QFrame#cifraDestacada[tono="azul"] > QLabel#aclaracionCifra { color: #5A6F96; }
+    /* La tabla de dónde vino la plata: un renglón por negocio, efectivo y digital en
+       columnas; el que está en cero, apagado. */
+    QLabel#encabezadoTabla {
+        color: #8A93A3;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 0 6px 0;
+    }
+    QLabel#iconoNegocio {
+        font-size: 15px;
+    }
+    QLabel#nombreNegocio, QLabel#montoNegocio {
+        color: #1B2233;
+        font-size: 13px;
+        padding: 6px 0;
+    }
+    QLabel#montoNegocio {
+        font-weight: 600;
+    }
+    QLabel#nombreNegocio[vacio="true"], QLabel#montoNegocio[vacio="true"] {
+        color: #A9B0BC;
+        font-weight: 400;
+    }
+    QLabel#detalleNegocio {
+        color: #1D48A0;
+        font-size: 11px;
+        padding: 0 0 6px 0;
+    }
+    QFrame#lineaRenglon {
+        background-color: #EEF1F5;
+        border: none;
+    }
+    QFrame#lineaTotal {
+        background-color: #1E2330;
+        border: none;
+    }
+    QLabel#nombreTotal, QLabel#montoTotal {
+        color: #1B2233;
+        font-weight: 700;
+        padding: 8px 0;
+    }
+    QLabel#nombreTotal {
+        font-size: 13px;
+    }
+    QLabel#montoTotal {
+        font-size: 15px;
+    }
+    QLabel#nombreCambio, QLabel#montoCambio {
+        color: #3C4350;
+        font-size: 13px;
+        padding: 7px 0 0 0;
+    }
+    QLabel#notaCambio {
+        color: #8A93A3;
+        font-size: 11px;
+        padding: 0 0 2px 0;
+    }
+    QLabel#notaReservas {
+        color: #5B6472;
+        font-size: 11px;
+    }
+    QLabel#notaCierre {
+        background-color: #F6F8FB;
+        border: 1px solid #E1E5EC;
+        border-radius: 10px;
+        color: #5B6472;
+        font-size: 12px;
+        padding: 8px 12px;
+    }
+    QLabel#notaCierre[alerta="true"] {
+        background-color: #FDEEEF;
+        border-color: #F1B9BE;
+        color: #B0242F;
+        font-weight: 600;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)

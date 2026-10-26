@@ -345,9 +345,10 @@ class TestCajaMuestraImpresionesAparte(_ConArticulo):
         ventana = CajaWindow()
         self.addCleanup(ventana.deleteLater)
 
-        self.assertEqual(ventana.valor_kiosko.text(), "$ 100 ef. + $ 0 dig.")
-        self.assertEqual(ventana.valor_impresiones.text(), "$ 0 ef. + $ 300 dig.")
-        self.assertEqual(ventana.valor_tramites.text(), "$ 0 ef. + $ 0 dig.")
+        montos = {clave: (ventana.renglon(clave).efectivo.text(), ventana.renglon(clave).digital.text())
+                  for clave in ("kiosko_solo", "impresiones", "tramites")}
+        self.assertEqual(montos, {"kiosko_solo": ("$ 100", "$ 0"), "impresiones": ("$ 0", "$ 300"),
+                                  "tramites": ("$ 0", "$ 0")})
         # El cajón tiene el Cambio Fijo más los $100 en efectivo: separar no cambia nada.
         self.assertEqual(ventana.valor_actual.text(), formato_pesos(obtener_fondo_cambio() + 100.0))
 

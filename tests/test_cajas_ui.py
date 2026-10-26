@@ -231,15 +231,16 @@ class TestDetalleDeUnCierreHecho(BaseConBaseTemporal):
         cierre_de_turno = CierreTurnoWindow(self.gaby)
         self.addCleanup(cierre_de_turno.deleteLater)
         self.assertIs(type(tarjeta), type(cierre_de_turno.tarjeta))
-        self.assertEqual(tarjeta.titulo.text(), "Cierre de Turno — Caja Nº 1 de Lucia · Mañana")
+        self.assertEqual(tarjeta.cabecera.detalle.text(), "Caja Nº 1 de Lucia · Turno Mañana")
         self.assertEqual(tarjeta.valor_fondo.text(), "$ 50.000")
-        self.assertEqual(tarjeta.valor_pcs.text(), "$ 3.000 ef. + $ 0 dig.")
+        renglon = tarjeta.renglon("pcs_solo")
+        self.assertEqual((renglon.efectivo.text(), renglon.digital.text()), ("$ 3.000", "$ 0"))
         self.assertEqual(tarjeta.valor_total.text(), "$ 3.000")
         self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000")
         # En vez de "Retirá el efectivo...", cómo se cerró, en rojo como en la tabla.
         self.assertIn("Se cerró sola a las 14:30", tarjeta.nota.text())
         self.assertIn("pasaron 30 minutos", tarjeta.nota.text())
-        self.assertIn("red", tarjeta.nota.styleSheet())
+        self.assertTrue(tarjeta.nota.property("alerta"))
 
     def test_un_cierre_comun_dice_quien_lo_cerro_en_gris(self):
         turnos_repo.cerrar_turno(self.lucia["id"], ahora_dt=_HACE_TIEMPO.replace(hour=14, minute=12))
@@ -247,7 +248,7 @@ class TestDetalleDeUnCierreHecho(BaseConBaseTemporal):
         tarjeta = self._detalle().tarjeta
 
         self.assertEqual(tarjeta.nota.text(), "La cerró Lucia: 14:12 (12 min después).")
-        self.assertIn("gray", tarjeta.nota.styleSheet())
+        self.assertFalse(tarjeta.nota.property("alerta"))
         self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000")
 
     def test_un_cierre_en_ausencia_dice_quien_lo_cerro_en_lugar_de_quien(self):
@@ -256,7 +257,7 @@ class TestDetalleDeUnCierreHecho(BaseConBaseTemporal):
         tarjeta = self._detalle().tarjeta
 
         self.assertEqual(tarjeta.nota.text(), "La cerró Gaby, en ausencia de Lucia · 14:05.")
-        self.assertIn("red", tarjeta.nota.styleSheet())
+        self.assertTrue(tarjeta.nota.property("alerta"))
 
 
 if __name__ == "__main__":

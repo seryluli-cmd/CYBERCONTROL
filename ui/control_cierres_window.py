@@ -309,7 +309,9 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
         self.setWindowTitle(
             f"Detalle — Turno {etiqueta_turno(cierre['fecha'], cierre['turno'])} del {cierre['fecha']}"
         )
-        self.resize(1280, 600)
+        # Alta para la tarjeta del Cierre de Turno (con su cabecera y sus cifras desde el
+        # 2026-10-26): con 600 los renglones quedaban apretados.
+        self.resize(1280, 680)
         self._armar_interfaz()
         self._cargar()
 

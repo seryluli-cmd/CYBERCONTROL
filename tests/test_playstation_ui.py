@@ -452,8 +452,9 @@ class TestPantallasDeLaPlata(_ConPantalla):
         caja = self._abrir(CajaWindow())
         cierre = self._abrir(CierreTurnoWindow(self._usuario(self.operadora_id)))
 
-        self.assertIn("$ 3.000 ef.", caja.valor_playstation.text())
-        self.assertIn("$ 3.000 ef.", cierre.tarjeta.valor_playstation.text())
+        for pantalla in (caja, cierre.tarjeta):
+            renglon = pantalla.renglon("playstation_solo")
+            self.assertEqual((renglon.efectivo.text(), renglon.digital.text()), ("$ 3.000", "$ 0"))
         # Y lo suma al efectivo del cajón, que es lo que se retira.
         self.assertEqual(caja.valor_ventas.text(), "$ 3.000")
         self.assertEqual(cierre.tarjeta.valor_retirar.text(), "$ 3.000")

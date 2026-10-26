@@ -554,7 +554,7 @@ _PANTALLAS_DE_OTRA_PC = [
     ("ui/reportes_socios_bonos.py", None),
     ("ui/control_cierres_window.py", None),
     ("ui/tarjeta_cierre.py", None),
-    ("ui/caja_window.py", {"CajaWindow", "_PantallaDeCaja"}),
+    ("ui/caja_window.py", {"CajaWindow"}),
     ("ui/usuarios_window.py", None),
     ("ui/accesos_admin_window.py", None),
     ("ui/login_window.py", None),

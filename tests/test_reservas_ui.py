@@ -62,6 +62,11 @@ class _ConUnaReserva(BaseConBaseTemporal):
         return ventana
 
 
+def _montos(renglon):
+    """Lo que muestra un renglón de la tabla de dónde vino la plata: (efectivo, digital)."""
+    return renglon.efectivo.text(), renglon.digital.text()
+
+
 class TestRenglonReservas(_ConUnaReserva):
     def test_el_cierre_de_turno_las_muestra_aparte_de_alquiler_de_pcs(self):
         pcs_repo.asignar_bono(self.pc2, self.tres_horas, self.ana, _efectivo(3000.0))
@@ -69,8 +74,8 @@ class TestRenglonReservas(_ConUnaReserva):
 
         tarjeta = self._abrir(CierreTurnoWindow(self._usuario())).tarjeta
 
-        self.assertEqual(tarjeta.valor_pcs.text(), "$ 3.000 ef. + $ 0 dig.")
-        self.assertEqual(tarjeta.valor_reservas.text(), "$ 5.000 ef. + $ 0 dig.")
+        self.assertEqual(_montos(tarjeta.renglon("pcs_solo")), ("$ 3.000", "$ 0"))
+        self.assertEqual(_montos(tarjeta.renglon("reservas")), ("$ 5.000", "$ 0"))
         # Con espacio duro entre "$" y el número: el renglón es angosto.
         self.assertEqual(tarjeta.detalle_reservas.text(), "1 seña ($\u00a05.000)")
         # Separarlas es solo cómo se muestra: se retira todo.
@@ -92,13 +97,14 @@ class TestRenglonReservas(_ConUnaReserva):
 
         caja = self._abrir(CajaWindow())
 
-        self.assertEqual(caja.valor_reservas.text(), "$ 5.000 ef. + $ 0 dig.")
-        self.assertEqual(caja.valor_pcs.text(), "$ 0 ef. + $ 0 dig.")
+        self.assertEqual(_montos(caja.renglon("reservas")), ("$ 5.000", "$ 0"))
+        self.assertEqual(_montos(caja.renglon("pcs_solo")), ("$ 0", "$ 0"))
+        self.assertEqual(caja.detalle_reservas.text(), "1 seña ($\u00a05.000)")
 
     def test_sin_reservas_el_renglon_chico_no_ocupa_lugar(self):
         tarjeta = self._abrir(CierreTurnoWindow(self._usuario())).tarjeta
 
-        self.assertEqual(tarjeta.valor_reservas.text(), "$ 0 ef. + $ 0 dig.")
+        self.assertEqual(_montos(tarjeta.renglon("reservas")), ("$ 0", "$ 0"))
         self.assertTrue(tarjeta.detalle_reservas.isHidden())
 
 
