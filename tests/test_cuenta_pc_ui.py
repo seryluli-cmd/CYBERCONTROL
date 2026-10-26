@@ -160,3 +160,85 @@ class TestVenderACuenta(BasePantallasCuenta):
                 None, item, lambda **datos: cuentas_pc_repo.anotar_articulos(self.pc2, [_PANCHO], self.ana["id"], **datos)
             )
         self.assertEqual(resultado["debe"], 1200.0)
+
+
+class TestCobrarAntesDelCierre(BasePantallasCuenta):
+    def setUp(self):
+        super().setUp()
+        cuentas_pc_repo.anotar_articulos(self.pc1, [_PANCHO], self.ana["id"], nombre="Pedro")
+
+    def test_el_cartel_lista_lo_fiado_y_cobrar_lo_saca(self):
+        cartel = cuenta_pc_dialogos.DialogoCobrarAntesDelCierre(
+            self.ana, cuenta_pc_dialogos.DialogoCobrarAntesDelCierre.CIERRE)
+        self.addCleanup(cartel.deleteLater)
+        self.assertEqual([(c["estacion"], c["debe"]) for c in cartel.cuentas], [("PC1", 1200.0)])
+        self.assertTrue(cartel.se_puede_cerrar_sola())  # el cierre forzoso no lo espera
+
+        def cobrar_en_la_ventana(dialogo):
+            cuenta = cuentas_pc_repo.cuentas_de_la_estacion(self.pc1)[0]
+            cuentas_pc_repo.cobrar([cuenta["id"]], self.ana["id"], [{"metodo": _EFECTIVO, "monto": 1200.0}])
+            return True
+
+        with mock.patch.object(cuenta_pc_dialogos.DialogoCuentaPc, "exec", cobrar_en_la_ventana):
+            cartel._cobrar(cartel.cuentas[0])
+        self.assertEqual(cartel.cuentas, [])
+
+    def test_cerrar_igual_deja_el_fiado_en_el_cierre(self):
+        from ui import caja_window
+
+        class _Pregunta:
+            CIERRE = "CIERRE"
+
+            def __init__(self, *_args):
+                self.cerrar_igual = True
+
+            def exec(self):
+                return True
+
+        ventana = caja_window.CierreTurnoWindow(self.ana)
+        self.addCleanup(ventana.deleteLater)
+        self.assertFalse(ventana.aviso_cuentas.isHidden())
+        with mock.patch.object(caja_window, "DialogoCobrarAntesDelCierre", _Pregunta), \
+                mock.patch("ui.caja_window.mostrar_info") as aviso:
+            ventana._cerrar_turno()
+        self.assertTrue(ventana.turno_cerrado)
+        self.assertIn("fiado sin cobrar", aviso.call_args[0][2])
+
+    def test_faltando_15_minutos_titilan_mas_rapido(self):
+        grilla = self.grilla()
+        fila = self.fila_de(grilla, "PC1")
+        self.assertEqual((grilla._filas_que_deben, grilla._filas_que_deben_ya), ([fila], []))
+        grilla.marcar_cuentas_urgentes({self.pc1})
+        self.assertEqual((grilla._filas_que_deben, grilla._filas_que_deben_ya), ([], [fila]))
+        grilla._alternar_parpadeo_rapido()
+        self.assertFalse(grilla.mosaico.deuda_visible(fila))
+        grilla.marcar_cuentas_urgentes(set())
+        self.assertEqual(grilla._filas_que_deben_ya, [])
+
+
+class TestTiempoDeSocioDesdeElPanel(BasePantallasCuenta):
+    def test_a_un_socio_le_anota_tiempo_de_socio(self):
+        from control_pcs.repositories import bonos_miembro_repo, miembros_repo
+        from control_pcs.ui import pcs_detalle
+        socio = miembros_repo.crear_miembro("rodri", "clave123", "Rodrigo", "30111222", "1155554444")
+        miembros_repo.cargar_saldo_por_bono(socio, bonos_miembro_repo.crear_bono("1 h", 60, 1000),
+                                            [{"metodo": _EFECTIVO, "monto": 1000}], self.ana["id"])
+        pc3 = pcs_repo.crear_estacion("PC3")
+        miembros_repo.abrir_estacion_por_miembro(pc3, "rodri", "clave123")
+        bono_socio = bonos_miembro_repo.crear_bono("2 h socio", 120, 1500)
+        grilla = self.grilla()
+        grilla.mosaico.elegir(self.fila_de(grilla, "PC3"))
+        self.assertTrue(grilla.panel_detalle.boton_bono_a_cuenta.isEnabled())
+
+        class _Elegir:
+            def __init__(self, *_args):
+                self.bono_id, self.monto = bono_socio, None
+
+            def exec(self):
+                return True
+
+        with mock.patch.object(pcs_detalle, "DialogoTiempoSocio", _Elegir), \
+                mock.patch("control_pcs.ui.pcs_detalle.mostrar_info"):
+            grilla.panel_detalle._agregar_bono_a_cuenta()
+        renglon = cuentas_pc_repo.cuentas_de_la_estacion(pc3)[0]["renglones"][0]
+        self.assertEqual((renglon["tipo"], renglon["subtotal"]), (dominio.ITEM_CUENTA_TIEMPO_SOCIO, 1500.0))

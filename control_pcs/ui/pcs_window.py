@@ -157,6 +157,9 @@ LEYENDA = [
 # Cada cuánto alterna el parpadeo de un equipo en alerta -- rápido a
 # propósito, tiene que notarse a simple vista sin mirar fijo la pantalla.
 INTERVALO_PARPADEO_MS = 500
+# Más rápido todavía: el borde fucsia de las PCs que deben lo fiado en el turno,
+# en sus últimos 15 minutos (pedido del dueño, 2026-10-25; ver marcar_cuentas_urgentes).
+INTERVALO_PARPADEO_RAPIDO_MS = 200
 
 # Cada cuánto se redibuja la cuenta regresiva de la PlayStation 5.
 INTERVALO_CUENTA_REGRESIVA_MS = 1000
@@ -194,6 +197,9 @@ class PanelControlPcs(QWidget):
         self._filas_en_alerta = []
         self._filas_calientes = []      # las PCs con el procesador caliente: "CALIENTE" titila
         self._filas_que_deben = []      # las que deben algo de su Cuenta de la PC: borde fucsia
+        self._filas_que_deben_ya = []   # las que deben lo del turno y faltan 15 min: titilan más rápido
+        self._estaciones_urgentes = set()
+        self._parpadeo_rapido_encendido = True
         self._parpadeo_encendido = True
         # Desde otra PC (ver _refrescar_desde_otra_pc): cuándo llegó la consola, desde
         # cuándo no contesta el mostrador y cuándo se vuelve a probar.
@@ -217,6 +223,10 @@ class PanelControlPcs(QWidget):
         self._timer_parpadeo.setInterval(INTERVALO_PARPADEO_MS)
         self._timer_parpadeo.timeout.connect(self._alternar_parpadeo)
         self._timer_parpadeo.start()
+        self._timer_parpadeo_rapido = QTimer(self)
+        self._timer_parpadeo_rapido.setInterval(INTERVALO_PARPADEO_RAPIDO_MS)
+        self._timer_parpadeo_rapido.timeout.connect(self._alternar_parpadeo_rapido)
+        self._timer_parpadeo_rapido.start()
 
         # Otro más, de un segundo, para la cuenta regresiva de la PlayStation 5
         # (ver _actualizar_cuenta_regresiva): por la misma razón que el de
@@ -232,8 +242,18 @@ class PanelControlPcs(QWidget):
         widgets destruidos."""
         self._timer.stop()
         self._timer_parpadeo.stop()
+        self._timer_parpadeo_rapido.stop()
         self._timer_cuenta_regresiva.stop()
         self.cometa.detener()
+
+    def marcar_cuentas_urgentes(self, estacion_ids):
+        """Las PCs que deben lo fiado en el turno cuando faltan 15 minutos para
+        cerrarlo (MainWindow, con cuentas_pc_repo.aviso_antes_del_cierre): su borde
+        fucsia titila más rápido. Un conjunto vacío las vuelve al ritmo de siempre."""
+        estacion_ids = set(estacion_ids)
+        if estacion_ids != self._estaciones_urgentes:
+            self._estaciones_urgentes = estacion_ids
+            self._repartir_filas_que_deben()
 
     def _armar_interfaz(self):
         self.mosaico = MosaicoDeEquipos()
@@ -533,7 +553,8 @@ class PanelControlPcs(QWidget):
         ]
         self._filas_en_alerta = [fila for fila, ficha in enumerate(fichas) if ficha.en_alerta]
         self._filas_calientes = [fila for fila, ficha in enumerate(fichas) if ficha.caliente]
-        self._filas_que_deben = [fila for fila, ficha in enumerate(fichas) if ficha.debe]
+        self._fichas = fichas
+        self._repartir_filas_que_deben()
         self._parpadeo_encendido = True
 
         claves = [ficha.clave for ficha in fichas]
@@ -552,6 +573,25 @@ class PanelControlPcs(QWidget):
         else:
             self._seleccion = None
             self.panel_detalle.mostrar(None)
+
+    def _repartir_filas_que_deben(self):
+        """Qué PCs que deben titilan al ritmo de siempre y cuáles más rápido."""
+        fichas = getattr(self, "_fichas", [])
+        self._filas_que_deben, self._filas_que_deben_ya = [], []
+        for fila, ficha in enumerate(fichas):
+            if not ficha.debe:
+                continue
+            item = self._items_en_grilla[fila]
+            urgente = not es_playstation(item) and item["estacion"]["id"] in self._estaciones_urgentes
+            (self._filas_que_deben_ya if urgente else self._filas_que_deben).append(fila)
+
+    def _alternar_parpadeo_rapido(self):
+        if not self._filas_que_deben_ya:
+            return
+        self._parpadeo_rapido_encendido = not self._parpadeo_rapido_encendido
+        for fila in self._filas_que_deben_ya:
+            if fila < self.mosaico.count():
+                self.mosaico.titilar_deuda(fila, self._parpadeo_rapido_encendido)
 
     def _actualizar_cuenta_regresiva(self):
         """

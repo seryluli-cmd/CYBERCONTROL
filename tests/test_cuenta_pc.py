@@ -6,8 +6,9 @@ está jugando (un pancho, más tiempo) se anota en la cuenta de su sesión, su P
 titila en fucsia y se cobra después, todo junto. Ver cuentas_pc_repo.
 """
 
+import time
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest import mock
 
 import database
@@ -17,7 +18,7 @@ from control_pcs.repositories import (
     bonos_miembro_repo, cuentas_pc_repo, miembros_repo, pcs_repo, pcstream_repo, reintegros_repo,
 )
 from database import conexion_db
-from repositories import articulos_repo, turnos_repo, usuarios_repo
+from repositories import articulos_repo, config_repo, turnos_repo, usuarios_repo
 from base import BaseConBaseTemporal
 
 EFECTIVO, DIGITAL = dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL
@@ -341,6 +342,9 @@ class TestUnBonoAnotadoNoSeLeDevuelveAlSocio(BaseCuenta):
         miembros_repo.cargar_saldo_por_bono(self.socio, bonos_miembro_repo.crear_bono("1 h", 60, 1000),
                                             _pagos((EFECTIVO, 1000)), self.operador)
         self.sesion = miembros_repo.abrir_estacion_por_miembro(self.pc1, "rodri", "clave123")["sesion_id"]
+        # El reloj de Windows avanza de a ~15 ms: sin esta pausa, entrar y anotar
+        # pueden quedar con la misma hora (en el local los separa una persona).
+        time.sleep(0.05)
         cuentas_pc_repo.anotar_bono(self.pc1, self.bono_hora, self.operador)
 
     def saldo(self):
@@ -375,3 +379,107 @@ class TestDesdeOtraPc(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTiempoDeSocio(BaseCuenta):
+    def setUp(self):
+        super().setUp()
+        self.socio = miembros_repo.crear_miembro("rodri", "clave123", "Rodrigo", "30111222", "1155554444")
+        miembros_repo.cargar_saldo_por_bono(self.socio, bonos_miembro_repo.crear_bono("1 h", 60, 1000),
+                                            _pagos((EFECTIVO, 1000)), self.operador)
+        self.sesion = miembros_repo.abrir_estacion_por_miembro(self.pc1, "rodri", "clave123")["sesion_id"]
+        self.bono_socio = bonos_miembro_repo.crear_bono("2 h socio", 120, 1500)
+        time.sleep(0.05)  # ver TestUnBonoAnotadoNoSeLeDevuelveAlSocio
+
+    def saldo(self):
+        return miembros_repo.obtener_miembro(self.socio)["saldo_minutos"]
+
+    def movimientos(self, tipo):
+        with conexion_db() as conexion:
+            return conexion.execute(
+                "SELECT * FROM movimientos_saldo_miembro WHERE miembro_id = ? AND tipo = ? ORDER BY id",
+                (self.socio, tipo),
+            ).fetchall()
+
+    def test_un_bono_de_socio_suma_el_tiempo_sin_tocar_el_saldo(self):
+        resultado = cuentas_pc_repo.anotar_tiempo_socio(self.pc1, self.operador, bono_id=self.bono_socio)
+        self.assertEqual((resultado["nombre"], resultado["debe"]), ("Rodrigo", 1500.0))
+        self.assertAlmostEqual(self.minutos_que_le_quedan(self.pc1), 180, delta=1)
+        self.assertEqual(self.saldo(), 0)
+        self.assertEqual(len(self.movimientos(dominio.MOVIMIENTO_CARGA)), 1)  # solo la que pagó al principio
+
+    def test_por_monto_va_con_la_tarifa_de_socios(self):
+        _tarifa, minutos = miembros_repo.minutos_por_monto(config_repo.obtener_tramos_tarifa_hora_miembro(), 2000)
+        cuentas_pc_repo.anotar_tiempo_socio(self.pc1, self.operador, monto=2000)
+        self.assertAlmostEqual(self.minutos_que_le_quedan(self.pc1), 60 + minutos, delta=1)
+        self.assertEqual(self.deuda(self.pc1)["total"], 2000.0)
+
+    def test_solo_en_una_sesion_de_socio(self):
+        self.abrir(self.pc2)
+        with self.assertRaisesRegex(ValueError, "no la abrió un socio"):
+            cuentas_pc_repo.anotar_tiempo_socio(self.pc2, self.operador, bono_id=self.bono_socio)
+
+    def test_sin_pagar_no_se_le_devuelve_como_saldo(self):
+        cuentas_pc_repo.anotar_tiempo_socio(self.pc1, self.operador, bono_id=self.bono_socio)
+        pcs_repo.finalizar_sesion(self.sesion)
+        # Le quedaban ~3 h: las últimas 2 h son fiadas (no vuelven) y de su hora, 30 min.
+        self.assertEqual(self.saldo(), 30)
+
+    def test_cobrado_queda_como_una_carga_suya(self):
+        cuentas_pc_repo.anotar_tiempo_socio(self.pc1, self.operador, bono_id=self.bono_socio)
+        cuenta = cuentas_pc_repo.cuentas_de_la_estacion(self.pc1)[0]
+        ventas = cuentas_pc_repo.cobrar([cuenta["id"]], self.operador, _pagos((EFECTIVO, 1500)))
+
+        carga = self.movimientos(dominio.MOVIMIENTO_CARGA)[-1]
+        consumo = self.movimientos(dominio.MOVIMIENTO_CONSUMO)[-1]
+        self.assertEqual((carga["venta_id"], carga["minutos"], carga["bono_id"]), (ventas[0], 120, self.bono_socio))
+        self.assertEqual((consumo["sesion_id"], consumo["minutos"]), (self.sesion, 120))
+        self.assertEqual(self.saldo(), 0)  # el tiempo ya estaba en la PC
+        self.assertEqual(turnos_repo.resumen_turno_actual()["pcs_efectivo"], 2500)  # su carga + esta
+        # Ya pagado, si se va antes se le devuelve como a cualquier socio: ~179 min suyos -> 150.
+        pcs_repo.finalizar_sesion(self.sesion)
+        self.assertEqual(self.saldo(), 150)
+
+
+class TestLoFiadoEnElTurno(BaseCuenta):
+    def setUp(self):
+        super().setUp()
+        self.abrir(self.pc1)
+        cuentas_pc_repo.anotar_articulos(self.pc1, self.pancho(), self.operador, nombre="Pedro")
+        self.fin = turnos_repo.ventana_del_turno_en_curso()["fin"]
+
+    def test_el_aviso_sale_15_minutos_antes_del_fin(self):
+        self.assertIsNone(cuentas_pc_repo.aviso_antes_del_cierre(self.fin - timedelta(minutes=16)))
+        aviso = cuentas_pc_repo.aviso_antes_del_cierre(self.fin - timedelta(minutes=15))
+        self.assertEqual([(c["estacion"], c["nombre"], c["debe"]) for c in aviso["cuentas"]], [("PC1", "Pedro", 1200.0)])
+        # Pasado el fin sigue saliendo, hasta que se cierre el turno.
+        self.assertIsNotNone(cuentas_pc_repo.aviso_antes_del_cierre(self.fin + timedelta(minutes=10)))
+
+    def test_lo_cobrado_ya_no_avisa_ni_queda_en_el_cierre(self):
+        cuenta = cuentas_pc_repo.cuentas_de_la_estacion(self.pc1)[0]
+        cuentas_pc_repo.cobrar([cuenta["id"]], self.operador, _pagos((EFECTIVO, 1200)))
+        self.assertIsNone(cuentas_pc_repo.aviso_antes_del_cierre(self.fin))
+        resultado = turnos_repo.cerrar_turno(self.operador)
+        self.assertEqual(resultado["fiado_sin_cobrar"], 0)
+        self.assertEqual(turnos_repo.detalle_cierre(resultado["id"])["fiado_sin_cobrar"], [])
+
+    def test_si_se_cierra_sin_cobrar_queda_en_el_cierre_de_quien_lo_dio(self):
+        resultado = turnos_repo.cerrar_turno(self.operador)
+        self.assertEqual(resultado["fiado_sin_cobrar"], 1200.0)
+        self.assertEqual(turnos_repo.detalle_cierre(resultado["id"])["fiado_sin_cobrar"],
+                         [{"estacion": "PC1", "nombre": "Pedro", "monto": 1200.0}])
+        # Lo que hay que retirar no cambia: esa plata nunca entró.
+        self.assertEqual(resultado["monto_a_retirar"], 1100)
+        # En el turno que sigue ya no es "de este turno": no avisa (sigue debiendo, eso sí).
+        self.assertIsNone(cuentas_pc_repo.aviso_antes_del_cierre(datetime.now() + timedelta(days=1)))
+        self.assertEqual(self.deuda(self.pc1)["total"], 1200.0)
+        self.assertEqual(cuentas_pc_repo.fiado_del_turno_en_curso(), [])
+
+    def test_en_el_cierre_solo_cuenta_lo_anotado_en_ese_turno(self):
+        turnos_repo.cerrar_turno(self.operador)
+        time.sleep(0.05)  # ver TestUnBonoAnotadoNoSeLeDevuelveAlSocio
+        cuentas_pc_repo.anotar_articulos(self.pc1, self.pancho(precio=500), self.operador)
+        self.assertEqual([(c["monto_del_turno"], c["debe"]) for c in cuentas_pc_repo.fiado_del_turno_en_curso()],
+                         [(500.0, 1700.0)])
+        resultado = turnos_repo.cerrar_turno(self.operador)
+        self.assertEqual(resultado["fiado_sin_cobrar"], 500.0)

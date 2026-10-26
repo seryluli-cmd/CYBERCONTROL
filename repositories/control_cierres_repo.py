@@ -19,6 +19,7 @@ from datetime import datetime
 
 from database import conexion_db
 from repositories import cajas_repo, usuarios_repo
+from control_pcs.repositories import deudas_pc_repo
 from repositories.turnos_ventas_repo import _aparte_por_metodo, _resumen_de_reservas, _separar_de_kiosko
 from turnos import etiqueta_turno, fin_del_turno
 
@@ -185,7 +186,8 @@ def detalle_cierre(cierre_id: int):
     a nombre de la responsable. Además devuelve "caja" (ver _datos_de_la_caja),
     "verificaciones" (todos los conteos del sobre, del primero al último) y
     "resumen": el cierre como lo mostraba la pantalla Cierre de Turno (ver
-    _resumen_del_cierre).
+    _resumen_del_cierre). Y "fiado_sin_cobrar": lo de la Cuenta de la PC que se
+    anotó en ese turno y no se había cobrado al cerrar (deudas_pc_repo).
     """
     with conexion_db() as conexion:
         cierre = _cierre_o_error(conexion, cierre_id)
@@ -220,10 +222,11 @@ def detalle_cierre(cierre_id: int):
             (cierre_id,),
         ).fetchall()
         resumen = _resumen_del_cierre(conexion, cierre, desde, caja)
+        fiado_sin_cobrar = deudas_pc_repo.fiado_del_cierre(conexion, cierre_id)
 
     return {
         "cierre": cierre, "desde": desde, "ventas": ventas, "caja": caja, "verificaciones": verificaciones,
-        "resumen": resumen,
+        "resumen": resumen, "fiado_sin_cobrar": fiado_sin_cobrar,
     }
 
 

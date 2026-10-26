@@ -66,6 +66,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer
 
+import time
+
 import dominio
 from admin_remoto import modo as modo_remoto
 from errores import registrar_error
@@ -84,6 +86,8 @@ from ui.tramites_window import DialogoTramites, DialogoGestionTramites
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs
 from control_pcs.ui.cuenta_pc_reglas_dialogo import DialogoReglasCuentaPc
+from control_pcs.ui.cuenta_pc_dialogos import DialogoCobrarAntesDelCierre
+from control_pcs.repositories import cuentas_pc_repo
 from control_pcs.ui.pcs_gestion_dialogos import (
     DialogoGestionEstaciones, DialogoGestionBonos, DialogoGestionBonosPlaystation,
     DialogoGestionBonosPcstream,
@@ -132,6 +136,8 @@ class MainWindow(QMainWindow):
         self._remota = modo_remoto.es_copia_remota()
         self._titilar = False
         self._encendido = False
+        # Hasta cuándo no vuelve a salir el cartel de lo fiado en el turno (Posponer 5 min).
+        self._cuentas_pospuestas_hasta = 0.0
         self._armar_interfaz()
         if self._remota:
             self._mostrar_la_caja_del_mostrador()
@@ -359,7 +365,10 @@ class MainWindow(QMainWindow):
             return
         try:
             estado = self._actualizar_estado_de_la_caja()
-            if estado is None or not estado["vencida"] or self._hay_un_cobro_a_medias():
+            if estado is None or not estado["vencida"]:
+                self._revisar_cuentas_antes_del_cierre()
+                return
+            if self._hay_un_cobro_a_medias():
                 return
             resultado = relevo_repo.cierre_forzoso_si_corresponde()
         except Exception as error:  # un fallo de la base no puede tirar abajo el mostrador
@@ -385,6 +394,26 @@ class MainWindow(QMainWindow):
             "usuario y seguí vendiendo: no hace falta contar el Cambio Fijo.",
         )
         self._cerrar_sesion()
+
+    def _revisar_cuentas_antes_del_cierre(self):
+        """
+        Lo fiado en el turno se cobra en el turno (pedido del dueño, 2026-10-25):
+        desde 15 minutos antes del fin, las PCs que lo deben titilan más rápido y
+        sale el cartel con un "Cobrar" por PC. "Posponer" lo deja 5 minutos sin
+        salir. No sale encima de otra ventana (un cobro a medias): espera a la
+        próxima revisión. Solo en el mostrador (lo llama _revisar_la_caja).
+        """
+        aviso = cuentas_pc_repo.aviso_antes_del_cierre()
+        self.panel_pcs.marcar_cuentas_urgentes(
+            {cuenta["estacion_id"] for cuenta in aviso["cuentas"]} if aviso else set()
+        )
+        if aviso is None or time.monotonic() < self._cuentas_pospuestas_hasta \
+                or QApplication.activeModalWidget() is not None:
+            return
+        cartel = DialogoCobrarAntesDelCierre(self.usuario, DialogoCobrarAntesDelCierre.AVISO, self)
+        if not cartel.exec():  # Posponer (o cerró la ventana)
+            self._cuentas_pospuestas_hasta = time.monotonic() + dominio.MINUTOS_POSPONER_AVISO_CUENTAS * 60
+        self.panel_pcs._refrescar()
 
     # -----------------------------------------------------------------
     # Abrir cada módulo (diálogos modales)

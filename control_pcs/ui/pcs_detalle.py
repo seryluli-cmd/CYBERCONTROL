@@ -22,7 +22,7 @@ from control_pcs.repositories import (
     avisos_fin_pc_repo, cuentas_pc_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
     reservas_horario_repo,
 )
-from control_pcs.ui.cuenta_pc_dialogos import DialogoCuentaPc, anotar_en_la_cuenta
+from control_pcs.ui.cuenta_pc_dialogos import DialogoCuentaPc, DialogoTiempoSocio, anotar_en_la_cuenta
 from control_pcs.ui.pcs_cortes import texto_para_el_panel
 from ui.dialogo_pago import cobrar
 from ui.utils import (
@@ -153,8 +153,9 @@ class PanelDetalleEstacion(QFrame):
 
     La Cuenta de la PC (pedido del dueño, 2026-10-25): si la PC debe algo, un
     recuadro fucsia dice cuánto y de quién, y "Cobrar cuenta" abre lo que debe
-    renglón por renglón (desde otra PC se mira; cobrar avisa). "Agregar bono a
-    cuenta" le suma a la sesión en curso el bono elegido, sin cobrarlo.
+    renglón por renglón (desde otra PC se mira; cobrar avisa). "Agregar tiempo a
+    cuenta" le suma a la sesión en curso el bono elegido, sin cobrarlo; si la
+    abrió un socio, tiempo de socio (bono de socio o monto, DialogoTiempoSocio).
     """
 
     def __init__(self, usuario, avisar_cambio, parent=None):
@@ -233,7 +234,7 @@ class PanelDetalleEstacion(QFrame):
         self.boton_cuenta = QPushButton("Cobrar cuenta")
         aplicar_clase(self.boton_cuenta, "cuenta")
         self.boton_cuenta.clicked.connect(self._abrir_cuenta)
-        self.boton_bono_a_cuenta = QPushButton("Agregar bono a cuenta")
+        self.boton_bono_a_cuenta = QPushButton("Agregar tiempo a cuenta")
         self.boton_bono_a_cuenta.clicked.connect(self._agregar_bono_a_cuenta)
 
         layout = QVBoxLayout()
@@ -344,8 +345,11 @@ class PanelDetalleEstacion(QFrame):
             self.boton_finalizar.setText("Finalizar Sesión")
         self.boton_cobrar.setEnabled(puede and bool(lista.bonos))
         # A cuenta solo se le suma tiempo a un cliente que está jugando (la PC sin
-        # tiempo sigue bloqueada, como siempre: cuentas_pc_repo.anotar_bono).
-        self.boton_bono_a_cuenta.setEnabled(es_pc and sesion is not None and bool(lista.bonos))
+        # tiempo sigue bloqueada, como siempre: cuentas_pc_repo.anotar_bono). A un
+        # socio, tiempo de socio (no hace falta la lista de bonos de PC).
+        self.boton_bono_a_cuenta.setEnabled(
+            es_pc and sesion is not None and (bool(sesion["miembro_nombre"]) or bool(lista.bonos))
+        )
         self.boton_finalizar.setEnabled(puede and (sesion is not None or fin_sin_aviso))
         # Abrir con el saldo de un socio es cosa de las PCs: la consola y
         # PCSTREAM se venden solo con sus bonos (miembros_repo también lo rechaza).
@@ -384,6 +388,9 @@ class PanelDetalleEstacion(QFrame):
         item = self.item
         if item is None or es_playstation(item) or item["sesion"] is None:
             return
+        if item["sesion"]["miembro_nombre"]:
+            self._agregar_tiempo_de_socio_a_cuenta(item)
+            return
         bono = self._lista_del_equipo(item).bono_elegido()
         if bono is None:
             mostrar_error(self, "Sin bonos", "Elegí un bono de la lista.")
@@ -404,6 +411,26 @@ class PanelDetalleEstacion(QFrame):
         if resultado is not None:
             a_nombre = f" ({resultado['nombre']})" if resultado["nombre"] else ""
             mostrar_info(self, "Anotado", f"Anotado en la cuenta de {resultado['estacion']}{a_nombre}.\n"
+                                          f"Debe ahora {formato_pesos(resultado['debe'])}.")
+        self._avisar_cambio()
+
+    @solo_en_el_mostrador
+    @manejar_errores
+    def _agregar_tiempo_de_socio_a_cuenta(self, item):
+        """Tiempo de socio a cuenta (pedido del dueño, 2026-10-25): un bono de socio o
+        un monto, como en Cargar Saldo, sin cobrarlo."""
+        elegir = DialogoTiempoSocio(item, self)
+        if not elegir.exec():
+            return
+        resultado = anotar_en_la_cuenta(
+            self, item,
+            lambda **datos: cuentas_pc_repo.anotar_tiempo_socio(
+                item["estacion"]["id"], self.usuario["id"], bono_id=elegir.bono_id, monto=elegir.monto,
+                autoriza=datos["autoriza"],
+            ),
+        )
+        if resultado is not None:
+            mostrar_info(self, "Anotado", f"Anotado en la cuenta de {resultado['estacion']} ({resultado['nombre']}).\n"
                                           f"Debe ahora {formato_pesos(resultado['debe'])}.")
         self._avisar_cambio()
 

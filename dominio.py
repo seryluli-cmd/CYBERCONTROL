@@ -448,7 +448,12 @@ ESTADOS_CUENTA_PC = (CUENTA_ABIERTA, CUENTA_COBRADA, CUENTA_PERDIDA)
 # Qué es cada renglón de la cuenta: un artículo del kiosko o un bono de tiempo.
 ITEM_CUENTA_ARTICULO = "ARTICULO"
 ITEM_CUENTA_BONO = "BONO"
-TIPOS_ITEM_CUENTA_PC = (ITEM_CUENTA_ARTICULO, ITEM_CUENTA_BONO)
+# Tiempo de socio (pedido del dueño, el mismo día): un bono de socio o un monto con
+# la tarifa de socios, como en Cargar Saldo, pero sin cobrar.
+ITEM_CUENTA_TIEMPO_SOCIO = "TIEMPO_SOCIO"
+TIPOS_ITEM_CUENTA_PC = (ITEM_CUENTA_ARTICULO, ITEM_CUENTA_BONO, ITEM_CUENTA_TIEMPO_SOCIO)
+# Los que suman tiempo a la sesión (para los reintegros y quitar un renglón).
+TIPOS_ITEM_CUENTA_CON_TIEMPO = (ITEM_CUENTA_BONO, ITEM_CUENTA_TIEMPO_SOCIO)
 # Qué pasa si con lo que se anota la PC debería más que el tope (lo elige el
 # Admin en Configuración ADMIN > Reglas de Cuenta de PC): no se deja, o se deja
 # con la clave de un Admin.
@@ -457,6 +462,12 @@ TOPE_CUENTA_CON_CLAVE_ADMIN = "CLAVE_ADMIN"
 ACCIONES_TOPE_CUENTA_PC = (TOPE_CUENTA_NO_DEJA, TOPE_CUENTA_CON_CLAVE_ADMIN)
 # Con lo que arranca (decisión del dueño: "para empezar un tope de 10.000").
 TOPE_CUENTA_PC_INICIAL = 10000.0
+# Lo fiado en un turno se cobra en ese turno (pedido del dueño, 2026-10-25: "que lo
+# que dio el operador de X turno quede en su turno"): desde estos minutos antes del
+# fin del turno las PCs que deben lo de ese turno titilan más rápido y sale el
+# cartel "Cobrá antes de cerrar el turno", que se puede posponer estos minutos.
+MINUTOS_AVISO_CUENTAS_ANTES_DEL_FIN = 15
+MINUTOS_POSPONER_AVISO_CUENTAS = 5
 
 
 def repartir_pagos(pagos: list, montos: list) -> list:

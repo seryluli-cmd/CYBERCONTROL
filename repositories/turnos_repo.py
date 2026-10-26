@@ -31,10 +31,11 @@ import dominio
 from database import conexion_db
 from turnos import (
     calcular_turno, dia_del_turno_que_arranca_tras_un_cierre, dia_en_que_empezo_el_turno, etiqueta_turno,
-    limites_de_los_dias, turno_que_arranca_tras_un_cierre, turno_vencimiento, turnos_del_dia,
+    fin_del_turno, limites_de_los_dias, turno_que_arranca_tras_un_cierre, turno_vencimiento, turnos_del_dia,
 )
 from repositories.config_repo import obtener_fondo_cambio
 from repositories import cajas_repo
+from control_pcs.repositories import deudas_pc_repo
 from repositories import turnos_faltantes_repo as _faltantes_repo
 from repositories.control_cierres_repo import (  # noqa: F401 (API de las pantallas y las pruebas)
     _PRINCIPIO_DE_LOS_TIEMPOS, _cierre_o_error, _desde_del_cierre, detalle_cierre, listar_cierres,
@@ -143,6 +144,16 @@ def _ventana_en_curso(conexion, ahora_dt=None) -> dict:
     }
 
 
+def ventana_del_turno_en_curso() -> dict:
+    """La ventana del turno abierto (ver _ventana_en_curso) con "fin": la hora en
+    que termina ese turno (turnos.fin_del_turno). La usa la Cuenta de la PC para
+    el aviso de los 15 minutos (cuentas_pc_repo.aviso_antes_del_cierre)."""
+    with conexion_db() as conexion:
+        ventana = _ventana_en_curso(conexion)
+    return {**ventana, "fin": fin_del_turno(ventana["dia"], ventana["turno"]),
+            "turno_label": etiqueta_turno(ventana["dia"], ventana["turno"])}
+
+
 def _desglose_de_totales(totales: dict) -> dict:
     """
     Pasa {origen: {metodo: total}} (lo que devuelve
@@ -249,6 +260,11 @@ def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):
     Lo que queda en el cajón ("cambio_que_queda") es el cambio con que arrancó
     la caja: lo que contó quien la abrió. Así un faltante del cambio se ve una
     sola vez, en la caja donde apareció, y no en todas las que siguen.
+
+    Lo que se anotó en la Cuenta de la PC en este turno y no se cobró queda en el
+    cierre como "fiado sin cobrar" ("fiado_sin_cobrar", deudas_pc_repo): lo dio
+    quien tenía el turno y se ve en Control de Cierres (pedido del dueño,
+    2026-10-25). No cambia lo que hay que retirar: esa plata nunca entró.
     """
     fondo_cambio = obtener_fondo_cambio()
 
@@ -295,6 +311,9 @@ def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):
         cierre_id = cursor.lastrowid
         if caja is not None:
             cajas_repo._marcar_cerrada(conexion, caja["id"], cierre_id, forzoso)
+        fiado_sin_cobrar = deudas_pc_repo.anotar_fiado_en_el_cierre(
+            conexion, cierre_id, ventana["desde"], ventana["hasta"]
+        )
 
     return {
         "id": cierre_id,
@@ -307,6 +326,7 @@ def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):
         "responsable": caja["responsable"] if caja is not None else None,
         "cambio_que_queda": cajas_repo.cambio_inicial(caja) if caja is not None else fondo_cambio,
         "forzoso": forzoso,
+        "fiado_sin_cobrar": fiado_sin_cobrar,
     }
 
 

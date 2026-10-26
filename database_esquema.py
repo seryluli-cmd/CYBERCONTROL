@@ -527,7 +527,10 @@ def inicializar_base_de_datos():
     # venta). Un artículo baja el stock al anotarlo (el pancho ya salió); al
     # cobrar se graba su venta de kiosko SIN volver a bajarlo. Un bono suma el
     # tiempo al anotarlo y al cobrar se graba su venta de Alquiler de PCs y su
-    # vínculo en sesion_bonos/sesion_pcstream_bonos (sesion_bono_id...). Un
+    # vínculo en sesion_bonos/sesion_pcstream_bonos (sesion_bono_id...). El
+    # tiempo de un socio (bono de socio o monto) también suma el tiempo al
+    # anotarlo, sin tocar su saldo; al cobrarlo queda como una carga de saldo
+    # suya que pasó a la sesión (CARGA + CONSUMO, ver cuentas_pc_repo). Un
     # renglón anotado por error lo quita un Admin (quitado_*): no se borra.
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS cuenta_pc_items (
@@ -543,6 +546,8 @@ def inicializar_base_de_datos():
             articulo_codigo          TEXT REFERENCES articulos(codigo),
             bono_tiempo_id           INTEGER REFERENCES bonos_tiempo(id),
             bono_pcstream_id         INTEGER REFERENCES bonos_pcstream(id),
+            bono_miembro_id          INTEGER REFERENCES bonos_miembro(id),
+            miembro_id               INTEGER REFERENCES miembros(id),
             minutos                  INTEGER,
             venta_id                 INTEGER REFERENCES ventas(id),
             sesion_bono_id           INTEGER REFERENCES sesion_bonos(id),
@@ -550,6 +555,22 @@ def inicializar_base_de_datos():
             quitado_fecha            TEXT,
             quitado_por              INTEGER REFERENCES usuarios(id),
             quitado_motivo           TEXT
+        )
+    """)
+
+    # Lo fiado que quedó sin cobrar al cerrar un turno (pedido del dueño,
+    # 2026-10-25): una foto, por cada cuenta, de lo que se anotó en ese turno y
+    # no se cobró. Queda a nombre de quien cerró (es su cierre) y se ve en
+    # Control de Cierres. Si después se cobra, la plata entra en la caja de
+    # quien la cobra; esta foto no cambia (dice lo que había al cerrar).
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cierres_fiado_pc (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            cierre_id   INTEGER NOT NULL REFERENCES cierres_turno(id),
+            cuenta_id   INTEGER NOT NULL REFERENCES cuentas_pc(id),
+            estacion    TEXT NOT NULL,
+            nombre      TEXT NOT NULL DEFAULT '',
+            monto       REAL NOT NULL
         )
     """)
 
@@ -871,6 +892,7 @@ def inicializar_base_de_datos():
         "CREATE INDEX IF NOT EXISTS idx_cuenta_pc_items_sesion_pcstream_bono ON cuenta_pc_items(sesion_pcstream_bono_id)"
     )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cuenta_pc_items_articulo ON cuenta_pc_items(articulo_codigo)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cierres_fiado_pc_cierre ON cierres_fiado_pc(cierre_id)")
 
     conexion.commit()
 

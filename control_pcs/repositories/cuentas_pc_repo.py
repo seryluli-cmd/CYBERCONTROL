@@ -30,8 +30,8 @@ from datetime import datetime, timedelta
 
 import dominio
 from database import conexion_db
-from repositories import usuarios_repo, ventas_repo
-from control_pcs.repositories import deudas_pc_repo, pcs_repo, pcstream_repo
+from repositories import config_repo, turnos_repo, usuarios_repo, ventas_repo
+from control_pcs.repositories import bonos_miembro_repo, deudas_pc_repo, miembros_repo, pcs_repo, pcstream_repo
 
 _CLAVE_REGLAS = "reglas_cuenta_pc"
 
@@ -161,6 +161,55 @@ def anotar_bono(estacion_id: int, bono_id: int, usuario_id: int, nombre: str = N
             """,
             (cuenta_id, dominio.ITEM_CUENTA_BONO, ahora.isoformat(timespec="microseconds"), usuario_id,
              f"Bono {bono['nombre']}", round(bono["precio"], 2), round(bono["precio"], 2), bono_id, bono["minutos"]),
+        )
+        return _como_quedo(conexion, estacion, cuenta_id)
+
+
+def anotar_tiempo_socio(estacion_id: int, usuario_id: int, bono_id: int = None, monto: float = None,
+                        autoriza: dict = None) -> dict:
+    """
+    El socio que está jugando pide más tiempo y lo paga después (pedido del
+    dueño, 2026-10-25): un bono de socio (`bono_id`, bonos_miembro_repo) o un
+    `monto` con la tarifa de socios (miembros_repo.minutos_por_monto, con la
+    carga mínima de siempre), como en Cargar Saldo. Se le suma ya a su sesión,
+    SIN tocar su saldo: mientras no lo paga es como un bono (si se va antes, no se
+    le devuelve como saldo). Al cobrarlo queda como una carga suya que pasó a la
+    sesión (ver _cobrar_tiempo_socio). Solo en una sesión abierta por un socio.
+    """
+    if not obtener_reglas()["tiempo_a_cuenta"]:
+        raise ValueError("El Admin no deja anotar tiempo a cuenta (Configuración ADMIN > Reglas de Cuenta de PC).")
+    if bono_id is not None:
+        bono = bonos_miembro_repo.obtener_bono(bono_id)
+        if bono is None or not bono["activo"]:
+            raise ValueError("Ese bono ya no está disponible.")
+        minutos, precio, descripcion = bono["minutos"], round(bono["precio"], 2), f"Socio: {bono['nombre']}"
+    else:
+        tramos = config_repo.obtener_tramos_tarifa_hora_miembro()
+        monto = round(float(monto or 0), 2)
+        miembros_repo.validar_monto_de_carga(tramos, monto)
+        _tarifa, minutos = miembros_repo.minutos_por_monto(tramos, monto)
+        if minutos <= 0:
+            raise ValueError("Ese monto no alcanza ni para media hora a la tarifa de socios.")
+        precio = monto
+        descripcion = f"Socio: {minutos // 60} h {minutos % 60:02d} m por monto"
+    ahora = datetime.now()
+    with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+        estacion, sesion = _estacion_con_sesion(conexion, estacion_id, ahora)
+        if sesion["miembro_id"] is None:
+            raise ValueError(f"'{estacion['nombre']}' no la abrió un socio: anotale un bono de PC.")
+        _revisar_tope(conexion, estacion, precio, autoriza)
+        cuenta_id = _cuenta_de_la_sesion(conexion, sesion, usuario_id, None, ahora)
+        pcs_repo._abrir_o_extender_sesion(conexion, estacion_id, minutos, ahora)
+        conexion.execute(
+            """
+            INSERT INTO cuenta_pc_items
+                (cuenta_id, tipo, fecha, usuario_id, descripcion, cantidad, precio_unitario, subtotal,
+                 bono_miembro_id, miembro_id, minutos)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+            """,
+            (cuenta_id, dominio.ITEM_CUENTA_TIEMPO_SOCIO, ahora.isoformat(timespec="microseconds"), usuario_id,
+             descripcion, precio, precio, bono_id, sesion["miembro_id"], minutos),
         )
         return _como_quedo(conexion, estacion, cuenta_id)
 
@@ -309,6 +358,34 @@ def _cuentas_abiertas(conexion, condicion: str, parametros: tuple) -> list:
     return cuentas
 
 
+def fiado_del_turno_en_curso() -> list:
+    """Las cuentas con algo anotado en el turno abierto (desde el último cierre)
+    que todavía no se cobró (deudas_pc_repo.fiado_del_turno): lo que el Cierre de
+    Turno pregunta antes de cerrar."""
+    ventana = turnos_repo.ventana_del_turno_en_curso()
+    with conexion_db() as conexion:
+        return deudas_pc_repo.fiado_del_turno(conexion, ventana["desde"])
+
+
+def aviso_antes_del_cierre(ahora: datetime = None):
+    """
+    El cartel "Cobrá antes de cerrar el turno" (pedido del dueño, 2026-10-25):
+    desde MINUTOS_AVISO_CUENTAS_ANTES_DEL_FIN antes del fin del turno abierto, si
+    hay algo fiado en ese turno sin cobrar, {"fin", "turno_label", "cuentas"
+    (fiado_del_turno_en_curso)}; si no, None. Sigue apareciendo pasado el fin,
+    hasta que se cierre el turno.
+    """
+    ahora = ahora or datetime.now()
+    ventana = turnos_repo.ventana_del_turno_en_curso()
+    if ahora < ventana["fin"] - timedelta(minutes=dominio.MINUTOS_AVISO_CUENTAS_ANTES_DEL_FIN):
+        return None
+    with conexion_db() as conexion:
+        cuentas = deudas_pc_repo.fiado_del_turno(conexion, ventana["desde"])
+    if not cuentas:
+        return None
+    return {"fin": ventana["fin"], "turno_label": ventana["turno_label"], "cuentas": cuentas}
+
+
 # ---------------------------------------------------------------------
 # Cobrar, quitar un renglón, dar por perdida
 # ---------------------------------------------------------------------
@@ -358,8 +435,8 @@ def cobrar(cuenta_ids: list, usuario_id: int, pagos: list) -> list:
             if articulos:
                 ventas.append((round(sum(renglon["subtotal"] for renglon in articulos), 2), ("KIOSKO", articulos)))
             for renglon in renglones:
-                if renglon["tipo"] == dominio.ITEM_CUENTA_BONO:
-                    ventas.append((round(renglon["subtotal"], 2), ("BONO", renglon)))
+                if renglon["tipo"] in dominio.TIPOS_ITEM_CUENTA_CON_TIEMPO:
+                    ventas.append((round(renglon["subtotal"], 2), (renglon["tipo"], renglon)))
         if not ventas:
             raise ValueError("Esa cuenta ya no debe nada.")
         repartidos = dominio.repartir_pagos(pagos, [monto for monto, _ in ventas])
@@ -375,6 +452,8 @@ def cobrar(cuenta_ids: list, usuario_id: int, pagos: list) -> list:
                 conexion.executemany(
                     "UPDATE cuenta_pc_items SET venta_id = ? WHERE id = ?", [(venta_id, r["id"]) for r in que]
                 )
+            elif tipo == dominio.ITEM_CUENTA_TIEMPO_SOCIO:
+                venta_id = _cobrar_tiempo_socio(conexion, que, usuario_id, monto, pagos_de_la_venta, ahora)
             else:
                 venta_id = _cobrar_bono(conexion, que, usuario_id, monto, pagos_de_la_venta, ahora)
             numeros.append(venta_id)
@@ -412,12 +491,43 @@ def _cobrar_bono(conexion, renglon, usuario_id: int, monto: float, pagos: list, 
     return venta_id
 
 
+def _cobrar_tiempo_socio(conexion, renglon, usuario_id: int, monto: float, pagos: list, ahora: datetime) -> int:
+    """La venta de Alquiler de PCs del tiempo de socio anotado, y en su historial
+    de saldo una CARGA (con esa venta, como en Cargar Saldo) y el CONSUMO que la
+    pasó a la sesión, los dos con la hora en que se anotó: el saldo no cambia
+    (el tiempo ya estaba en la PC), el Historial de Cargas y Socios y Bonos la
+    cuentan como cualquier carga, y desde ahora se le devuelve si se va antes."""
+    sesion_id = conexion.execute(
+        "SELECT sesion_id FROM cuentas_pc WHERE id = ?", (renglon["cuenta_id"],)
+    ).fetchone()["sesion_id"]
+    venta_id = ventas_repo.registrar_venta_sin_detalle(
+        conexion, usuario_id, monto, pagos, dominio.ORIGEN_ALQUILER_PCS, ahora
+    )
+    conexion.execute(
+        """
+        INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, venta_id, bono_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (renglon["miembro_id"], dominio.MOVIMIENTO_CARGA, renglon["minutos"],
+         datetime.fromisoformat(renglon["fecha"]).isoformat(timespec="seconds"), venta_id, renglon["bono_miembro_id"]),
+    )
+    conexion.execute(
+        """
+        INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, sesion_id)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (renglon["miembro_id"], dominio.MOVIMIENTO_CONSUMO, renglon["minutos"], renglon["fecha"], sesion_id),
+    )
+    conexion.execute("UPDATE cuenta_pc_items SET venta_id = ? WHERE id = ?", (venta_id, renglon["id"]))
+    return venta_id
+
+
 def quitar_renglon(renglon_id: int, usuario_id: int, motivo: str):
     """
     Solo un Admin: saca de la cuenta un renglón anotado por error (no se borra:
-    queda quién, cuándo y por qué). Un artículo vuelve al stock. Un bono le saca
-    a la sesión el tiempo que le había sumado, si sigue en curso (sin dejarla por
-    debajo de ahora: a lo sumo la deja en cero).
+    queda quién, cuándo y por qué). Un artículo vuelve al stock. Un bono (o
+    tiempo de socio) le saca a la sesión el tiempo que le había sumado, si sigue
+    en curso (sin dejarla por debajo de ahora: a lo sumo la deja en cero).
     """
     usuarios_repo.exigir_admin(usuario_id, "quitar algo de una cuenta")
     motivo = (motivo or "").strip()

@@ -412,6 +412,10 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
                     f"(tenía que haber {formato_pesos(relevo['monto_esperado'])}: "
                     f"{texto_de_la_diferencia(relevo['diferencia'])})"
                 )
+        # Lo de la Cuenta de la PC que quedó fiado en este turno al cerrarlo (2026-10-25).
+        for fiado in resultado.get("fiado_sin_cobrar", []):
+            a_nombre = f", {fiado['nombre']}" if fiado["nombre"] else ""
+            lineas.append(f"💳 Fiado sin cobrar al cerrar: {formato_pesos(fiado['monto'])} ({fiado['estacion']}{a_nombre})")
         for verificacion in resultado["verificaciones"]:
             lineas.append(
                 f"Sobre contado el {verificacion['fecha'][8:10]}/{verificacion['fecha'][5:7]} "

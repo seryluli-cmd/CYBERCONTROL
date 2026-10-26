@@ -24,6 +24,7 @@ from PySide6.QtCore import Qt
 
 import dominio
 from control_pcs.repositories import cuentas_pc_repo
+from control_pcs.ui.cuenta_pc_dialogos import DialogoCobrarAntesDelCierre
 from repositories import turnos_repo
 from ui.control_cierres_window import ControlCierresWindow, DialogoDetalleCierre  # noqa: F401 (API de main_window y las pruebas)
 from ui.tarjeta_cierre import (
@@ -220,10 +221,24 @@ class CierreTurnoWindow(QDialog):
 
     @manejar_errores
     def _cerrar_turno(self):
+        # Lo fiado en este turno se cobra en este turno (pedido del dueño, 2026-10-25):
+        # si queda algo, se ofrece cobrarlo; si se cierra igual, queda en el cierre.
+        if cuentas_pc_repo.fiado_del_turno_en_curso():
+            pregunta = DialogoCobrarAntesDelCierre(self.usuario, DialogoCobrarAntesDelCierre.CIERRE, self)
+            cerrar = pregunta.exec()
+            self._refrescar_vista_previa()  # lo que se cobró recién ya suma en la tarjeta
+            if not cerrar:
+                return
+            if pregunta.cerrar_igual:
+                resultado = turnos_repo.cerrar_turno(self.usuario["id"])
+                self._turno_cerrado(resultado)
+                return
         if not confirmar(self, "Confirmar cierre",
                           "¿Confirmás el cierre de este turno? No se puede deshacer."):
             return
-        resultado = turnos_repo.cerrar_turno(self.usuario["id"])
+        self._turno_cerrado(turnos_repo.cerrar_turno(self.usuario["id"]))
+
+    def _turno_cerrado(self, resultado):
         self.turno_cerrado = True
         caja = f"Caja Nº {resultado['caja_numero']} · " if resultado["caja_numero"] is not None else ""
         ausencia = ""
@@ -235,6 +250,8 @@ class CierreTurnoWindow(QDialog):
             f"{ausencia}"
             f"Retirá: {formato_pesos(resultado['monto_a_retirar'])} para el sobre y guardalo en la caja fuerte.\n"
             f"(dejando {formato_pesos(resultado['cambio_que_queda'])} de cambio fijo para el próximo turno)\n\n"
+            + (f"Quedó en tu cierre {formato_pesos(resultado['fiado_sin_cobrar'])} fiado sin cobrar "
+               "(Cuenta de la PC).\n\n" if resultado["fiado_sin_cobrar"] else "") +
             "Ahora volvés a la pantalla de ingreso: quien te releve tiene que entrar con su propio "
             "usuario. Si tu reemplazo no llegó, volvé a entrar con el tuyo y seguí vendiendo."
         )

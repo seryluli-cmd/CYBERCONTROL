@@ -39,7 +39,9 @@ def contribuciones_de_sesion(conexion, sesion_id: int):
     mientras no se cobra no tiene fila en sesion_bonos, así que sale de
     cuenta_pc_items; ya cobrado, su fila de sesion_bonos va con la hora en que
     se ANOTÓ (cuando se sumó el tiempo), no con la del cobro. Uno quitado por
-    un Admin no cuenta (ya se le sacó el tiempo).
+    un Admin no cuenta (ya se le sacó el tiempo). El tiempo de socio anotado,
+    mientras no se paga, cuenta como un bono (no se le devuelve como saldo algo
+    que no pagó); cobrado, es un CONSUMO suyo con la hora en que se anotó.
     """
     return conexion.execute(
         """
@@ -58,14 +60,14 @@ def contribuciones_de_sesion(conexion, sesion_id: int):
         SELECT 'BONO' AS tipo, NULL AS miembro_id, ci.minutos AS minutos, ci.fecha AS fecha
         FROM cuenta_pc_items ci
         JOIN cuentas_pc c ON c.id = ci.cuenta_id
-        WHERE c.sesion_id = ? AND ci.tipo = ? AND ci.venta_id IS NULL AND ci.quitado_fecha IS NULL
+        WHERE c.sesion_id = ? AND ci.tipo IN (?, ?) AND ci.venta_id IS NULL AND ci.quitado_fecha IS NULL
         UNION ALL
         SELECT 'SOCIO' AS tipo, m.miembro_id AS miembro_id, m.minutos AS minutos, m.fecha AS fecha
         FROM movimientos_saldo_miembro m
         WHERE m.sesion_id = ? AND m.tipo = ?
         ORDER BY fecha
         """,
-        (sesion_id, sesion_id, sesion_id, dominio.ITEM_CUENTA_BONO, sesion_id, dominio.MOVIMIENTO_CONSUMO),
+        (sesion_id, sesion_id, sesion_id, *dominio.TIPOS_ITEM_CUENTA_CON_TIEMPO, sesion_id, dominio.MOVIMIENTO_CONSUMO),
     ).fetchall()
 
 

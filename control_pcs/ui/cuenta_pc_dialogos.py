@@ -10,20 +10,29 @@ control_pcs/repositories/cuentas_pc_repo.py):
   un Admin (`DialogoClaveAdmin`).
 - `DialogoElegirPc`: a qué PC se anota lo del carrito de VENDER (solo las que
   tienen un cliente jugando).
+- `DialogoTiempoSocio`: cuánto tiempo de socio se le anota a un socio que está
+  jugando (un bono de socio o un monto con la tarifa de socios, como en Cargar
+  Saldo).
 - `DialogoCuentaPc`: lo que debe una PC, renglón por renglón, para cobrarlo con
   la ventana de cobro de siempre; el Admin además quita un renglón anotado por
   error o da la cuenta por perdida. Desde otra PC se mira igual, y lo que cobra
   o cambia algo avisa que se hace en el mostrador.
+- `DialogoCobrarAntesDelCierre`: lo fiado en el turno que todavía se debe, con un
+  "Cobrar" por PC. Sale solo 15 minutos antes del fin del turno ("Posponer 5 min")
+  y al apretar Cierre de Turno ("Cerrar igual": queda en el cierre como fiado sin
+  cobrar). Pedido del dueño, 2026-10-25: "que lo que dio el operador de X turno
+  quede en su turno".
 """
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton,
-    QTableWidgetItem, QVBoxLayout,
+    QButtonGroup, QCheckBox, QDialog, QDoubleSpinBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QPushButton, QRadioButton, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 import dominio
-from control_pcs.repositories import cuentas_pc_repo, pcs_repo
+from control_pcs.repositories import bonos_miembro_repo, cuentas_pc_repo, miembros_repo, pcs_repo
+from repositories import config_repo
 from ui import dialogo_pago
 from ui.utils import (
     aplicar_clase, crear_tabla, encadenar_enter, fila_guardar_cancelar, formato_pesos, formato_tiempo, manejar_errores,
@@ -101,6 +110,73 @@ class DialogoClaveAdmin(QDialog):
             mostrar_error(self, "Faltan datos", "Escribí el nombre y la clave del Administrador.")
             return
         self.autoriza = {"nombre": self.campo_nombre.text().strip(), "clave": self.campo_clave.text()}
+        self.accept()
+
+
+class DialogoTiempoSocio(QDialog):
+    """Cuánto tiempo de socio se anota: un bono de socio o un monto (con la tarifa
+    por hora de socios y la carga mínima de siempre). Deja `bono_id` o `monto`."""
+
+    def __init__(self, item, parent=None):
+        super().__init__(parent)
+        self.bono_id, self.monto = None, None
+        self.setWindowTitle("Tiempo de socio a cuenta")
+        self.resize(380, 360)
+        self._bonos = bonos_miembro_repo.listar_bonos()
+        self._tramos = config_repo.obtener_tramos_tarifa_hora_miembro()
+
+        etiqueta = QLabel(f"¿Cuánto tiempo le anotás a {item['sesion']['miembro_nombre']} en "
+                          f"'{item['estacion']['nombre']}'? Se le suma ya y se cobra después.")
+        etiqueta.setWordWrap(True)
+        self._grupo = QButtonGroup(self)
+        layout = QVBoxLayout()
+        layout.addWidget(etiqueta)
+        self._opciones = []
+        for bono in self._bonos:
+            opcion = QRadioButton(f"{bono['nombre']} — {formato_pesos(bono['precio'])}")
+            self._grupo.addButton(opcion)
+            self._opciones.append((opcion, bono))
+            layout.addWidget(opcion)
+        self.opcion_monto = QRadioButton("Otro monto:")
+        self._grupo.addButton(self.opcion_monto)
+        self.campo_monto = QDoubleSpinBox()
+        self.campo_monto.setMaximum(99_999_999)
+        self.campo_monto.setDecimals(0)
+        self.campo_monto.setGroupSeparatorShown(True)
+        self.campo_monto.setPrefix("$ ")
+        self.campo_monto.valueChanged.connect(self._mostrar_minutos)
+        self.campo_monto.valueChanged.connect(lambda _: self.opcion_monto.setChecked(True))
+        self.etiqueta_minutos = QLabel("")
+        fila_monto = QHBoxLayout()
+        fila_monto.addWidget(self.opcion_monto)
+        fila_monto.addWidget(self.campo_monto, 1)
+        layout.addLayout(fila_monto)
+        layout.addWidget(self.etiqueta_minutos)
+        layout.addStretch()
+        layout.addLayout(fila_guardar_cancelar(self, self._confirmar, texto_guardar="Anotar"))
+        self.setLayout(layout)
+        (self._opciones[0][0] if self._opciones else self.opcion_monto).setChecked(True)
+        encadenar_enter(self.campo_monto, accion_final=self._confirmar)
+        sin_boton_por_defecto(self)
+
+    def _mostrar_minutos(self):
+        monto = self.campo_monto.value()
+        if monto <= 0:
+            self.etiqueta_minutos.setText("")
+            return
+        _tarifa, minutos = miembros_repo.minutos_por_monto(self._tramos, monto)
+        self.etiqueta_minutos.setText(f"Son {formato_tiempo(minutos * 60)} con la tarifa de socios.")
+
+    def _confirmar(self):
+        for opcion, bono in self._opciones:
+            if opcion.isChecked():
+                self.bono_id = bono["id"]
+                self.accept()
+                return
+        if self.campo_monto.value() <= 0:
+            mostrar_error(self, "Falta el monto", "Elegí un bono de socio o escribí un monto.")
+            return
+        self.monto = self.campo_monto.value()
         self.accept()
 
 
@@ -319,3 +395,109 @@ class DialogoCuentaPc(QDialog):
             return
         cuentas_pc_repo.dar_por_perdida(cuenta["id"], self.usuario["id"], motivo)
         self._despues_de_cambiar()
+
+
+class DialogoCobrarAntesDelCierre(QDialog):
+    """
+    Lo fiado en el turno abierto que todavía se debe (cuentas_pc_repo), una fila
+    por PC con su "Cobrar" (abre DialogoCuentaPc: la ventana de cobro de siempre,
+    así la plata entra en la caja de este turno). Se cierra sola cuando ya no
+    queda nada. No hay un "Ya lo cobré": una cuenta se apaga sola al cobrarla con
+    el programa, y apagarla a mano dejaría plata fuera de la caja.
+
+    - AVISO (15 minutos antes del fin del turno, MainWindow): "Posponer 5 min".
+    - CIERRE (al apretar Cierre de Turno): "Cerrar igual" (accept con
+      `cerrar_igual`: queda en el cierre como fiado sin cobrar) o "Cancelar".
+    """
+
+    AVISO = "AVISO"
+    CIERRE = "CIERRE"
+
+    def __init__(self, usuario, modo: str, parent=None):
+        super().__init__(parent)
+        self.usuario = usuario
+        self.modo = modo
+        self.cerrar_igual = False
+        self.cuentas = []
+        self.setWindowTitle("Cobrá antes de cerrar el turno" if modo == self.AVISO else "Quedó sin cobrar")
+        self.resize(460, 280)
+        self._armar_interfaz()
+        self._cargar()
+
+    def se_puede_cerrar_sola(self) -> bool:
+        """El cierre forzoso no espera por este cartel (ver MainWindow._hay_un_cobro_a_medias)."""
+        return True
+
+    def _armar_interfaz(self):
+        self.titulo = QLabel()
+        self.titulo.setStyleSheet("font-size: 15px; font-weight: 600;")
+        self.texto = QLabel()
+        self.texto.setWordWrap(True)
+        self.filas = QWidget()
+        botones = QHBoxLayout()
+        botones.addStretch()
+        if self.modo == self.AVISO:
+            boton_posponer = QPushButton(f"Posponer {dominio.MINUTOS_POSPONER_AVISO_CUENTAS} min")
+            boton_posponer.clicked.connect(self.reject)
+            botones.addWidget(boton_posponer)
+        else:
+            boton_cancelar = QPushButton("Cancelar")
+            boton_cancelar.clicked.connect(self.reject)
+            boton_cerrar_igual = QPushButton("Cerrar igual")
+            aplicar_clase(boton_cerrar_igual, "peligro")
+            boton_cerrar_igual.clicked.connect(self._cerrar_igual)
+            botones.addWidget(boton_cancelar)
+            botones.addWidget(boton_cerrar_igual)
+        self._layout = QVBoxLayout()
+        self._layout.addWidget(self.titulo)
+        self._layout.addWidget(self.texto)
+        self._layout.addWidget(self.filas)
+        self._layout.addStretch()
+        self._layout.addLayout(botones)
+        self.setLayout(self._layout)
+        sin_boton_por_defecto(self)
+
+    @manejar_errores
+    def _cargar(self):
+        if self.modo == self.AVISO:
+            aviso = cuentas_pc_repo.aviso_antes_del_cierre()
+            self.cuentas = aviso["cuentas"] if aviso else []
+            self.titulo.setText("Cobrá antes de cerrar el turno")
+            if aviso:
+                self.texto.setText(f"Tu turno ({aviso['turno_label']}) cierra a las {aviso['fin']:%H:%M}. "
+                                   "Estas PCs deben lo que se anotó en tu turno:")
+        else:
+            self.cuentas = cuentas_pc_repo.fiado_del_turno_en_curso()
+            self.titulo.setText("Quedó sin cobrar")
+            self.texto.setText("Estas PCs deben lo que se anotó en tu turno. Si cerrás igual, queda en tu cierre "
+                               "como fiado sin cobrar, a tu nombre:")
+        if not self.cuentas and self.isVisible():
+            self.accept()  # ya no queda nada que cobrar
+            return
+        nuevas = QWidget()
+        layout_filas = QVBoxLayout(nuevas)
+        layout_filas.setContentsMargins(0, 4, 0, 4)
+        for cuenta in self.cuentas:
+            fila = QHBoxLayout()
+            nombre_pc = QLabel(cuenta["estacion"])
+            nombre_pc.setStyleSheet("font-weight: 600;")
+            nombre_pc.setMinimumWidth(70)
+            fila.addWidget(nombre_pc)
+            fila.addWidget(QLabel(cuenta["nombre"] or "—"), 1)
+            fila.addWidget(QLabel(formato_pesos(cuenta["debe"])))
+            boton = QPushButton("Cobrar")
+            aplicar_clase(boton, "cuenta")
+            boton.clicked.connect(lambda _=False, c=cuenta: self._cobrar(c))
+            fila.addWidget(boton)
+            layout_filas.addLayout(fila)
+        self._layout.replaceWidget(self.filas, nuevas)
+        self.filas.deleteLater()
+        self.filas = nuevas
+
+    def _cobrar(self, cuenta):
+        DialogoCuentaPc(self.usuario, {"id": cuenta["estacion_id"], "nombre": cuenta["estacion"]}, self).exec()
+        self._cargar()
+
+    def _cerrar_igual(self):
+        self.cerrar_igual = True
+        self.accept()
