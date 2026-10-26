@@ -34,7 +34,7 @@ from turnos import (
     fin_del_turno, limites_de_los_dias, turno_que_arranca_tras_un_cierre, turno_vencimiento, turnos_del_dia,
 )
 from repositories.config_repo import obtener_fondo_cambio
-from repositories import cajas_repo
+from repositories import cajas_repo, envio_pwa_repo
 from control_pcs.repositories import deudas_pc_repo
 from repositories import turnos_faltantes_repo as _faltantes_repo
 from repositories.control_cierres_repo import (  # noqa: F401 (API de las pantallas y las pruebas)
@@ -314,6 +314,10 @@ def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):
         fiado_sin_cobrar = deudas_pc_repo.anotar_fiado_en_el_cierre(
             conexion, cierre_id, ventana["desde"], ventana["hasta"]
         )
+        # Si está prendido el envío a la app de gastos del dueño, el cierre queda en
+        # la cola en ESTA transacción: hay fila si y solo si quedó el cierre. Lo
+        # manda después un hilo propio; el cierre nunca espera a internet.
+        envio_pwa_repo.encolar(conexion, cierre_id)
 
     return {
         "id": cierre_id,

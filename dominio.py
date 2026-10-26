@@ -733,3 +733,14 @@ TURNO_NOCHE = "NOCHE"
 
 TURNOS = (TURNO_MANANA, TURNO_TARDE, TURNO_NOCHE)
 TURNOS_DOMINGO = (TURNO_MANANA, TURNO_NOCHE)
+
+# --------------------------------------------------------------------
+# Envío de cada Cierre de Turno a la app de gastos del dueño (la PWA
+# "Gastos — CyberBIOS"; pedido del dueño 2026-10-26, ver
+# repositories/envio_pwa_repo.py). Cómo va cada cierre en la cola
+# `envios_pwa`.
+# --------------------------------------------------------------------
+ENVIO_PENDIENTE = "PENDIENTE"   # recién cerrado, todavía no se mandó
+ENVIO_ENVIADO = "ENVIADO"       # la app de gastos lo aceptó: no se vuelve a mandar
+ENVIO_ERROR = "ERROR"           # falló; se vuelve a probar solo
+ESTADOS_ENVIO_PWA = (ENVIO_PENDIENTE, ENVIO_ENVIADO, ENVIO_ERROR)

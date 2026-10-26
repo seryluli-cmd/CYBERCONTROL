@@ -19,6 +19,7 @@ from control_pcs.ui.pcs_gestion_dialogos import (
 )
 from ui.accesos_admin_window import AccesosAdminWindow
 from ui.admin_remoto_dialogo import DialogoEntrarDesdeOtraPC
+from ui.envio_pwa_dialogo import DialogoEnvioPwa
 from ui.piezas_ventana import (
     TONO_AZUL, TONO_GRIS, agregar_pastilla, bloquear_tarjeta, cabecera_oscura, tarjeta_de_menu, tecla,
     titulo_de_seccion,
@@ -52,7 +53,7 @@ class ConfiguracionAdminWindow(QDialog):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Configuración ADMIN")
-        self.resize(660, 640)
+        self.resize(660, 730)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
@@ -88,6 +89,13 @@ class ConfiguracionAdminWindow(QDialog):
                 ("🔐", "Accesos de Admin", "Quién entró con una cuenta de administrador", self._abrir_accesos_admin),
             ]),
         ]
+        # El envío de los cierres a la app de gastos es del mostrador: la cola y el
+        # hilo que la manda viven ahí (pedido del dueño, 2026-10-26).
+        if not modo_remoto.es_copia_remota():
+            grupos.append(("La app de gastos", [
+                ("📲", "Cierres a la app de gastos", "Cada Cierre de Turno se asienta solo en Gastos — CyberBIOS",
+                 self._abrir_envio_pwa),
+            ]))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -147,3 +155,6 @@ class ConfiguracionAdminWindow(QDialog):
 
     def _abrir_entrar_desde_otra_pc(self):
         DialogoEntrarDesdeOtraPC(self.usuario, self).exec()
+
+    def _abrir_envio_pwa(self):
+        DialogoEnvioPwa(self.usuario, self).exec()

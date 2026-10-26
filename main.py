@@ -33,7 +33,7 @@ from PySide6.QtGui import QIcon
 
 from admin_remoto import cliente as cliente_remoto, modo as modo_remoto
 from database import inicializar_base_de_datos
-from repositories import copias_repo
+from repositories import copias_repo, envio_pwa_repo
 from servidor_red import iniciar_servidor
 from ui.hoja_de_estilos import HOJA_DE_ESTILOS
 from ui.ingreso_caja import resolver_caja_al_entrar
@@ -213,6 +213,9 @@ def main():
 
     inicializar_base_de_datos()
     copias_repo.iniciar_copias_automaticas()
+    # Manda cada Cierre de Turno a la app de gastos del dueño, si está prendido
+    # (Configuración ADMIN > Cierres a la app de gastos; ver envio_pwa_repo).
+    envio_pwa_repo.iniciar_envios_automaticos()
     # Corre todo el tiempo que Kiosko esté abierto, sin importar quién
     # esté logueado -- es lo que consultan las PCs bloqueadas del local
     # (ver servidor_red.py y la carpeta hermana "CLIENTE PC").

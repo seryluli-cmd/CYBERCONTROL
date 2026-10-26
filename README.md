@@ -669,6 +669,51 @@ y decisiones en [docs/ADMIN_REMOTO.md](docs/ADMIN_REMOTO.md).
 - **Las dos copias tienen que ser el mismo .exe:** `lista_blanca.huella()`
   (funciones, parámetros y actores) se compara al entrar.
 
+## Cierres a la app de gastos del dueño (`repositories/envio_pwa_repo.py`)
+
+Pedido del dueño (2026-10-26): que cada Cierre de Turno quede asentado solo en
+su app de gastos (la PWA "Gastos — CyberBIOS", cyberbios.netlify.app, repo
+`CYBERBIOS WEB`) como el cierre de caja de ese turno, sin que nadie lo cargue a
+mano desde el celular. Propuesta y decisiones en
+`PROPUESTA_CIERRE_A_PWA_CYBERBIOS.md` (en la carpeta de los proyectos).
+
+- **Cómo se habla con la app:** igual que un celular. La PWA guarda sus datos
+  en Firestore y entra con un login anónimo con la clave pública que está en su
+  código; sus reglas dejan leer y escribir a cualquiera que haya entrado así.
+  Acá: `urllib` (sin librerías aparte), un login anónimo que se conserva (el
+  refresh token queda en `configuracion`, así el mostrador es siempre el mismo
+  usuario anónimo allá) y un `PATCH` por cierre a la colección `facturacion`.
+  No se expone nada nuevo. Si allá se endurecen las reglas, los envíos fallan
+  con "permiso denegado" y hay que pasar a una cuenta de servicio de Firebase.
+- **Qué viaja** (`datos_del_cierre`): lo mismo que carga una empleada a mano:
+  `importe` (efectivo + digital, sin el Cambio Fijo), `efectivo`, `digital`,
+  `turno` con el nombre de allá (`turnos.turno_para_la_app_de_gastos`:
+  "mañana", "tarde", "noche"; los domingos "t1"/"t2"), `fecha` (el día en que
+  ARRANCÓ el turno, a las 12:00 como la guarda la app), `registradoPor` = el
+  NOMBRE de la **responsable de la caja** (sin caja, quien cerró; si el Admin
+  cierra en ausencia de Gabriela, allá figura Gabriela) y `creadoEn` (la hora
+  real del cierre). Más `origen: "cybercontrol"`, `cierreId`, `caja`, `forzoso`
+  y `cerradoPor`, que la app ignora. **Los nombres tienen que estar escritos
+  igual en las dos apps** (mayúsculas incluidas); las contraseñas no participan.
+- **Cuándo:** `turnos_repo.cerrar_turno` deja una fila en `envios_pwa`
+  (`database_esquema_envios.py`) en la misma transacción del cierre —los tres
+  cierres: el de la empleada, el "en ausencia" y el forzoso—, solo si el envío
+  está prendido en ese momento (viene apagado; lo de antes de prenderlo no se
+  manda, ya está cargado a mano allá). Un hilo (`iniciar_envios_automaticos`,
+  lo arranca `main.py` en el mostrador) manda los pendientes cada minuto y
+  reintenta los que fallaron esperando `intentos` minutos (hasta 60). **El
+  cierre nunca espera a internet.**
+- **Una sola vez:** el documento allá tiene nombre fijo
+  (`cybercontrol-<id>-<fecha>`): un reintento lo pisa, no lo duplica. Un
+  ENVIADO no se vuelve a mandar; si se edita o borra allá, acá no se toca.
+- **Pantalla:** Configuración ADMIN > "Cierres a la app de gastos"
+  (`ui/envio_pwa_dialogo.py`; solo Admin y solo en el mostrador): prender o
+  apagar, cómo van los últimos envíos, "Probar la conexión" (entra, trae los
+  nombres de la app y dice qué usuarios de acá no están escritos igual, sin
+  escribir nada) y "Reintentar ahora".
+- Tests: `tests/test_envio_pwa.py`, con una app de mentira que hace de Google;
+  nunca salen a internet ni tocan el Firestore real.
+
 ## Identidad y permisos
 
 Login por **nombre + clave** (`login_window.py`, vía
@@ -740,13 +785,14 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-753 tests al 2026-10-18. Cubren turnos, caja y cajas con número
+1420 tests al 2026-10-26. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, reservas (`tests/test_reservas.py`,
 `tests/test_reservas_ui.py`, `tests/test_reservas_socios.py`), servidor de red (con el fondo de pantalla
-y el filtro de palabras de las PCs), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
+y el filtro de palabras de las PCs), los cierres que se mandan a la app de gastos
+(`tests/test_envio_pwa.py`, con una app de mentira en vez de Google), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.
 
 ## Empaquetado (.exe)

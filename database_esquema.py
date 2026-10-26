@@ -826,6 +826,13 @@ def inicializar_base_de_datos():
     crear_tablas_de_cajas(cursor, _valores_sql)
 
     # -------------------------------------------------------------------
+    # ENVÍO DE LOS CIERRES A LA APP DE GASTOS DEL DUEÑO
+    # -------------------------------------------------------------------
+    # En su propio archivo: ver database_esquema_envios.py.
+    from database_esquema_envios import crear_tabla_envios_pwa
+    crear_tabla_envios_pwa(cursor, _valores_sql)
+
+    # -------------------------------------------------------------------
     # INDICES
     # -------------------------------------------------------------------
     # Estos índices son la razón por la que los reportes van a ser rápidos

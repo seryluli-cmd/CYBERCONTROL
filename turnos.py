@@ -138,6 +138,21 @@ def sql_dia_del_local(columna: str) -> str:
     return f"date(substr({columna}, 1, 19), '-{HORA_CAMBIO_DE_DIA} hours')"
 
 
+def turno_para_la_app_de_gastos(fecha, turno: str) -> str:
+    """
+    El nombre con que la app de gastos del dueño (la PWA "Gastos — CyberBIOS",
+    repo CYBERBIOS WEB; campo `turno` de su colección `facturacion`) llama a un
+    turno de acá: "mañana", "tarde" o "noche" y, los domingos, "t1" (MAÑANA,
+    06-18) o "t2" (NOCHE, 18-06): allá tampoco existe la Tarde ese día. Las dos
+    apps tienen el mismo calendario, así que solo cambia el nombre; lo usa
+    envio_pwa_repo para asentar allá cada Cierre de Turno. `fecha` acepta lo
+    mismo que es_domingo().
+    """
+    if es_domingo(fecha):
+        return "t1" if turno == dominio.TURNO_MANANA else "t2"
+    return {dominio.TURNO_MANANA: "mañana", dominio.TURNO_TARDE: "tarde", dominio.TURNO_NOCHE: "noche"}[turno]
+
+
 def etiqueta_turno(fecha, turno: str) -> str:
     """
     Nombre legible de un turno según el día calendario al que
