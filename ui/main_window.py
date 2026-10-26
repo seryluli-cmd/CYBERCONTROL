@@ -73,26 +73,20 @@ from admin_remoto import modo as modo_remoto
 from errores import registrar_error
 from repositories import impresiones_repo, relevo_repo, usuarios_repo
 from turnos import MINUTOS_PARA_CIERRE_FORZOSO
-from ui.accesos_admin_window import AccesosAdminWindow
-from ui.admin_remoto_dialogo import DialogoEntrarDesdeOtraPC
 from ui.articulos_window import ArticulosWindow
 from ui.compras_window import ComprasWindow
+from ui.configuracion_admin_window import ConfiguracionAdminWindow
 from ui.impresiones_window import DialogoImpresiones
 from ui.ventas_window import VentasWindow
 from ui.consulta_ventas_window import ConsultaVentasWindow
 from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
 from ui.reportes_window import ReportesWindow
-from ui.tramites_window import DialogoTramites, DialogoGestionTramites
+from ui.tramites_window import DialogoTramites
 from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs
-from control_pcs.ui.cuenta_pc_reglas_dialogo import DialogoReglasCuentaPc
 from control_pcs.ui.cuenta_pc_dialogos import DialogoCobrarAntesDelCierre
 from control_pcs.repositories import cuentas_pc_repo
-from control_pcs.ui.pcs_gestion_dialogos import (
-    DialogoGestionEstaciones, DialogoGestionBonos, DialogoGestionBonosPlaystation,
-    DialogoGestionBonosPcstream,
-)
-from control_pcs.ui.miembros_window import MiembrosWindow, DialogoTramosTarifaMiembro, DialogoGestionBonosMiembro
+from control_pcs.ui.miembros_window import MiembrosWindow
 from control_pcs.ui.reservas_window import ReservasWindow
 from control_pcs.repositories import reservas_repo
 from ui.ingreso_caja import mensaje_del_sobre
@@ -491,8 +485,9 @@ class _VentanaDeBotones(QDialog):
     """
     Diálogo angosto con un título y una columna de botones grandes, todos
     del mismo tamaño para que la pantalla quede prolija, y un "Cerrar" al
-    final. Es la base de "Administrar Kiosko" y de "Configuración ADMIN":
-    cada una dice qué botones tiene (`_armar_botones`) y qué hace cada uno.
+    final. Es la base de "Administrar Kiosko", que dice qué botones tiene
+    (`_armar_botones`) y qué hace cada uno. ("Configuración ADMIN" la usaba también
+    hasta el 2026-10-26: hoy tiene su diseño propio, ui/configuracion_admin_window.py.)
     """
 
     ANCHO_BOTON = 320
@@ -504,11 +499,9 @@ class _VentanaDeBotones(QDialog):
         self.setWindowTitle(titulo)
         self.resize(360, alto)
 
-    def _armar_botones(self, botones: list, habilitados=None):
+    def _armar_botones(self, botones: list):
         """`botones`: lista de (texto, función) o (texto, función, clase), en el
-        orden en que se ven. La clase ("peligro", "primario") le da el color.
-        `habilitados`: las funciones que se pueden usar (None = todas); los
-        demás botones se ven en gris y no se pueden apretar."""
+        orden en que se ven. La clase ("peligro", "primario") le da el color."""
         layout = QVBoxLayout()
         layout.setContentsMargins(24, 24, 24, 24)
 
@@ -519,8 +512,7 @@ class _VentanaDeBotones(QDialog):
         layout.addSpacing(16)
 
         for texto, funcion, *clase in botones:
-            boton = self._agregar_boton(layout, texto, funcion, *clase)
-            boton.setEnabled(habilitados is None or funcion in habilitados)
+            self._agregar_boton(layout, texto, funcion, *clase)
 
         layout.addStretch()
         self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
@@ -589,76 +581,3 @@ class AdministrarKioskoWindow(_VentanaDeBotones):
     def _abrir_usuarios(self):
         UsuariosWindow(self.usuario, self).exec()
 
-
-class ConfiguracionAdminWindow(_VentanaDeBotones):
-    """
-    Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
-    Tiempo (walk-in), Bonos de PlayStation 5, Bonos de PCSTREAM, Tarifa por Hora
-    de Socios, las Reglas de Cuenta de PC (el tope de lo que puede deber una PC,
-    2026-10-25), Bonos de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
-    de administrador, ver ui/accesos_admin_window.py) y, en el mostrador, "Entrar desde
-    otra PC" (ui/admin_remoto_dialogo.py). La abre
-    cualquiera, pero un Operador solo puede usar Gestionar Estaciones (pedido del
-    dueño, 2026-10-19); el resto se ve en gris y es de ADMIN, sin excepción: no
-    hay permiso delegable para esto. Recibe el `usuario` para eso y porque el
-    catálogo de la PlayStation 5 vuelve a exigir en el repo que quien lo edita
-    sea Admin.
-
-    *Usar* esos catálogos (asignarle un bono ya creado a una PC o a la
-    PlayStation 5, cargar saldo con la tarifa ya fijada) sigue abierto a
-    cualquier operador desde la grilla de PCs y "Miembros". Separación
-    pedida explícitamente por el dueño: editar el
-    catálogo es tarea de super admin, usarlo no.
-    """
-
-    def __init__(self, usuario, parent=None):
-        super().__init__("Configuración ADMIN", 800, parent)
-        self.usuario = usuario
-        botones = [
-            ("🖥️  Gestionar Estaciones", self._abrir_estaciones),
-            ("🎟️  Gestionar Bonos", self._abrir_bonos),
-            ("🎮  Gestionar Bonos de PlayStation 5", self._abrir_bonos_playstation),
-            (f"🎥  Gestionar Bonos de {dominio.NOMBRE_PCSTREAM}", self._abrir_bonos_pcstream),
-            ("💲  Tarifa por Hora de Socios", self._configurar_tarifa),
-            ("💳  Reglas de Cuenta de PC", self._abrir_reglas_cuenta_pc),
-            ("🎁  Gestionar Bonos de Socios", self._abrir_bonos_miembro),
-            ("📄  Gestionar Trámites", self._abrir_tramites),
-            ("🔐  Accesos de Admin", self._abrir_accesos_admin),
-        ]
-        # Desde otra PC no se prende ni apaga la entrada desde otra PC: se apagaría
-        # a sí misma. Solo en el mostrador.
-        if not modo_remoto.es_copia_remota():
-            botones.append(("🌐  Entrar desde otra PC", self._abrir_entrar_desde_otra_pc))
-        # Un Operador entra pero solo usa Gestionar Estaciones; lo demás se ve en
-        # gris (pedido del dueño, 2026-10-19).
-        self._armar_botones(botones, habilitados=None if dominio.es_admin(usuario) else [self._abrir_estaciones])
-
-    def _abrir_estaciones(self):
-        DialogoGestionEstaciones(self.usuario, self).exec()
-
-    def _abrir_bonos(self):
-        DialogoGestionBonos(self).exec()
-
-    def _abrir_bonos_playstation(self):
-        DialogoGestionBonosPlaystation(self.usuario, self).exec()
-
-    def _abrir_bonos_pcstream(self):
-        DialogoGestionBonosPcstream(self).exec()
-
-    def _configurar_tarifa(self):
-        DialogoTramosTarifaMiembro(self).exec()
-
-    def _abrir_reglas_cuenta_pc(self):
-        DialogoReglasCuentaPc(self.usuario, self).exec()
-
-    def _abrir_bonos_miembro(self):
-        DialogoGestionBonosMiembro(self).exec()
-
-    def _abrir_tramites(self):
-        DialogoGestionTramites(self).exec()
-
-    def _abrir_accesos_admin(self):
-        AccesosAdminWindow(self).exec()
-
-    def _abrir_entrar_desde_otra_pc(self):
-        DialogoEntrarDesdeOtraPC(self.usuario, self).exec()

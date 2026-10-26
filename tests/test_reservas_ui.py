@@ -18,14 +18,14 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QDate, QTime  # noqa: E402
+from PySide6.QtCore import QDate, Qt, QTime  # noqa: E402
 from PySide6.QtWidgets import QApplication, QFrame, QPushButton  # noqa: E402
 
 import dominio  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from control_pcs.repositories import pcs_repo, reservas_habilitar_repo, reservas_repo  # noqa: E402
 from control_pcs.ui.reservas_dialogos import DialogoHabilitarReserva, DialogoNuevaReserva  # noqa: E402
-from control_pcs.ui.reservas_window import ReservasWindow  # noqa: E402
+from control_pcs.ui.reservas_window import COLOR_ESTADO, COLUMNA_ESTADO, ReservasWindow  # noqa: E402
 from ui.caja_window import CajaWindow, CierreTurnoWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
@@ -136,6 +136,45 @@ class TestVentanaReservas(_ConUnaReserva):
 
         self.assertIn("solo el Administrador", error.call_args.args[2])
         dialogo.assert_not_called()
+
+    def test_la_cabecera_cuenta_las_que_esperan_y_las_que_hay_que_reprogramar(self):
+        # Diseño del 2026-10-26 (maqueta "A"): pastillas en la cabecera oscura.
+        self._reservar(5000.0)  # mañana: espera, pero no es de hoy
+        pagada = reservas_repo.crear_reserva(self.ana, "Marta", "", dominio.EQUIPO_RESERVA_PC, self.pc2,
+                                             self.tres_horas, _manana_a_las(10), 3000.0, _efectivo(3000.0))
+        reservas_repo.marcar_no_vino(pagada, self.ana)  # pagó todo: queda A reprogramar
+
+        ventana = self._abrir(ReservasWindow(self._usuario()))
+
+        self.assertEqual(ventana.pastilla_hoy.text(), "HOY  0")
+        self.assertEqual(ventana.pastilla_esperan.text(), "ESPERAN  1")
+        self.assertEqual(ventana.pastilla_a_reprogramar.text(), "A REPROGRAMAR  1")
+        self.assertFalse(ventana.pastilla_a_reprogramar.isHidden())
+
+    def test_las_que_esperan_esconde_las_terminadas(self):
+        self._reservar(5000.0)
+        sena = reservas_repo.crear_reserva(self.ana, "Marta", "", dominio.EQUIPO_RESERVA_PC, self.pc2,
+                                           self.tres_horas, _manana_a_las(10), 1000.0, _efectivo(1000.0))
+        reservas_repo.marcar_no_vino(sena, self.ana)  # dejó seña: la pierde y termina
+        ventana = self._abrir(ReservasWindow(self._usuario()))
+        todas, las_que_esperan = ventana.findChild(QFrame, "pistaSegmentos").findChildren(QPushButton)
+        self.assertEqual(ventana.tabla.rowCount(), 2)
+        self.assertTrue(ventana.pastilla_a_reprogramar.isHidden())
+
+        las_que_esperan.click()
+        self.assertEqual([ventana.tabla.item(0, 2).text(), ventana.tabla.rowCount()], ["Juan Pérez", 1])
+
+        todas.click()
+        self.assertEqual(ventana.tabla.rowCount(), 2)
+
+    def test_el_estado_lleva_su_color_y_el_texto_de_siempre(self):
+        self._reservar(5000.0)
+
+        ventana = self._abrir(ReservasWindow(self._usuario()))
+
+        estado = ventana.tabla.item(0, COLUMNA_ESTADO)
+        self.assertEqual(estado.text(), "Pendiente")
+        self.assertEqual(estado.data(Qt.UserRole), COLOR_ESTADO[dominio.RESERVA_PENDIENTE])
 
 
 class TestDialogos(_ConUnaReserva):

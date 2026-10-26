@@ -1048,10 +1048,14 @@ class TestCopiaRemota(unittest.TestCase):
         estaciones, usuarios = pantallas[11], pantallas[8]
 
         def textos(pantalla, tipo=QPushButton):
-            return [widget.text() for widget in pantalla.findChildren(tipo)]
+            # Las tarjetas de Configuración ADMIN y Gestionar Estaciones llevan el
+            # título en accessibleName (su texto lo dibujan etiquetas de adentro).
+            return [widget.accessibleName() or widget.text() for widget in pantalla.findChildren(tipo)]
 
-        # Lo que solo se hace en el mostrador no aparece.
-        self.assertFalse(any("OTRA PC" in texto for texto in textos(configuracion)))
+        # Lo que solo se hace en el mostrador no aparece (y lo demás sí).
+        self.assertIn("Gestionar Estaciones", textos(configuracion))
+        self.assertFalse(any("otra pc" in texto.lower() for texto in textos(configuracion)))
+        self.assertIn("Fondo de pantalla", textos(estaciones))
         self.assertFalse(any("Actualizar el Cliente PC" in texto for texto in textos(estaciones)))
         self.assertNotIn("Copia de Seguridad", textos(usuarios))
         self.assertTrue(any("Entra solo un Administrador" in texto for texto in textos(login, QLabel)))

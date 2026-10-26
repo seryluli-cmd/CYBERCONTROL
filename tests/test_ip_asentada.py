@@ -232,3 +232,27 @@ class TestPantallaGestionEstaciones(BaseConBaseTemporal):
         self.assertEqual(_ips(self.pc1), (None, IP_PC1))
         self.assertEqual(dialogo.lista.item(self._fila(dialogo, "PC1"), 1).text(), "")
         self.assertEqual(dialogo.campo_ip.text(), "")
+
+    def test_la_cabecera_cuenta_las_estaciones_las_sin_conectar_y_las_de_ip_repetida(self):
+        # Diseño del 2026-10-26 (maqueta "A"): pastillas en la cabecera oscura.
+        dialogo = self._dialogo()
+        self.assertEqual(dialogo.pastilla_estaciones.text(), "3 ESTACIONES")
+        self.assertEqual(dialogo.pastilla_sin_conectar.text(), "1 SIN CONECTAR")
+        self.assertTrue(dialogo.pastilla_ip_repetida.isHidden())
+
+        pc3 = pcs_repo.estado_de_estacion("PC3")["estacion"]["id"]
+        pcs_repo.registrar_conexion(pc3, IP_PC1)
+        dialogo._cargar()
+
+        self.assertTrue(dialogo.pastilla_sin_conectar.isHidden())
+        self.assertFalse(dialogo.pastilla_ip_repetida.isHidden())
+        self.assertEqual(dialogo.pastilla_ip_repetida.text(), "2 CON IP REPETIDA")
+
+    def test_la_elegida_se_ve_en_grande(self):
+        dialogo = self._dialogo()
+        self.assertEqual(dialogo.nombre_elegida.text(), "—")
+
+        dialogo.lista.setCurrentCell(self._fila(dialogo, "PC2"), 0)
+
+        self.assertEqual(dialogo.nombre_elegida.text(), "PC2")
+        self.assertEqual(dialogo.campo_ip.text(), IP_PC2)

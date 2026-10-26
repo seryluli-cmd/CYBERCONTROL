@@ -725,4 +725,242 @@ HOJA_DE_ESTILOS = """
         border-bottom-width: 1px;
         margin-top: 2px;
     }
+
+    /* Configuración ADMIN, Gestionar Estaciones y Reservas con el diseño que eligió el
+       dueño el 2026-10-26 (maqueta "A", clara con cabecera cyber; las piezas están en
+       ui/piezas_ventana.py). Todo va por objectName o "clase", nunca por tipo de widget:
+       los avisos y las ventanas que se abren desde estas son hijas suyas y no tienen
+       que heredar nada. */
+    QFrame#cabeceraOscura {
+        background-color: #1E2330;
+        border: 1px solid #2B3242;
+        border-radius: 12px;
+    }
+    QFrame#cabeceraOscura > QLabel {
+        background: transparent;
+    }
+    QLabel#iconoCabecera {
+        font-size: 26px;
+    }
+    QLabel#tituloCabecera {
+        color: #F1F4F9;
+        font-size: 18px;
+        font-weight: 700;
+    }
+    QLabel#detalleCabecera {
+        color: #9AA4B5;
+        font-size: 12px;
+    }
+    /* La estela: celeste que se aclara hacia la derecha, como la cola del cometa del
+       mosaico (cabeza #EAF4FF, cola #4C8DFF). */
+    QFrame#estelaCabecera {
+        border: none;
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 rgba(76, 141, 255, 0),
+            stop:0.55 rgba(76, 141, 255, 90), stop:0.92 #4C8DFF, stop:1 #EAF4FF);
+    }
+    QLabel#pastillaCabecera {
+        border-radius: 11px;
+        padding: 3px 11px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel#pastillaCabecera[tono="azul"] {
+        background-color: rgba(76, 141, 255, 40);
+        border: 1px solid rgba(76, 141, 255, 110);
+        color: #9DC0FF;
+    }
+    QLabel#pastillaCabecera[tono="celeste"] {
+        background-color: rgba(34, 195, 230, 36);
+        border: 1px solid rgba(34, 195, 230, 110);
+        color: #8FE3F4;
+    }
+    QLabel#pastillaCabecera[tono="naranja"] {
+        background-color: rgba(245, 140, 50, 40);
+        border: 1px solid rgba(245, 140, 50, 120);
+        color: #FFB677;
+    }
+    QLabel#pastillaCabecera[tono="rojo"] {
+        background-color: rgba(255, 90, 102, 40);
+        border: 1px solid rgba(255, 90, 102, 120);
+        color: #FF9AA2;
+    }
+    QLabel#pastillaCabecera[tono="gris"] {
+        background-color: rgba(255, 255, 255, 14);
+        border: 1px solid #3A4358;
+        color: #C9CED8;
+    }
+    QFrame#panelBlanco {
+        background-color: #FFFFFF;
+        border: 1px solid #DDE2EA;
+        border-radius: 12px;
+    }
+    QFrame#panelBlanco > QLabel {
+        background: transparent;
+    }
+    QLabel#tituloDeSeccion {
+        color: #5B6472;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 2px 0 2px;
+    }
+    QFrame#lineaDivisoria {
+        background-color: #E4E7EC;
+        border: none;
+    }
+    /* Tarjeta de menú: botón grande con dibujito, título y para qué es. El texto lo
+       dibujan etiquetas de adentro (ver ui/piezas_ventana.tarjeta_de_menu). */
+    QPushButton[clase="tarjetaMenu"] {
+        background-color: #FFFFFF;
+        border: 1px solid #D5DBE5;
+        border-bottom: 3px solid #B9C1CF;
+        border-radius: 10px;
+        padding: 0;
+    }
+    QPushButton[clase="tarjetaMenu"]:hover {
+        background-color: #F7FAFF;
+        border-color: #4C8DFF;
+        border-bottom-color: #2F6FED;
+    }
+    QPushButton[clase="tarjetaMenu"]:pressed {
+        background-color: #EEF3FD;
+        border-bottom-width: 1px;
+        margin-top: 2px;
+    }
+    QPushButton[clase="tarjetaMenu"]:disabled {
+        background-color: #F3F5F8;
+        border-color: #E1E4E9;
+        border-bottom-color: #E1E4E9;
+    }
+    QPushButton[clase="tarjetaMenu"] > QLabel {
+        background: transparent;
+    }
+    QLabel#iconoTarjeta {
+        font-size: 21px;
+    }
+    QLabel#tituloTarjeta {
+        font-size: 13px;
+        font-weight: 700;
+        color: #1B2233;
+    }
+    QLabel#detalleTarjeta {
+        font-size: 11px;
+        color: #6B7585;
+    }
+    QLabel#tituloTarjeta:disabled, QLabel#detalleTarjeta:disabled {
+        color: #A7ADB8;
+    }
+    /* Teclas con relieve (como la barra y Venta): se hunden al apretarlas. */
+    QPushButton[clase="teclaBlanca"], QPushButton[clase="teclaAzul"],
+    QPushButton[clase="teclaVerde"], QPushButton[clase="teclaRoja"] {
+        border-radius: 8px;
+        padding: 7px 16px;
+        font-weight: 700;
+    }
+    QPushButton[clase="teclaBlanca"] {
+        background-color: #FFFFFF;
+        border: 1px solid #CDD3DE;
+        border-bottom: 3px solid #AEB6C4;
+        color: #1B2233;
+    }
+    QPushButton[clase="teclaBlanca"]:hover {
+        border-color: #4C8DFF;
+        border-bottom-color: #2F6FED;
+    }
+    QPushButton[clase="teclaAzul"] {
+        background-color: #2F6FED;
+        border: 1px solid #4C8DFF;
+        border-top-color: #7AAAFF;
+        border-bottom: 3px solid #173A85;
+        color: #FFFFFF;
+    }
+    QPushButton[clase="teclaAzul"]:hover {
+        background-color: #3D7BFF;
+    }
+    QPushButton[clase="teclaVerde"] {
+        background-color: #1F9D55;
+        border: 1px solid #34C374;
+        border-top-color: #6EE7A0;
+        border-bottom: 3px solid #0F5A30;
+        color: #FFFFFF;
+    }
+    QPushButton[clase="teclaVerde"]:hover {
+        background-color: #23B062;
+    }
+    QPushButton[clase="teclaRoja"] {
+        background-color: #FFFFFF;
+        border: 1px solid #E0A3A8;
+        border-bottom: 3px solid #C9727B;
+        color: #A6323C;
+    }
+    QPushButton[clase="teclaRoja"]:hover {
+        background-color: #FBEAEA;
+        border-color: #C96870;
+    }
+    QPushButton[clase="teclaBlanca"]:pressed, QPushButton[clase="teclaAzul"]:pressed,
+    QPushButton[clase="teclaVerde"]:pressed, QPushButton[clase="teclaRoja"]:pressed {
+        border-bottom-width: 1px;
+        margin-top: 2px;
+    }
+    QPushButton[clase="teclaBlanca"]:disabled, QPushButton[clase="teclaRoja"]:disabled,
+    QPushButton[clase="teclaAzul"]:disabled, QPushButton[clase="teclaVerde"]:disabled {
+        background-color: #F5F6F8;
+        border-color: #E1E4E9;
+        border-bottom-color: #E1E4E9;
+        color: #A7ADB8;
+    }
+    /* "Todas / Las que esperan" de Reservas: dos botones en una pista gris; el elegido,
+       oscuro como la barra. */
+    QFrame#pistaSegmentos {
+        background-color: #E3E7EE;
+        border-radius: 9px;
+    }
+    QPushButton[clase="segmento"] {
+        background: transparent;
+        border: none;
+        border-radius: 7px;
+        padding: 6px 14px;
+        color: #3C4350;
+        font-weight: 700;
+    }
+    QPushButton[clase="segmento"]:hover {
+        background-color: #D5DBE5;
+    }
+    QPushButton[clase="segmento"]:checked {
+        background-color: #1E2330;
+        border: none;
+        color: #FFFFFF;
+    }
+    QTableWidget#tablaEstaciones, QTableWidget#tablaReservas {
+        border-radius: 10px;
+    }
+    QLabel#nombreEstacion {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1B2233;
+    }
+    QLineEdit#campoIpAsentada {
+        font-family: Consolas;
+        font-size: 15px;
+        font-weight: 700;
+        color: #1D48A0;
+        background-color: #F3F6FB;
+        border: 1px dashed #B9C4D8;
+    }
+    QLabel#avisoIp {
+        background-color: #FFF4E5;
+        border: 1px solid #F5C98B;
+        border-radius: 8px;
+        color: #8A4B08;
+        padding: 7px 10px;
+    }
+    QFrame#pieAyuda {
+        background-color: #F6F8FB;
+        border: 1px solid #E1E5EC;
+        border-radius: 10px;
+    }
+    QFrame#pieAyuda > QLabel {
+        background: transparent;
+        color: #5B6472;
+        font-size: 12px;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)

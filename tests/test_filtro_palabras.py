@@ -309,7 +309,7 @@ class TestBotonEnGestionarEstaciones(_ConDialogo):
     def test_gestionar_estaciones_tiene_el_boton_y_abre_la_pantalla_del_filtro(self):
         gestion = pcs_gestion_dialogos.DialogoGestionEstaciones({"rol": dominio.ROL_ADMIN})
         self.addCleanup(gestion.deleteLater)
-        botones = [b for b in gestion.findChildren(QPushButton) if b.text() == "Filtro de palabras de las PCs..."]
+        botones = [b for b in gestion.findChildren(QPushButton) if b.accessibleName() == "Filtro de palabras"]
         self.assertEqual(len(botones), 1)
 
         with mock.patch.object(pcs_gestion_dialogos.DialogoFiltroPalabras, "exec") as abrir:

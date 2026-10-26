@@ -35,6 +35,8 @@ from ui.main_window import MainWindow  # noqa: E402
 from ui.utils import crear_tabla, icono_de_emoji  # noqa: E402
 from control_pcs.ui.miembros_window import DialogoTramosTarifaMiembro  # noqa: E402
 from control_pcs.ui.pcs_detalle import PanelDetalleEstacion  # noqa: E402
+from control_pcs.ui.pcs_gestion_dialogos import DialogoGestionEstaciones  # noqa: E402
+from control_pcs.ui.reservas_window import ReservasWindow  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
@@ -295,6 +297,32 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
 
         self.assertEqual(letra_del_dialogo, _regla("QWidget")["color"].lower())
         self.assertNotEqual(letra_del_panel, letra_del_dialogo)  # el panel sí, con su letra clara
+
+    def test_los_avisos_que_abren_reservas_y_gestionar_estaciones_no_heredan_su_estilo(self):
+        # El diseño del 2026-10-26 (ui/piezas_ventana.py) pinta sus piezas por objectName
+        # o "clase", y a las etiquetas de un panel solo con ">": los avisos y formularios
+        # que se abren encima son hijos de estas ventanas y tienen que verse como siempre.
+        self.addCleanup(_app.setStyleSheet, _app.styleSheet())
+        _app.setStyleSheet(programa.HOJA_DE_ESTILOS)
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        reservas = ReservasWindow(admin)
+        estaciones = DialogoGestionEstaciones(admin)
+        for ventana, etiqueta_propia in (
+            (reservas, reservas.findChild(QFrame, "pieAyuda").findChild(QLabel)),
+            (estaciones, estaciones.findChild(QLabel, "tituloDeSeccion")),
+        ):
+            self.addCleanup(ventana.deleteLater)
+            dialogo = QDialog(ventana)
+            texto_del_dialogo = QLabel("¿Desactivar la estación?", dialogo)
+            QVBoxLayout(dialogo).addWidget(texto_del_dialogo)
+            for etiqueta in (etiqueta_propia, texto_del_dialogo):
+                etiqueta.ensurePolished()
+
+            letra_propia = etiqueta_propia.palette().color(QPalette.WindowText).name()
+            letra_del_dialogo = texto_del_dialogo.palette().color(QPalette.WindowText).name()
+
+            self.assertEqual(letra_del_dialogo, _regla("QWidget")["color"].lower(), ventana.windowTitle())
+            self.assertNotEqual(letra_propia, letra_del_dialogo, ventana.windowTitle())  # la ventana sí, en gris
 
 
 if __name__ == "__main__":

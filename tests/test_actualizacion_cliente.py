@@ -921,7 +921,7 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
     def test_gestionar_estaciones_tiene_el_boton(self):
         gestion = pcs_gestion_dialogos.DialogoGestionEstaciones({"rol": dominio.ROL_ADMIN})
         self.addCleanup(gestion.deleteLater)
-        botones = [b for b in gestion.findChildren(QPushButton) if b.text() == "Actualizar el Cliente PC de las PCs..."]
+        botones = [b for b in gestion.findChildren(QPushButton) if b.accessibleName() == "Actualizar el Cliente PC"]
         self.assertEqual(len(botones), 1)
 
         with mock.patch.object(pcs_gestion_dialogos.DialogoActualizarCliente, "exec") as abrir:

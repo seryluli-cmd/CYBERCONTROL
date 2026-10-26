@@ -4,7 +4,7 @@ pcs_gestion_dialogos.py
 Diálogos para ADMINISTRAR los catálogos de Estaciones (las PCs del local, su
 IP y la contraseña de admin de los Clientes PC) y de Bonos de Tiempo de walk-ins (mismo
 espíritu que "Gestionar Rubros" en Artículos), más los de la PlayStation 5 y los
-de PCSTREAM. Solo se abren desde `ConfiguracionAdminWindow` (ui/main_window.py):
+de PCSTREAM. Solo se abren desde `ConfiguracionAdminWindow` (ui/configuracion_admin_window.py):
 los de bonos, solo un ADMIN; Gestionar Estaciones, también un Operador, salvo
 la contraseña de las PCs clientes y Actualizar el Cliente PC (pedido del dueño,
 2026-10-19). Los bonos exclusivos de socios se gestionan aparte, en
@@ -12,9 +12,10 @@ miembros_window.py.
 """
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QPushButton,
-    QTableWidgetItem, QVBoxLayout,
+    QDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QStyle, QStyledItemDelegate,
+    QStyleOptionViewItem, QTableWidgetItem, QVBoxLayout,
 )
 
 import dominio
@@ -24,10 +25,36 @@ from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBa
 from control_pcs.ui.pcs_actualizacion_dialogo import DialogoActualizarCliente
 from control_pcs.ui.pcs_filtro_dialogo import DialogoFiltroPalabras
 from control_pcs.ui.pcs_fondo_dialogo import DialogoFondoPantalla
+from ui.piezas_ventana import (
+    TONO_AZUL, TONO_GRIS, TONO_ROJO, agregar_pastilla, bloquear_tarjeta, cabecera_oscura, linea_divisoria,
+    panel_blanco, tarjeta_de_menu, tecla, titulo_de_seccion,
+)
 from ui.utils import (
-    aplicar_clase, confirmar, encadenar_enter, manejar_errores, mostrar_error,
+    confirmar, encadenar_enter, manejar_errores, mostrar_error,
     mostrar_info, sin_boton_por_defecto, crear_tabla,
 )
+
+
+class _DelegadoIp(QStyledItemDelegate):
+    """La columna "IP asentada" de Gestionar Estaciones: la IP en letra de máquina
+    (se leen mejor los números) y, si la estación no tiene, "todavía no se conectó"
+    en gris. El texto de la celda sigue siendo la IP o nada: esto es solo cómo se ve."""
+
+    def paint(self, pintor, opcion, indice):
+        opcion = QStyleOptionViewItem(opcion)
+        self.initStyleOption(opcion, indice)
+        if opcion.text:
+            opcion.font = QFont("Consolas", 10)
+        opcion.widget.style().drawControl(QStyle.CE_ItemViewItem, opcion, pintor, opcion.widget)
+        if opcion.text:
+            return
+        pintor.save()
+        letra = QFont(opcion.font)
+        letra.setItalic(True)
+        pintor.setFont(letra)
+        pintor.setPen(QColor("#A7ADB8"))
+        pintor.drawText(opcion.rect.adjusted(9, 0, 0, 0), Qt.AlignVCenter | Qt.AlignLeft, "todavía no se conectó")
+        pintor.restore()
 
 
 class DialogoGestionEstaciones(QDialog):
@@ -44,33 +71,44 @@ class DialogoGestionEstaciones(QDialog):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Gestionar Estaciones")
-        self.resize(440, 580)
+        self.resize(920, 760)
         self._armar_interfaz()
         self._cargar()
 
     def _armar_interfaz(self):
-        self.lista = crear_tabla(["Estación", "IP asentada"], estirar=0, por_filas=True, una_sola=True)
+        """El diseño que eligió el dueño el 2026-10-26 (maqueta "A"): cabecera oscura
+        con cuántas estaciones hay, la lista a la izquierda y a la derecha la elegida
+        (su IP, Renombrar y, aparte, Desactivar) y lo que se manda a todas las PCs."""
+        es_admin = dominio.es_admin(self.usuario)
+        cabecera = cabecera_oscura("🖥️", "Gestionar Estaciones", "Las PCs del local, su IP y lo que se les manda a todas")
+        self.pastilla_estaciones = agregar_pastilla(cabecera, "", TONO_AZUL)
+        self.pastilla_sin_conectar = agregar_pastilla(cabecera, "", TONO_GRIS)
+        self.pastilla_ip_repetida = agregar_pastilla(cabecera, "", TONO_ROJO)
+
+        # Izquierda: la lista, con el alta arriba.
+        self.lista = crear_tabla(["Estación", "IP asentada"], estirar=1, por_filas=True, una_sola=True)
+        self.lista.setObjectName("tablaEstaciones")
+        self.lista.setShowGrid(False)
+        self.lista.verticalHeader().setDefaultSectionSize(32)
+        self.lista.setColumnWidth(0, 150)
+        self.lista.setItemDelegateForColumn(1, _DelegadoIp(self.lista))
+        self.lista.itemSelectionChanged.connect(self._al_cambiar_seleccion)
 
         self.campo_nuevo = QLineEdit()
         self.campo_nuevo.setPlaceholderText("Nombre de la estación nueva (ej. PC 5)...")
-        boton_agregar = QPushButton("Agregar")
-        aplicar_clase(boton_agregar, "primario")
-        boton_agregar.clicked.connect(self._agregar)
         encadenar_enter(self.campo_nuevo, accion_final=self._agregar)
-
         fila_agregar = QHBoxLayout()
         fila_agregar.addWidget(self.campo_nuevo)
-        fila_agregar.addWidget(boton_agregar)
+        fila_agregar.addWidget(tecla("＋  AGREGAR", self._agregar, "teclaAzul"))
 
-        boton_renombrar = QPushButton("Renombrar seleccionada")
-        boton_renombrar.clicked.connect(self._renombrar)
-        boton_desactivar = QPushButton("Desactivar seleccionada")
-        aplicar_clase(boton_desactivar, "peligro")
-        boton_desactivar.clicked.connect(self._desactivar)
+        panel_lista, capa_lista = panel_blanco()
+        capa_lista.addWidget(titulo_de_seccion("Estaciones activas"))
+        capa_lista.addLayout(fila_agregar)
+        capa_lista.addWidget(self.lista, 1)
 
-        fila_acciones = QHBoxLayout()
-        fila_acciones.addWidget(boton_renombrar)
-        fila_acciones.addWidget(boton_desactivar)
+        # Derecha, arriba: la estación elegida.
+        self.nombre_elegida = QLabel()
+        self.nombre_elegida.setObjectName("nombreEstacion")
 
         # IP asentada de la estación seleccionada: la asienta sola
         # pcs_repo.registrar_conexion la PRIMERA vez que el Cliente PC de esa PC
@@ -81,87 +119,117 @@ class DialogoGestionEstaciones(QDialog):
         # mostrar. "Traer IP" relee la base por si la PC conectó recién, sin
         # cerrar el diálogo; "Borrar IP" la olvida para que se asiente de nuevo.
         self.campo_ip = QLineEdit()
+        self.campo_ip.setObjectName("campoIpAsentada")
         self.campo_ip.setReadOnly(True)
         self.campo_ip.setPlaceholderText("Se asienta sola al conectarse")
-        boton_traer_ip = QPushButton("Traer IP")
-        boton_traer_ip.clicked.connect(self._traer_ip)
-        boton_borrar_ip = QPushButton("Borrar IP")
-        boton_borrar_ip.clicked.connect(self._borrar_ip)
-
         fila_ip = QHBoxLayout()
-        fila_ip.addWidget(QLabel("IP asentada:"))
-        fila_ip.addWidget(self.campo_ip)
-        fila_ip.addWidget(boton_traer_ip)
-        fila_ip.addWidget(boton_borrar_ip)
+        fila_ip.addWidget(self.campo_ip, 1)
+        fila_ip.addWidget(tecla("TRAER IP", self._traer_ip))
+        fila_ip.addWidget(tecla("BORRAR IP", self._borrar_ip))
 
         # Lo que conviene saber de esa IP (repetida en otra estación, o la PC se
         # conecta desde otra); oculto si está todo bien.
         self.aviso_ip = QLabel()
+        self.aviso_ip.setObjectName("avisoIp")
         self.aviso_ip.setWordWrap(True)
-        self.aviso_ip.setStyleSheet("color: #C62828;")
         self.aviso_ip.hide()
 
-        self.lista.itemSelectionChanged.connect(self._al_cambiar_seleccion)
+        # Desactivar, en rojo y en la otra punta: que no se apriete por Renombrar.
+        fila_acciones = QHBoxLayout()
+        fila_acciones.addWidget(tecla("✏️  RENOMBRAR", self._renombrar))
+        fila_acciones.addStretch()
+        fila_acciones.addWidget(tecla("DESACTIVAR", self._desactivar, "teclaRoja"))
 
-        boton_clave_admin = QPushButton("Cambiar contraseña de PC clientes...")
-        boton_clave_admin.clicked.connect(self._cambiar_clave_admin_pcs)
+        panel_elegida, capa_elegida = panel_blanco()
+        capa_elegida.addWidget(titulo_de_seccion("Estación elegida"))
+        capa_elegida.addWidget(self.nombre_elegida)
+        capa_elegida.addWidget(titulo_de_seccion("IP asentada"))
+        capa_elegida.addLayout(fila_ip)
+        capa_elegida.addWidget(self.aviso_ip)
+        capa_elegida.addWidget(linea_divisoria())
+        capa_elegida.addLayout(fila_acciones)
+
+        # Derecha, abajo: lo que se manda a todas las PCs.
+        panel_todas, capa_todas = panel_blanco()
+        capa_todas.setSpacing(8)
+        capa_todas.addWidget(titulo_de_seccion("Para todas las PCs"))
+        capa_todas.addWidget(tarjeta_de_menu(
+            "🖼️", "Fondo de pantalla", "La imagen de la pantalla de bloqueo", self._abrir_fondo, alto=50))
+        capa_todas.addWidget(tarjeta_de_menu(
+            "🚫", "Filtro de palabras", "Lo que no se puede escribir en las PCs", self._abrir_filtro, alto=50))
         # Solo un Admin (con esa contraseña se sale del bloqueo de una PC): el
-        # Operador lo ve en gris.
-        boton_clave_admin.setEnabled(dominio.es_admin(self.usuario))
-
-        boton_fondo = QPushButton("Fondo de pantalla de las PCs...")
-        boton_fondo.clicked.connect(self._abrir_fondo)
-
-        boton_filtro = QPushButton("Filtro de palabras de las PCs...")
-        boton_filtro.clicked.connect(self._abrir_filtro)
-
-        boton_actualizar = QPushButton("Actualizar el Cliente PC de las PCs...")
-        boton_actualizar.clicked.connect(self._abrir_actualizacion)
-
-        boton_cerrar = QPushButton("Cerrar")
-        boton_cerrar.clicked.connect(self.close)
-
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Estaciones activas:"))
-        layout.addWidget(self.lista)
-        layout.addLayout(fila_agregar)
-        layout.addLayout(fila_acciones)
-        layout.addLayout(fila_ip)
-        layout.addWidget(self.aviso_ip)
-        layout.addWidget(boton_clave_admin)
-        layout.addWidget(boton_fondo)
-        layout.addWidget(boton_filtro)
+        # Operador la ve en gris, con candado.
+        tarjeta_clave = tarjeta_de_menu(
+            "🔑", "Contraseña de las PCs", "La de la \"A\" de la pantalla de bloqueo",
+            self._cambiar_clave_admin_pcs, alto=50)
+        if not es_admin:
+            bloquear_tarjeta(tarjeta_clave)
+        capa_todas.addWidget(tarjeta_clave)
         # Mandar una versión nueva del Cliente PC firma el .exe con la clave que
         # vive en la PC del mostrador: solo se hace ahí (no desde otra PC).
-        if modo_remoto.es_copia_remota():
-            boton_actualizar.deleteLater()
-        else:
+        if not modo_remoto.es_copia_remota():
+            tarjeta_actualizar = tarjeta_de_menu(
+                "⬆️", "Actualizar el Cliente PC", "Manda la versión nueva a todas las PCs",
+                self._abrir_actualizacion, alto=50)
             # Y solo un Admin: lo que se manda se instala en todas las PCs. El
             # Operador lo ve en gris.
-            boton_actualizar.setEnabled(dominio.es_admin(self.usuario))
-            layout.addWidget(boton_actualizar)
-        layout.addWidget(boton_cerrar)
-        self.setLayout(layout)
+            if not es_admin:
+                bloquear_tarjeta(tarjeta_actualizar)
+            capa_todas.addWidget(tarjeta_actualizar)
+
+        derecha = QVBoxLayout()
+        derecha.setSpacing(12)
+        derecha.addWidget(panel_elegida)
+        derecha.addWidget(panel_todas)
+        derecha.addStretch()
+        cuerpo = QHBoxLayout()
+        cuerpo.setSpacing(12)
+        cuerpo.addWidget(panel_lista, 11)
+        cuerpo.addLayout(derecha, 10)
+
+        pie = QHBoxLayout()
+        pie.addStretch()
+        pie.addWidget(tecla("CERRAR", self.close, "teclaRoja"))
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addLayout(cuerpo, 1)
+        layout.addLayout(pie)
         sin_boton_por_defecto(self)
         self.campo_nuevo.setFocus()
 
     @manejar_errores
     def _cargar(self, seleccionar_id: int = None):
         """Recarga la lista (con la IP asentada de cada una; en rojo si está
-        repetida) y, si se pide, vuelve a dejar elegida esa estación."""
+        repetida), las pastillas de la cabecera y, si se pide, vuelve a dejar
+        elegida esa estación."""
         self.estaciones = pcs_repo.listar_estaciones()
         self.ips_repetidas = pcs_repo.ips_asentadas_repetidas()
         self.lista.setRowCount(0)
         for estacion in self.estaciones:
             fila = self.lista.rowCount()
             self.lista.insertRow(fila)
-            self.lista.setItem(fila, 0, QTableWidgetItem(estacion["nombre"]))
+            item_nombre = QTableWidgetItem(estacion["nombre"])
+            letra = item_nombre.font()
+            letra.setBold(True)
+            item_nombre.setFont(letra)
+            self.lista.setItem(fila, 0, item_nombre)
             item_ip = QTableWidgetItem(estacion["ip_asentada"] or "")
             if estacion["ip_asentada"] in self.ips_repetidas:
                 item_ip.setForeground(Qt.red)
             self.lista.setItem(fila, 1, item_ip)
             if estacion["id"] == seleccionar_id:
                 self.lista.setCurrentCell(fila, 0)
+
+        sin_conectar = sum(1 for estacion in self.estaciones if not estacion["ip_asentada"])
+        con_ip_repetida = sum(1 for estacion in self.estaciones if estacion["ip_asentada"] in self.ips_repetidas)
+        self.pastilla_estaciones.setText(f"{len(self.estaciones)} ESTACIONES")
+        self.pastilla_sin_conectar.setText(f"{sin_conectar} SIN CONECTAR")
+        self.pastilla_sin_conectar.setVisible(bool(sin_conectar))
+        self.pastilla_ip_repetida.setText(f"{con_ip_repetida} CON IP REPETIDA")
+        self.pastilla_ip_repetida.setVisible(bool(con_ip_repetida))
         self._al_cambiar_seleccion()
 
     def _seleccionada(self):
@@ -212,10 +280,12 @@ class DialogoGestionEstaciones(QDialog):
         que relee fresco si hace falta -- y, si corresponde, un aviso sobre ella."""
         fila = self.lista.currentRow()
         if fila < 0 or fila >= len(self.estaciones):
+            self.nombre_elegida.setText("—")
             self.campo_ip.clear()
             self.aviso_ip.hide()
             return
         estacion = self.estaciones[fila]
+        self.nombre_elegida.setText(estacion["nombre"])
         self.campo_ip.setText(estacion["ip_asentada"] or "")
         aviso = self._aviso_de_ip(estacion)
         self.aviso_ip.setText(aviso)
