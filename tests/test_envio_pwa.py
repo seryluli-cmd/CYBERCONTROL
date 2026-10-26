@@ -37,6 +37,7 @@ from repositories import (  # noqa: E402
 )
 from ui.caja_window import CierreTurnoWindow  # noqa: E402
 from ui.configuracion_admin_window import ConfiguracionAdminWindow  # noqa: E402
+from ui.control_cierres_window import ControlCierresWindow  # noqa: E402
 from ui.envio_pwa_dialogo import DialogoEnvioPwa  # noqa: E402
 from ui.envio_pwa_progreso import (  # noqa: E402
     ENVIADO, ERROR, PENDIENTE, SEGUNDOS_MAXIMOS, TOPE_SIN_CONFIRMAR, DialogoEnviandoCierre,
@@ -759,6 +760,125 @@ class TestBarraDeEnvio(_BaseDeEnvios):
         with conexion_db() as conexion:
             cierre_id = conexion.execute("SELECT MAX(id) AS id FROM cierres_turno").fetchone()["id"]
         self.assertEqual(barra.call_args.args[0], cierre_id)
+
+
+class TestMandarCierreAMano(_BaseDeEnvios):
+    """El botón "Mandar a la app de gastos" de Control de Cierres (pedido del dueño,
+    2026-10-26): un cierre hecho con el envío apagado, o borrado por error allá, se
+    manda a pedido; al mismo documento, así no se duplica."""
+
+    def _url(self, cierre):
+        return f"{envio_pwa_repo.URL_FIRESTORE}/facturacion/cybercontrol-{cierre['id']}-2026-01-05"
+
+    def test_un_cierre_hecho_con_el_envio_apagado_se_manda_a_pedido(self):
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+        self.assertIsNone(self._fila(cierre["id"]))
+        envio_pwa_repo.activar(self.admin_id, True)
+
+        resultado = envio_pwa_repo.mandar_cierre(self.admin_id, cierre["id"])
+
+        self.assertEqual(resultado["activado"], True)
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_PENDIENTE)
+        self.assertTrue(envio_pwa_repo._hay_novedades.is_set())  # el hilo lo manda ya
+        envio_pwa_repo.enviar_pendientes(_a_las(14, 1), transporte=self.app)
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_ENVIADO)
+        self.assertEqual([pedido[1] for pedido in self.app.patches()], [self._url(cierre)])
+
+    def test_uno_ya_enviado_se_vuelve_a_mandar_al_mismo_documento(self):
+        envio_pwa_repo.activar(self.admin_id, True)
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+        envio_pwa_repo.enviar_pendientes(_a_las(14, 1), transporte=self.app)
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_ENVIADO)
+
+        envio_pwa_repo.mandar_cierre(self.admin_id, cierre["id"])
+
+        fila = self._fila(cierre["id"])
+        self.assertEqual((fila["estado"], fila["intentos"], fila["enviado_en"], fila["ultimo_error"]),
+                         (dominio.ENVIO_PENDIENTE, 0, None, None))
+        envio_pwa_repo.enviar_pendientes(_a_las(14, 2), transporte=self.app)
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_ENVIADO)
+        self.assertEqual([pedido[1] for pedido in self.app.patches()], [self._url(cierre)] * 2)
+
+    def test_con_el_envio_apagado_queda_en_la_cola_hasta_prenderlo(self):
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+
+        resultado = envio_pwa_repo.mandar_cierre(self.admin_id, cierre["id"])
+
+        self.assertEqual(resultado["activado"], False)
+        self.assertFalse(envio_pwa_repo._hay_novedades.is_set())
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_PENDIENTE)
+        envio_pwa_repo.enviar_pendientes(_a_las(14, 1), transporte=self.app)
+        self.assertEqual(self.app.patches(), [])
+        envio_pwa_repo.activar(self.admin_id, True)
+        envio_pwa_repo.enviar_pendientes(_a_las(14, 2), transporte=self.app)
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_ENVIADO)
+
+    def test_solo_el_admin_y_solo_un_cierre_que_existe(self):
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+
+        with self.assertRaises(PermissionError):
+            envio_pwa_repo.mandar_cierre(self.toby_id, cierre["id"])
+        with self.assertRaises(ValueError):
+            envio_pwa_repo.mandar_cierre(self.admin_id, 9999)
+        self.assertIsNone(self._fila(cierre["id"]))
+
+    def _control_de_cierres(self, usuario_id):
+        ventana = ControlCierresWindow(dict(usuarios_repo.obtener_usuario(usuario_id)))
+        self.addCleanup(ventana.deleteLater)
+        return ventana
+
+    def test_el_boton_lo_ve_solo_el_admin_y_en_el_mostrador_abre_la_barra(self):
+        envio_pwa_repo.activar(self.admin_id, True)
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+        self.assertFalse(self._control_de_cierres(self.toby_id).boton_mandar.isVisibleTo(
+            self._control_de_cierres(self.toby_id)))
+        ventana = self._control_de_cierres(self.admin_id)
+        self.assertTrue(ventana.boton_mandar.isVisibleTo(ventana))
+        ventana.tabla.selectRow(0)
+
+        with mock.patch("ui.control_cierres_window.confirmar", return_value=True), \
+                mock.patch("ui.control_cierres_window.DialogoEnviandoCierre") as barra:
+            ventana.boton_mandar.click()
+
+        barra.assert_called_once()
+        self.assertEqual(barra.call_args.args[0], cierre["id"])
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_PENDIENTE)
+
+    def test_desde_otra_pc_avisa_que_lo_manda_el_mostrador_y_no_abre_la_barra(self):
+        envio_pwa_repo.activar(self.admin_id, True)
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+        ventana = self._control_de_cierres(self.admin_id)
+        ventana.tabla.selectRow(0)
+
+        with mock.patch("ui.control_cierres_window.confirmar", return_value=True), \
+                mock.patch("ui.control_cierres_window.modo_remoto.es_copia_remota", return_value=True), \
+                mock.patch("ui.control_cierres_window.mostrar_info") as aviso, \
+                mock.patch("ui.control_cierres_window.DialogoEnviandoCierre") as barra:
+            ventana.boton_mandar.click()
+
+        barra.assert_not_called()
+        self.assertIn("mostrador", aviso.call_args.args[2])
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_PENDIENTE)
+
+    def test_sin_elegir_un_cierre_avisa(self):
+        self._turno_de_toby()
+        turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+        ventana = self._control_de_cierres(self.admin_id)
+        ventana.tabla.clearSelection()
+        ventana.tabla.setCurrentCell(-1, -1)
+
+        with mock.patch("ui.control_cierres_window.mostrar_error") as error, \
+                mock.patch("ui.control_cierres_window.DialogoEnviandoCierre") as barra:
+            ventana.boton_mandar.click()
+
+        error.assert_called_once()
+        barra.assert_not_called()
 
 
 if __name__ == "__main__":

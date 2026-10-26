@@ -165,6 +165,37 @@ def encolar(conexion, cierre_id: int, ahora: datetime = None) -> bool:
     return True
 
 
+def mandar_cierre(usuario_id: int, cierre_id: int) -> dict:
+    """
+    El botón "Mandar a la app de gastos" de Control de Cierres (pedido del dueño,
+    2026-10-26): un cierre hecho con el envío apagado, o uno que se borró por
+    error allá, se manda (o se vuelve a mandar) ahora. Solo Admin. Lo deja
+    PENDIENTE en la cola (si ya estaba, lo vuelve a poner desde cero; el documento
+    es el mismo, así que allá se pisa, no se duplica) y despierta al hilo. Con el
+    envío apagado queda en la cola y sale cuando se prenda: {"activado": False}.
+    Desde otra PC lo ejecuta el mostrador (lista blanca), que es donde vive el hilo.
+    """
+    usuarios_repo.exigir_admin(usuario_id, "mandar un cierre a la app de gastos")
+    with conexion_db() as conexion:
+        fila = conexion.execute("SELECT fecha FROM cierres_turno WHERE id = ?", (cierre_id,)).fetchone()
+        if fila is None:
+            raise ValueError(f"No existe el cierre Nº {cierre_id}.")
+        activado = _activado(conexion)
+        conexion.execute(
+            """
+            INSERT INTO envios_pwa (cierre_id, documento_id, estado, encolado_en)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(cierre_id) DO UPDATE SET
+                estado = excluded.estado, intentos = 0, proximo_intento = NULL,
+                ultimo_error = NULL, enviado_en = NULL, encolado_en = excluded.encolado_en
+            """,
+            (cierre_id, documento_id(cierre_id, fila["fecha"]), dominio.ENVIO_PENDIENTE, datetime.now().isoformat()),
+        )
+    if activado:
+        avisar_que_hay_un_cierre()
+    return {"activado": activado, "documento_id": documento_id(cierre_id, fila["fecha"])}
+
+
 def datos_del_cierre(conexion, cierre_id: int) -> dict:
     """
     Lo que se asienta allá de un cierre, con las claves de la app (ver el

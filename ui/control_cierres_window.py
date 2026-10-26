@@ -26,14 +26,16 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 import dominio
+from admin_remoto import modo as modo_remoto
 from turnos import MINUTOS_AVISO_ANTES_DEL_FIN, MINUTOS_PARA_CIERRE_FORZOSO, etiqueta_turno
-from repositories import turnos_repo
+from repositories import envio_pwa_repo, turnos_repo
 from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta
+from ui.envio_pwa_progreso import DialogoEnviandoCierre
 from ui.ingreso_caja import texto_de_la_diferencia
 from ui.tarjeta_cierre import TarjetaCierreDeTurno
 from ui.utils import (
     formato_pesos, mostrar_error, manejar_errores, aplicar_clase, sin_boton_por_defecto, crear_tabla, pedir_pesos,
-    mostrar_columna_entera,
+    mostrar_columna_entera, confirmar, mostrar_info,
 )
 
 # Columnas de la tabla de cierres que se ensanchan para leerse enteras.
@@ -170,12 +172,19 @@ class ControlCierresWindow(QDialog):
         # Lo contado en el sobre lo carga solo el dueño (pedido 2026-10-18; el repo
         # también lo exige): una empleada con el permiso ve los cierres, nada más.
         boton_verificar.setVisible(dominio.es_admin(self.usuario))
+        # Mandar (o volver a mandar) un cierre a la app de gastos del dueño (pedido
+        # suyo, 2026-10-26): para uno hecho con el envío apagado o borrado por error
+        # allá. Solo el Admin, como el sobre.
+        self.boton_mandar = QPushButton("Mandar a la app de gastos")
+        self.boton_mandar.clicked.connect(self._mandar_a_la_app)
+        self.boton_mandar.setVisible(dominio.es_admin(self.usuario))
         boton_salir = QPushButton("Salir")
         boton_salir.clicked.connect(self.close)
 
         botones = QHBoxLayout()
         botones.addWidget(boton_detalle)
         botones.addWidget(boton_verificar)
+        botones.addWidget(self.boton_mandar)
         botones.addStretch()
         botones.addWidget(boton_salir)
 
@@ -284,6 +293,40 @@ class ControlCierresWindow(QDialog):
 
         turnos_repo.verificar_cierre(cierre["id"], monto, self.usuario["id"])
         self._cargar()
+
+    @manejar_errores
+    def _mandar_a_la_app(self):
+        """El cierre seleccionado se manda (o se vuelve a mandar) a la app de gastos
+        del dueño: lo encola envio_pwa_repo.mandar_cierre y lo manda el hilo del
+        mostrador. En el mostrador se ve la barra "ENVIANDO CIERRE DE TURNO"; desde
+        otra PC solo se avisa (el hilo vive en el mostrador)."""
+        fila = self.tabla.currentRow()
+        if fila < 0:
+            mostrar_error(self, "Nada seleccionado", "Elegí primero un cierre de la lista.")
+            return
+        cierre = self.cierres[fila]
+        turno = f"Turno {etiqueta_turno(cierre['fecha'], cierre['turno'])} del {cierre['fecha']} — {cierre['responsable']}"
+        if not confirmar(
+            self, "Mandar a la app de gastos",
+            f"{turno}\n\n¿Lo mando a la app de gastos?\n"
+            "Si ya estaba allá, se pisa con los mismos números (no se duplica).",
+        ):
+            return
+        resultado = envio_pwa_repo.mandar_cierre(self.usuario["id"], cierre["id"])
+        if not resultado["activado"]:
+            mostrar_info(
+                self, "Queda en la cola",
+                "El envío a la app de gastos está apagado: el cierre queda en la cola y se manda solo "
+                "cuando lo prendas (Configuración ADMIN > Cierres a la app de gastos).",
+            )
+        elif modo_remoto.es_copia_remota():
+            mostrar_info(
+                self, "Se manda desde el mostrador",
+                "Listo: el mostrador lo manda enseguida. Cómo fue se ve en Configuración ADMIN > "
+                "Cierres a la app de gastos, en el mostrador.",
+            )
+        else:
+            DialogoEnviandoCierre(cierre["id"], self).exec()
 
 
 class DialogoDetalleCierre(VentanaConDetalleDeVenta):

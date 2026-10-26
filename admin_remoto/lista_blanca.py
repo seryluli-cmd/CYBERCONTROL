@@ -36,8 +36,8 @@ import hashlib
 import inspect
 
 from repositories import (
-    articulos_repo, compras_repo, config_repo, detalle_dia_repo, relevo_repo, reportes_repo, tramites_repo,
-    turnos_repo, usuarios_repo, ventas_repo,
+    articulos_repo, compras_repo, config_repo, detalle_dia_repo, envio_pwa_repo, relevo_repo, reportes_repo,
+    tramites_repo, turnos_repo, usuarios_repo, ventas_repo,
 )
 from control_pcs.repositories import (
     accesos_admin_pc_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo, filtro_palabras_repo, fondo_repo,
@@ -54,6 +54,7 @@ _MODULOS = {
     "compras_repo": compras_repo,
     "config_repo": config_repo,
     "detalle_dia_repo": detalle_dia_repo,
+    "envio_pwa_repo": envio_pwa_repo,
     "relevo_repo": relevo_repo,
     "reportes_repo": reportes_repo,
     "tramites_repo": tramites_repo,
@@ -108,6 +109,9 @@ FUNCIONES = {
         "resumen_del_dia", "listar_cierres", "detalle_cierre", "turnos_faltantes", "verificar_cierre",
         "resumen_turno_actual",
     ),
+    # Control de Cierres > "Mandar a la app de gastos": lo encola y el hilo del
+    # MOSTRADOR lo manda (desde otra PC solo se pide; la cola y el hilo viven acá)
+    "envio_pwa_repo": ("mandar_cierre",),
     # El número de caja de la barra de arriba
     "relevo_repo": ("estado_de_la_caja",),
     # Usuarios (y "Clave": cambiar la propia)
@@ -158,6 +162,7 @@ ACTOR = {
     ("ventas_repo", "anular_venta"): "usuario_admin_id",
     ("miembros_repo", "anular_carga"): "usuario_admin_id",
     ("turnos_repo", "verificar_cierre"): "usuario_admin_id",
+    ("envio_pwa_repo", "mandar_cierre"): "usuario_id",
     # Cambiar la clave PROPIA (a otra persona se la cambia modificar_usuario).
     ("usuarios_repo", "cambiar_clave"): "usuario_id",
     ("playstation_repo", "crear_bono"): "usuario_id",

@@ -707,7 +707,14 @@ mano desde el celular. Propuesta y decisiones en
   internet.**
 - **Una sola vez:** el documento allá tiene nombre fijo
   (`cybercontrol-<id>-<fecha>`): un reintento lo pisa, no lo duplica. Un
-  ENVIADO no se vuelve a mandar; si se edita o borra allá, acá no se toca.
+  ENVIADO no se vuelve a mandar solo; si se edita o borra allá, acá no se toca.
+- **A mano:** Control de Cierres > "Mandar a la app de gastos" (solo Admin;
+  `envio_pwa_repo.mandar_cierre`): para un cierre hecho con el envío apagado o
+  borrado por error allá. Lo vuelve a poner en la cola desde cero (mismo
+  documento: se pisa, no se duplica) y el hilo lo manda ya; con el envío
+  apagado queda en la cola hasta que se prenda. Anda también desde otra PC
+  (está en la lista blanca): lo manda el mostrador, y allá se avisa en vez de
+  la barra.
 - **Pantalla:** Configuración ADMIN > "Cierres a la app de gastos"
   (`ui/envio_pwa_dialogo.py`; solo Admin y solo en el mostrador): prender o
   apagar, cómo van los últimos envíos, "Probar la conexión" (entra, trae los
