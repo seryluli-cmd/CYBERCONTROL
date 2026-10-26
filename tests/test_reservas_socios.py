@@ -30,14 +30,21 @@ import dominio  # noqa: E402
 from database import conexion_db  # noqa: E402
 from repositories import turnos_ventas_repo, usuarios_repo  # noqa: E402
 from control_pcs.repositories import (  # noqa: E402
-    miembros_repo, pcs_repo, reservas_habilitar_repo, reservas_horario_repo, reservas_repo, reservas_socios_repo,
+    bonos_miembro_repo, miembros_repo, pcs_repo, reservas_habilitar_repo, reservas_horario_repo, reservas_repo, reservas_socios_repo,
 )
+from control_pcs.ui import miembros_window  # noqa: E402
 from control_pcs.ui.miembros_window import MiembrosWindow  # noqa: E402
-from control_pcs.ui.reservas_socio_dialogo import DialogoReservaDeSocio, DialogoSaldoParaReserva  # noqa: E402
+from control_pcs.ui.reservas_socio_dialogo import (  # noqa: E402
+    COLOR_NO_LLEGA, DialogoReservaDeSocio, DialogoSaldoParaReserva,
+)
 from control_pcs.ui.reservas_window import TITULOS, ReservasWindow  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
+
+
+def _efectivo(monto):
+    return [{"metodo": dominio.PAGO_EFECTIVO, "monto": monto}]
 
 
 def _en(minutos):
@@ -333,9 +340,8 @@ class TestPantallas(_ConSocios):
         items = [dialogo.lista_socios.item(i) for i in range(dialogo.lista_socios.count())]
 
         self.assertTrue(items[0].text().startswith("juan"))
-        self.assertTrue(items[0].flags() & Qt.ItemIsEnabled)
         self.assertIn("le faltan 3 hs", items[1].text())
-        self.assertFalse(items[1].flags() & Qt.ItemIsEnabled)
+        self.assertEqual(items[1].foreground().color().name().upper(), COLOR_NO_LLEGA)
         # Queda elegido el primero que puede, y no reserva más horas que su saldo.
         self.assertEqual(dialogo._socio()["id"], self.juan)
         self.assertEqual(dialogo.campo_horas.maximum(), 7)
@@ -359,6 +365,74 @@ class TestPantallas(_ConSocios):
 
         error.assert_called_once()
         self.assertEqual(self._cantidad("reservas"), 0)
+
+    def _elegir(self, dialogo, usuario):
+        for i in range(dialogo.lista_socios.count()):
+            if dialogo.lista_socios.item(i).data(Qt.UserRole)["usuario"] == usuario:
+                dialogo.lista_socios.setCurrentRow(i)
+                return
+
+    def test_al_que_no_llega_se_le_dice_cuanto_le_falta(self):
+        dialogo = self._abrir(DialogoReservaDeSocio(self._usuario()))
+        self._elegir(dialogo, "luis")
+
+        self.assertIn("le faltan 3 hs para reservar", dialogo.aviso_carga.text())
+        self.assertTrue(dialogo.aviso_carga.property("alerta"))
+        self.assertTrue(dialogo.boton_cargar.isEnabled())
+        # Reservar igual no se puede: lo dice el repo, con lo que le falta.
+        with mock.patch("ui.utils.mostrar_error") as error:
+            dialogo._reservar()
+        self.assertIn("le faltan 3 hs", error.call_args.args[2])
+        self.assertEqual(self._cantidad("reservas"), 0)
+
+    def test_se_le_carga_saldo_ahi_mismo_y_reserva(self):
+        """El caso del dueño: tiene 2 hs, se le cargan 13 hs por $ 13.000 y reserva."""
+        bono_13h = bonos_miembro_repo.crear_bono("13 horas", 13 * 60, 13000.0)
+        dialogo = self._abrir(DialogoReservaDeSocio(self._usuario()))
+        self._elegir(dialogo, "luis")
+
+        abiertas = []
+
+        class _CargaQueSeAceptaSola(miembros_window.DialogoCargarSaldo):
+            """La ventana de Cargar Saldo de verdad, con el bono de 13 hs elegido."""
+            def exec(self):
+                abiertas.append(self.a_la_sesion)
+                self.combo_modo.setCurrentIndex(self.combo_modo.findData("BONO"))
+                self.combo_bono.setCurrentIndex(self.combo_bono.findData(bono_13h))
+                self._confirmar()
+                return self.result()
+
+        with mock.patch.object(miembros_window, "cobrar", return_value=_efectivo(13000.0)), \
+                mock.patch.object(miembros_window, "DialogoCargarSaldo", _CargaQueSeAceptaSola):
+            dialogo._cargar_saldo()
+
+        self.assertEqual(abiertas, [False])
+        self.assertEqual(self._saldo(self.luis), 120 + 13 * 60)
+        # Sigue elegido el mismo socio, ahora sin aviso y con sus horas.
+        self.assertEqual(dialogo._socio()["id"], self.luis)
+        self.assertTrue(dialogo._socio()["alcanza"])
+        self.assertFalse(dialogo.aviso_carga.property("alerta"))
+        self.assertEqual(dialogo.campo_horas.maximum(), dominio.HORAS_MAXIMAS_RESERVA_SOCIO)
+
+        with mock.patch("control_pcs.ui.reservas_socio_dialogo.mostrar_info"):
+            dialogo._reservar()
+        self.assertEqual(self._fila(dialogo.reserva_id)["miembro_id"], self.luis)
+
+    def test_si_esta_jugando_la_carga_para_reservar_queda_en_el_saldo(self):
+        bono_13h = bonos_miembro_repo.crear_bono("13 horas", 13 * 60, 13000.0)
+        miembros_repo.abrir_estacion_por_miembro(self.pc1, "luis", "clave123")
+        self.assertEqual(self._saldo(self.luis), 0)
+
+        resultado = miembros_repo.cargar_saldo_por_bono(self.luis, bono_13h, _efectivo(13000.0), self.ana,
+                                                        a_la_sesion=False)
+
+        self.assertIsNone(resultado["sumado_a_la_sesion"])
+        self.assertEqual(self._saldo(self.luis), 13 * 60)
+        # La sesión que está usando sigue con lo de antes (las 2 hs).
+        with conexion_db() as conexion:
+            fin = conexion.execute("SELECT fecha_fin_prevista FROM sesiones_pc WHERE estacion_id = ? AND estado = ?",
+                                   (self.pc1, dominio.SESION_ACTIVA)).fetchone()["fecha_fin_prevista"]
+        self.assertLessEqual(datetime.fromisoformat(fin), datetime.now() + timedelta(minutes=121))
 
     def test_el_formulario_solo_ofrece_pcs_comunes(self):
         dialogo = self._abrir(DialogoReservaDeSocio(self._usuario()))

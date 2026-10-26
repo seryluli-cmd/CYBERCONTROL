@@ -322,7 +322,7 @@ def _sumar_carga_a_la_sesion(conexion, miembro_id: int, minutos: int, ahora: dat
 
 
 def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pagos: list,
-                      usuario_operador_id: int, bono_id: int = None) -> dict:
+                      usuario_operador_id: int, bono_id: int = None, a_la_sesion: bool = True) -> dict:
     """Núcleo común de cargar_saldo_por_monto/cargar_saldo_por_bono: la
     venta se registra vía ventas_repo.registrar_venta_sin_detalle (mismo
     mecanismo que pcs_repo.asignar_bono, por la misma razón: no hay un
@@ -331,7 +331,9 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pag
     (autoservicio puro), cargar saldo siempre lo hace el Operador porque
     implica cobrar plata — por eso necesita `usuario_operador_id`, igual
     que cualquier otra venta del sistema. Si el socio está usando una PC, lo
-    cargado pasa a esa sesión (_sumar_carga_a_la_sesion).
+    cargado pasa a esa sesión (_sumar_carga_a_la_sesion), salvo con
+    `a_la_sesion=False`: la carga que se hace para poder reservar (Reserva de
+    socio, 2026-10-26) es para el día de la reserva, no para lo que está jugando.
 
     Devuelve {"venta_id", "sumado_a_la_sesion"} (lo segundo, lo que devuelve
     _sumar_carga_a_la_sesion).
@@ -358,8 +360,8 @@ def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pag
         """,
         (miembro_id, dominio.MOVIMIENTO_CARGA, minutos, ahora_iso, venta_id, bono_id),
     )
-    return {"venta_id": venta_id,
-            "sumado_a_la_sesion": _sumar_carga_a_la_sesion(conexion, miembro_id, minutos, ahora)}
+    sumado = _sumar_carga_a_la_sesion(conexion, miembro_id, minutos, ahora) if a_la_sesion else None
+    return {"venta_id": venta_id, "sumado_a_la_sesion": sumado}
 
 
 def minutos_por_monto(tramos: list, monto: float):
@@ -399,7 +401,8 @@ def validar_monto_de_carga(tramos: list, monto: float):
         )
 
 
-def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int) -> dict:
+def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_operador_id: int,
+                           a_la_sesion: bool = True) -> dict:
     """
     Convierte un pago en pesos a minutos de saldo (ver minutos_por_monto) y
     se los suma al socio. Levanta ValueError si el monto es cero, no llega
@@ -415,10 +418,12 @@ def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_o
             f"({dominio.texto_pesos(tarifa_hora)}/hora)."
         )
     with conexion_db() as conexion:
-        return _registrar_carga(conexion, miembro_id, minutos, monto, pagos, usuario_operador_id)
+        return _registrar_carga(conexion, miembro_id, minutos, monto, pagos, usuario_operador_id,
+                                a_la_sesion=a_la_sesion)
 
 
-def cargar_saldo_por_bono(miembro_id: int, bono_id: int, pagos: list, usuario_operador_id: int) -> dict:
+def cargar_saldo_por_bono(miembro_id: int, bono_id: int, pagos: list, usuario_operador_id: int,
+                          a_la_sesion: bool = True) -> dict:
     """Agrega al saldo del socio un bono del catálogo EXCLUSIVO de socios
     (bonos_miembro_repo, no pcs_repo.listar_bonos -- ese es para
     walk-ins) — ya viene en minutos múltiplos de 30 por construcción del
@@ -428,7 +433,7 @@ def cargar_saldo_por_bono(miembro_id: int, bono_id: int, pagos: list, usuario_op
         raise ValueError("Ese bono ya no está disponible.")
     with conexion_db() as conexion:
         return _registrar_carga(conexion, miembro_id, bono["minutos"], bono["precio"], pagos,
-                                 usuario_operador_id, bono_id=bono_id)
+                                 usuario_operador_id, bono_id=bono_id, a_la_sesion=a_la_sesion)
 
 
 def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):

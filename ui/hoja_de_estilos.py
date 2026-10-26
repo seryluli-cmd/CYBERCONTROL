@@ -1083,4 +1083,12 @@ HOJA_DE_ESTILOS = """
         background-color: #DCE8FF;
         color: #1E2330;
     }
+    QLabel#avisoCargaSocio {
+        color: #1F8A43;
+        font-size: 12px;
+    }
+    QLabel#avisoCargaSocio[alerta="true"] {
+        color: #C2620A;
+        font-weight: 600;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)

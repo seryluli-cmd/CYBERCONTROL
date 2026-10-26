@@ -7,7 +7,10 @@ control_pcs/repositories/reservas_socios_repo.py):
 - DialogoReservaDeSocio: el botón "RESERVA DE SOCIO" de la ventana Reservas.
   Se elige el socio de la lista de Miembros (los que no llegan al saldo para
   reservar se ven en gris, con lo que les falta), el día, la PC y cuántas horas.
-  No se cobra nada: su saldo es la garantía.
+  No se cobra nada: su saldo es la garantía. Al que no llega se le carga saldo
+  ahí mismo (pedido del dueño, 2026-10-26: "si tiene 2 hs, que pueda hacer la
+  carga, por ejemplo $ 13.000 por 13 hs, para poder reservar"), con la ventana de
+  Cargar Saldo de Miembros; esa carga queda en el saldo aunque esté jugando.
 - DialogoSaldoParaReserva: el botón "$ Para Reserva" de Miembros, solo para el
   Admin: cuántas horas de saldo necesita un socio para reservar.
 
@@ -27,6 +30,7 @@ from control_pcs.repositories import reservas_repo, reservas_socios_repo
 from control_pcs.ui.reservas_dialogos import (
     _campo_hora, _encabezado, _gris_chico, _momento, _proxima_hora_en_punto, aviso_azul, texto_dia_y_hora,
 )
+from ui.piezas_ventana import tecla
 from ui.utils import (
     crear_selector_de_fecha, encadenar_enter, fila_guardar_cancelar, icono_de_emoji, manejar_errores, mostrar_error,
     mostrar_info, sin_boton_por_defecto,
@@ -58,7 +62,7 @@ class DialogoReservaDeSocio(QDialog):
         self.usuario = usuario
         self.reserva_id = None
         self.setWindowTitle("Reserva de socio")
-        self.resize(620, 600)
+        self.resize(640, 700)
         self._armar_interfaz()
         self._cargar_socios()
 
@@ -72,8 +76,18 @@ class DialogoReservaDeSocio(QDialog):
         self.campo_buscar.textChanged.connect(self._cargar_socios)
         self.lista_socios = QListWidget()
         self.lista_socios.setObjectName("listaSociosReserva")
-        self.lista_socios.setMinimumHeight(200)
+        self.lista_socios.setMinimumHeight(180)
         self.lista_socios.currentItemChanged.connect(self._al_elegir_socio)
+
+        # Debajo de la lista: si el elegido no llega, cuánto le falta; y para
+        # cualquiera, cargarle saldo sin salir de acá.
+        self.aviso_carga = QLabel()
+        self.aviso_carga.setObjectName("avisoCargaSocio")
+        self.aviso_carga.setWordWrap(True)
+        self.boton_cargar = tecla("💰  CARGAR SALDO", self._cargar_saldo, "teclaVerde")
+        fila_carga = QHBoxLayout()
+        fila_carga.addWidget(self.aviso_carga, 1)
+        fila_carga.addWidget(self.boton_cargar)
 
         inicio = _proxima_hora_en_punto()
         self.campo_dia = crear_selector_de_fecha(QDate(inicio.year, inicio.month, inicio.day))
@@ -111,10 +125,11 @@ class DialogoReservaDeSocio(QDialog):
         layout.addWidget(_encabezado("Reserva de socio"))
         layout.addWidget(_gris_chico(
             f"Reservan los socios que tienen {reservas_socios_repo.texto_de_horas(self.horas_minimas * 60)} "
-            "o más de saldo. Los que no llegan se ven en gris."
+            "o más de saldo. Los que no llegan se ven en gris: elegilo y cargale saldo acá mismo."
         ))
         layout.addWidget(self.campo_buscar)
         layout.addWidget(self.lista_socios, 1)
+        layout.addLayout(fila_carga)
         layout.addLayout(formulario)
         layout.addWidget(self.aviso)
         layout.addLayout(fila_guardar_cancelar(self, self._reservar, "Reservar"))
@@ -125,9 +140,10 @@ class DialogoReservaDeSocio(QDialog):
         self.campo_buscar.setFocus()
 
     @manejar_errores
-    def _cargar_socios(self, _=None):
-        """La lista con lo que se escribió en la lupa. Queda elegido el primero que
-        puede reservar, así se busca y se sigue con Enter."""
+    def _cargar_socios(self, _=None, elegir: int = None):
+        """La lista con lo que se escribió en la lupa. Queda elegido el socio
+        `elegir` (el que se acaba de cargar) o, si no, el primero que puede
+        reservar, así se busca y se sigue con Enter."""
         self.lista_socios.clear()
         primero = None
         for socio in reservas_socios_repo.socios_para_reservar(self.campo_buscar.text()):
@@ -136,12 +152,10 @@ class DialogoReservaDeSocio(QDialog):
             item = QListWidgetItem()
             item.setData(Qt.UserRole, socio)
             if not socio["alcanza"]:
-                falta = self.horas_minimas * 60 - socio["saldo_minutos"]
-                texto += f"  ·  le faltan {reservas_socios_repo.texto_de_horas(falta)}"
-                # En gris y sin poder elegirlo: se ve por qué no puede reservar.
-                item.setFlags(Qt.NoItemFlags)
+                texto += f"  ·  le faltan {self._texto_falta(socio)}"
+                # En gris (se elige igual, para cargarle saldo).
                 item.setForeground(QColor(COLOR_NO_LLEGA))
-            elif primero is None:
+            if socio["id"] == elegir or (elegir is None and primero is None and socio["alcanza"]):
                 primero = item
             item.setText(texto)
             self.lista_socios.addItem(item)
@@ -149,17 +163,48 @@ class DialogoReservaDeSocio(QDialog):
             self.lista_socios.setCurrentItem(primero)
         self._al_elegir_socio()
 
+    def _texto_falta(self, socio) -> str:
+        return reservas_socios_repo.texto_de_horas(self.horas_minimas * 60 - socio["saldo_minutos"])
+
     def _socio(self):
         item = self.lista_socios.currentItem()
-        return item.data(Qt.UserRole) if item is not None and item.flags() & Qt.ItemIsEnabled else None
+        return item.data(Qt.UserRole) if item is not None else None
 
     def _al_elegir_socio(self, *_):
-        """No puede reservar más horas que las que tiene de saldo."""
+        """No puede reservar más horas que las que tiene de saldo; si no llega al
+        mínimo, se dice cuánto le falta (y Cargar Saldo queda a mano)."""
         socio = self._socio()
         maximo = dominio.HORAS_MAXIMAS_RESERVA_SOCIO
         if socio is not None:
             maximo = max(1, min(maximo, socio["saldo_minutos"] // 60))
         self.campo_horas.setMaximum(maximo)
+        self.boton_cargar.setEnabled(socio is not None)
+        if socio is None:
+            self.aviso_carga.setText("Elegí un socio de la lista.")
+        elif socio["alcanza"]:
+            self.aviso_carga.setText(
+                f"{socio['nombre']} tiene {reservas_socios_repo.texto_de_horas(socio['saldo_minutos'])} "
+                "de saldo: puede reservar.")
+        else:
+            self.aviso_carga.setText(
+                f"{socio['nombre']} tiene {reservas_socios_repo.texto_de_horas(socio['saldo_minutos'])} "
+                f"de saldo: le faltan {self._texto_falta(socio)} para reservar. Cargale saldo y seguí.")
+        self.aviso_carga.setProperty("alerta", socio is not None and not socio["alcanza"])
+        self.aviso_carga.style().unpolish(self.aviso_carga)
+        self.aviso_carga.style().polish(self.aviso_carga)
+
+    @manejar_errores
+    def _cargar_saldo(self):
+        """La ventana de Cargar Saldo de Miembros, para el socio elegido. Lo
+        cargado queda en su saldo aunque esté usando una PC: es para la reserva."""
+        socio = self._socio()
+        if socio is None:
+            return
+        # Acá y no arriba: miembros_window importa este archivo (por $ Para Reserva).
+        from control_pcs.ui.miembros_window import DialogoCargarSaldo
+        if DialogoCargarSaldo(self.usuario, socio, self, a_la_sesion=False).exec():
+            self._cargar_socios(elegir=socio["id"])
+            self.campo_dia.setFocus()
 
     @manejar_errores
     def _reservar(self):

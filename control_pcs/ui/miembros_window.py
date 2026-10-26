@@ -392,12 +392,16 @@ class DialogoCargarSaldo(QDialog):
     dominio.tarifa_hora_para_monto) o uno de los bonos del catálogo
     EXCLUSIVO de socios (bonos_miembro_repo.listar_bonos -- no el de
     walk-ins de pcs_repo) — siempre lo hace el Operador, porque implica
-    cobrar plata."""
+    cobrar plata.
 
-    def __init__(self, usuario_operador, miembro, parent=None):
+    `a_la_sesion=False` (lo usa Reserva de socio): lo cargado queda en el saldo
+    aunque el socio esté usando una PC, porque es para el día de la reserva."""
+
+    def __init__(self, usuario_operador, miembro, parent=None, a_la_sesion: bool = True):
         super().__init__(parent)
         self.usuario_operador = usuario_operador
         self.miembro = miembro
+        self.a_la_sesion = a_la_sesion
         self.setWindowTitle(f"Cargar Saldo — {miembro['nombre']}")
         self.resize(380, 300)
         self._armar_interfaz()
@@ -494,7 +498,7 @@ class DialogoCargarSaldo(QDialog):
             if pagos is None:
                 return
             resultado = miembros_repo.cargar_saldo_por_monto(
-                self.miembro["id"], monto, pagos, self.usuario_operador["id"]
+                self.miembro["id"], monto, pagos, self.usuario_operador["id"], a_la_sesion=self.a_la_sesion
             )
         else:
             if not self.bonos:
@@ -508,7 +512,7 @@ class DialogoCargarSaldo(QDialog):
             if pagos is None:
                 return
             resultado = miembros_repo.cargar_saldo_por_bono(
-                self.miembro["id"], bono_id, pagos, self.usuario_operador["id"]
+                self.miembro["id"], bono_id, pagos, self.usuario_operador["id"], a_la_sesion=self.a_la_sesion
             )
         # Si el socio está usando una PC, lo cargado ya corre en esa sesión
         # (miembros_repo._sumar_carga_a_la_sesion): que el operador lo sepa.

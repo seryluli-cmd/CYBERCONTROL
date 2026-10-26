@@ -366,7 +366,9 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   reserva una PC común sin pagar nada; su saldo es la garantía. Solo reserva
   quien tiene 5 hs de saldo o más (el número lo cambia solo el Admin, en Miembros
   → "$ Para Reserva"; los demás lo ven en gris con candado), y nunca más horas que
-  las que tiene. No se descuenta nada al reservar: cuando llega entra con su
+  las que tiene. Al que no llega se le carga saldo ahí mismo ("💰 CARGAR SALDO",
+  la ventana de Cargar Saldo de Miembros); esa carga queda en su saldo aunque
+  esté jugando en una PC, porque es para el día de la reserva. No se descuenta nada al reservar: cuando llega entra con su
   usuario y su clave (o "Abrir PC con Miembro") y usa su saldo como siempre; su
   propia reserva no lo corta y queda habilitada sola (en cualquier PC, si su
   sesión llega a la hora de la reserva). Habilitar desde la ventana Reservas no
