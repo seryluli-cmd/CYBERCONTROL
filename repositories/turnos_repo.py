@@ -316,9 +316,12 @@ def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):
         )
         # Si está prendido el envío a la app de gastos del dueño, el cierre queda en
         # la cola en ESTA transacción: hay fila si y solo si quedó el cierre. Lo
-        # manda después un hilo propio; el cierre nunca espera a internet.
-        envio_pwa_repo.encolar(conexion, cierre_id)
+        # manda un hilo propio; el cierre nunca espera a internet.
+        se_manda = envio_pwa_repo.encolar(conexion, cierre_id)
 
+    if se_manda:
+        # Ya está grabado: el hilo lo manda en este momento, sin esperar su revisión.
+        envio_pwa_repo.avisar_que_hay_un_cierre()
     return {
         "id": cierre_id,
         "turno": turno,
@@ -331,6 +334,8 @@ def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):
         "cambio_que_queda": cajas_repo.cambio_inicial(caja) if caja is not None else fondo_cambio,
         "forzoso": forzoso,
         "fiado_sin_cobrar": fiado_sin_cobrar,
+        # True = quedó en la cola para la app de gastos (la pantalla muestra la barra).
+        "envio_a_la_app": se_manda,
     }
 
 

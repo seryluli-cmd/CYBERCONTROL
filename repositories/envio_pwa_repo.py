@@ -95,6 +95,9 @@ _CLAVE_RENOVACION = "envio_pwa_renovacion"
 _SEGUNDOS_DE_MARGEN_DEL_TOKEN = 60
 
 _candado = threading.Lock()   # un envío por vez: el hilo y los botones no se pisan
+# Lo dispara cada cierre apenas queda grabado (avisar_que_hay_un_cierre): el hilo
+# manda en ese momento, sin esperar a la próxima revisión.
+_hay_novedades = threading.Event()
 # El token con que se entra, en memoria (dura una hora; se renueva solo).
 _sesion = {"token": None, "vence": 0.0}
 # Lo último que pasó, para la pantalla (en memoria, como copias_repo._estado).
@@ -464,6 +467,17 @@ def probar_conexion(transporte=None) -> dict:
     return {"nombres_app": nombres, "faltan": [nombre for nombre in activos if nombre not in nombres]}
 
 
+def estado_del_cierre(cierre_id: int):
+    """Cómo va UN cierre en la cola ({"estado", "ultimo_error"}), o None si no está
+    (el envío estaba apagado al cerrarlo). Lo mira la barra "ENVIANDO CIERRE DE
+    TURNO" (ui/envio_pwa_progreso.py) mientras el hilo lo manda."""
+    with conexion_db() as conexion:
+        fila = conexion.execute(
+            "SELECT estado, ultimo_error FROM envios_pwa WHERE cierre_id = ?", (cierre_id,)
+        ).fetchone()
+    return dict(fila) if fila else None
+
+
 def estado() -> dict:
     """Para la pantalla: si está prendido, cuántos hay en cada estado, el último
     enviado, el último error y los últimos cierres de la cola con cómo les fue."""
@@ -511,12 +525,23 @@ def iniciar_envios_automaticos():
     threading.Thread(target=_revisar_siempre, name="envio-a-la-app-de-gastos", daemon=True).start()
 
 
-def _revisar_siempre():
-    while True:
+def avisar_que_hay_un_cierre():
+    """Lo llama turnos_repo.cerrar_turno DESPUÉS de grabar el cierre (fuera de su
+    transacción): el hilo se despierta y lo manda en ese momento. Si el envío falla,
+    sigue el reintento de siempre."""
+    _hay_novedades.set()
+
+
+def _revisar_siempre(detener: threading.Event = None):
+    """El hilo: manda lo pendiente al arrancar, cada vez que un cierre lo despierta y,
+    si no, cada SEGUNDOS_ENTRE_REVISIONES (los reintentos). `detener` es para las
+    pruebas; en el mostrador corre hasta que se cierra el programa."""
+    while detener is None or not detener.is_set():
         try:
             # Sin base todavía no hay nada que mandar (y leer la configuración la crearía vacía).
             if os.path.exists(database.DB_PATH):
                 enviar_pendientes()
         except Exception as error:  # el hilo no se puede morir: sin él no se manda nada más
             registrar_error(error, "Envío de los cierres a la app de gastos")
-        time.sleep(SEGUNDOS_ENTRE_REVISIONES)
+        _hay_novedades.wait(SEGUNDOS_ENTRE_REVISIONES)
+        _hay_novedades.clear()

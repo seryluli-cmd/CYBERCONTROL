@@ -700,9 +700,11 @@ mano desde el celular. Propuesta y decisiones en
   cierres: el de la empleada, el "en ausencia" y el forzoso—, solo si el envío
   está prendido en ese momento (viene apagado; lo de antes de prenderlo no se
   manda, ya está cargado a mano allá). Un hilo (`iniciar_envios_automaticos`,
-  lo arranca `main.py` en el mostrador) manda los pendientes cada minuto y
-  reintenta los que fallaron esperando `intentos` minutos (hasta 60). **El
-  cierre nunca espera a internet.**
+  lo arranca `main.py` en el mostrador) lo manda **en ese mismo momento** (el
+  cierre lo despierta con `avisar_que_hay_un_cierre`, ya fuera de su
+  transacción) y, si falló, lo reintenta en cada revisión (cada minuto)
+  esperando `intentos` minutos (hasta 60). **El cierre nunca espera a
+  internet.**
 - **Una sola vez:** el documento allá tiene nombre fijo
   (`cybercontrol-<id>-<fecha>`): un reintento lo pisa, no lo duplica. Un
   ENVIADO no se vuelve a mandar; si se edita o borra allá, acá no se toca.
@@ -711,6 +713,13 @@ mano desde el celular. Propuesta y decisiones en
   apagar, cómo van los últimos envíos, "Probar la conexión" (entra, trae los
   nombres de la app y dice qué usuarios de acá no están escritos igual, sin
   escribir nada) y "Reintentar ahora".
+- **La barra "ENVIANDO CIERRE DE TURNO"** (`ui/envio_pwa_progreso.py`,
+  pedido del dueño el mismo día): al confirmar un Cierre de Turno con el envío
+  prendido, antes del aviso de "Turno cerrado" se ve una barra que se llena
+  durante 3 segundos como mínimo; se completa recién cuando la app confirmó
+  ("CIERRE ENVIADO", en verde, y se va sola) y, si no se pudo, lo dice en rojo
+  con el porqué y aclara que se manda solo después (deja de esperar a los 25 s).
+  No manda nada: solo mira cómo va ese cierre en la cola.
 - Tests: `tests/test_envio_pwa.py`, con una app de mentira que hace de Google;
   nunca salen a internet ni tocan el Firestore real.
 
@@ -785,7 +794,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-1420 tests al 2026-10-26. Cubren turnos, caja y cajas con número
+1428 tests al 2026-10-26. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,

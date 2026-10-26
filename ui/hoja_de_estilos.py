@@ -982,6 +982,26 @@ HOJA_DE_ESTILOS = """
     QFrame#cifraDestacada > QLabel {
         background: transparent;
     }
+    /* La barra "ENVIANDO CIERRE DE TURNO" (ui/envio_pwa_progreso.py): azul mientras
+       se manda; el título en verde si llegó y en rojo si no se pudo. */
+    QProgressBar#barraEnvio {
+        background-color: #EDF3FF;
+        border: 1px solid #C4D6F8;
+        border-radius: 8px;
+    }
+    QProgressBar#barraEnvio::chunk {
+        background-color: #2F6FED;
+        border-radius: 7px;
+    }
+    QLabel#tituloEnvio {
+        color: #1D4FA8;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 1px;
+    }
+    QLabel#tituloEnvio[estado="enviado"] { color: #1E9E50; }
+    QLabel#tituloEnvio[estado="error"] { color: #C62828; }
+    QLabel#detalleEnvio { color: #5A6F96; }
     QLabel#tituloCifra {
         font-size: 11px;
         font-weight: 700;

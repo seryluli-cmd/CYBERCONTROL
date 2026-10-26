@@ -19,6 +19,8 @@ Se ejecutan con:
 
 import json
 import os
+import threading
+import time
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from unittest import mock
@@ -33,8 +35,12 @@ from database import conexion_db  # noqa: E402
 from repositories import (  # noqa: E402
     articulos_repo, compras_repo, envio_pwa_repo, relevo_repo, turnos_repo, usuarios_repo, ventas_repo,
 )
+from ui.caja_window import CierreTurnoWindow  # noqa: E402
 from ui.configuracion_admin_window import ConfiguracionAdminWindow  # noqa: E402
 from ui.envio_pwa_dialogo import DialogoEnvioPwa  # noqa: E402
+from ui.envio_pwa_progreso import (  # noqa: E402
+    ENVIADO, ERROR, PENDIENTE, SEGUNDOS_MAXIMOS, TOPE_SIN_CONFIRMAR, DialogoEnviandoCierre,
+)
 from ui.utils import formato_pesos  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
@@ -105,6 +111,7 @@ class _BaseDeEnvios(BaseConBaseTemporal):
         super().setUp()
         envio_pwa_repo._olvidar_sesion()
         envio_pwa_repo._estado.update(ultimo_error=None, ultima_revision=None)
+        envio_pwa_repo._hay_novedades.clear()
         self.admin_id = usuarios_repo.crear_usuario("Dueño", "1234", dominio.ROL_ADMIN)
         self.toby_id = usuarios_repo.crear_usuario("TOBY", "1234", dominio.ROL_EMPLEADA)
         self.gabriela_id = usuarios_repo.crear_usuario("Gabriela", "1234", dominio.ROL_EMPLEADA)
@@ -269,6 +276,38 @@ class TestLaCola(_BaseDeEnvios):
         with self.assertRaises(PermissionError):
             envio_pwa_repo.activar(self.toby_id, True)
         self.assertFalse(envio_pwa_repo.esta_activado())
+
+    def test_el_cierre_despierta_al_hilo_solo_si_esta_prendido(self):
+        self._turno_de_toby()
+        turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+        self.assertFalse(envio_pwa_repo._hay_novedades.is_set())
+
+        envio_pwa_repo.activar(self.admin_id, True)
+        self._otro_turno_de_toby(_a_las(14, 1), _a_las(15), _a_las(22, 0))
+        self.assertTrue(envio_pwa_repo._hay_novedades.is_set())
+
+    def test_al_cerrar_la_caja_se_manda_en_ese_momento_sin_esperar_la_revision(self):
+        envio_pwa_repo.activar(self.admin_id, True)
+        self._turno_de_toby()
+        detener = threading.Event()
+        # El hilo de verdad, con la app de mentira y una revisión lejísimos: si el
+        # cierre llega a la app, fue porque lo despertó el cierre.
+        with mock.patch.object(envio_pwa_repo, "_transporte_http", self.app), \
+                mock.patch.object(envio_pwa_repo, "SEGUNDOS_ENTRE_REVISIONES", 600):
+            hilo = threading.Thread(target=envio_pwa_repo._revisar_siempre, args=(detener,), daemon=True)
+            hilo.start()
+            try:
+                cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+                limite = time.monotonic() + 5
+                while time.monotonic() < limite and self._fila(cierre["id"])["estado"] != dominio.ENVIO_ENVIADO:
+                    time.sleep(0.05)
+            finally:
+                detener.set()
+                envio_pwa_repo._hay_novedades.set()
+                hilo.join(timeout=5)
+        self.assertFalse(hilo.is_alive())
+        self.assertEqual(self._fila(cierre["id"])["estado"], dominio.ENVIO_ENVIADO)
+        self.assertEqual(len(self.app.patches()), 1)
 
     def test_lo_de_antes_de_prenderlo_no_se_manda(self):
         self._turno_de_toby()
@@ -611,6 +650,115 @@ class TestPantalla(_BaseDeEnvios):
             remota = ConfiguracionAdminWindow(admin)
         self.addCleanup(remota.deleteLater)
         self.assertEqual(self._tarjeta(remota), [])
+
+
+class TestBarraDeEnvio(_BaseDeEnvios):
+    """La barra "ENVIANDO CIERRE DE TURNO" (pedido del dueño, 2026-10-26): dura 3 s
+    como mínimo, se llena del todo recién cuando la app confirmó, y si no se pudo
+    lo dice y aclara que se manda solo después."""
+
+    def _cierre_en_cola(self):
+        envio_pwa_repo.activar(self.admin_id, True)
+        self._turno_de_toby()
+        return turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+
+    def _barra(self, cierre_id):
+        """La barra con un reloj de mentira que arranca en 0: (barra, momento); se
+        avanza escribiendo momento[0] y llamando a barra._tic()."""
+        momento = [0.0]
+        barra = DialogoEnviandoCierre(cierre_id, reloj=lambda: momento[0])
+        self.addCleanup(barra.deleteLater)
+        barra._timer.stop()  # en la prueba el tiempo se maneja a mano
+        return barra, momento
+
+    def test_dura_3_segundos_aunque_el_envio_sea_instantaneo(self):
+        cierre = self._cierre_en_cola()
+        envio_pwa_repo.enviar_pendientes(_a_las(14, 1), transporte=self.app)  # ya enviado
+        barra, momento = self._barra(cierre["id"])
+
+        for momento[0] in (0.5, 1.5, 2.9):
+            barra._tic()
+            self.assertEqual(barra.titulo.text(), "ENVIANDO CIERRE DE TURNO")
+            self.assertLess(barra.barra.value(), TOPE_SIN_CONFIRMAR)
+            self.assertIsNone(barra.terminado)
+            self.assertFalse(barra.tecla_continuar.isVisibleTo(barra))
+        momento[0] = 3.0
+        barra._tic()
+
+        self.assertEqual((barra.barra.value(), barra.terminado), (100, ENVIADO))
+        self.assertIn("CIERRE ENVIADO", barra.titulo.text())
+        self.assertTrue(barra.tecla_continuar.isVisibleTo(barra))
+        self.assertTrue(barra._cerrarse.isActive())  # se va sola enseguida
+
+    def test_si_la_app_tarda_la_barra_espera_sin_llenarse(self):
+        cierre = self._cierre_en_cola()  # queda PENDIENTE: nadie lo manda todavía
+        barra, momento = self._barra(cierre["id"])
+
+        momento[0] = 3.5
+        barra._tic()
+        self.assertEqual((barra.barra.value(), barra.terminado), (TOPE_SIN_CONFIRMAR, None))
+
+        envio_pwa_repo.enviar_pendientes(_a_las(14, 1), transporte=self.app)
+        momento[0] = 5.0
+        barra._tic()
+        self.assertEqual(barra.terminado, ENVIADO)
+
+    def test_sin_internet_lo_dice_en_rojo_y_aclara_que_se_manda_solo(self):
+        cierre = self._cierre_en_cola()
+        self.app.caida = True
+        envio_pwa_repo.enviar_pendientes(_a_las(14, 1), transporte=self.app)
+        barra, momento = self._barra(cierre["id"])
+
+        momento[0] = 3.0
+        barra._tic()
+
+        self.assertEqual((barra.terminado, barra.barra.value()), (ERROR, TOPE_SIN_CONFIRMAR))
+        self.assertEqual(barra.titulo.property("estado"), ERROR)
+        self.assertIn("Sin internet", barra.detalle.text())
+        self.assertIn("Se vuelve a intentar solo", barra.detalle.text())
+        self.assertTrue(barra.tecla_continuar.isVisibleTo(barra))
+        self.assertFalse(barra._cerrarse.isActive())  # que se lea: no se va sola
+
+    def test_pasado_el_maximo_deja_de_esperar(self):
+        cierre = self._cierre_en_cola()
+        barra, momento = self._barra(cierre["id"])
+
+        momento[0] = SEGUNDOS_MAXIMOS + 1
+        barra._tic()
+
+        self.assertEqual(barra.terminado, PENDIENTE)
+        self.assertIn("se manda solo", barra.detalle.text().lower())
+
+    def test_el_cierre_de_turno_no_abre_la_barra_con_el_envio_apagado(self):
+        self._turno_de_toby()
+        ventana = CierreTurnoWindow(dict(usuarios_repo.obtener_usuario(self.toby_id)))
+        self.addCleanup(ventana.deleteLater)
+
+        with mock.patch("ui.caja_window.confirmar", return_value=True), \
+                mock.patch("ui.caja_window.mostrar_info"), \
+                mock.patch("ui.caja_window.DialogoEnviandoCierre") as barra:
+            ventana._cerrar_turno()
+
+        barra.assert_not_called()
+        self.assertTrue(ventana.turno_cerrado)
+
+    def test_el_cierre_de_turno_abre_la_barra_con_el_envio_prendido(self):
+        envio_pwa_repo.activar(self.admin_id, True)
+        self._turno_de_toby()
+        ventana = CierreTurnoWindow(dict(usuarios_repo.obtener_usuario(self.toby_id)))
+        self.addCleanup(ventana.deleteLater)
+
+        with mock.patch("ui.caja_window.confirmar", return_value=True), \
+                mock.patch("ui.caja_window.mostrar_info") as aviso, \
+                mock.patch("ui.caja_window.DialogoEnviandoCierre") as barra:
+            ventana._cerrar_turno()
+
+        barra.assert_called_once()
+        barra.return_value.exec.assert_called_once()
+        aviso.assert_called_once()  # el aviso de "Turno cerrado" sigue después de la barra
+        with conexion_db() as conexion:
+            cierre_id = conexion.execute("SELECT MAX(id) AS id FROM cierres_turno").fetchone()["id"]
+        self.assertEqual(barra.call_args.args[0], cierre_id)
 
 
 if __name__ == "__main__":

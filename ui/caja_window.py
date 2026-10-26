@@ -32,6 +32,7 @@ from control_pcs.repositories import cuentas_pc_repo
 from control_pcs.ui.cuenta_pc_dialogos import DialogoCobrarAntesDelCierre
 from repositories import turnos_repo
 from ui.control_cierres_window import ControlCierresWindow, DialogoDetalleCierre  # noqa: F401 (API de main_window y las pruebas)
+from ui.envio_pwa_progreso import DialogoEnviandoCierre
 from ui.piezas_ventana import (
     TONO_AZUL, TONO_GRIS, TONO_VERDE, agregar_pastilla, cabecera_oscura, cifra_destacada, tecla,
 )
@@ -195,6 +196,10 @@ class CierreTurnoWindow(QDialog):
 
     def _turno_cerrado(self, resultado):
         self.turno_cerrado = True
+        if resultado.get("envio_a_la_app"):
+            # La barra "ENVIANDO CIERRE DE TURNO" (pedido del dueño, 2026-10-26). El envío
+            # lo hace el hilo de envio_pwa_repo; la barra solo mira cómo va.
+            DialogoEnviandoCierre(resultado["id"], self).exec()
         caja = f"Caja Nº {resultado['caja_numero']} · " if resultado["caja_numero"] is not None else ""
         ausencia = ""
         if resultado["responsable"] is not None and resultado["responsable"] != self.usuario["nombre"]:
