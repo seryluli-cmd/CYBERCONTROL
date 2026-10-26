@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from PySide6.QtGui import QKeySequence, QShortcut
 
+import dominio
 from repositories import articulos_repo
 from ui.utils import (
     manejar_errores, aplicar_clase, formato_pesos, sin_boton_por_defecto, crear_tabla,
@@ -24,8 +25,8 @@ from ui.utils import (
 # Las tres formas de buscar un artículo, con las mismas teclas en Ventas y en
 # Compras: modo -> (tecla, texto del botón, título del cuadro).
 _BUSQUEDAS = {
-    "codigo": ("F5", "F5 Cód.", "Buscar por Código (F5)"),
-    "descripcion": ("F6", "F6 Descrip.", "Buscar por Descripción (F6)"),
+    "codigo": ("F5", "F5 Código", "Buscar por Código (F5)"),
+    "descripcion": ("F6", "F6 Descripción", "Buscar por Descripción (F6)"),
     "marca": ("F7", "F7 Marca", "Buscar por Marca (F7)"),
 }
 
@@ -79,11 +80,13 @@ class DialogoBuscarArticulo(QDialog):
     @manejar_errores
     def _buscar(self, texto):
         if self.modo == "codigo":
-            # El que tiene ESE código exacto va primero: es el que se elige con
-            # Enter. Sin esto, buscar un EAN-8 como 77981133 elegía el primero
-            # por descripción de los que lo CONTIENEN (el EAN-13 de Manaos, la caja).
+            # Por código de menor a mayor, como números (pedido del dueño). El que
+            # tiene ESE código exacto va primero igual: es el que se elige con
+            # Enter. Sin esto, buscar un EAN-8 como 77981133 elegía otro de los que
+            # lo CONTIENEN (el EAN-13 de Manaos, la caja).
             resultados = sorted(articulos_repo.listar_articulos(texto),
-                                key=lambda articulo: articulo["codigo"] != texto.strip())
+                                key=lambda articulo: (articulo["codigo"] != texto.strip(),
+                                                      dominio.orden_de_codigo(articulo["codigo"])))
         elif self.modo == "marca":
             resultados = articulos_repo.buscar_por_marca(texto) if texto else articulos_repo.listar_articulos("")
         else:

@@ -376,6 +376,17 @@ def sin_acentos(texto) -> str:
     )
 
 
+def orden_de_codigo(codigo) -> tuple:
+    """Para ordenar códigos de artículo de menor a mayor como números (pedido del
+    dueño, 2026-10-25: F5 lista 1, 2, 3, 4... y no 1, 10, 100, 2, que es el orden
+    de un texto). Primero los que son solo números, por su valor; después los que
+    tienen letras, alfabéticamente. "007" y "7" valen lo mismo: el texto desempata."""
+    texto = (codigo or "").strip()
+    if texto.isascii() and texto.isdigit():
+        return (0, int(texto), texto)
+    return (1, 0, sin_acentos(texto))
+
+
 def es_pcstream(nombre_estacion: str) -> bool:
     """
     Único lugar donde se decide si una estación es la PC de streaming. Compara

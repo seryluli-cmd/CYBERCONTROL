@@ -102,6 +102,18 @@ class TestSeEncuentra(BaseCodigos):
                 dialogo._elegir_seleccion()
                 self.assertEqual(dialogo.codigo_elegido, esperado)
 
+    def test_f5_lista_por_codigo_de_menor_a_mayor_como_numeros(self):
+        # Pedido del dueño (2026-10-25): 1, 2, 3, 4... y no 1, 10, 2 (orden de texto).
+        for codigo in ("10", "2", "1", "PANCHO", "4"):
+            articulos_repo.crear_articulo(codigo, f"Zeta {codigo}", None, None, 1000.0, 500.0, 0)
+        dialogo = self._abrir(DialogoBuscarArticulo(None, "codigo"))
+        codigos = [dialogo.tabla.item(f, 0).text() for f in range(dialogo.tabla.rowCount())]
+        self.assertEqual(codigos, ["1", "2", "4", "10", EAN_8, CON_CERO, MANAOS, CAJA_14, "PANCHO"])
+        # Escribiendo, el código exacto sigue primero y los demás por código.
+        QTest.keyClicks(dialogo.campo_busqueda, "1")
+        codigos = [dialogo.tabla.item(f, 0).text() for f in range(dialogo.tabla.rowCount())]
+        self.assertEqual(codigos[:2], ["1", "10"])
+
     def test_escanear_en_ventas(self):
         ventas = self._abrir(VentasWindow(self.usuario))
         for codigo in CODIGOS:
