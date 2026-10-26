@@ -28,6 +28,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QPushButton  # noqa: E402
 import dominio  # noqa: E402
 from database import conexion_db  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
+from ui.administrar_kiosko_window import TEXTO_SIN_PERMISO, AdministrarKioskoWindow  # noqa: E402
 from ui.main_window import ConfiguracionAdminWindow, MainWindow  # noqa: E402
 from ui.piezas_ventana import TEXTO_SOLO_ADMIN  # noqa: E402
 from control_pcs.ui.pcs_gestion_dialogos import DialogoGestionEstaciones  # noqa: E402
@@ -178,6 +179,51 @@ class TestConfiguracionAdminParaUnOperador(_ConUsuarios):
             boton.click()
 
         dialogo.assert_called_once()
+
+
+class TestAdministrarKiosko(_ConUsuarios):
+    """Administrar Kiosko con el diseño de Configuración ADMIN (pedido del dueño,
+    2026-10-26): una encargada usa solo las pantallas que tiene habilitadas y ve las
+    demás en gris, con candado y el porqué (antes no aparecían)."""
+
+    def _ventana(self, usuario):
+        ventana = AdministrarKioskoWindow(usuario, dominio.es_admin(usuario))
+        self.addCleanup(ventana.deleteLater)
+        return ventana
+
+    def _tarjetas(self, ventana):
+        return {b.accessibleName(): b for b in ventana.findChildren(QPushButton) if b.accessibleName()}
+
+    def test_el_admin_usa_todo_y_puede_anular(self):
+        tarjetas = self._tarjetas(self._ventana(self._usuario("Admin", dominio.ROL_ADMIN)))
+
+        self.assertEqual(sorted(tarjetas), ["Artículos", "Compras", "Consulta de Ventas / Anular",
+                                            "Control de Cierres de Turno", "Reportes", "Usuarios"])
+        self.assertTrue(all(tarjeta.isEnabled() for tarjeta in tarjetas.values()))
+
+    def test_una_encargada_usa_solo_lo_que_tiene_habilitado(self):
+        encargada = self._usuario("TOBY", dominio.ROL_EMPLEADA, {"permiso_reportes": True})
+
+        tarjetas = self._tarjetas(self._ventana(encargada))
+
+        self.assertEqual([nombre for nombre, tarjeta in tarjetas.items() if tarjeta.isEnabled()], ["Reportes"])
+        self.assertIn("Consulta de Ventas", tarjetas)  # sin "/ Anular": anular es del Admin
+        self.assertEqual(tarjetas["Usuarios"].detalle.text(), TEXTO_SOLO_ADMIN)
+        for nombre in ("Artículos", "Compras", "Consulta de Ventas", "Control de Cierres de Turno"):
+            self.assertEqual((tarjetas[nombre].icono.text(), tarjetas[nombre].detalle.text()),
+                             ("🔒", TEXTO_SIN_PERMISO), nombre)
+
+    def test_cada_tarjeta_abre_su_pantalla(self):
+        tarjetas = self._tarjetas(self._ventana(self._usuario("Admin", dominio.ROL_ADMIN)))
+
+        for nombre, pantalla in (("Artículos", "ArticulosWindow"), ("Compras", "ComprasWindow"),
+                                 ("Consulta de Ventas / Anular", "ConsultaVentasWindow"),
+                                 ("Reportes", "ReportesWindow"),
+                                 ("Control de Cierres de Turno", "ControlCierresWindow"),
+                                 ("Usuarios", "UsuariosWindow")):
+            with mock.patch(f"ui.administrar_kiosko_window.{pantalla}") as clase:
+                tarjetas[nombre].click()
+            clase.assert_called_once()
 
 
 class TestGestionarEstacionesParaUnOperador(_ConUsuarios):

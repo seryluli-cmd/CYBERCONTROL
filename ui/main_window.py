@@ -30,7 +30,8 @@ los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
 - "Encargado" (ADMIN, o EMPLEADA con al menos uno de los permisos de
   usuarios_repo.PERMISOS_EMPLEADA): además abre "Administrar Kiosko", que
   agrupa Artículos/Compras/Consulta de Ventas/Reportes/Control de
-  Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos).
+  Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos);
+  lo que no le toca lo ve en gris, con candado (ui/administrar_kiosko_window.py).
 - "Configuración ADMIN": la abre cualquiera, pero un Operador solo usa
   Gestionar Estaciones (agregar/quitar/renombrar PC; pedido del dueño,
   2026-10-19) y ve el resto en gris. Lo demás es solo de ADMIN, sin
@@ -62,9 +63,9 @@ mostrador (si lo hicieran las dos, la misma caja se intentaría cerrar dos veces
 """
 
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QTimer
 
 import time
 
@@ -73,16 +74,13 @@ from admin_remoto import modo as modo_remoto
 from errores import registrar_error
 from repositories import impresiones_repo, relevo_repo, usuarios_repo
 from turnos import MINUTOS_PARA_CIERRE_FORZOSO
-from ui.articulos_window import ArticulosWindow
-from ui.compras_window import ComprasWindow
+from ui.administrar_kiosko_window import AdministrarKioskoWindow
 from ui.configuracion_admin_window import ConfiguracionAdminWindow
 from ui.impresiones_window import DialogoImpresiones
 from ui.ventas_window import VentasWindow
-from ui.consulta_ventas_window import ConsultaVentasWindow
-from ui.caja_window import CajaWindow, CierreTurnoWindow, ControlCierresWindow
-from ui.reportes_window import ReportesWindow
+from ui.caja_window import CajaWindow, CierreTurnoWindow
 from ui.tramites_window import DialogoTramites
-from ui.usuarios_window import UsuariosWindow, DialogoCambiarClave
+from ui.usuarios_window import DialogoCambiarClave
 from control_pcs.ui.pcs_window import PanelControlPcs
 from control_pcs.ui.cuenta_pc_dialogos import DialogoCobrarAntesDelCierre
 from control_pcs.repositories import cuentas_pc_repo
@@ -91,7 +89,7 @@ from control_pcs.ui.reservas_window import ReservasWindow
 from control_pcs.repositories import reservas_repo
 from ui.ingreso_caja import mensaje_del_sobre
 from ui.utils import (
-    aplicar_clase, icono_de_emoji, mostrar_error, mostrar_info, sin_boton_por_defecto, solo_en_el_mostrador,
+    aplicar_clase, icono_de_emoji, mostrar_error, mostrar_info, solo_en_el_mostrador,
 )
 
 # Cada cuánto se mira cómo está la caja (si tiene que titilar el botón, o si ya
@@ -479,105 +477,4 @@ class MainWindow(QMainWindow):
     def _cerrar_sesion(self):
         self.close()
         self._al_cerrar_sesion()
-
-
-class _VentanaDeBotones(QDialog):
-    """
-    Diálogo angosto con un título y una columna de botones grandes, todos
-    del mismo tamaño para que la pantalla quede prolija, y un "Cerrar" al
-    final. Es la base de "Administrar Kiosko", que dice qué botones tiene
-    (`_armar_botones`) y qué hace cada uno. ("Configuración ADMIN" la usaba también
-    hasta el 2026-10-26: hoy tiene su diseño propio, ui/configuracion_admin_window.py.)
-    """
-
-    ANCHO_BOTON = 320
-    ALTO_BOTON = 48
-
-    def __init__(self, titulo: str, alto: int, parent=None):
-        super().__init__(parent)
-        self._titulo = titulo
-        self.setWindowTitle(titulo)
-        self.resize(360, alto)
-
-    def _armar_botones(self, botones: list):
-        """`botones`: lista de (texto, función) o (texto, función, clase), en el
-        orden en que se ven. La clase ("peligro", "primario") le da el color."""
-        layout = QVBoxLayout()
-        layout.setContentsMargins(24, 24, 24, 24)
-
-        titulo = QLabel(self._titulo)
-        titulo.setAlignment(Qt.AlignCenter)
-        titulo.setStyleSheet("font-size: 17px; font-weight: 700; color: #1B2233;")
-        layout.addWidget(titulo)
-        layout.addSpacing(16)
-
-        for texto, funcion, *clase in botones:
-            self._agregar_boton(layout, texto, funcion, *clase)
-
-        layout.addStretch()
-        self._agregar_boton(layout, "Cerrar", self.close, clase="peligro")
-        self.setLayout(layout)
-        sin_boton_por_defecto(self)
-
-    def _agregar_boton(self, layout, texto, funcion, clase=None):
-        boton = QPushButton(texto.upper())
-        boton.setFixedSize(self.ANCHO_BOTON, self.ALTO_BOTON)
-        if clase:
-            aplicar_clase(boton, clase)
-        boton.clicked.connect(funcion)
-        layout.addWidget(boton, alignment=Qt.AlignHCenter)
-        return boton
-
-
-class AdministrarKioskoWindow(_VentanaDeBotones):
-    """
-    Agrupa las pantallas de gestión del kiosko detrás de un único acceso
-    ("Administrar Kiosko"), que solo abren los encargados (ver
-    MainWindow._es_encargado). Un Admin las ve todas; una Empleada solo las
-    que tenga habilitadas en usuarios_repo.PERMISOS_EMPLEADA.
-    """
-
-    def __init__(self, usuario, es_admin, parent=None):
-        super().__init__("Administrar Kiosko", 540, parent)
-        self.usuario = usuario
-        self.es_admin = es_admin
-        self._armar_interfaz()
-
-    def _armar_interfaz(self):
-        # (permiso que la habilita, texto, qué abre). "Usuarios" no está
-        # acá: es solo del Admin, no se delega con ningún permiso.
-        pantallas = [
-            ("permiso_articulos", "📦  Artículos", self._abrir_articulos),
-            ("permiso_compras", "🚚  Compras", self._abrir_compras),
-            ("permiso_consulta_ventas",
-             "🔍  Consulta de Ventas / Anular" if self.es_admin else "🔍  Consulta de Ventas",
-             self._abrir_consulta_ventas),
-            ("permiso_reportes", "📊  Reportes", self._abrir_reportes),
-            ("permiso_control_cierres", "🗂️  Control de Cierres de Turno", self._abrir_control_cierres),
-        ]
-        botones = [
-            (texto, funcion) for permiso, texto, funcion in pantallas
-            if self.es_admin or usuarios_repo.tiene_permiso(self.usuario, permiso)
-        ]
-        if self.es_admin:
-            botones.append(("👤  Usuarios", self._abrir_usuarios))
-        self._armar_botones(botones)
-
-    def _abrir_articulos(self):
-        ArticulosWindow(self, self.usuario).exec()
-
-    def _abrir_compras(self):
-        ComprasWindow(self.usuario, self).exec()
-
-    def _abrir_consulta_ventas(self):
-        ConsultaVentasWindow(self.usuario, self).exec()
-
-    def _abrir_reportes(self):
-        ReportesWindow(self).exec()
-
-    def _abrir_control_cierres(self):
-        ControlCierresWindow(self.usuario, self).exec()
-
-    def _abrir_usuarios(self):
-        UsuariosWindow(self.usuario, self).exec()
 

@@ -131,12 +131,12 @@ def tarjeta_de_menu(icono: str, titulo: str, detalle: str, al_apretar, alto: int
     return boton
 
 
-def bloquear_tarjeta(tarjeta: QPushButton):
-    """Una tarjeta que solo usa el Admin, vista por otro: en gris y con candado, para
-    que se entienda por qué no se puede apretar."""
+def bloquear_tarjeta(tarjeta: QPushButton, motivo: str = TEXTO_SOLO_ADMIN):
+    """Una tarjeta que quien la mira no puede usar: en gris y con candado, y en vez de
+    para qué es, el `motivo`, para que se entienda por qué no se puede apretar."""
     tarjeta.setEnabled(False)
     tarjeta.icono.setText("🔒")
-    tarjeta.detalle.setText(TEXTO_SOLO_ADMIN)
+    tarjeta.detalle.setText(motivo)
 
 
 def tecla(texto: str, al_apretar=None, clase: str = "teclaBlanca") -> QPushButton:
