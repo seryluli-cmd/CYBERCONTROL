@@ -482,7 +482,7 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         miembro_id = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222", "1155554444")
         config_repo.guardar_tramos_tarifa_hora_miembro([{"monto_minimo": 13000, "tarifa_hora": 1000}])
 
-        with self.assertRaisesRegex(ValueError, r"\$13\.000"):
+        with self.assertRaisesRegex(ValueError, r"\$ 13\.000"):
             miembros_repo.cargar_saldo_por_monto(
                 miembro_id, 2000, [{"metodo": "EFECTIVO", "monto": 2000}], operador_id
             )
