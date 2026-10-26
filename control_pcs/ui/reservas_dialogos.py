@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, QTime
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QButtonGroup, QComboBox, QDialog, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QRadioButton, QTimeEdit, QVBoxLayout,
 )
 
@@ -29,7 +29,7 @@ from control_pcs.repositories import reservas_habilitar_repo, reservas_repo
 from ui.dialogo_pago import cobrar
 from ui.tarjeta_cierre import etiqueta_dato
 from ui.utils import (
-    aplicar_clase, confirmar, crear_selector_de_fecha, encadenar_enter, formato_pesos, manejar_errores,
+    CampoPesos, aplicar_clase, confirmar, crear_selector_de_fecha, encadenar_enter, formato_pesos, manejar_errores,
     mostrar_error, mostrar_info, sin_boton_por_defecto,
 )
 
@@ -139,9 +139,7 @@ class DialogoNuevaReserva(QDialog):
             self._grupo_paga.addButton(opcion)
             opcion.toggled.connect(self._actualizar_monto)
             fila_paga.addWidget(opcion)
-        self.spin_otro = QDoubleSpinBox()
-        self.spin_otro.setPrefix("$ ")
-        self.spin_otro.setMaximum(99_999_999)
+        self.spin_otro = CampoPesos()
         self.spin_otro.valueChanged.connect(self._actualizar_monto)
         fila_paga.addWidget(self.spin_otro)
         fila_paga.addStretch()

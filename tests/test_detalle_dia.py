@@ -229,7 +229,7 @@ class TestPantallaDelDetalle(_UnDiaConDeTodo):
         detalle = detalle_dia_repo.detalle_del_dia(self.dia)
 
         self.assertTrue(panel.titulo.text().startswith("Todo el día"))
-        self.assertIn("cuenta además $ 1.000,00 anulados después de cerrar", panel.titulo.text())
+        self.assertIn("cuenta además $ 1.000 anulados después de cerrar", panel.titulo.text())
         self.assertEqual(panel.tabla_ventas.rowCount(), len(detalle["ventas"]))
 
         turno = turnos_repo.listar_cierres()[0]["turno"]
@@ -363,12 +363,12 @@ class TestRenglonPorRenglon(BaseConBaseTemporal):
 class TestHtmlParaImprimir(unittest.TestCase):
     def test_el_texto_se_escapa_y_los_importes_van_a_la_derecha(self):
         html = imprimir.html_del_listado(
-            "Título", "resumen", ["Descripción", "Total"], [(["Papas <grandes> & co", "$ 10,00"], False)],
-            a_la_derecha=(1,), pie=["TOTAL", "$ 10,00"],
+            "Título", "resumen", ["Descripción", "Total"], [(["Papas <grandes> & co", "$ 10"], False)],
+            a_la_derecha=(1,), pie=["TOTAL", "$ 10"],
         )
         self.assertIn("Papas &lt;grandes&gt; &amp; co", html)
         self.assertNotIn("<grandes>", html)
-        self.assertIn('<td align="right">$ 10,00</td>', html)
+        self.assertIn('<td align="right">$ 10</td>', html)
         self.assertIn("<thead>", html)  # Qt repite los títulos arriba de cada hoja
 
 

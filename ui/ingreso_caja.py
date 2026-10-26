@@ -14,12 +14,12 @@ número de la pantalla sin contar.
 
 from datetime import datetime
 
-from PySide6.QtWidgets import QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from repositories import relevo_repo
 from turnos import MINUTOS_PARA_CIERRE_FORZOSO
 from ui.utils import (
-    aplicar_clase, confirmar, encadenar_enter, formato_pesos, manejar_errores, mostrar_info,
+    CampoPesos, aplicar_clase, confirmar, encadenar_enter, formato_pesos, manejar_errores, mostrar_info,
     sin_boton_por_defecto,
 )
 
@@ -56,9 +56,7 @@ class DialogoContarPlata(QDialog):
         texto = QLabel(explicacion)
         texto.setWordWrap(True)
 
-        self.spin_monto = QDoubleSpinBox()
-        self.spin_monto.setMaximum(99_999_999)
-        self.spin_monto.setPrefix("$ ")
+        self.spin_monto = CampoPesos()
         encadenar_enter(self.spin_monto, accion_final=self._listo)
 
         self.resultado = QLabel()

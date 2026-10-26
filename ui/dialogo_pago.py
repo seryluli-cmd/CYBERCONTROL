@@ -30,21 +30,19 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
 
 import dominio
-from ui.utils import formato_pesos, aplicar_clase, encadenar_enter, sin_boton_por_defecto
+from ui.utils import CampoPesos, formato_pesos, aplicar_clase, encadenar_enter, sin_boton_por_defecto
 
 # Lo que muestra "Paga con" vacío (en cero).
 _TEXTO_PAGA_JUSTO = "paga justo"
 
 
-class _CampoPlata(QDoubleSpinBox):
-    """Un importe en pesos que, al entrar con el mouse o con Tab, queda
-    seleccionado: lo que se escribe reemplaza al número que había."""
+class _CampoPlata(CampoPesos):
+    """Un importe en pesos ("$ 1.500", ver ui.utils.CampoPesos) que, al entrar con
+    el mouse o con Tab, queda seleccionado: lo que se escribe reemplaza al número
+    que había."""
 
     def __init__(self, maximo: float):
-        super().__init__()
-        self.setPrefix("$ ")
-        self.setDecimals(2)
-        self.setMaximum(maximo)
+        super().__init__(maximo)
         self.setButtonSymbols(QDoubleSpinBox.NoButtons)
         self.setMinimumWidth(150)
 

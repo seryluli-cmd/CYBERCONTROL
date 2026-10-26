@@ -32,7 +32,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QLabel, QComboBox, QCheckBox, QFormLayout,
-    QHeaderView, QDoubleSpinBox, QSpinBox, QStackedWidget, QWidget
+    QHeaderView, QSpinBox, QStackedWidget, QWidget
 )
 
 import dominio
@@ -42,7 +42,7 @@ from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBa
 from control_pcs.ui.miembros_historial_cargas import VentanaHistorialCargas
 from ui.dialogo_pago import cobrar
 from ui.utils import (
-    formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
+    CampoPesos, formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
     aplicar_clase, encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar,
     crear_tabla, fila_agregar_quitar,
 )
@@ -411,9 +411,7 @@ class DialogoCargarSaldo(QDialog):
         layout_monto = QVBoxLayout()
         self.etiqueta_tarifa_aplicada = QLabel()
         layout_monto.addWidget(self.etiqueta_tarifa_aplicada)
-        self.spin_monto = QDoubleSpinBox()
-        self.spin_monto.setMaximum(99_999_999)
-        self.spin_monto.setPrefix("$ ")
+        self.spin_monto = CampoPesos()
         self.spin_monto.valueChanged.connect(self._actualizar_preview_monto)
         self.etiqueta_preview_monto = QLabel()
         layout_monto.addWidget(self.spin_monto)
@@ -558,9 +556,7 @@ class DialogoTramosTarifaMiembro(QDialog):
         # en pesos (ver DialogoGestionBonos.spin_precio) -- evita tener
         # que parsear a mano un texto con "$"/separadores de miles como
         # los que arma formato_pesos.
-        spin = QDoubleSpinBox()
-        spin.setMaximum(99_999_999)
-        spin.setPrefix("$ ")
+        spin = CampoPesos()
         spin.setValue(valor)
         return spin
 

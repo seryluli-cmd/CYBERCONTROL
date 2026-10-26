@@ -8,11 +8,11 @@ anotar tiempo. Solo el Admin (el repo lo vuelve a exigir). Se abre también
 desde otra PC (admin_remoto/lista_blanca.py).
 """
 
-from PySide6.QtWidgets import QButtonGroup, QCheckBox, QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QRadioButton, QVBoxLayout
+from PySide6.QtWidgets import QButtonGroup, QCheckBox, QDialog, QHBoxLayout, QLabel, QRadioButton, QVBoxLayout
 
 import dominio
 from control_pcs.repositories import cuentas_pc_repo
-from ui.utils import encadenar_enter, fila_guardar_cancelar, manejar_errores, mostrar_info, sin_boton_por_defecto
+from ui.utils import CampoPesos, encadenar_enter, fila_guardar_cancelar, manejar_errores, mostrar_info, sin_boton_por_defecto
 
 
 class DialogoReglasCuentaPc(QDialog):
@@ -32,11 +32,7 @@ class DialogoReglasCuentaPc(QDialog):
         )
         explicacion.setWordWrap(True)
 
-        self.campo_tope = QDoubleSpinBox()
-        self.campo_tope.setMaximum(99_999_999)
-        self.campo_tope.setDecimals(0)
-        self.campo_tope.setGroupSeparatorShown(True)
-        self.campo_tope.setPrefix("$ ")
+        self.campo_tope = CampoPesos()
         self.campo_tope.setValue(float(reglas["tope"]))
         fila_tope = QHBoxLayout()
         fila_tope.addWidget(QLabel("Tope por PC:"))

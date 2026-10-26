@@ -16,12 +16,12 @@ todo lo demás se escribe una vez acá.
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox,
+    QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox,
     QTableWidgetItem, QVBoxLayout,
 )
 
 from ui.utils import (
-    aplicar_clase, confirmar, encadenar_enter, fila_guardar_cancelar, formato_pesos,
+    CampoPesos, aplicar_clase, confirmar, encadenar_enter, fila_guardar_cancelar, formato_pesos,
     formato_tiempo, manejar_errores, mostrar_error, sin_boton_por_defecto, crear_tabla,
 )
 
@@ -71,9 +71,7 @@ class DialogoBonoBase(QDialog):
         fila_tiempo.addWidget(self.spin_minutos)
         fila_tiempo.addWidget(QLabel("min"))
 
-        self.spin_precio = QDoubleSpinBox()
-        self.spin_precio.setMaximum(99_999_999)
-        self.spin_precio.setPrefix("$ ")
+        self.spin_precio = CampoPesos()
 
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Nombre:"))

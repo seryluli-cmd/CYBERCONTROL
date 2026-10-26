@@ -10,7 +10,7 @@ que vive acá pero la usa cualquier usuario para su propia clave.
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
-    QComboBox, QFormLayout, QDoubleSpinBox, QCheckBox, QGroupBox,
+    QComboBox, QFormLayout, QCheckBox, QGroupBox,
 )
 
 import dominio
@@ -18,7 +18,7 @@ from admin_remoto import modo as modo_remoto
 from repositories import usuarios_repo, config_repo
 from ui.copias_dialogo import DialogoCopiasDeSeguridad
 from ui.utils import (
-    mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase,
+    CampoPesos, mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase,
     encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar, crear_tabla,
 )
 
@@ -253,9 +253,7 @@ class DialogoFondoCambio(QDialog):
         self.setWindowTitle("Cambio Fijo")
         self.resize(320, 140)
 
-        self.spin_monto = QDoubleSpinBox()
-        self.spin_monto.setMaximum(99_999_999)
-        self.spin_monto.setPrefix("$ ")
+        self.spin_monto = CampoPesos()
         self.spin_monto.setValue(valor_actual)
         encadenar_enter(self.spin_monto, accion_final=self.accept)
 

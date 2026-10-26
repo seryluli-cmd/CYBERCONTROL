@@ -165,7 +165,7 @@ class TestVentana(BaseHistorial):
         fila_anulada = 1
         self.assertTrue(ventana.tabla.item(fila_anulada, COLUMNA_ESTADO).text().startswith("ANULADA por Duenio"))
         self.assertEqual(ventana.tabla.item(fila_anulada, COLUMNA_SOCIO).foreground().color().name(), "#c62828")
-        self.assertEqual(ventana.etiqueta_totales.text(), "1 carga · 3h 00m · $ 3.000,00  (sin contar 1 anulada)")
+        self.assertEqual(ventana.etiqueta_totales.text(), "1 carga · 3h 00m · $ 3.000  (sin contar 1 anulada)")
 
     def test_con_un_socio_abre_solo_con_sus_cargas_y_al_borrar_el_buscador_ve_todas(self):
         self.cargar_bono(self.ana)

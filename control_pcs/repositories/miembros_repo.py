@@ -392,7 +392,7 @@ def validar_monto_de_carga(tramos: list, monto: float):
     minima = dominio.carga_minima_de_saldo(tramos)
     if monto < minima:
         raise ValueError(
-            f"La carga mínima es de ${minima:,.0f}.".replace(",", ".")
+            f"La carga mínima es de {dominio.texto_pesos(minima)}."
             + " Se configura en Configuración ADMIN > Tarifa por Hora para Socios."
         )
 
@@ -410,7 +410,7 @@ def cargar_saldo_por_monto(miembro_id: int, monto: float, pagos: list, usuario_o
     if minutos <= 0:
         raise ValueError(
             f"Ese monto no alcanza para {MINUTOS_POR_FRACCION} minutos a la tarifa actual "
-            f"(${tarifa_hora:.0f}/hora)."
+            f"({dominio.texto_pesos(tarifa_hora)}/hora)."
         )
     with conexion_db() as conexion:
         return _registrar_carga(conexion, miembro_id, minutos, monto, pagos, usuario_operador_id)

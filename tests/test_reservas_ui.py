@@ -69,12 +69,12 @@ class TestRenglonReservas(_ConUnaReserva):
 
         tarjeta = self._abrir(CierreTurnoWindow(self._usuario())).tarjeta
 
-        self.assertEqual(tarjeta.valor_pcs.text(), "$ 3.000,00 ef. + $ 0,00 dig.")
-        self.assertEqual(tarjeta.valor_reservas.text(), "$ 5.000,00 ef. + $ 0,00 dig.")
+        self.assertEqual(tarjeta.valor_pcs.text(), "$ 3.000 ef. + $ 0 dig.")
+        self.assertEqual(tarjeta.valor_reservas.text(), "$ 5.000 ef. + $ 0 dig.")
         # Con espacio duro entre "$" y el número: el renglón es angosto.
-        self.assertEqual(tarjeta.detalle_reservas.text(), "1 seña ($\u00a05.000,00)")
+        self.assertEqual(tarjeta.detalle_reservas.text(), "1 seña ($\u00a05.000)")
         # Separarlas es solo cómo se muestra: se retira todo.
-        self.assertEqual(tarjeta.valor_retirar.text(), "$ 8.000,00")
+        self.assertEqual(tarjeta.valor_retirar.text(), "$ 8.000")
         self.assertTrue(tarjeta.nota_reservas.isHidden())
 
     def test_nombra_la_que_se_habilito_sin_cobrar(self):
@@ -92,13 +92,13 @@ class TestRenglonReservas(_ConUnaReserva):
 
         caja = self._abrir(CajaWindow())
 
-        self.assertEqual(caja.valor_reservas.text(), "$ 5.000,00 ef. + $ 0,00 dig.")
-        self.assertEqual(caja.valor_pcs.text(), "$ 0,00 ef. + $ 0,00 dig.")
+        self.assertEqual(caja.valor_reservas.text(), "$ 5.000 ef. + $ 0 dig.")
+        self.assertEqual(caja.valor_pcs.text(), "$ 0 ef. + $ 0 dig.")
 
     def test_sin_reservas_el_renglon_chico_no_ocupa_lugar(self):
         tarjeta = self._abrir(CierreTurnoWindow(self._usuario())).tarjeta
 
-        self.assertEqual(tarjeta.valor_reservas.text(), "$ 0,00 ef. + $ 0,00 dig.")
+        self.assertEqual(tarjeta.valor_reservas.text(), "$ 0 ef. + $ 0 dig.")
         self.assertTrue(tarjeta.detalle_reservas.isHidden())
 
 
@@ -110,8 +110,8 @@ class TestVentanaReservas(_ConUnaReserva):
 
         fila = [ventana.tabla.item(0, columna).text() for columna in range(ventana.tabla.columnCount())]
         self.assertEqual(fila[0], str(reserva))
-        self.assertEqual(fila[2:], ["Juan Pérez", "", "PC1", "Promo 10 hs", "$ 10.000,00", "$ 5.000,00",
-                                    "$ 5.000,00", "Pendiente"])
+        self.assertEqual(fila[2:], ["Juan Pérez", "", "PC1", "Promo 10 hs", "$ 10.000", "$ 5.000",
+                                    "$ 5.000", "Pendiente"])
 
     def test_no_vino_pregunta_y_la_deja_terminada(self):
         reserva = self._reservar(5000.0)
@@ -148,7 +148,7 @@ class TestDialogos(_ConUnaReserva):
         dialogo.combo_equipo.setCurrentIndex(dialogo.combo_equipo.findText("PC2"))
         dialogo.combo_bono.setCurrentIndex(1)  # Promo 10 hs (van por minutos)
 
-        self.assertEqual(dialogo.boton_cobrar.text(), "Cobrar $ 5.000,00")
+        self.assertEqual(dialogo.boton_cobrar.text(), "Cobrar $ 5.000")
         with mock.patch("control_pcs.ui.reservas_dialogos.cobrar", return_value=_efectivo(5000.0)) as cobro, \
                 mock.patch("control_pcs.ui.reservas_dialogos.mostrar_info"):
             dialogo.boton_cobrar.click()
@@ -180,7 +180,7 @@ class TestDialogos(_ConUnaReserva):
         dialogo = self._abrir(DialogoHabilitarReserva(self._usuario(), reserva))
 
         self.assertEqual(dialogo.combo_lugar.currentText(), "PC1  (la reservada)  (sin conexión)")
-        self.assertEqual(dialogo.boton_habilitar.text(), "Cobrar $ 5.000,00 y habilitar")
+        self.assertEqual(dialogo.boton_habilitar.text(), "Cobrar $ 5.000 y habilitar")
         with mock.patch("control_pcs.ui.reservas_dialogos.cobrar", return_value=_efectivo(5000.0)) as cobro, \
                 mock.patch("control_pcs.ui.reservas_dialogos.mostrar_info"):
             dialogo.boton_habilitar.click()

@@ -452,11 +452,11 @@ class TestPantallasDeLaPlata(_ConPantalla):
         caja = self._abrir(CajaWindow())
         cierre = self._abrir(CierreTurnoWindow(self._usuario(self.operadora_id)))
 
-        self.assertIn("$ 3.000,00 ef.", caja.valor_playstation.text())
-        self.assertIn("$ 3.000,00 ef.", cierre.tarjeta.valor_playstation.text())
+        self.assertIn("$ 3.000 ef.", caja.valor_playstation.text())
+        self.assertIn("$ 3.000 ef.", cierre.tarjeta.valor_playstation.text())
         # Y lo suma al efectivo del cajón, que es lo que se retira.
-        self.assertEqual(caja.valor_ventas.text(), "$ 3.000,00")
-        self.assertEqual(cierre.tarjeta.valor_retirar.text(), "$ 3.000,00")
+        self.assertEqual(caja.valor_ventas.text(), "$ 3.000")
+        self.assertEqual(cierre.tarjeta.valor_retirar.text(), "$ 3.000")
 
     def test_control_de_cierres_trae_una_columna_para_la_consola(self):
         from repositories import turnos_repo
@@ -467,7 +467,7 @@ class TestPantallasDeLaPlata(_ConPantalla):
 
         titulos = [ventana.tabla.horizontalHeaderItem(c).text() for c in range(ventana.tabla.columnCount())]
         columna = titulos.index("PlayStation 5")
-        self.assertEqual(ventana.tabla.item(0, columna).text(), "$ 3.000,00")
+        self.assertEqual(ventana.tabla.item(0, columna).text(), "$ 3.000")
 
     def test_consulta_de_ventas_distingue_el_origen_de_cada_venta(self):
         from ui.consulta_ventas_window import ConsultaVentasWindow
@@ -488,7 +488,7 @@ class TestPantallasDeLaPlata(_ConPantalla):
         titulos = [totales.tabla.horizontalHeaderItem(c).text() for c in range(totales.tabla.columnCount())]
         self.assertEqual(titulos, ["Período", "Kiosko", "Impresiones", "Trámites", "Alquiler de PCs",
                                    "PlayStation 5", "Total"])
-        self.assertEqual(totales.tabla.item(0, titulos.index("PlayStation 5")).text(), "$ 3.000,00")
+        self.assertEqual(totales.tabla.item(0, titulos.index("PlayStation 5")).text(), "$ 3.000")
         self.assertIn("PlayStation 5", dia._COLUMNAS)
         # Cada fila del Resumen del Día tiene un valor por cada columna.
         self.assertEqual(dia.tabla.columnCount(), len(dia._COLUMNAS))

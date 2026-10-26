@@ -10,7 +10,7 @@ Compras (ver compras_window.py) y solo se corrige a mano con ORDENAR Stock
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
-    QComboBox, QDoubleSpinBox, QSpinBox, QFormLayout, QInputDialog,
+    QComboBox, QSpinBox, QFormLayout, QInputDialog,
 )
 from PySide6.QtCore import Qt, QDate
 
@@ -19,7 +19,7 @@ from repositories import articulos_repo
 from ui.articulos_tabla import COLUMNA_CODIGO, crear_tabla_de_articulos, llenar_tabla_de_articulos
 from ui.ordenar_stock_window import OrdenarStockWindow
 from ui.utils import (
-    mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase,
+    CampoPesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase,
     encadenar_enter, armar_filtro_por_fechas, sin_boton_por_defecto, fila_guardar_cancelar,
     crear_tabla, rango_de_fechas,
 )
@@ -189,13 +189,9 @@ class DialogoArticulo(QDialog):
         for rubro in articulos_repo.listar_rubros():
             self.combo_rubro.addItem(rubro["nombre"], rubro["id"])
 
-        self.spin_precio_venta = QDoubleSpinBox()
-        self.spin_precio_venta.setMaximum(99_999_999)
-        self.spin_precio_venta.setPrefix("$ ")
+        self.spin_precio_venta = CampoPesos()
 
-        self.spin_precio_compra = QDoubleSpinBox()
-        self.spin_precio_compra.setMaximum(99_999_999)
-        self.spin_precio_compra.setPrefix("$ ")
+        self.spin_precio_compra = CampoPesos()
 
         # Calculadora de margen: a veces se pierde la factura de compra y no
         # se sabe el costo real, pero se puede averiguar el precio de venta

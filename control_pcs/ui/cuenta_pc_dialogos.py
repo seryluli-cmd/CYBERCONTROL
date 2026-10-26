@@ -26,7 +26,7 @@ control_pcs/repositories/cuentas_pc_repo.py):
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QDialog, QDoubleSpinBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+    QButtonGroup, QCheckBox, QDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QPushButton, QRadioButton, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -35,7 +35,7 @@ from control_pcs.repositories import bonos_miembro_repo, cuentas_pc_repo, miembr
 from repositories import config_repo
 from ui import dialogo_pago
 from ui.utils import (
-    aplicar_clase, crear_tabla, encadenar_enter, fila_guardar_cancelar, formato_pesos, formato_tiempo, manejar_errores,
+    CampoPesos, aplicar_clase, crear_tabla, encadenar_enter, fila_guardar_cancelar, formato_pesos, formato_tiempo, manejar_errores,
     mostrar_error, mostrar_info, sin_boton_por_defecto, solo_en_el_mostrador,
 )
 
@@ -139,11 +139,7 @@ class DialogoTiempoSocio(QDialog):
             layout.addWidget(opcion)
         self.opcion_monto = QRadioButton("Otro monto:")
         self._grupo.addButton(self.opcion_monto)
-        self.campo_monto = QDoubleSpinBox()
-        self.campo_monto.setMaximum(99_999_999)
-        self.campo_monto.setDecimals(0)
-        self.campo_monto.setGroupSeparatorShown(True)
-        self.campo_monto.setPrefix("$ ")
+        self.campo_monto = CampoPesos()
         self.campo_monto.valueChanged.connect(self._mostrar_minutos)
         self.campo_monto.valueChanged.connect(lambda _: self.opcion_monto.setChecked(True))
         self.etiqueta_minutos = QLabel("")

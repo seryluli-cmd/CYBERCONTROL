@@ -47,8 +47,8 @@ class TestContarAciegas(unittest.TestCase):
         dialogo._listo()
 
         self.assertFalse(dialogo.resultado.isHidden())
-        self.assertIn("Tendría que haber $ 50.000,00 (lo que dejó la anterior)", dialogo.resultado.text())
-        self.assertIn("faltan $ 500,00", dialogo.resultado.text())
+        self.assertIn("Tendría que haber $ 50.000 (lo que dejó la anterior)", dialogo.resultado.text())
+        self.assertIn("faltan $ 500", dialogo.resultado.text())
         dialogo._confirmar()
         self.assertEqual(dialogo.contado, 49500.0)
 
@@ -232,10 +232,10 @@ class TestDetalleDeUnCierreHecho(BaseConBaseTemporal):
         self.addCleanup(cierre_de_turno.deleteLater)
         self.assertIs(type(tarjeta), type(cierre_de_turno.tarjeta))
         self.assertEqual(tarjeta.titulo.text(), "Cierre de Turno — Caja Nº 1 de Lucia · Mañana")
-        self.assertEqual(tarjeta.valor_fondo.text(), "$ 50.000,00")
-        self.assertEqual(tarjeta.valor_pcs.text(), "$ 3.000,00 ef. + $ 0,00 dig.")
-        self.assertEqual(tarjeta.valor_total.text(), "$ 3.000,00")
-        self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000,00")
+        self.assertEqual(tarjeta.valor_fondo.text(), "$ 50.000")
+        self.assertEqual(tarjeta.valor_pcs.text(), "$ 3.000 ef. + $ 0 dig.")
+        self.assertEqual(tarjeta.valor_total.text(), "$ 3.000")
+        self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000")
         # En vez de "Retirá el efectivo...", cómo se cerró, en rojo como en la tabla.
         self.assertIn("Se cerró sola a las 14:30", tarjeta.nota.text())
         self.assertIn("pasaron 30 minutos", tarjeta.nota.text())
@@ -248,7 +248,7 @@ class TestDetalleDeUnCierreHecho(BaseConBaseTemporal):
 
         self.assertEqual(tarjeta.nota.text(), "La cerró Lucia: 14:12 (12 min después).")
         self.assertIn("gray", tarjeta.nota.styleSheet())
-        self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000,00")
+        self.assertEqual(tarjeta.valor_retirar.text(), "$ 3.000")
 
     def test_un_cierre_en_ausencia_dice_quien_lo_cerro_en_lugar_de_quien(self):
         turnos_repo.cerrar_turno(self.gaby["id"], ahora_dt=_HACE_TIEMPO.replace(hour=14, minute=5))

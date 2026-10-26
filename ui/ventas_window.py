@@ -35,7 +35,7 @@ from control_pcs.ui.cuenta_pc_dialogos import DialogoElegirPc, anotar_en_la_cuen
 from repositories import articulos_repo, ventas_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
-    sin_boton_por_defecto, crear_tabla,
+    sin_boton_por_defecto, crear_tabla, pedir_pesos,
 )
 from ui.buscar_articulo import armar_botones_de_busqueda, avisar_codigo_no_encontrado
 from ui.dialogo_pago import DialogoPago
@@ -282,9 +282,8 @@ class VentasWindow(QDialog):
 
     def _editar_precio(self, fila):
         linea = self.carrito[fila]
-        nuevo_precio, aceptado = QInputDialog.getDouble(
-            self, "Modificar Precio", f"{linea['descripcion']}\nNuevo precio unitario:",
-            linea["precio_unitario"], 0, 99_999_999, 2
+        nuevo_precio, aceptado = pedir_pesos(
+            self, "Modificar Precio", f"{linea['descripcion']}\nNuevo precio unitario:", linea["precio_unitario"]
         )
         if aceptado:
             linea["precio_unitario"] = nuevo_precio

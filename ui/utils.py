@@ -11,15 +11,17 @@ por defecto).
 """
 
 import functools
+import re
 from datetime import datetime
 
 from PySide6.QtCore import QDate, QEvent, QObject, QRect, QSize, Qt
-from PySide6.QtGui import QFont, QGuiApplication, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import QFont, QGuiApplication, QIcon, QImage, QPainter, QPixmap, QValidator
 from PySide6.QtWidgets import (
-    QAbstractSpinBox, QComboBox, QDateEdit, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
-    QPushButton, QTableWidget, QWidget,
+    QAbstractSpinBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox, QHBoxLayout,
+    QHeaderView, QLabel, QMessageBox, QPushButton, QTableWidget, QVBoxLayout, QWidget,
 )
 
+import dominio
 from admin_remoto import modo as modo_remoto
 from errores import registrar_error
 from turnos import dia_en_que_empezo_el_turno
@@ -113,25 +115,81 @@ def _mostrar_error_seguro(padre, error):
 
 def formato_pesos(monto) -> str:
     """
-    Convierte un número (1234.5) en un texto con formato de pesos
-    argentinos ("$ 1.234,50"): punto para miles, coma para decimales.
+    Convierte un número en pesos como se leen en el local: 1500 -> "$ 1.500"
+    (punto para los miles, sin centavos; con centavos solo si los tiene de
+    verdad: "$ 1.234,50"). Ver dominio.texto_pesos.
     """
-    try:
-        monto = float(monto)
-    except (TypeError, ValueError):
-        monto = 0.0
-    texto = f"{monto:,.2f}"
-    # f-string nos da el formato "en inglés" (1,234.50); lo invertimos
-    # a formato argentino cambiando temporalmente los separadores.
-    texto = texto.replace(",", "TEMP").replace(".", ",").replace("TEMP", ".")
-    return f"$ {texto}"
+    return dominio.texto_pesos(monto)
 
 
-def formato_pesos_corto(monto) -> str:
-    """Como formato_pesos, sin los centavos cuando son cero ("$ 2.300"): para
-    lugares angostos, como el "DEBE" del casillero de una PC en el mosaico."""
-    texto = formato_pesos(monto)
-    return texto[:-3] if texto.endswith(",00") else texto
+class CampoPesos(QDoubleSpinBox):
+    """
+    El campo donde se escribe un monto: se ve "$ 1.500", con el punto de los
+    miles y sin centavos, igual que `formato_pesos` (pedido del dueño,
+    2026-10-26: un QDoubleSpinBox común mostraba "1500,00" y se leía mal). Se
+    puede escribir con o sin el punto ("1500" o "1.500"); la coma es para los
+    centavos, que casi nunca hacen falta ("1.500,50"). El punto es siempre de
+    los miles: nadie escribe un precio de $ 1,5.
+    """
+
+    _PERMITIDO = re.compile(r"^[0-9.]*(,[0-9]{0,2})?$")
+
+    def __init__(self, maximo: float = 99_999_999, parent=None):
+        super().__init__(parent)
+        self.setPrefix("$ ")
+        self.setDecimals(2)
+        self.setMaximum(maximo)
+
+    def _sin_prefijo(self, texto: str) -> str:
+        texto = texto.strip()
+        if texto.startswith("$"):
+            texto = texto[1:]
+        return texto.strip()
+
+    def textFromValue(self, valor: float) -> str:
+        return dominio.texto_pesos(valor)[2:]  # sin el "$ ": lo pone el prefijo
+
+    def valueFromText(self, texto: str) -> float:
+        numero = self._sin_prefijo(texto).replace(".", "").replace(",", ".")
+        try:
+            return float(numero) if numero else 0.0
+        except ValueError:
+            return 0.0
+
+    def validate(self, texto: str, posicion: int):
+        if self.specialValueText() and texto == self.specialValueText():
+            return QValidator.Acceptable, texto, posicion
+        numero = self._sin_prefijo(texto)
+        if not self._PERMITIDO.match(numero):
+            return QValidator.Invalid, texto, posicion
+        if not numero.strip(".,"):
+            return QValidator.Intermediate, texto, posicion
+        if self.valueFromText(numero) > self.maximum():
+            return QValidator.Invalid, texto, posicion
+        return QValidator.Acceptable, texto, posicion
+
+
+def pedir_pesos(parent, titulo: str, texto: str, valor: float):
+    """Como QInputDialog.getDouble, con un `CampoPesos` ("$ 1.500" y no
+    "1500,00"). Devuelve (monto, aceptado)."""
+    dialogo = QDialog(parent)
+    dialogo.setWindowTitle(titulo)
+    campo = CampoPesos()
+    campo.setValue(valor)
+    campo.selectAll()
+    botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+    botones.button(QDialogButtonBox.Ok).setText("Aceptar")
+    botones.button(QDialogButtonBox.Cancel).setText("Cancelar")
+    botones.accepted.connect(dialogo.accept)
+    botones.rejected.connect(dialogo.reject)
+    layout = QVBoxLayout(dialogo)
+    layout.addWidget(QLabel(texto))
+    layout.addWidget(campo)
+    layout.addWidget(botones)
+    sin_boton_por_defecto(dialogo)
+    encadenar_enter(campo, accion_final=dialogo.accept)
+    aceptado = bool(dialogo.exec())
+    return campo.value(), aceptado
 
 
 def formato_fecha_hora(fecha) -> str:

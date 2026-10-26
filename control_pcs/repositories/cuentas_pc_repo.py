@@ -248,18 +248,11 @@ def _revisar_tope(conexion, estacion, a_sumar: float, autoriza: dict):
         return
     if float(reglas["tope"]) <= 0:
         raise TopeSuperado("El Admin no deja anotar nada a cuenta (el tope está en $ 0).", False)
-    texto_debe = f"ya debe {_pesos(debe)} y " if debe > 0 else ""
-    mensaje = (f"'{estacion['nombre']}' {texto_debe}con esto ({_pesos(a_sumar)}) pasaría el tope de "
-               f"{_pesos(reglas['tope'])}.")
+    texto_debe = f"ya debe {dominio.texto_pesos(debe)} y " if debe > 0 else ""
+    mensaje = (f"'{estacion['nombre']}' {texto_debe}con esto ({dominio.texto_pesos(a_sumar)}) pasaría el tope de "
+               f"{dominio.texto_pesos(reglas['tope'])}.")
     mensaje += " Hace falta la clave de un Administrador." if con_clave else " Cobrale primero lo que debe."
     raise TopeSuperado(mensaje, con_clave)
-
-
-def _pesos(monto) -> str:
-    """Para los mensajes que arma el repo (mismo formato que ui.utils.formato_pesos,
-    que es de la pantalla y este repo no puede usar)."""
-    texto = f"{float(monto):,.2f}".replace(",", "TEMP").replace(".", ",").replace("TEMP", ".")
-    return f"$ {texto}"
 
 
 def _cuenta_de_la_sesion(conexion, sesion, usuario_id: int, nombre: str, ahora: datetime) -> int:

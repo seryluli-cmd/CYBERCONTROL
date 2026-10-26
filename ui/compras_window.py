@@ -18,7 +18,7 @@ from datetime import datetime
 from repositories import articulos_repo, compras_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, manejar_errores, aplicar_clase,
-    sin_boton_por_defecto, crear_tabla, mostrar_columna_entera,
+    sin_boton_por_defecto, crear_tabla, mostrar_columna_entera, pedir_pesos,
 )
 from ui.buscar_articulo import armar_botones_de_busqueda, avisar_codigo_no_encontrado
 
@@ -105,9 +105,8 @@ class ComprasWindow(QDialog):
         if not aceptado:
             return
 
-        costo, aceptado = QInputDialog.getDouble(
-            self, "Costo", f"Costo unitario de {articulo['descripcion']}:",
-            articulo["precio_compra"], 0, 99_999_999, 2
+        costo, aceptado = pedir_pesos(
+            self, "Costo", f"Costo unitario de {articulo['descripcion']}:", articulo["precio_compra"]
         )
         if not aceptado:
             return

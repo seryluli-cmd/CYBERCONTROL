@@ -85,7 +85,7 @@ from control_pcs.ui.pcs_mosaico import (
 )
 from ui.control_stock_window import BotonControlStock
 from ui.utils import (
-    avisar_que_es_en_el_mostrador, formato_pesos, formato_pesos_corto, formato_tiempo, formato_transcurrido,
+    avisar_que_es_en_el_mostrador, formato_pesos, formato_tiempo, formato_transcurrido,
     mostrar_info, confirmar, manejar_errores, solo_en_el_mostrador,
 )
 
@@ -502,7 +502,7 @@ class PanelControlPcs(QWidget):
             con_termometro=True,
             temperatura=temperatura["cpu"],
             nivel_temperatura=nivel_temperatura,
-            debe=formato_pesos_corto(deuda["total"]) if deuda is not None else "",
+            debe=formato_pesos(deuda["total"]) if deuda is not None else "",
         )
 
     @staticmethod

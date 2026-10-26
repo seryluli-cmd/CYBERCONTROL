@@ -184,7 +184,7 @@ class TestDialogoPago(unittest.TestCase):
         self._escribir(dialogo.campo_paga_con, "1000")
 
         self.assertFalse(dialogo.boton_confirmar.isEnabled())
-        self.assertIn("faltan $ 500,00", dialogo.etiqueta_falta.text())
+        self.assertIn("faltan $ 500", dialogo.etiqueta_falta.text())
         self._enter(dialogo.campo_paga_con)
         self.assertTrue(dialogo.isVisible())
         self.assertEqual(dialogo.pagos, [])

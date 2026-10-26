@@ -19,7 +19,7 @@ repositories/tramites_repo.py.
 """
 
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QTableWidgetItem, QVBoxLayout,
 )
 
@@ -27,7 +27,7 @@ import dominio
 from repositories import tramites_repo
 from ui.dialogo_pago import cobrar
 from ui.utils import (
-    aplicar_clase, confirmar, crear_tabla, encadenar_enter, fila_guardar_cancelar, formato_pesos,
+    CampoPesos, aplicar_clase, confirmar, crear_tabla, encadenar_enter, fila_guardar_cancelar, formato_pesos,
     manejar_errores, mostrar_error, mostrar_info, sin_boton_por_defecto,
 )
 
@@ -51,9 +51,7 @@ class DialogoTramites(QDialog):
         self.etiqueta_vacio.setWordWrap(True)
         self.etiqueta_vacio.setStyleSheet("color: #A6323C;")
 
-        self.spin_monto = QDoubleSpinBox()
-        self.spin_monto.setMaximum(99_999_999)
-        self.spin_monto.setPrefix("$ ")
+        self.spin_monto = CampoPesos()
 
         botones = fila_guardar_cancelar(self, self._cobrar, texto_guardar="Cobrar")
 

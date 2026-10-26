@@ -9,7 +9,9 @@ pesos, fechas y tiempos que Excel suma y ordena (no textos).
 Sin librerías aparte: un .xlsx es un .zip con unos pocos XML adentro, y para
 una sola hoja alcanza con escribirlos a mano. Así el programa no suma otra
 dependencia ni crece el .exe. Excel guarda los formatos siempre en inglés
-("#,##0.00") y los muestra con la coma y el punto de la PC. Probado abriéndolo
+("#,##0") y los muestra con la coma y el punto de la PC. Los montos van sin
+centavos, como en el programa (pedido del dueño 2026-10-26); la celda guarda el
+número exacto. Probado abriéndolo
 con Excel 16 (2026-10-24): sin carteles de "reparar", con filtros y la fila
 de títulos fija.
 
@@ -46,7 +48,7 @@ _ANCHO = {TEXTO: 18, ENTERO: 10, PESOS: 15, FECHA_HORA: 17, HORAS: 10, PORCENTAJ
 _ESTILOS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="4">
-<numFmt numFmtId="164" formatCode="&quot;$&quot; #,##0.00"/>
+<numFmt numFmtId="164" formatCode="&quot;$&quot; #,##0"/>
 <numFmt numFmtId="165" formatCode="dd/mm/yyyy hh:mm"/>
 <numFmt numFmtId="166" formatCode="[h]:mm"/>
 <numFmt numFmtId="167" formatCode="0.0%"/>

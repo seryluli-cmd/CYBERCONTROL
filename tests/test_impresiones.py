@@ -262,9 +262,9 @@ class TestPantallaDeImpresiones(_ConArticulo):
         dialogo = self._dialogo()
 
         self.assertEqual(dialogo.spin_cantidad.value(), 1)
-        self.assertEqual(dialogo.etiqueta_total.text(), "TOTAL: $ 150,00")
+        self.assertEqual(dialogo.etiqueta_total.text(), "TOTAL: $ 150")
         dialogo.spin_cantidad.setValue(14)
-        self.assertEqual(dialogo.etiqueta_total.text(), "TOTAL: $ 2.100,00")
+        self.assertEqual(dialogo.etiqueta_total.text(), "TOTAL: $ 2.100")
 
     def test_enter_en_la_cantidad_abre_el_cobro_y_graba_la_venta(self):
         llamados = self._cobro_justo()
@@ -345,9 +345,9 @@ class TestCajaMuestraImpresionesAparte(_ConArticulo):
         ventana = CajaWindow()
         self.addCleanup(ventana.deleteLater)
 
-        self.assertEqual(ventana.valor_kiosko.text(), "$ 100,00 ef. + $ 0,00 dig.")
-        self.assertEqual(ventana.valor_impresiones.text(), "$ 0,00 ef. + $ 300,00 dig.")
-        self.assertEqual(ventana.valor_tramites.text(), "$ 0,00 ef. + $ 0,00 dig.")
+        self.assertEqual(ventana.valor_kiosko.text(), "$ 100 ef. + $ 0 dig.")
+        self.assertEqual(ventana.valor_impresiones.text(), "$ 0 ef. + $ 300 dig.")
+        self.assertEqual(ventana.valor_tramites.text(), "$ 0 ef. + $ 0 dig.")
         # El cajón tiene el Cambio Fijo más los $100 en efectivo: separar no cambia nada.
         self.assertEqual(ventana.valor_actual.text(), formato_pesos(obtener_fondo_cambio() + 100.0))
 

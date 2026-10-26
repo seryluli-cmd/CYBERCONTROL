@@ -21,7 +21,7 @@ from datetime import datetime
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidgetItem,
-    QInputDialog, QWidget, QListWidget,
+    QWidget, QListWidget,
 )
 from PySide6.QtCore import Qt
 
@@ -32,7 +32,7 @@ from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta
 from ui.ingreso_caja import texto_de_la_diferencia
 from ui.tarjeta_cierre import TarjetaCierreDeTurno
 from ui.utils import (
-    formato_pesos, mostrar_error, manejar_errores, aplicar_clase, sin_boton_por_defecto, crear_tabla,
+    formato_pesos, mostrar_error, manejar_errores, aplicar_clase, sin_boton_por_defecto, crear_tabla, pedir_pesos,
     mostrar_columna_entera,
 )
 
@@ -272,12 +272,12 @@ class ControlCierresWindow(QDialog):
             return
         cierre = self.cierres[fila]
 
-        monto, aceptado = QInputDialog.getDouble(
+        monto, aceptado = pedir_pesos(
             self, "Monto contado",
             f"Turno {etiqueta_turno(cierre['fecha'], cierre['turno'])} del {cierre['fecha']} — {cierre['responsable']}\n"
             f"Se esperaba retirar: {formato_pesos(cierre['monto_a_retirar'])}\n\n"
             "¿Cuánto contaste realmente en el sobre?",
-            cierre["monto_a_retirar"], 0, 99_999_999, 2
+            cierre["monto_a_retirar"],
         )
         if not aceptado:
             return

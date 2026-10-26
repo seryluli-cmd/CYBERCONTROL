@@ -127,7 +127,7 @@ class TestSeEncuentra(BaseCodigos):
     def test_escanear_en_compras(self):
         compras = self._abrir(ComprasWindow(self.usuario))
         with mock.patch("ui.compras_window.QInputDialog.getInt", return_value=(6, True)), \
-                mock.patch("ui.compras_window.QInputDialog.getDouble", return_value=(900.0, True)):
+                mock.patch("ui.compras_window.pedir_pesos", return_value=(900.0, True)):
             for codigo in CODIGOS:
                 QTest.keyClicks(compras.campo_codigo, codigo)
                 QTest.keyClick(compras.campo_codigo, Qt.Key_Return)

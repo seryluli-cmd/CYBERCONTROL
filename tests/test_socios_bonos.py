@@ -106,14 +106,14 @@ class TestPestaña(BaseVentasDePcs):
 
     def test_tarjetas_barra_y_diferencia(self):
         pestaña = self.pestaña()
-        self.assertEqual(pestaña.tarjeta_socios.etiqueta_plata.text(), "$ 5.000,00")
+        self.assertEqual(pestaña.tarjeta_socios.etiqueta_plata.text(), "$ 5.000")
         self.assertEqual(pestaña.tarjeta_socios.etiqueta_porcentaje.text(), "47,6 %")
         self.assertEqual(pestaña.tarjeta_socios.etiqueta_detalle.text(),
-                         "2 cargas · 5h 00m · $ 1.000,00 por hora")
-        self.assertEqual(pestaña.tarjeta_bonos.etiqueta_plata.text(), "$ 5.500,00")
+                         "2 cargas · 5h 00m · $ 1.000 por hora")
+        self.assertEqual(pestaña.tarjeta_bonos.etiqueta_plata.text(), "$ 5.500")
         self.assertEqual((pestaña.barra.socios, pestaña.barra.bonos), (5000, 5500))
         self.assertEqual(pestaña.etiqueta_diferencia.text(),
-                         "Total PCs: $ 10.500,00. Los bonos dejaron $ 500,00 más que los socios.")
+                         "Total PCs: $ 10.500. Los bonos dejaron $ 500 más que los socios.")
         self.assertEqual(pestaña.tabla.rowCount(), 1)
 
     def test_por_dia_con_fila_total(self):
@@ -124,7 +124,7 @@ class TestPestaña(BaseVentasDePcs):
         pestaña.combo_agrupar.setCurrentIndex(pestaña.combo_agrupar.findData("dia"))
         self.assertEqual(pestaña.tabla.rowCount(), 3)
         self.assertEqual(pestaña.tabla.item(2, 0).text(), "TOTAL")
-        self.assertEqual(pestaña.tabla.item(2, 5).text(), "$ 10.500,00")
+        self.assertEqual(pestaña.tabla.item(2, 5).text(), "$ 10.500")
 
     def test_esta_en_reportes(self):
         ventana = ReportesWindow()

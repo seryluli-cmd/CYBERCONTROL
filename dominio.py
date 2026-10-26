@@ -387,6 +387,28 @@ def orden_de_codigo(codigo) -> tuple:
     return (1, 0, sin_acentos(texto))
 
 
+def texto_pesos(monto) -> str:
+    """Un monto como se lee en el local: "$ 1.500", "$ 30.000" (punto para los
+    miles, sin centavos: pedido del dueño 2026-10-26, todos los precios son en
+    miles y "$ 1.500,00" o "1500,00" se leían mal). Si el monto tiene centavos de
+    verdad (un reparto en proporción entre efectivo y digital) se muestran,
+    "$ 1.234,50": escondidos, una suma de la caja podría no cerrar por $ 1.
+
+    Es el único lugar donde se escribe un monto: la pantalla lo usa con
+    `ui.utils.formato_pesos` y los campos con `ui.utils.CampoPesos`; los repos, en
+    sus mensajes."""
+    try:
+        monto = round(float(monto), 2)
+    except (TypeError, ValueError):
+        monto = 0.0
+    if abs(monto - round(monto)) < 0.005:
+        texto = f"{round(monto):,}"
+    else:
+        texto = f"{monto:,.2f}"
+    # Python escribe "en inglés" (1,234.50): se dan vuelta la coma y el punto.
+    return "$ " + texto.replace(",", "TEMP").replace(".", ",").replace("TEMP", ".")
+
+
 def es_pcstream(nombre_estacion: str) -> bool:
     """
     Único lugar donde se decide si una estación es la PC de streaming. Compara

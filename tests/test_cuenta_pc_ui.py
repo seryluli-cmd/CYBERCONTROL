@@ -60,7 +60,7 @@ class TestMosaicoYPanel(BasePantallasCuenta):
         fila = self.fila_de(grilla, "PC1")
         ficha = grilla.mosaico.ficha(fila)
         self.assertEqual(ficha.debe, "$ 1.200")
-        self.assertIn("Debe $ 1.200,00 (Pedro)", ficha.estado)
+        self.assertIn("Debe $ 1.200 (Pedro)", ficha.estado)
         self.assertEqual(grilla.mosaico.ficha(self.fila_de(grilla, "PC2")).debe, "")
 
         self.assertTrue(grilla.mosaico.deuda_visible(fila))
@@ -74,8 +74,8 @@ class TestMosaicoYPanel(BasePantallasCuenta):
         panel = grilla.panel_detalle
         grilla.mosaico.elegir(self.fila_de(grilla, "PC1"))
         self.assertFalse(panel.etiqueta_cuenta.isHidden())
-        self.assertIn("Pedro: $ 1.200,00", panel.etiqueta_cuenta.text())
-        self.assertEqual(panel.boton_cuenta.text(), "Cobrar cuenta $ 1.200,00")
+        self.assertIn("Pedro: $ 1.200", panel.etiqueta_cuenta.text())
+        self.assertEqual(panel.boton_cuenta.text(), "Cobrar cuenta $ 1.200")
         self.assertTrue(panel.boton_bono_a_cuenta.isEnabled())
 
         grilla.mosaico.elegir(self.fila_de(grilla, "PC2"))
@@ -101,7 +101,7 @@ class TestVentanaDeLaCuenta(BasePantallasCuenta):
     def test_muestra_los_renglones_y_el_total(self):
         self.assertEqual(self.dialogo.tabla.rowCount(), 1)
         self.assertEqual(self.dialogo.tabla.item(0, 1).text(), "Pancho")
-        self.assertEqual(self.dialogo.boton_cobrar.text(), "Cobrar $ 1.200,00")
+        self.assertEqual(self.dialogo.boton_cobrar.text(), "Cobrar $ 1.200")
         # Quitar y dar por perdida son del Admin.
         self.assertTrue(self.dialogo.boton_quitar.isHidden())
         self.assertTrue(self.dialogo.boton_perdida.isHidden())
