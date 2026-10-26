@@ -629,4 +629,100 @@ HOJA_DE_ESTILOS = """
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
         width: 0px;
     }
+
+    /* Venta de Mercadería (ui/ventas_window.py), el diseño que eligió el dueño el
+       2026-10-26 (maqueta "B"): encabezado blanco, campo de escaneo grande, teclas en
+       relieve con la tecla dibujada aparte y el total oscuro a la derecha, como la
+       barra de arriba de la ventana principal. */
+    QFrame#encabezadoVenta {
+        background-color: #FFFFFF;
+        border: none;
+        border-bottom: 1px solid #DDE2EA;
+    }
+    QLabel#tituloVenta {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1E2330;
+    }
+    QLabel#datosVenta {
+        color: #5B6475;
+    }
+    QLineEdit#campoEscaneo, QLineEdit#campoEscaneo:focus {
+        border: 2px solid #2F6FED;
+        border-radius: 9px;
+        padding: 9px 8px;
+        font-size: 15px;
+        background-color: #FFFFFF;
+    }
+    QPushButton[clase="tecla"] {
+        background-color: #FFFFFF;
+        border: 1px solid #CDD3DE;
+        border-bottom: 3px solid #AEB6C4;
+        border-radius: 7px;
+        padding: 6px 12px 6px 8px;
+        font-weight: 700;
+        color: #1B2233;
+    }
+    QPushButton[clase="tecla"]:hover {
+        border-color: #4C8DFF;
+        border-bottom-color: #2F6FED;
+    }
+    QPushButton[clase="tecla"]:pressed {
+        border-bottom-width: 1px;
+        margin-top: 2px;
+        background-color: #F0F4FC;
+    }
+    QLabel#avisoStockVenta {
+        background-color: #FDECEC;
+        border: 1px solid #F1B5BA;
+        border-radius: 7px;
+        color: #A6323C;
+        font-weight: 700;
+        padding: 6px 10px;
+    }
+    QFrame#totalVenta {
+        background-color: #1E2330;
+        border: 1px solid #2B3242;
+        border-radius: 10px;
+    }
+    QLabel#totalVentaTitulo {
+        color: #8A93A3;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+    QLabel#totalVentaMonto {
+        color: #FFFFFF;
+        font-size: 28px;
+        font-weight: 700;
+    }
+    QLabel#totalVentaUnidades {
+        color: #8A93A3;
+        font-size: 12px;
+    }
+    QPushButton#botonCobrarVenta {
+        background-color: #2F6FED;
+        border: 1px solid #4C8DFF;
+        border-top-color: #7AAAFF;
+        border-bottom: 3px solid #173A85;
+        padding: 13px 10px;
+        font-size: 15px;
+        font-weight: 700;
+    }
+    QPushButton#botonCobrarVenta:hover {
+        background-color: #3D7BFF;
+    }
+    QPushButton#botonCobrarVenta:pressed {
+        background-color: #255BC7;
+        border-bottom-width: 1px;
+        margin-top: 2px;
+    }
+    QPushButton#botonACuentaVenta {
+        border-bottom: 3px solid #B0238C;
+        padding: 10px;
+    }
+    QPushButton#botonACuentaVenta:pressed {
+        border-bottom-width: 1px;
+        margin-top: 2px;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)

@@ -31,6 +31,7 @@ from repositories import articulos_repo, usuarios_repo  # noqa: E402
 from ui.articulos_window import ArticulosWindow, DialogoArticulo  # noqa: E402
 from ui.buscar_articulo import DialogoBuscarArticulo  # noqa: E402
 from ui.compras_window import ComprasWindow  # noqa: E402
+from ui.ventas_dibujos import ROL_DETALLE  # noqa: E402
 from ui.ventas_window import VentasWindow  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
@@ -120,7 +121,8 @@ class TestSeEncuentra(BaseCodigos):
             QTest.keyClicks(ventas.campo_codigo, codigo)
             QTest.keyClick(ventas.campo_codigo, Qt.Key_Return)
         self.assertEqual([l["codigo"] for l in ventas.carrito], list(CODIGOS))
-        self.assertEqual(ventas.tabla.item(0, 1).text(), MANAOS)
+        # El código va chiquito debajo del producto (diseño elegido por el dueño, 2026-10-26).
+        self.assertTrue(ventas.tabla.item(0, 1).data(ROL_DETALLE).startswith(f"{MANAOS}  ·  "))
 
     def test_escanear_en_compras(self):
         compras = self._abrir(ComprasWindow(self.usuario))

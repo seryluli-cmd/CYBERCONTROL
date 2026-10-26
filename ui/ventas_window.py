@@ -14,8 +14,8 @@ Reglas de permisos, tal como se definieron:
   Si hay un error, un Admin la anula desde "Consulta de Ventas"
   (ver consulta_ventas_window.py) — eso repone el stock automáticamente.
 - Solo el rol ADMIN puede modificar el precio de un renglón en el
-  momento de facturar (doble clic en la columna "$ Unit."). Una
-  EMPLEADA nunca puede tocar precios.
+  momento de facturar (doble clic en el producto, que muestra su precio
+  por unidad, o en su total). Una EMPLEADA nunca puede tocar precios.
 - "A cuenta de una PC..." (pedido del dueño, 2026-10-25): en vez de cobrar,
   anota el carrito en la Cuenta de la PC de un cliente que está jugando y se
   cobra después (ver control_pcs/repositories/cuentas_pc_repo.py).
@@ -23,7 +23,7 @@ Reglas de permisos, tal como se definieron:
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
-    QInputDialog,
+    QInputDialog, QFrame, QWidget, QHeaderView,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -35,10 +35,11 @@ from control_pcs.ui.cuenta_pc_dialogos import DialogoElegirPc, anotar_en_la_cuen
 from repositories import articulos_repo, ventas_repo
 from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
-    sin_boton_por_defecto, crear_tabla, mostrar_columna_entera,
+    sin_boton_por_defecto, crear_tabla,
 )
 from ui.buscar_articulo import armar_botones_de_busqueda, avisar_codigo_no_encontrado
 from ui.dialogo_pago import DialogoPago
+from ui.ventas_dibujos import ROL_DETALLE, DelegadoProducto, icono_codigo_de_barras, icono_de_tecla
 
 
 class VentasWindow(QDialog):
@@ -51,7 +52,8 @@ class VentasWindow(QDialog):
         self.carrito = []  # cada línea: {codigo, descripcion, cantidad, precio_unitario}
         self._cantidad_pendiente = 1  # usado por el atajo "*" (cambiar cantidad antes de escanear)
         self.setWindowTitle("Venta de Mercadería")
-        self.resize(780, 520)
+        self.setMinimumSize(820, 500)
+        self.resize(960, 600)
         self._armar_interfaz()
 
     def se_puede_cerrar_sola(self) -> bool:
@@ -61,73 +63,139 @@ class VentasWindow(QDialog):
         return not self.carrito
 
     def _armar_interfaz(self):
-        encabezado = QHBoxLayout()
-        etiqueta_usuario = QLabel(f"Usuario: {self.usuario['nombre']}")
-        etiqueta_fecha = QLabel(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        encabezado.addWidget(QLabel("<b>Venta de Mercadería</b>"))
-        encabezado.addStretch()
-        encabezado.addWidget(etiqueta_usuario)
-        encabezado.addWidget(etiqueta_fecha)
+        # El diseño que eligió el dueño (2026-10-26, maqueta "B"): a la izquierda se
+        # escanea y se ve el carrito; a la derecha, el total y COBRAR siempre grandes.
+        # Los colores están en la hoja de estilos (ui/hoja_de_estilos.py, "Venta de
+        # Mercadería"); los dibujos, en ui/ventas_dibujos.py.
+        encabezado = QFrame()
+        encabezado.setObjectName("encabezadoVenta")
+        fila_encabezado = QHBoxLayout(encabezado)
+        fila_encabezado.setContentsMargins(16, 10, 16, 10)
+        titulo = QLabel("🛒  Venta de Mercadería")
+        titulo.setObjectName("tituloVenta")
+        datos = QLabel(f"{self.usuario['nombre']}   ·   {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        datos.setObjectName("datosVenta")
+        fila_encabezado.addWidget(titulo)
+        fila_encabezado.addStretch()
+        fila_encabezado.addWidget(datos)
 
         self.campo_codigo = QLineEdit()
+        self.campo_codigo.setObjectName("campoEscaneo")
         self.campo_codigo.setPlaceholderText("Escaneá el código de barras y apretá Enter...")
+        self.campo_codigo.addAction(icono_codigo_de_barras(), QLineEdit.LeadingPosition)
         self.campo_codigo.returnPressed.connect(self._escanear)
 
+        # Solo se ve cuando avisa algo: vacío no tiene que dejar un hueco.
         self.etiqueta_aviso_stock = QLabel("")
-        self.etiqueta_aviso_stock.setStyleSheet("color: #A6323C; font-weight: bold;")
+        self.etiqueta_aviso_stock.setObjectName("avisoStockVenta")
+        self.etiqueta_aviso_stock.setVisible(False)
 
-        self.tabla = crear_tabla(["Cantidad", "Código", "Descripción", "$ Unit.", "$ Total"], estirar=2)
+        # El código y el precio por unidad van chiquitos debajo del producto
+        # (ui.ventas_dibujos.DelegadoProducto): la descripción se lee mejor.
+        self.tabla = crear_tabla(["Cant.", "Producto", "$ Total"], estirar=1)
+        self.tabla.setItemDelegateForColumn(1, DelegadoProducto(self.tabla))
+        self.tabla.verticalHeader().setDefaultSectionSize(46)
+        self.tabla.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.tabla.setColumnWidth(0, 64)
+        self.tabla.setColumnWidth(2, 130)
+        self.tabla.horizontalHeaderItem(2).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.tabla.cellDoubleClicked.connect(self._al_hacer_doble_clic)
 
-        botones_de_busqueda = armar_botones_de_busqueda(self, self._agregar_al_carrito)
-        boton_cantidad = QPushButton("* Cant.")
+        botones_de_busqueda = armar_botones_de_busqueda(self, self._agregar_al_carrito, tecla_aparte=True)
+        boton_cantidad = self._boton_con_tecla("*", "Cantidad")
         boton_cantidad.setToolTip("Cargar la cantidad antes de escanear (ej: 3 personas piden lo mismo)")
         boton_cantidad.clicked.connect(self._cambiar_cantidad_pendiente)
-        boton_borrar = QPushButton("Supr")
+        boton_borrar = self._boton_con_tecla("Supr", "Quitar")
+        boton_borrar.setToolTip("Quitar del carrito el producto marcado")
         boton_borrar.clicked.connect(self._borrar_linea)
 
         QShortcut(QKeySequence("Delete"), self, activated=self._borrar_linea)
 
         fila_atajos = QHBoxLayout()
-        for boton in botones_de_busqueda:
+        fila_atajos.setSpacing(6)
+        for boton in botones_de_busqueda + [boton_cantidad, boton_borrar]:
+            aplicar_clase(boton, "tecla")
             fila_atajos.addWidget(boton)
-        fila_atajos.addWidget(boton_cantidad)
-        fila_atajos.addWidget(boton_borrar)
         fila_atajos.addStretch()
 
-        self.etiqueta_total = QLabel("TOTAL: $ 0,00")
-        self.etiqueta_total.setStyleSheet("font-size: 22px; font-weight: 700; color: #2F6FED;")
-        self.etiqueta_total.setAlignment(Qt.AlignRight)
+        izquierda = QVBoxLayout()
+        izquierda.setSpacing(10)
+        izquierda.addWidget(self.campo_codigo)
+        izquierda.addWidget(self.etiqueta_aviso_stock)
+        izquierda.addLayout(fila_atajos)
+        izquierda.addWidget(self.tabla)
 
-        self.boton_aceptar = QPushButton("Aceptar / Cobrar")
+        # El "ticket" de la derecha: el total oscuro, como la barra de arriba de la
+        # ventana principal.
+        recuadro_total = QFrame()
+        recuadro_total.setObjectName("totalVenta")
+        columna_total = QVBoxLayout(recuadro_total)
+        columna_total.setContentsMargins(12, 14, 12, 14)
+        columna_total.setSpacing(4)
+        titulo_total = QLabel("TOTAL A COBRAR")
+        titulo_total.setObjectName("totalVentaTitulo")
+        self.etiqueta_total = QLabel(formato_pesos(0))
+        self.etiqueta_total.setObjectName("totalVentaMonto")
+        self.etiqueta_unidades = QLabel("")
+        self.etiqueta_unidades.setObjectName("totalVentaUnidades")
+        for etiqueta in (titulo_total, self.etiqueta_total, self.etiqueta_unidades):
+            etiqueta.setAlignment(Qt.AlignCenter)
+            columna_total.addWidget(etiqueta)
+
+        self.boton_aceptar = QPushButton("COBRAR (Enter)")
+        self.boton_aceptar.setObjectName("botonCobrarVenta")
         aplicar_clase(self.boton_aceptar, "primario")
         self.boton_aceptar.clicked.connect(self._ir_a_cobrar)
-        boton_cancelar = QPushButton("Cancelar Venta")
-        aplicar_clase(boton_cancelar, "peligro")
-        boton_cancelar.clicked.connect(self._cancelar_venta)
-        self.boton_a_cuenta = QPushButton("A cuenta de una PC...")
+        self.boton_a_cuenta = QPushButton("A cuenta de una PC")
+        self.boton_a_cuenta.setObjectName("botonACuentaVenta")
         aplicar_clase(self.boton_a_cuenta, "cuenta")
         self.boton_a_cuenta.clicked.connect(self._anotar_a_cuenta)
+        boton_cancelar = QPushButton("Cancelar venta")
+        aplicar_clase(boton_cancelar, "peligro")
+        boton_cancelar.clicked.connect(self._cancelar_venta)
 
-        pie = QHBoxLayout()
-        pie.addWidget(boton_cancelar)
-        pie.addStretch()
-        pie.addWidget(self.boton_a_cuenta)
-        pie.addWidget(self.boton_aceptar)
+        derecha = QVBoxLayout()
+        derecha.setSpacing(8)
+        derecha.addWidget(recuadro_total)
+        derecha.addWidget(self.boton_aceptar)
+        derecha.addWidget(self.boton_a_cuenta)
+        derecha.addStretch()
+        derecha.addWidget(boton_cancelar)
+        columna_derecha = QWidget()
+        columna_derecha.setFixedWidth(220)
+        columna_derecha.setLayout(derecha)
+        derecha.setContentsMargins(0, 0, 0, 0)
+
+        cuerpo = QHBoxLayout()
+        cuerpo.setContentsMargins(14, 12, 14, 14)
+        cuerpo.setSpacing(14)
+        cuerpo.addLayout(izquierda, 1)
+        cuerpo.addWidget(columna_derecha)
 
         layout = QVBoxLayout()
-        layout.addLayout(encabezado)
-        layout.addWidget(QLabel("Código:"))
-        layout.addWidget(self.campo_codigo)
-        layout.addWidget(self.etiqueta_aviso_stock)
-        layout.addLayout(fila_atajos)
-        layout.addWidget(self.tabla)
-        layout.addWidget(self.etiqueta_total)
-        layout.addLayout(pie)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(encabezado)
+        layout.addLayout(cuerpo, 1)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
+        self._refrescar_tabla()
         self.campo_codigo.setFocus()
+
+    @staticmethod
+    def _boton_con_tecla(tecla, nombre):
+        """Un botón con su tecla dibujada adelante, como F5/F6/F7."""
+        boton = QPushButton(nombre)
+        icono, tamano = icono_de_tecla(tecla)
+        boton.setIcon(icono)
+        boton.setIconSize(tamano)
+        return boton
+
+    def _avisar_stock(self, texto):
+        self.etiqueta_aviso_stock.setText(texto)
+        self.etiqueta_aviso_stock.setVisible(bool(texto))
 
     # -----------------------------------------------------------------
     # Escaneo / búsqueda de artículos
@@ -189,11 +257,9 @@ class VentasWindow(QDialog):
         cantidad_en_carrito = sum(l["cantidad"] for l in self.carrito if l["codigo"] == codigo)
         stock_proyectado = articulo["stock"] - cantidad_en_carrito
         if stock_proyectado < articulo["stock_minimo"]:
-            self.etiqueta_aviso_stock.setText(
-                f"{articulo['descripcion']} debajo de Stock Mín. Actualmente hay {stock_proyectado}"
-            )
+            self._avisar_stock(f"{articulo['descripcion']} debajo de Stock Mín. Actualmente hay {stock_proyectado}")
         else:
-            self.etiqueta_aviso_stock.setText("")
+            self._avisar_stock("")
 
     # -----------------------------------------------------------------
     # Edición del carrito (mientras la venta no está confirmada)
@@ -202,7 +268,7 @@ class VentasWindow(QDialog):
     def _al_hacer_doble_clic(self, fila, columna):
         if columna == 0:  # Cantidad: cualquiera puede corregirla antes de cobrar
             self._editar_cantidad(fila)
-        elif columna == 3 and self.es_admin:  # $ Unit.: precio, solo Admin
+        elif columna in (1, 2) and self.es_admin:  # el producto (con su precio c/u) o su total: precio, solo Admin
             self._editar_precio(fila)
 
     def _editar_cantidad(self, fila):
@@ -232,19 +298,23 @@ class VentasWindow(QDialog):
 
     def _refrescar_tabla(self):
         self.tabla.setRowCount(0)
-        total = 0.0
         for linea in self.carrito:
-            subtotal = ventas_repo.subtotal_linea(linea)
-            total += subtotal
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
-            self.tabla.setItem(fila, 0, QTableWidgetItem(str(linea["cantidad"])))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(linea["codigo"]))
-            self.tabla.setItem(fila, 2, QTableWidgetItem(linea["descripcion"]))
-            self.tabla.setItem(fila, 3, QTableWidgetItem(formato_pesos(linea["precio_unitario"])))
-            self.tabla.setItem(fila, 4, QTableWidgetItem(formato_pesos(subtotal)))
-        mostrar_columna_entera(self.tabla, 1)
-        self.etiqueta_total.setText(f"TOTAL: {formato_pesos(total)}")
+            cantidad = QTableWidgetItem(str(linea["cantidad"]))
+            cantidad.setTextAlignment(Qt.AlignCenter)
+            producto = QTableWidgetItem(linea["descripcion"])
+            producto.setData(ROL_DETALLE, f"{linea['codigo']}  ·  {formato_pesos(linea['precio_unitario'])} c/u")
+            subtotal = QTableWidgetItem(formato_pesos(ventas_repo.subtotal_linea(linea)))
+            subtotal.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.tabla.setItem(fila, 0, cantidad)
+            self.tabla.setItem(fila, 1, producto)
+            self.tabla.setItem(fila, 2, subtotal)
+        self.etiqueta_total.setText(formato_pesos(self._total_carrito()))
+        unidades = sum(linea["cantidad"] for linea in self.carrito)
+        self.etiqueta_unidades.setText(
+            "Sin productos" if not unidades else f"{unidades} unidad{'' if unidades == 1 else 'es'}"
+        )
 
     def _total_carrito(self):
         return ventas_repo.total_carrito(self.carrito)
@@ -274,7 +344,7 @@ class VentasWindow(QDialog):
             mostrar_info(self, "Venta confirmada", mensaje)
 
             self.carrito = []
-            self.etiqueta_aviso_stock.setText("")
+            self._avisar_stock("")
             self._refrescar_tabla()
             self.campo_codigo.setFocus()
 
@@ -302,7 +372,7 @@ class VentasWindow(QDialog):
                      f"Anotado en la cuenta de {resultado['estacion']}{a_nombre}.\n"
                      f"Debe ahora {formato_pesos(resultado['debe'])}: su PC titila en fucsia hasta que se cobre.")
         self.carrito = []
-        self.etiqueta_aviso_stock.setText("")
+        self._avisar_stock("")
         self._refrescar_tabla()
         self.campo_codigo.setFocus()
 
