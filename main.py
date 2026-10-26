@@ -31,6 +31,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
+import dominio
 from admin_remoto import cliente as cliente_remoto, modo as modo_remoto
 from database import inicializar_base_de_datos
 from repositories import copias_repo, envio_pwa_repo
@@ -114,9 +115,14 @@ class Aplicacion:
         self.conexion_remota = conexion_remota
         self.ventana_principal = None
         self.ventana_login = None
+        # Quién dejó el mostrador con "🔄 Operador": si después entra el
+        # Administrador, a los minutos la sesión vuelve sola a ella (pedido del
+        # dueño, 2026-10-26; ver MainWindow._cambiar_operador y ui/vuelta_del_admin.py).
+        self._quien_dejo_el_mostrador = None
         self._mostrar_login()
 
     def _mostrar_login(self):
+        self._quien_dejo_el_mostrador = getattr(self.ventana_principal, "a_quien_volveria", None)
         if self.conexion_remota is not None:
             # Cerrar sesión en la otra PC también la cierra en el mostrador.
             self.conexion_remota.salir()
@@ -138,7 +144,17 @@ class Aplicacion:
         if self.conexion_remota is None and not resolver_caja_al_entrar(self.ventana_login, usuario):
             return
         self.ventana_login.close()
-        self.ventana_principal = MainWindow(usuario, al_cerrar_sesion=self._mostrar_login)
+        self._abrir_ventana_principal(usuario)
+
+    def _abrir_ventana_principal(self, usuario):
+        """La ventana principal de `usuario`. También es la vuelta sola del
+        Administrador a la empleada: ahí no pasa por el ingreso (su caja sigue
+        abierta a su nombre y su entrada ya quedó anotada, ver vuelta_admin_repo)."""
+        volver_a = self._quien_dejo_el_mostrador if dominio.es_admin(usuario) else None
+        self.ventana_principal = MainWindow(
+            usuario, al_cerrar_sesion=self._mostrar_login,
+            volver_a=volver_a, al_volver_a=self._abrir_ventana_principal,
+        )
         self.ventana_principal.showMaximized()
 
 

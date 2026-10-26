@@ -736,6 +736,27 @@ mano desde el celular. Propuesta y decisiones en
 - Tests: `tests/test_envio_pwa.py`, con una app de mentira que hace de Google;
   nunca salen a internet ni tocan el Firestore real.
 
+## El Administrador vuelve solo a la empleada (`ui/vuelta_del_admin.py`)
+
+Pedido del dueño (2026-10-26): entra como Administrador con "🔄 Operador" para
+algo rápido y muchas veces se olvidaba de volver a cambiar de usuario, y el
+mostrador quedaba abierto como Administrador.
+
+- **Cuándo:** a los `dominio.MINUTOS_ADMIN_VUELVE_SOLO` (10) de entrar, aunque
+  esté usando el programa. Un minuto antes sale el cartel "EN 60 SEGUNDOS VUELVE
+  TOBY" con "SEGUIR COMO ADMIN (10 MIN MÁS)"; si no se toca nada, o se lo cierra,
+  vuelve. Con una ventana abierta que no se cierra sola (un cobro, un formulario)
+  el cartel espera; Ventas con el carrito vacío y Caja se cierran solas, como
+  para el cierre forzoso.
+- **A quién:** a quien dejó el mostrador con "🔄 Operador" antes de que entrara
+  el Administrador (`MainWindow.a_quien_volveria`, lo guarda `main.Aplicacion`),
+  sin pedirle la clave y con su ingreso anotado en `sesiones` como cualquier otro.
+  Solo si sigue activa y su caja sigue abierta a su nombre y en hora
+  (`repositories/vuelta_admin_repo.py`); si no (su caja se cerró, la recibió otra,
+  venció su turno, o no había nadie antes), vuelve la pantalla de ingreso.
+- Solo en el mostrador y solo con el Administrador; desde otra PC no cambia nada.
+- Tests: `tests/test_vuelta_del_admin.py`.
+
 ## Identidad y permisos
 
 Login por **nombre + clave** (`login_window.py`, vía

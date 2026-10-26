@@ -502,6 +502,14 @@ TOPE_CUENTA_PC_INICIAL = 10000.0
 MINUTOS_AVISO_CUENTAS_ANTES_DEL_FIN = 15
 MINUTOS_POSPONER_AVISO_CUENTAS = 5
 
+# El Administrador en el mostrador (pedido del dueño, 2026-10-26: entra para algo
+# rápido y se olvida de volver a cambiar de usuario): a estos minutos de entrar, la
+# sesión vuelve sola a la empleada que estaba antes, o a la pantalla de ingreso
+# (ver ui/vuelta_del_admin.py). Estos segundos antes sale el cartel con la cuenta
+# regresiva y "SEGUIR COMO ADMIN", que da otros MINUTOS_ADMIN_VUELVE_SOLO.
+MINUTOS_ADMIN_VUELVE_SOLO = 10
+SEGUNDOS_AVISO_VUELTA_ADMIN = 60
+
 
 def repartir_pagos(pagos: list, montos: list) -> list:
     """

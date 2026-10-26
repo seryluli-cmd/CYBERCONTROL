@@ -88,6 +88,7 @@ from control_pcs.ui.miembros_window import MiembrosWindow
 from control_pcs.ui.reservas_window import ReservasWindow
 from control_pcs.repositories import reservas_repo
 from ui.ingreso_caja import mensaje_del_sobre
+from ui.vuelta_del_admin import VueltaDelAdmin
 from ui.utils import (
     aplicar_clase, icono_de_emoji, mostrar_error, mostrar_info, solo_en_el_mostrador,
 )
@@ -107,15 +108,26 @@ class MainWindow(QMainWindow):
     """Barra de botones (los mismos para todos; qué abren, según rol y
     permisos) y, debajo, la grilla de PCs."""
 
-    def __init__(self, usuario, al_cerrar_sesion):
+    def __init__(self, usuario, al_cerrar_sesion, volver_a=None, al_volver_a=None):
         """
         `usuario` es la fila del usuario logueado (con su rol).
         `al_cerrar_sesion` es una función que se llama al elegir
         "🔄 Operador", para volver a la pantalla de login.
+        Solo para el Administrador en el mostrador (pedido del dueño, 2026-10-26):
+        `volver_a` es el id de quien dejó el mostrador con "🔄 Operador" antes de
+        que él entrara (o None) y `al_volver_a(fila)` abre su sesión. A los
+        dominio.MINUTOS_ADMIN_VUELVE_SOLO la sesión vuelve sola a ella, o al
+        ingreso si no se puede (ver ui/vuelta_del_admin.py).
         """
         super().__init__()
         self.usuario = usuario
         self.es_admin = dominio.es_admin(usuario)
+        self._volver_a = volver_a
+        self._al_volver_a = al_volver_a
+        # A quién volvería el Administrador que entre después de esta sesión: lo
+        # completa "🔄 Operador" (_cambiar_operador) y lo lee main.Aplicacion. Un
+        # Cierre de Turno o el cierre forzoso lo dejan en None: esa caja ya no está.
+        self.a_quien_volveria = None
         # "Encargado" no es un rol propio en la base — es un Admin, o una
         # Empleada con al menos uno de los permisos de administración de
         # usuarios_repo.PERMISOS_EMPLEADA. Decide si el botón "Administrar
@@ -145,6 +157,10 @@ class MainWindow(QMainWindow):
         self._timer_parpadeo.setInterval(INTERVALO_PARPADEO_MS)
         self._timer_parpadeo.timeout.connect(self._parpadear)
         self._timer_parpadeo.start()
+        # Desde otra PC no: ahí no hay una empleada a la que volver.
+        self._vuelta = None
+        if self.es_admin and not self._remota:
+            self._vuelta = VueltaDelAdmin(self, volver_a, self._volver_sola, self._hay_un_cobro_a_medias)
 
     def _armar_interfaz(self):
         if self._remota:
@@ -242,7 +258,7 @@ class MainWindow(QMainWindow):
         self.boton_cierre_turno = self._agregar_boton_barra(layout_barra, "🧾  Cierre de Turno", self._abrir_cierre_turno)
         self._agregar_boton_barra(layout_barra, "🔑  Clave", self._abrir_cambiar_clave)
         # Tres espacios entre el dibujito y el texto: uno más que en los otros botones (pedido del dueño).
-        boton_operador = self._agregar_boton_barra(layout_barra, "   Operador", self._cerrar_sesion, clase="peligro")
+        boton_operador = self._agregar_boton_barra(layout_barra, "   Operador", self._cambiar_operador, clase="peligro")
         # Su dibujito va un 25% más grande que los de los otros botones (pedido del dueño,
         # 2026-10-24): uno dentro del texto mide lo que la letra, así que este va como ícono.
         boton_operador.ensurePolished()
@@ -279,6 +295,8 @@ class MainWindow(QMainWindow):
         self.panel_pcs.detener_actualizacion()
         self._timer_caja.stop()
         self._timer_parpadeo.stop()
+        if self._vuelta is not None:
+            self._vuelta.detener()
         super().closeEvent(evento)
 
     # -----------------------------------------------------------------
@@ -473,6 +491,23 @@ class MainWindow(QMainWindow):
 
     def _abrir_configuracion_admin(self):
         ConfiguracionAdminWindow(self.usuario, self).exec()
+
+    def _cambiar_operador(self):
+        """"🔄 Operador": vuelve al ingreso para que entre otro. Si el que entra es
+        el Administrador, a los minutos vuelve solo a quien estaba (ver
+        ui/vuelta_del_admin.py): esta empleada, o la que tenía el Administrador
+        para volver (salir y entrar de nuevo como Administrador no la pierde)."""
+        self.a_quien_volveria = self._volver_a if self.es_admin else self.usuario["id"]
+        self._cerrar_sesion()
+
+    def _volver_sola(self, usuario):
+        """Pasaron los minutos del Administrador: vuelve a la empleada (`usuario`,
+        con su ingreso ya anotado) o, si no se pudo, a la pantalla de ingreso."""
+        if usuario is None or self._al_volver_a is None:
+            self._cerrar_sesion()
+            return
+        self.close()
+        self._al_volver_a(usuario)
 
     def _cerrar_sesion(self):
         self.close()
