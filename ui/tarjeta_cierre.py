@@ -187,8 +187,8 @@ class TablaDeNegocios(QFrame):
     De dónde vino la plata, en Caja y en Cierre de Turno: un renglón por negocio
     (NEGOCIOS) con el efectivo y lo digital en columnas; abajo, lo cobrado en total
     (los mismos "Efectivo" y "Digital" de antes) y el cambio, que no es cobrado: en
-    Caja es la caja inicial (la Caja Actual es ese cambio más el efectivo cobrado) y
-    en el Cierre de Turno lo que queda en el cajón.
+    Caja es la caja inicial (aparte: la Caja Actual es solo el efectivo cobrado) y en
+    el Cierre de Turno lo que queda en el cajón.
 
     - `nombre_cambio` / `nota_cambio`: cómo se llama ese último renglón en cada pantalla
       y una línea chica que dice qué es.

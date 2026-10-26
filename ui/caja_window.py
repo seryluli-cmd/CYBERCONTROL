@@ -60,9 +60,12 @@ class CajaWindow(QDialog):
         self.pastilla_hora = agregar_pastilla(self.cabecera, "", TONO_GRIS)
 
         # Los mismos datos que el Cierre de Turno (pedido del dueño, 2026-10-20), con
-        # CAJA ACTUAL en vez de A RETIRAR. "Incluye el cambio", para que no se confunda
-        # con el TOTAL: la Caja Actual SÍ suma el cambio, el TOTAL no.
-        actual = cifra_destacada("CAJA ACTUAL (solo efectivo)", "Incluye el cambio", TONO_VERDE)
+        # CAJA ACTUAL en vez de A RETIRAR. Desde el 2026-10-26 la Caja Actual es solo el
+        # efectivo cobrado, SIN el cambio (pedido del dueño: "que no esté sumado"; hasta
+        # ese día decía "Incluye el cambio"): es lo mismo que A RETIRAR del cierre. Lo que
+        # tiene que haber en el cajón contando el cambio sigue siendo
+        # resumen["caja_actual"], que usa el relevo de una caja (relevo_repo).
+        actual = cifra_destacada("CAJA ACTUAL (solo efectivo)", "Sin el cambio: lo cobrado en efectivo", TONO_VERDE)
         total = cifra_destacada("TOTAL (EFECTIVO + DIGITAL)", "Lo cobrado en el turno, sin el cambio", TONO_AZUL)
         self.valor_actual = actual.valor
         self.valor_total = total.valor
@@ -72,8 +75,8 @@ class CajaWindow(QDialog):
         cifras.addWidget(total, 1)
 
         # Con una caja abierta, el cambio con que arrancó (lo que se contó); sin caja,
-        # el Cambio Fijo. La Caja Actual es eso más el efectivo cobrado.
-        self.tabla = TablaDeNegocios("Caja inicial (Cambio Fijo)", "Con lo que arrancó la caja")
+        # el Cambio Fijo. Se muestra aparte: no entra en la Caja Actual.
+        self.tabla = TablaDeNegocios("Caja inicial (Cambio Fijo)", "Con lo que arrancó la caja · no se suma")
         self.valor_fondo = self.tabla.valor_cambio
         self.valor_ventas = self.tabla.valor_efectivo
         self.valor_digital = self.tabla.valor_digital
@@ -103,7 +106,7 @@ class CajaWindow(QDialog):
         resumen = turnos_repo.resumen_turno_actual()
         self.cabecera.detalle.setText(detalle_de_la_cabecera(resumen))
         self.pastilla_hora.setText(f"ACTUALIZADA {datetime.now():%H:%M}")
-        self.valor_actual.setText(formato_pesos(resumen["caja_actual"]))
+        self.valor_actual.setText(formato_pesos(resumen["ventas_efectivo"]))
         self.valor_total.setText(formato_pesos(resumen["ventas_total"]))
         self.tabla.mostrar(resumen)
 

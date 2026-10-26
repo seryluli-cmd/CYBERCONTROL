@@ -90,7 +90,7 @@ def panel_blanco() -> tuple:
 
 def cifra_destacada(titulo: str, aclaracion: str, tono: str) -> QFrame:
     """Un recuadro de color con un monto grande: el título chiquito arriba, la cifra y
-    una línea que aclara qué suma ("Incluye el cambio"). Es lo primero
+    una línea que aclara qué suma ("Sin el cambio: lo cobrado en efectivo"). Es lo primero
     que se lee en Caja y en Cierre de Turno. `cifra.valor` es la etiqueta del monto."""
     cifra = QFrame()
     cifra.setObjectName("cifraDestacada")

@@ -165,10 +165,11 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.assertTrue(tarjeta.renglon("tramites").efectivo.property("vacio"))
         self.assertTrue(tarjeta.renglon("tramites").nombre.property("vacio"))
 
-    def test_la_pantalla_caja_se_parece_al_cierre_y_aclara_que_la_caja_actual_incluye_el_cambio(self):
+    def test_la_pantalla_caja_se_parece_al_cierre_y_la_caja_actual_no_suma_el_cambio(self):
         """Pedido del dueño (2026-10-20): Caja con los mismos renglones que el Cierre de Turno,
-        TOTAL | CAJA ACTUAL al final, sin el cartel azul de "Suma Total", y "Incluye el cambio"
-        debajo del monto de la Caja Actual."""
+        TOTAL y CAJA ACTUAL, sin el cartel azul de "Suma Total". Desde el 2026-10-26 la Caja
+        Actual es solo el efectivo cobrado: el cambio "que no esté sumado" (hasta ese día lo
+        sumaba y decía "Incluye el cambio")."""
         from ui.caja_window import CajaWindow
 
         self._vender(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", 3, 150.0)  # $450 efectivo
@@ -184,11 +185,12 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
         self.assertEqual(caja.valor_ventas.text(), "$ 450")
         self.assertEqual(caja.valor_digital.text(), "$ 10")
         self.assertEqual(caja.valor_total.text(), "$ 460")           # efectivo + digital, sin el cambio
-        self.assertEqual(caja.valor_actual.text(), formato_pesos(50000.0 + 450.0))   # el cambio SÍ entra
+        self.assertEqual(caja.valor_actual.text(), "$ 450")           # solo el efectivo cobrado, sin el cambio
+        self.assertEqual(caja.valor_fondo.text(), formato_pesos(50000.0))   # el cambio, aparte
         for titulo in ("Caja inicial (Cambio Fijo)", "Efectivo", "Digital", "TOTAL (EFECTIVO + DIGITAL)",
-                       "CAJA ACTUAL (solo efectivo)", "Incluye el cambio"):
+                       "CAJA ACTUAL (solo efectivo)", "Sin el cambio: lo cobrado en efectivo"):
             self.assertIn(titulo, textos)
-        self.assertFalse([t for t in textos if "Suma Total" in t], textos)
+        self.assertFalse([t for t in textos if "Suma Total" in t or "Incluye el cambio" in t], textos)
         self.assertEqual(self._cifra(caja, "CAJA ACTUAL (solo efectivo)").property("tono"), "verde")
 
     def test_el_aviso_al_cerrar_habla_de_cambio_fijo(self):

@@ -361,10 +361,13 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
 - **Caja** (`caja_window.py`, `CajaWindow`) — solo lectura, resumen del
   turno en curso vía `turnos_repo.resumen_turno_actual()` (número de caja y
   responsable, caja inicial = el cambio con que arrancó la caja, caja actual =
-  caja inicial + efectivo, ventas efectivo/digital, y el desglose Kiosko /
+  el efectivo cobrado, ventas efectivo/digital, y el desglose Kiosko /
   Impresiones / Trámites / Alquiler de PCs / PlayStation 5 / Reservas, cada uno
   con su efectivo y digital). La caja actual
-  excluye a propósito lo cobrado en digital.
+  excluye a propósito lo cobrado en digital y, desde el 2026-10-26, también el
+  cambio (pedido del dueño: "que no esté sumado"; se ve aparte, como caja
+  inicial). Lo que tiene que haber en el cajón contando el cambio sigue en
+  `resumen["caja_actual"]`, que usa el relevo de una caja.
 - **Cierre de Turno** (`caja_window.py`, `CierreTurnoWindow`) — cualquiera
   cierra su propio turno. Muestra preview y, al confirmar, llama a
   `turnos_repo.cerrar_turno(usuario['id'])`: `monto_a_retirar` = lo

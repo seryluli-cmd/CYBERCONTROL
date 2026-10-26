@@ -35,7 +35,6 @@ from repositories import (  # noqa: E402
     ventas_repo,
 )
 from repositories.config_repo import obtener_fondo_cambio  # noqa: E402
-from ui.utils import formato_pesos  # noqa: E402
 from turnos import dia_en_que_empezo_el_turno  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
@@ -349,8 +348,8 @@ class TestCajaMuestraImpresionesAparte(_ConArticulo):
                   for clave in ("kiosko_solo", "impresiones", "tramites")}
         self.assertEqual(montos, {"kiosko_solo": ("$ 100", "$ 0"), "impresiones": ("$ 0", "$ 300"),
                                   "tramites": ("$ 0", "$ 0")})
-        # El cajón tiene el Cambio Fijo más los $100 en efectivo: separar no cambia nada.
-        self.assertEqual(ventana.valor_actual.text(), formato_pesos(obtener_fondo_cambio() + 100.0))
+        # La Caja Actual son los $100 en efectivo (sin el cambio): separar no cambia nada.
+        self.assertEqual(ventana.valor_actual.text(), "$ 100")
 
 
 if __name__ == "__main__":
