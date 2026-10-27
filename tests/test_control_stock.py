@@ -9,6 +9,7 @@ ninguna ventana (plataforma "offscreen" de Qt).
 """
 
 import os
+import weakref
 from datetime import datetime
 from unittest import mock
 
@@ -90,6 +91,31 @@ class TestVentana(BaseControlStock):
             ventana.boton_imprimir.click()
         vista_previa.assert_called_once()
         self.assertEqual(vista_previa.call_args.args[2], "Control de Stock")
+
+    def test_la_impresora_sigue_viva_mientras_esta_abierta_la_vista_previa(self):
+        """La vista previa de Qt usa la impresora sin guardarla: si nadie la
+        retiene, Python la borra y la vista previa lee memoria liberada (en el
+        local el programa se cerró sin ningún cartel, 2026-10-26). Acá la vista
+        previa es de mentira y solo mira si la impresora sigue viva al abrirse."""
+        viva_al_abrir = []
+
+        class VistaPreviaDeMentira:
+            def __init__(self, impresora, parent):
+                self._impresora = weakref.ref(impresora)  # sin retenerla, como Qt
+                self.paintRequested = mock.Mock()
+
+            def setWindowTitle(self, titulo):
+                pass
+
+            def resize(self, ancho, alto):
+                pass
+
+            def exec(self):
+                viva_al_abrir.append(self._impresora() is not None)
+
+        with mock.patch("ui.imprimir.QPrintPreviewDialog", VistaPreviaDeMentira):
+            self.ventana().boton_imprimir.click()
+        self.assertEqual(viva_al_abrir, [True])
 
     def test_sin_articulos_con_stock_no_hay_nada_que_imprimir(self):
         with conexion_db() as conexion:

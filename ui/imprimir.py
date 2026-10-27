@@ -86,7 +86,12 @@ def vista_previa(parent, html, nombre):
     ahí se imprime; `nombre` es el título de la ventana y del trabajo de
     impresión (y el nombre que propone el PDF)."""
     documento = _documento(html)
-    dialogo = QPrintPreviewDialog(_impresora(nombre), parent)
+    # La impresora tiene que quedar en una variable hasta que se cierra la vista
+    # previa: el diálogo la usa pero no la guarda, y pasada sin variable Python la
+    # borraba al toque. La vista previa leía memoria liberada y el programa se
+    # cerraba sin ningún cartel (Control de Stock > Imprimir, 2026-10-26).
+    impresora = _impresora(nombre)
+    dialogo = QPrintPreviewDialog(impresora, parent)
     dialogo.setWindowTitle(f"Vista previa · {nombre}")
     dialogo.paintRequested.connect(documento.print_)
     dialogo.resize(1000, 860)
