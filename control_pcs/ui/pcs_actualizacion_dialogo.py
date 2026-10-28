@@ -31,7 +31,9 @@ from ui.utils import (
     aplicar_clase, confirmar, crear_tabla, manejar_errores, mostrar_info, sin_boton_por_defecto,
 )
 
-FILTRO_EXE = "El Cliente PC (PCcliente.exe) (*.exe)"
+# Desde la V2 del Cliente PC (2026-10-28) la versión puede ser un .zip: el Cliente PC armado en
+# carpeta, para que las PCs no lo desempaqueten en cada arranque (ver actualizacion_cliente_repo).
+FILTRO_EXE = "El Cliente PC (PCcliente.exe o PCcliente_V2.zip) (*.exe *.zip)"
 COLUMNAS = ["", "PC", "Estado", "Versión en uso", "Lanzador"]
 COLUMNA_CASILLA, COLUMNA_PC, COLUMNA_ESTADO, COLUMNA_VERSION, COLUMNA_LANZADOR = range(5)
 # Cada cuánto se vuelve a leer cómo está cada PC (las PCs cuentan cada 5 s).
@@ -46,7 +48,7 @@ _GRIS = (None, QColor("#5F6B7A"))
 COLORES = {
     repo.FUNCIONANDO: _VERDE, repo.LISTA: _VERDE, repo.COPIANDO: _AZUL,
     repo.ERROR: _ROJO, repo.FALLO: _ROJO, repo.SE_BORRA: _ROJO, repo.SIN_LANZADOR: _ROJO,
-    repo.ESPERANDO: _AMARILLO,
+    repo.ESPERANDO: _AMARILLO, repo.FALTA_PUENTE: _AMARILLO,
     repo.APAGADA: _GRIS, repo.NO_SELECCIONADA: _GRIS, repo.NUNCA_CONECTADA: _GRIS,
     repo.INSTALACION_VIEJA: _GRIS,
 }
@@ -56,6 +58,7 @@ _POR_QUE_FALTA = {
     repo.ESPERANDO: "esperando", repo.NUNCA_CONECTADA: "nunca se conectó",
     repo.INSTALACION_VIEJA: "instalación vieja",
     repo.SE_BORRA: "se borra al reiniciar", repo.SIN_LANZADOR: "no arranca con el Lanzador",
+    repo.FALTA_PUENTE: "le falta la V1.9",
 }
 
 # Un número de versión (AAAAMMDDhhmmss) dentro de un texto que manda la PC.
@@ -112,6 +115,8 @@ def texto_del_estado(pc: dict) -> str:
                         "Cliente PC en Shadow Defender y reiniciala"),
         repo.SIN_LANZADOR: ("No se puso al reiniciar: la PC no arranca con Lanzador.exe. Con Shadow Defender "
                             "desactivado, abrí «Lanzador.exe --configurar» como Administrador"),
+        repo.FALTA_PUENTE: ("Le falta la V1.9: esta versión va en carpeta y su Lanzador todavía no la sabe "
+                            "poner. Primero tiene que tener la V1.9 (Lanzador 3)"),
         repo.FALLO: f"Falló al arrancar: {detalle}",   # el detalle ya dice "volvió a la anterior"
         repo.APAGADA: "Apagada / sin conexión · se actualiza sola al prenderla",
         repo.COPIANDO: "Copiando…",
@@ -282,7 +287,7 @@ class DialogoActualizarCliente(QDialog):
 
     @manejar_errores
     def _cargar_version(self):
-        ruta, _filtro = QFileDialog.getOpenFileName(self, "Elegir el PCcliente.exe nuevo", "", FILTRO_EXE)
+        ruta, _filtro = QFileDialog.getOpenFileName(self, "Elegir el Cliente PC nuevo", "", FILTRO_EXE)
         if not ruta:
             return
         with open(ruta, "rb") as archivo:
@@ -298,19 +303,26 @@ class DialogoActualizarCliente(QDialog):
 
     @staticmethod
     def _pregunta_para_cargar(datos: bytes) -> str:
-        """Qué versión es la que se va a cargar y, si es más vieja que la cargada, que lo sepa."""
-        numero = repo.numero_de_version_del_exe(datos)
+        """Qué versión es la que se va a cargar y, si es más vieja que la cargada, que lo sepa. Si es
+        una versión en carpeta (un .zip), que solo les llega a las PCs que ya tienen la V1.9."""
+        numero = repo.numero_de_version_del_paquete(datos)
+        en_carpeta = repo.es_en_carpeta(datos)
+        cual = "esta versión en carpeta (.zip)" if en_carpeta else "este PCcliente.exe"
         if not numero:
-            pregunta = ("¿Cargar este PCcliente.exe como la versión nueva de las PCs?\n\n"
+            pregunta = (f"¿Cargar {cual} como la versión nueva de las PCs?\n\n"
                         "No tiene número de versión: es uno armado antes de la V1.")
         else:
             nuevo = repo.nombre_de_version(numero)
-            pregunta = f"¿Cargar este PCcliente.exe ({nuevo}) como la versión nueva de las PCs?"
+            pregunta = f"¿Cargar {cual} ({nuevo}) como la versión nueva de las PCs?"
             cargada = repo.paquete()
             if cargada and cargada["v"] and repo.es_mas_vieja(numero, cargada["v"]):
                 actual = repo.nombre_de_version(cargada["v"])
                 pregunta += (f"\n\nOjo: la {nuevo} es más vieja que la {actual} que está cargada ahora. "
                              f"Las PCs que marques y ya tengan la {actual} van a volver a la {nuevo}.")
+        if en_carpeta:
+            pregunta += ("\n\nVa en carpeta: solo la pueden poner las PCs que ya tienen la V1.9 (Lanzador 3). "
+                         "Cargala cuando todas digan «3» en la columna Lanzador: la que esté cargada ahora deja "
+                         "de llegarles a las que todavía no la tienen.")
         return pregunta + "\n\nNo va a ninguna PC hasta que las marques y toques «Actualizar las seleccionadas»."
 
     @manejar_errores

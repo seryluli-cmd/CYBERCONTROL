@@ -37,16 +37,29 @@ consulta (`registrar_reporte`). Un exe armado antes de la V1 no lo tiene.
 Lo leen los hilos del servidor de red y lo escribe la pantalla, en el mismo programa: un candado
 evita leer a medio cambiar y lo leído se guarda en memoria (con la fecha y el tamaño de los
 archivos) para no abrir el disco en cada consulta de cada PC.
+
+Versiones EN CARPETA (desde la V2 del Cliente PC, pedido del dueño 2026-10-28: la pantalla de
+bloqueo tardaba 21-30 s en aparecer, casi todo desempaquetando el exe "todo en uno" en cada
+arranque; ver CLIENTE PC/README.md, "Arranque sin desempaquetar"). El Admin carga un .zip con la
+carpeta (PCcliente.exe y `_internal\\`, lo arma `CLIENTE PC/armar_paquete.py`) y se firma un
+manifiesto que dice "PCcliente-carpeta" con la huella y el tamaño del .zip y la lista de los
+archivos de adentro, con la huella y el tamaño de cada uno (`archivos`): la PC desempaqueta el .zip
+una sola vez y comprueba cada archivo. Solo se le manda a las PCs que avisan que la saben poner
+(`formato=2` en la consulta: Cliente PC V1.9 o más con el Lanzador 3); a las demás no les toca
+ninguna y la pantalla dice que les falta la V1.9 (`FALTA_PUENTE`). Se guarda como
+`data/cliente_pc/PCcliente.zip` en vez de `PCcliente.exe`.
 """
 
 import base64
 import hashlib
+import io
 import json
 import os
 import re
 import struct
 import threading
 import time
+import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -63,6 +76,18 @@ CARPETA = "cliente_pc"
 NOMBRE_EXE = "PCcliente.exe"
 NOMBRE_VERSION = "version.json"
 TAMANO_MAXIMO_EXE = 150 * 1024 * 1024
+# Una versión en carpeta (ver arriba). Los topes y las reglas de los nombres tienen que ser los
+# MISMOS que comprueba cada PC (`CLIENTE PC/actualizacion.py`): si no, se firmaría una lista que las
+# PCs rechazan.
+PROGRAMA_EN_CARPETA = "PCcliente-carpeta"
+NOMBRE_ZIP = "PCcliente.zip"
+ARCHIVOS_MAXIMOS = 20_000
+TAMANO_MAXIMO_CARPETA = 600 * 1024 * 1024
+_NOMBRES_RESERVADOS = {"version.json", "arranco_bien", "pccliente.zip"}
+_MARCA_ZIP = b"PK\x03\x04"
+# Lo que manda una PC como `formato` cuando sabe poner una versión en carpeta (Cliente PC V1.9 o
+# más, con el Lanzador 3).
+FORMATO_EN_CARPETA = 2
 # Lo que identifica un PCcliente.exe por dentro: PyInstaller deja, al final del archivo, la lista
 # de lo que lleva adentro, y ahí está el nombre del programa principal (cliente_pc). Ataja el error
 # de elegir otro exe (CyberBios.exe, Lanzador.exe): las PCs lo abrirían en lugar del Cliente PC.
@@ -91,6 +116,9 @@ _reportes = {}
 _numeros_de_version = {}
 # Y para el seguimiento de la copia que espera el reinicio (estacion_id -> dict o None).
 _seguimientos = {}
+# Qué formato sabe poner cada PC, según su última consulta (estacion_id -> 1 o 2). Solo en memoria:
+# cada PC lo vuelve a decir cada 5 s, y `version_para_estacion` se pregunta en la misma consulta.
+_formatos = {}
 # Cuánto más tarde tiene que haber arrancado Windows para contar como un reinicio: la hora de
 # arranque sale de restarle a la hora del mostrador los segundos que la PC lleva prendida, y
 # baila unos segundos de una consulta a otra.
@@ -183,37 +211,112 @@ def _version_nueva(ahora: datetime, anterior) -> int:
     return max(version, (anterior or 0) + 1)
 
 
+def es_en_carpeta(datos: bytes) -> bool:
+    """¿`datos` es el .zip de una versión en carpeta (y no un PCcliente.exe)?"""
+    return datos[:4] == _MARCA_ZIP
+
+
+def numero_de_version_del_paquete(datos: bytes):
+    """`numero_de_version_del_exe` de lo que se va a cargar: el PCcliente.exe, o el que está adentro
+    del .zip de una versión en carpeta. None si no tiene o el .zip no se puede leer."""
+    if not es_en_carpeta(datos):
+        return numero_de_version_del_exe(datos)
+    try:
+        with zipfile.ZipFile(io.BytesIO(datos)) as paquete:
+            return numero_de_version_del_exe(paquete.read(NOMBRE_EXE))
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, KeyError, EOFError, RuntimeError, NotImplementedError):
+        return None
+
+
+def _ruta_valida(nombre: str) -> bool:
+    """La misma regla que `CLIENTE PC/actualizacion.ruta_valida`: partes separadas por "/", sin
+    "..", sin disco ni barra al principio, sin "\\" ni ":"."""
+    if not nombre or "\\" in nombre or ":" in nombre or nombre.startswith("/"):
+        return False
+    return all(parte not in ("", ".", "..") and parte == parte.strip() for parte in nombre.split("/"))
+
+
+def _lista_del_zip(datos: bytes) -> tuple:
+    """(el PCcliente.exe de adentro, la lista {ruta: [huella, tamaño]}) del .zip de una versión en
+    carpeta, con las mismas reglas que va a comprobar cada PC. Levanta ValueError, con un mensaje
+    para mostrar, si el .zip no sirve."""
+    rearmar = "volvé a armarlo con armar_paquete.py (CLIENTE PC\\dist\\PCcliente_V2.zip)"
+    try:
+        with zipfile.ZipFile(io.BytesIO(datos)) as paquete:
+            entradas = [info for info in paquete.infolist() if not info.is_dir()]
+            if not 0 < len(entradas) <= ARCHIVOS_MAXIMOS:
+                raise ValueError(f"El .zip trae {len(entradas)} archivos: no parece el Cliente PC.")
+            archivos, vistos, total = {}, set(), 0
+            for info in entradas:
+                nombre = info.filename
+                if (not _ruta_valida(nombre) or nombre.lower() in vistos
+                        or nombre.lower() in _NOMBRES_RESERVADOS):
+                    raise ValueError(f"El .zip trae un archivo que no se puede usar ({nombre}): {rearmar}.")
+                vistos.add(nombre.lower())
+                huella, tamano = hashlib.sha256(), 0
+                with paquete.open(info) as archivo:
+                    for pedazo in iter(lambda: archivo.read(1024 * 1024), b""):
+                        huella.update(pedazo)
+                        tamano += len(pedazo)
+                        total += len(pedazo)
+                        if total > TAMANO_MAXIMO_CARPETA:
+                            raise ValueError("Lo que trae el .zip pesa demasiado: no parece el Cliente PC.")
+                archivos[nombre] = [huella.hexdigest(), tamano]
+            # Un archivo y una carpeta con el mismo nombre ("a" y "a/b") no se pueden armar en la PC.
+            carpetas = {nombre.lower().rsplit("/", 1)[0] for nombre in archivos if "/" in nombre}
+            carpetas |= {"/".join(c.split("/")[:i]) for c in carpetas for i in range(1, c.count("/") + 1)}
+            if carpetas & vistos:
+                raise ValueError(f"El .zip trae un archivo y una carpeta con el mismo nombre: {rearmar}.")
+            if NOMBRE_EXE not in archivos:
+                raise ValueError(f"En el .zip no está {NOMBRE_EXE} (arriba de todo): {rearmar}.")
+            return paquete.read(NOMBRE_EXE), archivos
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, RuntimeError, NotImplementedError) as error:
+        raise ValueError(f"El .zip está roto: {rearmar}.") from error
+
+
 def publicar(datos_exe: bytes, ahora: datetime = None) -> dict:
-    """Firma `datos_exe` (un PCcliente.exe) y lo deja como la versión de las PCs. No va a ninguna
-    hasta que el Admin las marque: se vacía la selección. Devuelve el manifiesto. Levanta ValueError, con un mensaje para
-    mostrarle a la persona, si no es un PCcliente.exe o no se puede firmar."""
-    if not datos_exe or not datos_exe.startswith(b"MZ"):
-        raise ValueError("El archivo elegido no es un programa (.exe).")
+    """Firma `datos_exe` (un PCcliente.exe, o el .zip de una versión en carpeta) y lo deja como la
+    versión de las PCs. No va a ninguna hasta que el Admin las marque: se vacía la selección.
+    Devuelve el manifiesto. Levanta ValueError, con un mensaje para mostrarle a la persona, si no es
+    el Cliente PC o no se puede firmar."""
+    en_carpeta = es_en_carpeta(datos_exe)
+    if not en_carpeta and (not datos_exe or not datos_exe.startswith(b"MZ")):
+        raise ValueError("El archivo elegido no es un programa (.exe) ni una versión en carpeta (.zip).")
     if len(datos_exe) > TAMANO_MAXIMO_EXE:
         raise ValueError(f"El archivo pesa {len(datos_exe) / 1024 / 1024:.0f} MB: no parece el PCcliente.exe.")
-    if not es_un_cliente_pc(datos_exe):
+    exe, archivos = _lista_del_zip(datos_exe) if en_carpeta else (datos_exe, None)
+    if not es_un_cliente_pc(exe):
         raise ValueError(
             "Ese .exe no es el Cliente PC (PCcliente.exe). Elegí el que está en "
-            "CLIENTE PC\\dist\\PCcliente.exe.")
+            "CLIENTE PC\\dist\\PCcliente.exe." if not en_carpeta else
+            "El PCcliente.exe de ese .zip no es el Cliente PC. Elegí el que deja armar_paquete.py en "
+            "CLIENTE PC\\dist.")
     privada = _cargar_clave_privada()
     ahora = ahora or datetime.now()
-    numero = numero_de_version_del_exe(datos_exe)
+    numero = numero_de_version_del_exe(exe)
     with _candado:
         anterior = _leer_del_disco()
         version = _version_nueva(ahora, anterior["paquete"]["version"] if anterior["paquete"] else None)
         datos_del_manifiesto = {
-            "programa": PROGRAMA, "version": version, "sha256": hashlib.sha256(datos_exe).hexdigest(),
+            "programa": PROGRAMA_EN_CARPETA if en_carpeta else PROGRAMA, "version": version,
+            "sha256": hashlib.sha256(datos_exe).hexdigest(),
             "tamano": len(datos_exe), "creado": ahora.isoformat(timespec="seconds"),
         }
+        if archivos is not None:
+            datos_del_manifiesto["archivos"] = archivos
         if numero:   # las PCs no lo miran: es para mostrar
             datos_del_manifiesto["v"] = numero
         manifiesto = json.dumps(datos_del_manifiesto, sort_keys=True)
         firma = base64.b64encode(privada.sign(manifiesto.encode("utf-8"))).decode()
         os.makedirs(_carpeta(), exist_ok=True)
         # Primero el exe y después el manifiesto: una PC que pide justo en el medio recibe un exe
-        # que no coincide con el manifiesto, lo descarta y vuelve a probar.
-        _escribir(_ruta(NOMBRE_EXE), datos_exe)
+        # que no coincide con el manifiesto, lo descarta y vuelve a probar. El manifiesto dice cuál
+        # de los dos archivos vale; el otro (de la versión anterior, si era del otro tipo) se borra.
+        nombre, sobra = (NOMBRE_ZIP, NOMBRE_EXE) if en_carpeta else (NOMBRE_EXE, NOMBRE_ZIP)
+        _escribir(_ruta(nombre), datos_exe)
         _escribir(_ruta(NOMBRE_VERSION), json.dumps({"manifiesto": manifiesto, "firma": firma}).encode("utf-8"))
+        if os.path.exists(_ruta(sobra)):
+            os.remove(_ruta(sobra))
         _ultimo.update(clave=None, paquete=None, exe=None)
     guardar_seleccion(())
     return json.loads(manifiesto)
@@ -242,12 +345,20 @@ def _escribir(ruta: str, datos: bytes):
 # --------------------------------------------------------------------
 # Leer la versión cargada (lo usa el servidor de red)
 # --------------------------------------------------------------------
-def _leer_del_disco() -> dict:
-    """{"paquete": {...} o None, "exe": bytes o None}. Se llama con el candado puesto. Un
-    version.json roto cuenta como que no hay versión."""
+def _estado_del_archivo(nombre: str):
     try:
-        estados = tuple((os.stat(_ruta(n)).st_mtime_ns, os.stat(_ruta(n)).st_size) for n in (NOMBRE_VERSION, NOMBRE_EXE))
+        estado = os.stat(_ruta(nombre))
     except FileNotFoundError:
+        return None
+    return estado.st_mtime_ns, estado.st_size
+
+
+def _leer_del_disco() -> dict:
+    """{"paquete": {...} o None, "exe": bytes o None} ("exe": el PCcliente.exe, o el .zip de una
+    versión en carpeta). Se llama con el candado puesto. Un version.json roto, o sin el archivo que
+    dice, cuenta como que no hay versión."""
+    estados = tuple(_estado_del_archivo(n) for n in (NOMBRE_VERSION, NOMBRE_EXE, NOMBRE_ZIP))
+    if estados[0] is None:
         _ultimo.update(clave=None, paquete=None, exe=None)
         return _ultimo
     if _ultimo["clave"] != estados:
@@ -255,10 +366,12 @@ def _leer_del_disco() -> dict:
             with open(_ruta(NOMBRE_VERSION), "rb") as archivo:
                 guardado = json.loads(archivo.read().decode("utf-8"))
             contenido = json.loads(guardado["manifiesto"])
+            en_carpeta = contenido.get("programa") == PROGRAMA_EN_CARPETA
             paquete = {"manifiesto": guardado["manifiesto"], "firma": guardado["firma"],
                        "version": int(contenido["version"]), "tamano": int(contenido["tamano"]),
-                       "creado": contenido.get("creado", ""), "v": numero_de_version_valido(contenido.get("v"))}
-            with open(_ruta(NOMBRE_EXE), "rb") as archivo:
+                       "creado": contenido.get("creado", ""), "v": numero_de_version_valido(contenido.get("v")),
+                       "en_carpeta": en_carpeta}
+            with open(_ruta(NOMBRE_ZIP if en_carpeta else NOMBRE_EXE), "rb") as archivo:
                 exe = archivo.read()
         except (OSError, ValueError, KeyError, TypeError):
             paquete, exe = None, None
@@ -267,14 +380,15 @@ def _leer_del_disco() -> dict:
 
 
 def paquete():
-    """La versión cargada: {"manifiesto", "firma", "version", "tamano", "creado", "v"}, o None
-    ("v": su número de versión, "1.2" = V1.2, o None si es un exe armado antes de la V1)."""
+    """La versión cargada: {"manifiesto", "firma", "version", "tamano", "creado", "v", "en_carpeta"},
+    o None ("v": su número de versión, "1.2" = V1.2, o None si es un exe armado antes de la V1;
+    "en_carpeta": si es una versión en carpeta, un .zip)."""
     with _candado:
         return _leer_del_disco()["paquete"]
 
 
 def datos_exe():
-    """Los bytes del PCcliente.exe cargado, o None."""
+    """Los bytes de la versión cargada (el PCcliente.exe, o el .zip de una versión en carpeta), o None."""
     with _candado:
         return _leer_del_disco()["exe"]
 
@@ -310,11 +424,25 @@ def guardar_seleccion(ids):
 
 def version_para_estacion(estacion_id: int):
     """La versión que le toca a esa PC (viaja en cada GET /estado como `cliente_version`), o None si
-    no hay ninguna cargada o esa PC no está marcada."""
-    version = version_publicada()
-    if version is None:
+    no hay ninguna cargada, esa PC no está marcada o la versión es en carpeta y esa PC no avisó
+    que la sabe poner (`formato` en su consulta, que `registrar_reporte` guarda justo antes)."""
+    cargada = paquete()
+    if cargada is None or estacion_id not in obtener_seleccion():
         return None
-    return version if estacion_id in obtener_seleccion() else None
+    if cargada["en_carpeta"]:
+        with _candado_reportes:
+            if _formatos.get(estacion_id, 1) < FORMATO_EN_CARPETA:
+                return None
+    return cargada["version"]
+
+
+def sabe_poner_carpetas(estacion_id: int, numero_lanzador=None) -> bool:
+    """¿Esa PC sabe poner una versión en carpeta? Lo que dijo en su última consulta; si no consultó
+    desde que se abrió el programa, se adivina por su Lanzador.exe (el 3 o más), que queda en la base."""
+    with _candado_reportes:
+        if estacion_id in _formatos:
+            return _formatos[estacion_id] >= FORMATO_EN_CARPETA
+    return (numero_lanzador or 0) >= 3
 
 
 # --------------------------------------------------------------------
@@ -328,10 +456,13 @@ def registrar_reporte(estacion_id: int, parametros: dict, ahora: datetime = None
     nada. Aparte, `v`: su número de versión (lo manda desde la V1, con lanzador o sin él; ver
     `_registrar_numero_de_version`), y `encendida`, los segundos que lleva prendida la PC, para
     seguir la copia a través de un reinicio (`_seguir_la_copia_de`). Solo escribe en la base si
-    cambió algo."""
+    cambió algo. Y `formato`: 2 si sabe poner una versión en carpeta (desde la V1.9, con el Lanzador
+    3); queda solo en memoria (`version_para_estacion`)."""
     _registrar_numero_de_version(estacion_id, parametros.get("v"))
     if "version" not in parametros:
         return
+    with _candado_reportes:
+        _formatos[estacion_id] = _numero(parametros.get("formato")) or 1
     version = _numero(parametros.get("version"))
     carpeta = str(parametros.get("carpeta") or "")[:_TOPE_CARPETA]
     estado = str(parametros.get("act") or "")
@@ -456,6 +587,7 @@ def olvidar_reportes():
         _reportes.clear()
         _numeros_de_version.clear()
         _seguimientos.clear()
+        _formatos.clear()
 
 
 def estado_de_las_pcs(ahora: datetime = None) -> list:
@@ -490,6 +622,8 @@ def estado_de_las_pcs(ahora: datetime = None) -> list:
             "seleccionada": seleccionada,
             "le_toca": publicada if publicada is not None and seleccionada else None,
             "v_le_toca": cargada["v"] if cargada and seleccionada else None,
+            "va_en_carpeta": bool(cargada and cargada["en_carpeta"]),
+            "sabe_poner_carpetas": sabe_poner_carpetas(estacion["id"], estacion["numero_lanzador"]),
             "ocupada": estacion["id"] in ocupadas,
         })
     return filas
@@ -518,6 +652,7 @@ ERROR = "error"                      # no la pudo copiar: reintenta sola al minu
 ESPERANDO = "esperando"              # marcada, todavía no empezó (empieza en segundos)
 SE_BORRA = "se_borra"                # la copió, pero el reinicio la borra (Shadow Defender)
 SIN_LANZADOR = "sin_lanzador"        # la copió, pero al reiniciar nadie la pone (no arranca con Lanzador.exe)
+FALTA_PUENTE = "falta_puente"        # la cargada es en carpeta y esa PC todavía no la sabe poner (le falta la V1.9)
 # Las que ya no necesitan nada: cuentan como "listas" en el resumen.
 SITUACIONES_LISTAS = (FUNCIONANDO, LISTA)
 
@@ -533,6 +668,8 @@ def situacion(pc: dict) -> str:
         return NO_SELECCIONADA
     if pc["version"] == pc["le_toca"]:
         return FUNCIONANDO
+    if pc.get("va_en_carpeta") and not pc.get("sabe_poner_carpetas"):
+        return FALTA_PUENTE
     if pc["estado"] == dominio.ACTUALIZACION_FALLO:
         return FALLO
     if pc["estado"] == dominio.ACTUALIZACION_DESCARGADA and pc["version_bajada"] in (None, pc["le_toca"]):

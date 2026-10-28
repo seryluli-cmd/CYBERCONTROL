@@ -22,12 +22,15 @@ Se ejecutan con:
 import base64
 import hashlib
 import http.client
+import importlib.util
+import io
 import json
 import os
 import shutil
 import struct
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest import mock
@@ -168,6 +171,170 @@ class TestPublicar(_ConClaveDePrueba):
 
         self.assertIsNone(repo.paquete())
         self.assertIsNone(repo.version_publicada())
+
+
+def zip_de_cliente(v="2", archivos: dict = None) -> bytes:
+    """El .zip de una versión en carpeta (lo que arma CLIENTE PC/armar_paquete.py): PCcliente.exe
+    arriba de todo y su `_internal/`. `archivos` pisa o agrega lo que se quiera ({ruta: bytes},
+    None para sacar uno)."""
+    contenido = {"PCcliente.exe": exe_de_cliente(v=v), "_internal/python312.dll": b"dll" * 500,
+                 "_internal/sub/modulo.pyd": b"pyd" * 50, "_internal/vacio.txt": b""}
+    contenido.update(archivos or {})
+    memoria = io.BytesIO()
+    with zipfile.ZipFile(memoria, "w", zipfile.ZIP_DEFLATED) as paquete:
+        for nombre, datos in contenido.items():
+            if datos is not None:
+                paquete.writestr(nombre, datos)
+    return memoria.getvalue()
+
+
+class TestPublicarEnCarpeta(_ConClaveDePrueba):
+    """Desde la V2 del Cliente PC (2026-10-28): la versión es un .zip con la carpeta, y se firma
+    la lista de los archivos de adentro."""
+
+    def test_firma_el_zip_con_la_lista_de_archivos(self):
+        datos = zip_de_cliente()
+
+        manifiesto = repo.publicar(datos, ahora=datetime(2026, 10, 28, 9, 0, 0))
+
+        self.assertEqual(manifiesto["programa"], "PCcliente-carpeta")
+        self.assertEqual((manifiesto["sha256"], manifiesto["tamano"]), (hashlib.sha256(datos).hexdigest(), len(datos)))
+        self.assertEqual(manifiesto["v"], "2")
+        self.assertEqual(manifiesto["archivos"]["_internal/python312.dll"],
+                         [hashlib.sha256(b"dll" * 500).hexdigest(), 1500])
+        self.assertEqual(manifiesto["archivos"]["_internal/vacio.txt"], [hashlib.sha256(b"").hexdigest(), 0])
+        self.assertEqual(len(manifiesto["archivos"]), 4)
+        paquete = repo.paquete()
+        self.assertEqual(self.verificar(paquete), manifiesto)
+        self.assertTrue(paquete["en_carpeta"])
+        self.assertEqual(repo.datos_exe(), datos)
+        carpeta = os.path.join(database.DATA_DIR, "cliente_pc")
+        self.assertEqual(sorted(os.listdir(carpeta)), ["PCcliente.zip", "version.json"])
+
+    def test_cargar_un_exe_despues_borra_el_zip_y_al_reves(self):
+        carpeta = os.path.join(database.DATA_DIR, "cliente_pc")
+        repo.publicar(zip_de_cliente())
+        repo.publicar(exe_de_cliente(v="1.9"))
+        self.assertEqual(sorted(os.listdir(carpeta)), ["PCcliente.exe", "version.json"])
+        self.assertFalse(repo.paquete()["en_carpeta"])
+        self.assertEqual(repo.datos_exe(), exe_de_cliente(v="1.9"))
+        repo.publicar(zip_de_cliente())
+        self.assertEqual(sorted(os.listdir(carpeta)), ["PCcliente.zip", "version.json"])
+        self.assertEqual(repo.datos_exe(), zip_de_cliente())
+
+    def test_rechaza_un_zip_que_las_pcs_no_aceptarian(self):
+        malos = (
+            ({"PCcliente.exe": None}, "no está PCcliente.exe"),
+            ({"../fuera.dll": b"x"}, "no se puede usar"),
+            ({"_internal/./x.dll": b"x"}, "no se puede usar"),
+            ({"version.json": b"{}"}, "no se puede usar"),
+            ({"pccliente.EXE": b"MZ"}, "no se puede usar"),                   # Windows no distingue mayúsculas
+            ({"_internal/sub": b"x"}, "mismo nombre"),                        # archivo y carpeta
+            ({"PCcliente.exe": b"MZ" + b"CyberBios" * 1000}, "no es el Cliente PC"),
+        )
+        for cambios, texto in malos:
+            with self.assertRaises(ValueError, msg=cambios) as error:
+                repo.publicar(zip_de_cliente(archivos=cambios))
+            self.assertIn(texto, str(error.exception))
+        with self.assertRaises(ValueError) as error:
+            repo.publicar(zip_de_cliente()[:300])
+        self.assertIn("roto", str(error.exception))
+        self.assertIsNone(repo.paquete())
+
+    def test_respeta_los_topes(self):
+        with mock.patch.object(repo, "ARCHIVOS_MAXIMOS", 3), self.assertRaises(ValueError):
+            repo.publicar(zip_de_cliente())
+        with mock.patch.object(repo, "TAMANO_MAXIMO_CARPETA", 100), self.assertRaises(ValueError):
+            repo.publicar(zip_de_cliente())
+
+    def test_el_numero_de_version_sale_del_exe_de_adentro(self):
+        self.assertEqual(repo.numero_de_version_del_paquete(zip_de_cliente(v="2.1")), "2.1")
+        self.assertEqual(repo.numero_de_version_del_paquete(exe_de_cliente(v="1.9")), "1.9")
+        self.assertIsNone(repo.numero_de_version_del_paquete(zip_de_cliente()[:300]))
+        self.assertTrue(repo.es_en_carpeta(zip_de_cliente()))
+        self.assertFalse(repo.es_en_carpeta(exe_de_cliente()))
+
+    def test_lo_firmado_lo_acepta_y_lo_desempaqueta_el_cliente_pc_de_verdad(self):
+        # La misma regla de los dos lados: con el actualizacion.py de CLIENTE PC (la carpeta de al lado).
+        ruta = Path(__file__).resolve().parents[2] / "CLIENTE PC" / "actualizacion.py"
+        if not ruta.exists():
+            self.skipTest("No está la carpeta CLIENTE PC al lado")
+        especificacion = importlib.util.spec_from_file_location("actualizacion_del_cliente_pc", ruta)
+        cliente = importlib.util.module_from_spec(especificacion)
+        especificacion.loader.exec_module(cliente)
+        cliente.CLAVE_PUBLICA_FIRMA = PUBLICA_DE_PRUEBA
+        datos = zip_de_cliente()
+        repo.publicar(datos)
+        paquete = repo.paquete()
+
+        manifiesto = cliente.verificar_manifiesto(paquete["manifiesto"], paquete["firma"])
+
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta_zip = Path(carpeta) / "PCcliente.zip"
+            ruta_zip.write_bytes(repo.datos_exe())
+            cliente.comprobar_exe(ruta_zip, manifiesto)
+            cliente.desempaquetar(ruta_zip, Path(carpeta) / "nueva", manifiesto)
+            self.assertEqual((Path(carpeta) / "nueva" / "_internal" / "python312.dll").read_bytes(), b"dll" * 500)
+            self.assertEqual(cliente.ARCHIVOS_MAXIMOS, repo.ARCHIVOS_MAXIMOS)
+            self.assertEqual(cliente.TAMANO_MAXIMO_CARPETA, repo.TAMANO_MAXIMO_CARPETA)
+            self.assertEqual(cliente.PROGRAMA_EN_CARPETA, repo.PROGRAMA_EN_CARPETA)
+
+
+class TestSoloALasQueSabenPonerla(_ConClaveDePrueba):
+    """Una versión en carpeta solo le llega a una PC que manda `formato=2` (Cliente PC V1.9 o más
+    con el Lanzador 3): las demás la rechazarían en cada arranque."""
+
+    REPORTE = {"version": "1", "carpeta": "C:\\c", "act": "", "act_detalle": ""}
+
+    def setUp(self):
+        super().setUp()
+        self.pc1 = pcs_repo.crear_estacion("PC1")
+
+    def test_en_carpeta_solo_si_la_pc_avisa_que_la_sabe_poner(self):
+        version = repo.publicar(zip_de_cliente())["version"]
+        repo.guardar_seleccion([self.pc1])
+        self.assertIsNone(repo.version_para_estacion(self.pc1))                # todavía no consultó
+
+        repo.registrar_reporte(self.pc1, self.REPORTE)                          # un Cliente PC de antes
+        self.assertIsNone(repo.version_para_estacion(self.pc1))
+
+        repo.registrar_reporte(self.pc1, {**self.REPORTE, "formato": "2"})
+        self.assertEqual(repo.version_para_estacion(self.pc1), version)
+
+    def test_un_exe_le_llega_a_cualquiera(self):
+        version = repo.publicar(exe_de_cliente())["version"]
+        repo.guardar_seleccion([self.pc1])
+        repo.registrar_reporte(self.pc1, self.REPORTE)
+        self.assertEqual(repo.version_para_estacion(self.pc1), version)
+
+    def test_la_pantalla_dice_que_le_falta_la_v1_9(self):
+        repo.publicar(zip_de_cliente())
+        pc2 = pcs_repo.crear_estacion("PC2")
+        repo.guardar_seleccion([self.pc1, pc2])
+        repo.registrar_reporte(self.pc1, self.REPORTE)
+        repo.registrar_reporte(pc2, {**self.REPORTE, "formato": "2"})
+
+        pcs = {pc["nombre"]: pc for pc in repo.estado_de_las_pcs()}
+
+        self.assertTrue(pcs["PC1"]["va_en_carpeta"])
+        self.assertEqual([pcs[n]["sabe_poner_carpetas"] for n in ("PC1", "PC2")], [False, True])
+        self.assertEqual(repo.situacion(pcs["PC1"]), repo.FALTA_PUENTE)
+        self.assertEqual(repo.situacion(pcs["PC2"]), repo.APAGADA)     # la sabe poner (y no consultó hace poco)
+        self.assertNotIn(repo.FALTA_PUENTE, repo.SITUACIONES_LISTAS)
+        self.assertIn("Le falta la V1.9", pcs_actualizacion_dialogo.texto_del_estado(pcs["PC1"]))
+
+    def test_sin_consultar_desde_que_se_abrio_se_adivina_por_su_lanzador(self):
+        self.assertFalse(repo.sabe_poner_carpetas(self.pc1, numero_lanzador=2))
+        self.assertTrue(repo.sabe_poner_carpetas(self.pc1, numero_lanzador=3))
+        self.assertFalse(repo.sabe_poner_carpetas(self.pc1))
+        repo.registrar_reporte(self.pc1, self.REPORTE)                          # lo que dijo gana
+        self.assertFalse(repo.sabe_poner_carpetas(self.pc1, numero_lanzador=3))
+
+    def test_ya_funcionando_con_ella_no_le_falta_nada(self):
+        base = {"carpeta": "C:\\c", "ultima_conexion": "2026-10-28T12:00:00", "conectada": True, "le_toca": 5,
+                "version": 5, "estado": "", "detalle": "", "version_bajada": None, "seleccionada": True,
+                "va_en_carpeta": True, "sabe_poner_carpetas": False}
+        self.assertEqual(repo.situacion(base), repo.FUNCIONANDO)
 
 
 class TestClaveDeLasPcs(unittest.TestCase):
@@ -614,6 +781,22 @@ class TestServidorRedActualizacion(test_control_pcs._ConServidorRed):
         self.assertEqual((status, tipo), (200, "application/octet-stream"))
         self.assertEqual(hashlib.sha256(exe).hexdigest(), manifiesto["sha256"])
 
+    def test_una_version_en_carpeta_solo_le_llega_a_la_pc_que_la_sabe_poner(self):
+        datos = zip_de_cliente()
+        version = repo.publicar(datos)["version"]
+        repo.guardar_seleccion([self.pc1])
+
+        status, estado = self._get("/estado?estacion=PC1&version=1&carpeta=C%3A%5Cc&lanzador=2")
+        self.assertEqual((status, estado["cliente_version"]), (200, None))
+
+        status, estado = self._get("/estado?estacion=PC1&version=1&carpeta=C%3A%5Cc&lanzador=3&formato=2")
+        self.assertEqual((status, estado["cliente_version"]), (200, version))
+        status, _tipo, cuerpo = self._get_crudo("/cliente_pc")
+        manifiesto = json.loads(json.loads(cuerpo)["manifiesto"])
+        self.assertEqual(manifiesto["programa"], "PCcliente-carpeta")
+        status, _tipo, recibido = self._get_crudo("/cliente_pc/exe")
+        self.assertEqual((status, recibido), (200, datos))
+
     def test_una_pc_sin_marcar_no_recibe_version(self):
         repo.publicar(exe_de_cliente())
 
@@ -865,6 +1048,18 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
                 archivo.write(exe_de_cliente())
             d._cargar_version()
             self.assertIn("No tiene número de versión", preguntas[-1])
+
+    def test_cargar_una_version_en_carpeta_avisa_que_solo_va_a_las_que_tienen_la_v1_9(self):
+        preguntas = []
+        with open(self.ruta_elegida, "wb") as archivo:
+            archivo.write(zip_de_cliente(v="2"))
+        with mock.patch.object(pcs_actualizacion_dialogo, "confirmar",
+                               side_effect=lambda *a, **k: preguntas.append(a[2]) or True):
+            self.dialogo()._cargar_version()
+        self.assertIn("esta versión en carpeta (.zip) (V2)", preguntas[-1])
+        self.assertIn("solo la pueden poner las PCs que ya tienen la V1.9", preguntas[-1])
+        self.assertTrue(repo.paquete()["en_carpeta"])
+        self.assertIn("*.zip", pcs_actualizacion_dialogo.FILTRO_EXE)
 
     def test_la_columna_muestra_el_numero_que_manda_cada_pc(self):
         repo.registrar_reporte(self.pc1, {"v": "1.2"})
