@@ -1011,6 +1011,99 @@ HOJA_DE_ESTILOS = """
         font-size: 12px;
     }
 
+    /* Reiniciar y Apagar PCs con la maqueta "B" que eligió el dueño el 2026-10-28
+       (control_pcs/ui/pcs_reiniciar_dialogo.py): el aviso de que solo se tocan las
+       prendidas y libres, y las PCs como fichas sobre el fondo negro del mosaico. La
+       ficha se pinta según su propiedad "estado" (marcada, desmarcada, enUso). */
+    QLabel#avisoSoloLibres {
+        background-color: #FFF4E5;
+        border: 1px solid #F5C98B;
+        border-left: 5px solid #F08A24;
+        border-radius: 8px;
+        color: #6B3A06;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    /* Sin ninguna PC marcada la tecla roja se apaga: el título también, en gris. */
+    QPushButton[clase="tarjetaMenu"][tono="rojo"] QLabel#tituloTarjeta:disabled {
+        color: #A7ADB8;
+    }
+    QFrame#marcoFichas {
+        background-color: #181B21;
+        border: 1px solid #0C0E12;
+        border-radius: 12px;
+    }
+    QScrollArea#scrollFichas, QWidget#contenidoFichas {
+        background: transparent;
+        border: none;
+    }
+    QLabel#tituloFichas {
+        background: transparent;
+        color: #9AA4B5;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel#tituloFichas[tono="enUso"] {
+        color: #E9B820;
+    }
+    QFrame#rayaFichas {
+        background-color: #2B3242;
+        border: none;
+    }
+    QPushButton#fichaPc {
+        background-color: #232833;
+        border: 1px solid #343B4A;
+        border-bottom: 3px solid #12151B;
+        border-radius: 9px;
+        padding: 0;
+    }
+    QPushButton#fichaPc[estado="desmarcada"]:hover {
+        border-color: #4F8EF7;
+    }
+    QPushButton#fichaPc[estado="marcada"] {
+        background-color: #1F3A2A;
+        border: 2px solid #2FB457;
+        border-bottom: 3px solid #1A7A3A;
+    }
+    QPushButton#fichaPc[estado="marcada"]:hover {
+        background-color: #24452F;
+    }
+    QPushButton#fichaPc[estado="enUso"] {
+        background-color: #1C2028;
+        border: 1px dashed #4A5160;
+    }
+    QPushButton#fichaPc > QLabel {
+        background: transparent;
+    }
+    QLabel#nombreFicha {
+        color: #F3F5F9;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    QLabel#detalleFicha {
+        color: #AEB5C2;
+        font-size: 10px;
+        font-weight: 700;
+    }
+    QPushButton#fichaPc[estado="marcada"] > QLabel#detalleFicha {
+        color: #7BE0A0;
+    }
+    QPushButton#fichaPc[estado="enUso"] > QLabel#nombreFicha {
+        color: #7D8696;
+    }
+    QPushButton#fichaPc[estado="enUso"] > QLabel#detalleFicha {
+        color: #E9B820;
+    }
+    /* Con el ">" le gana al fondo transparente de las etiquetas de la ficha. */
+    QPushButton#fichaPc > QLabel#marcaFicha {
+        color: #FFFFFF;
+        background-color: #2FB457;
+        border-radius: 8px;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 0 4px;
+    }
+
     /* Caja y Cierre de Turno (y el detalle de un cierre en Control de Cierres) con el
        mismo diseño, 2026-10-26 (ui/tarjeta_cierre.py). Las cifras grandes: la verde es
        el efectivo del cajón o del sobre, la azul el TOTAL (los colores que eligió el

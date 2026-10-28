@@ -52,6 +52,11 @@ class TestCualesSonLibres(_TresPcs):
         libres = pcs_libres_repo.prendidas_y_libres(pcs_repo.estado_estaciones())
         self.assertEqual([item["estacion"]["nombre"] for item in libres], ["PC1"])
 
+    def test_separar_en_libres_en_uso_y_apagadas(self):
+        partes = pcs_libres_repo.separar(pcs_repo.estado_estaciones())
+        nombres = [[item["estacion"]["nombre"] for item in parte] for parte in partes]
+        self.assertEqual(nombres, [["PC1"], ["PC2"], ["PC3"]])
+
 
 class TestReiniciar(_TresPcs):
     def test_manda_reiniciar_solo_a_la_prendida_y_libre(self):
@@ -193,8 +198,10 @@ class TestBotones(_TresPcs):
 
 
 class TestVentanaReiniciar(_TresPcs):
-    """La ventana de REINICIAR: solo las prendidas y libres, todas marcadas, y se
-    pueden desmarcar (pedido del dueño, 2026-10-22)."""
+    """La ventana de REINICIAR: solo se marcan las prendidas y libres, que arrancan
+    todas marcadas y se pueden desmarcar (pedido del dueño, 2026-10-22). Desde el
+    2026-10-28 son fichas como las del mosaico, y las que están en uso se ven aparte
+    sin poder marcarse (maqueta "B" que eligió el dueño)."""
 
     def setUp(self):
         super().setUp()
@@ -211,7 +218,33 @@ class TestVentanaReiniciar(_TresPcs):
 
     def test_aparecen_solo_las_prendidas_y_libres_todas_marcadas(self):
         self.assertEqual(self.dialogo._marcadas(), [(self.libre, "PC1"), (self.otra_libre, "PC4")])
-        self.assertEqual(self.dialogo.tabla.rowCount(), 2)
+        self.assertEqual([ficha.nombre for ficha in self.dialogo.fichas], ["PC1", "PC4"])
+        self.assertEqual(self.dialogo.pastilla_marcadas.text(), "2 MARCADAS")
+        self.assertEqual(self.dialogo.boton_mandar.accessibleName(), "Reiniciar las 2 marcadas")
+
+    def test_las_que_estan_en_uso_se_ven_aparte_y_no_se_marcan(self):
+        # Lo pidió el dueño: que se entienda que a las que están en uso no les pasa nada.
+        (en_uso,) = self.dialogo.fichas_en_uso
+        self.assertEqual(en_uso.nombre, "PC2")
+        self.assertFalse(en_uso.isEnabled())
+        self.assertFalse(en_uso.isCheckable())
+        self.assertTrue(en_uso.detalle.text().startswith("QUEDAN "))
+        self.assertNotIn("PC3", [ficha.nombre for ficha in self.dialogo.fichas + self.dialogo.fichas_en_uso])
+
+    def test_el_aviso_dice_que_solo_se_tocan_las_prendidas_y_libres(self):
+        texto = self.dialogo.aviso.text()
+        self.assertIn("Solo se reinician las PCs PRENDIDAS y LIBRES", texto)
+        self.assertIn("Las PCs en uso, con tiempo disponible, <b>no se reinician</b>", texto)
+
+    def test_una_ficha_desmarcada_dice_que_no_se_toca(self):
+        ficha = self.dialogo.fichas[1]
+        self.assertEqual(ficha.detalle.text(), "SE REINICIA")
+        ficha.click()
+        self.assertFalse(ficha.isChecked())
+        self.assertEqual(ficha.detalle.text(), "NO SE REINICIA")
+        self.assertEqual(ficha.property("estado"), "desmarcada")
+        self.assertEqual(self.dialogo.pastilla_marcadas.text(), "1 MARCADA")
+        self.assertEqual(self.dialogo.boton_mandar.accessibleName(), "Reiniciar la marcada")
 
     def test_reinicia_las_marcadas(self):
         pregunta, aviso = self.reiniciar()
@@ -222,20 +255,22 @@ class TestVentanaReiniciar(_TresPcs):
             self.assertEqual(self.pendiente(estacion_id), dominio.COMANDO_REINICIAR)
 
     def test_una_desmarcada_no_se_reinicia(self):
-        self.dialogo.tabla.item(1, 0).setCheckState(Qt.Unchecked)
+        self.dialogo.fichas[1].setChecked(False)
         self.reiniciar()
         self.assertEqual(self.pendiente(self.libre), dominio.COMANDO_REINICIAR)
         self.assertIsNone(self.pendiente(self.otra_libre))
 
     def test_desmarcar_todas_y_volver_a_marcar(self):
-        self.dialogo._marcar(Qt.Unchecked)
+        self.dialogo._marcar(False)
+        self.assertFalse(self.dialogo.boton_mandar.isEnabled())
+        self.assertIn("al menos una", self.dialogo.boton_mandar.detalle.text())
         pregunta, _aviso = self.reiniciar()
         pregunta.assert_not_called()
-        self.assertIn("al menos una", self.dialogo.etiqueta_estado.text())
         self.assertIsNone(self.pendiente(self.libre))
 
-        self.dialogo._marcar(Qt.Checked)
+        self.dialogo._marcar(True)
         self.assertEqual(len(self.dialogo._marcadas()), 2)
+        self.assertTrue(self.dialogo.boton_mandar.isEnabled())
 
     def test_si_dice_que_no_no_reinicia_nada(self):
         self.reiniciar(confirma=False)
@@ -262,8 +297,11 @@ class TestVentanaApagar(_TresPcs):
 
     def test_apaga_las_marcadas_y_no_las_desmarcadas(self):
         self.assertEqual(self.dialogo.windowTitle(), "Apagar PCs prendidas y libres")
-        self.assertEqual(self.dialogo.boton_mandar.text(), "Apagar las marcadas")
-        self.dialogo.tabla.item(1, 0).setCheckState(Qt.Unchecked)
+        self.assertIn("Solo se apagan las PCs PRENDIDAS y LIBRES", self.dialogo.aviso.text())
+        self.assertIn("no se apagan", self.dialogo.aviso.text())
+        self.dialogo.fichas[1].setChecked(False)
+        self.assertEqual(self.dialogo.fichas[1].detalle.text(), "NO SE APAGA")
+        self.assertEqual(self.dialogo.boton_mandar.accessibleName(), "Apagar la marcada")
 
         pregunta, aviso = self.apagar()
 
@@ -279,3 +317,20 @@ class TestVentanaApagar(_TresPcs):
         _pregunta, aviso = self.apagar()
         self.assertIn("No se apagó ninguna PC.", aviso.call_args.args[2])
         self.assertIn("No se apagaron porque ya no estaban libres: PC1, PC4.", aviso.call_args.args[2])
+
+
+class TestFichasSinPcsEnUso(BaseConBaseTemporal):
+    """Sin ninguna PC en uso ni apagada, la ventana no muestra esa parte."""
+
+    def test_sin_en_uso_no_hay_fichas_aparte_ni_su_explicacion(self):
+        pcs_repo.registrar_conexion(pcs_repo.crear_estacion("PC1"))
+        dialogo = DialogoApagar(pcs_repo.estado_estaciones())
+        self.addCleanup(dialogo.deleteLater)
+        self.assertEqual(dialogo.fichas_en_uso, [])
+        self.assertNotIn("se ven abajo", dialogo.aviso.text())
+
+    def test_lo_que_queda_se_ve_sin_segundos(self):
+        from control_pcs.ui.pcs_reiniciar_dialogo import _quedan
+        self.assertEqual(_quedan(5100), "1h 25m")
+        self.assertEqual(_quedan(2400), "40m")
+        self.assertEqual(_quedan(912), "15m")

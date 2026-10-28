@@ -26,6 +26,22 @@ def prendidas_y_libres(estados) -> list:
     return [item for item in estados if esta_prendida_y_libre(item)]
 
 
+def separar(estados) -> tuple:
+    """Las de `estados` repartidas en (prendidas y libres, en uso, apagadas): lo que
+    muestran las ventanas de REINICIAR y APAGAR. En uso es con un cliente y tiempo
+    (congelado_repo.esta_ocupada), con o sin conexión: esas nunca se tocan. Apagadas
+    son las demás sin conexión."""
+    libres, en_uso, apagadas = [], [], []
+    for item in estados:
+        if congelado_repo.esta_ocupada(item):
+            en_uso.append(item)
+        elif esta_prendida_y_libre(item):
+            libres.append(item)
+        else:
+            apagadas.append(item)
+    return libres, en_uso, apagadas
+
+
 def reiniciar(estacion_ids) -> tuple:
     """Le manda Reiniciar a las PCs de `estacion_ids` que siguen prendidas y
     libres (ver `_mandar`). Devuelve (reiniciadas, salteadas)."""
