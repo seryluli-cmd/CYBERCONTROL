@@ -1,20 +1,32 @@
 """
 fondo_repo.py
 =============
-El fondo de la pantalla de bloqueo de las PC clientes (carpeta hermana
-"CLIENTE PC"). Lo elige el Admin en Configuración ADMIN -> Gestionar Estaciones
--> "Fondo de pantalla de las PCs..." y cada Cliente PC lo pide al arrancar
-(`GET /fondo`, ver `servidor_red.py`).
+Los fondos de las PC clientes (carpeta hermana "CLIENTE PC"), dos imágenes que
+elige el Admin en Configuración ADMIN -> Gestionar Estaciones -> "Fondos de
+pantalla" y que cada Cliente PC pide solo:
 
-Dónde vive: UN solo archivo JPEG, `data/fondo_bloqueo.jpg`. No va en la base
+- BLOQUEO: el fondo de la pantalla de bloqueo, detrás del nombre de la PC y del
+  recuadro de ingreso (`GET /fondo`, ver `servidor_red.py`).
+- ESCRITORIO: el wallpaper de Windows que ve el cliente mientras juega (pedido del
+  dueño, 2026-10-28; `GET /escritorio`). Lo pone cada Cliente PC (desde la V2.1,
+  `CLIENTE PC/fondo_escritorio.py`), con la PC libre y de nuevo en cada arranque:
+  Shadow Defender lo borra al reiniciar.
+
+Todas las funciones reciben `cual` (BLOQUEO si no se dice): las dos imágenes siguen
+las mismas reglas y solo cambia el archivo. Viene también desde otra PC (admin
+remoto), así que se valida contra la lista: nunca arma una ruta con un texto suelto.
+
+Dónde vive: UN archivo JPEG por fondo, `data/fondo_bloqueo.jpg` y
+`data/fondo_escritorio.jpg`. No va en la base
 (es una imagen, no un dato) ni en git (`data/` está en el `.gitignore` y este
 repo es público). Por lo mismo no entra en las copias de seguridad de la base:
 si alguna vez se pierde la carpeta `data/`, se vuelve a elegir la imagen.
 
 La versión: es la huella SHA-256 (los primeros 16 caracteres) del contenido, así
 sale sola del propio archivo y no hay un dato aparte que pueda quedar desparejo.
-Viaja en cada `GET /estado` (`fondo_version`): una PC que lleva días prendida se
-entera de que el fondo cambió sin tener que bajar la imagen para compararla.
+Viaja en cada `GET /estado` (`fondo_version` y `escritorio_version`): una PC que
+lleva días prendida se entera de que un fondo cambió sin tener que bajar la imagen
+para compararla.
 
 Quién achica la imagen: la pantalla (`pcs_fondo_dialogo.py`), porque solo Qt sabe
 abrir un PNG o JPG cualquiera. Acá se fijan las reglas (tamaño máximo, calidad,
@@ -37,7 +49,10 @@ import time
 
 import database
 
-NOMBRE_ARCHIVO = "fondo_bloqueo.jpg"
+BLOQUEO = "bloqueo"
+ESCRITORIO = "escritorio"
+NOMBRES_DE_ARCHIVO = {BLOQUEO: "fondo_bloqueo.jpg", ESCRITORIO: "fondo_escritorio.jpg"}
+FONDOS = tuple(NOMBRES_DE_ARCHIVO)
 
 # Lo que la pantalla le hace a la imagen antes de guardarla (ver
 # `pcs_fondo_dialogo.preparar_jpeg`): entra en este rectángulo sin deformarse y
@@ -55,65 +70,78 @@ TAMANO_MAXIMO_BYTES = 2 * 1024 * 1024
 _FIRMA_JPEG = b"\xff\xd8\xff"
 
 _candado = threading.Lock()
-# Lo último leído del disco: de qué archivo salió (ruta, fecha, tamaño), su contenido
-# y su versión. `clave` en None = no se leyó nada o no hay fondo.
-_ultimo = {"clave": None, "datos": None, "version": ""}
+# Lo último leído del disco de cada fondo: de qué archivo salió (ruta, fecha, tamaño),
+# su contenido y su versión. `clave` en None = no se leyó nada o no hay fondo.
+_ultimo = {cual: {"clave": None, "datos": None, "version": ""} for cual in FONDOS}
 
 
-def ruta_del_fondo() -> str:
-    return os.path.join(database.DATA_DIR, NOMBRE_ARCHIVO)
+def _nombre_de_archivo(cual: str) -> str:
+    try:
+        return NOMBRES_DE_ARCHIVO[cual]
+    except (KeyError, TypeError):
+        raise ValueError(f"No hay ningún fondo llamado {cual!r}.") from None
+
+
+def ruta_del_fondo(cual: str = BLOQUEO) -> str:
+    return os.path.join(database.DATA_DIR, _nombre_de_archivo(cual))
 
 
 def _huella(datos: bytes) -> str:
     return hashlib.sha256(datos).hexdigest()[:16]
 
 
-def _olvidar():
-    _ultimo.update(clave=None, datos=None, version="")
+def _olvidar(cual: str = None):
+    """Se olvida lo leído de ese fondo (de los dos, sin `cual`)."""
+    for cada_uno in (FONDOS if cual is None else (cual,)):
+        _ultimo[cada_uno].update(clave=None, datos=None, version="")
 
 
-def _leer_del_disco():
-    """`(datos, versión)` del fondo guardado, o None si no hay. Se llama con el
+def _leer_del_disco(cual: str):
+    """`(datos, versión)` de ese fondo guardado, o None si no hay. Se llama con el
     candado puesto. Un archivo que no empieza como un JPEG (vacío, cortado por un
     apagón al copiarlo, cualquier otra cosa) cuenta como que no hay fondo: las PCs
-    se quedan con el azul liso en vez de intentar dibujar basura."""
-    ruta = ruta_del_fondo()
+    se quedan con el gris liso (o con su wallpaper) en vez de intentar dibujar basura."""
+    ruta = ruta_del_fondo(cual)
+    ultimo = _ultimo[cual]
     try:
         estado = os.stat(ruta)
     except FileNotFoundError:
-        _olvidar()
+        _olvidar(cual)
         return None
     clave = (ruta, estado.st_mtime_ns, estado.st_size)
-    if _ultimo["clave"] != clave:
+    if ultimo["clave"] != clave:
         with open(ruta, "rb") as archivo:
             datos = archivo.read()
         if not datos.startswith(_FIRMA_JPEG):
-            _olvidar()
+            _olvidar(cual)
             return None
-        _ultimo.update(clave=clave, datos=datos, version=_huella(datos))
-    return _ultimo["datos"], _ultimo["version"]
+        ultimo.update(clave=clave, datos=datos, version=_huella(datos))
+    return ultimo["datos"], ultimo["version"]
 
 
-def obtener():
-    """`(bytes_del_jpeg, versión)` del fondo actual, o None si no hay ninguno."""
+def obtener(cual: str = BLOQUEO):
+    """`(bytes_del_jpeg, versión)` de ese fondo, o None si no hay ninguno."""
+    _nombre_de_archivo(cual)
     with _candado:
-        return _leer_del_disco()
+        return _leer_del_disco(cual)
 
 
-def version_actual() -> str:
-    """La versión del fondo actual, o cadena vacía si no hay. Es lo que viaja en
-    cada `GET /estado`: barato, no abre el archivo si no cambió."""
+def version_actual(cual: str = BLOQUEO) -> str:
+    """La versión de ese fondo, o cadena vacía si no hay. Es lo que viaja en cada
+    `GET /estado`: barato, no abre el archivo si no cambió."""
+    _nombre_de_archivo(cual)
     with _candado:
-        encontrado = _leer_del_disco()
+        encontrado = _leer_del_disco(cual)
     return encontrado[1] if encontrado else ""
 
 
-def guardar_jpeg(datos: bytes) -> str:
-    """Deja `datos` (un JPEG ya achicado por la pantalla) como el fondo de todas las
+def guardar_jpeg(datos: bytes, cual: str = BLOQUEO) -> str:
+    """Deja `datos` (un JPEG ya achicado por la pantalla) como ese fondo de todas las
     PCs y devuelve su versión. Lo escribe en un archivo aparte y recién entonces lo
     pone en su lugar, así un corte de luz a mitad de camino no deja un fondo
     cortado. Levanta ValueError (con un mensaje para mostrarle a la persona) si lo
     que llega no es un JPEG o pesa más del tope."""
+    _nombre_de_archivo(cual)
     if not datos.startswith(_FIRMA_JPEG):
         raise ValueError("La imagen no está en formato JPEG.")
     if len(datos) > TAMANO_MAXIMO_BYTES:
@@ -123,7 +151,7 @@ def guardar_jpeg(datos: bytes) -> str:
         )
     with _candado:
         os.makedirs(database.DATA_DIR, exist_ok=True)
-        ruta = ruta_del_fondo()
+        ruta = ruta_del_fondo(cual)
         temporal = ruta + ".nuevo"
         try:
             with open(temporal, "wb") as archivo:
@@ -132,8 +160,8 @@ def guardar_jpeg(datos: bytes) -> str:
         finally:
             if os.path.exists(temporal):
                 os.remove(temporal)
-        _olvidar()
-        return _leer_del_disco()[1]
+        _olvidar(cual)
+        return _leer_del_disco(cual)[1]
 
 
 def _poner_en_su_lugar(temporal: str, destino: str, intentos: int = 5):
@@ -150,13 +178,16 @@ def _poner_en_su_lugar(temporal: str, destino: str, intentos: int = 5):
             time.sleep(0.1)
 
 
-def quitar() -> bool:
-    """Saca el fondo: las PCs vuelven al azul liso de siempre. True si había uno."""
+def quitar(cual: str = BLOQUEO) -> bool:
+    """Saca ese fondo. True si había uno. Sin el de bloqueo, las PCs vuelven al gris liso
+    de siempre; sin el del escritorio, dejan de tocar el wallpaper de Windows (el que
+    pusieron queda hasta que la PC se reinicia congelada)."""
+    _nombre_de_archivo(cual)
     with _candado:
         try:
-            os.remove(ruta_del_fondo())
+            os.remove(ruta_del_fondo(cual))
             habia = True
         except FileNotFoundError:
             habia = False
-        _olvidar()
+        _olvidar(cual)
         return habia

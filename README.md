@@ -45,9 +45,9 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
 | [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos (con turnos faltantes y lo vendido en la ventana de un turno, `turnos_ventas_repo.py`), cajas con número (`cajas_repo.py` los datos, `relevo_repo.py` las reglas al entrar y el cierre forzoso, `control_cierres_repo.py` lo que se controla después), trámites, usuarios y ventas. |
 | [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo (`ui/ingreso_caja.py`: lo que pasa con la caja entre el login y la ventana principal). `ui/hoja_de_estilos.py` es la hoja de estilos de todo el programa. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). Configuración ADMIN (`ui/configuracion_admin_window.py`, antes en `main_window.py`), Administrar Kiosko (`ui/administrar_kiosko_window.py`, ídem), Gestionar Estaciones, Reservas, Caja, Cierre de Turno y Congelar / descongelar PCs (`control_pcs/ui/pcs_congelado_dialogo.py`, 2026-10-28: lista a la izquierda, acciones como tarjetas a la derecha y, solo para el Admin, ACTUALIZAR CLIENTES, que abre la ventana de Actualizar el Cliente PC) usan el diseño "clara con cabecera cyber" que eligió el dueño el 2026-10-26 (maqueta A de `PROPUESTA_VENTANAS_ADMIN`, en la carpeta de los proyectos): las piezas están en `ui/piezas_ventana.py` (cabecera oscura con la estela celeste del cometa y pastillas con números, paneles blancos, tarjetas de menú con dibujito, título y para qué es, teclas con relieve; lo peligroso en rojo y aparte, lo que es solo del Admin con candado; una tarjeta puede ir con `tono` rojo, lo peligroso, o verde) y los colores en `ui/hoja_de_estilos.py`, siempre por objectName o "clase" para que los avisos que se abren encima no hereden nada. El título de una tarjeta va en `accessibleName()`: su texto lo dibujan etiquetas de adentro. |
-| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el mosaico de monitores de la pantalla principal se dibuja en `control_pcs/ui/pcs_mosaico.py` (solo dibuja: qué estado/color le toca a cada equipo lo decide `pcs_window.py`); el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y el fondo de la pantalla de bloqueo de las PCs en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py`, y el filtro de palabras en `control_pcs/repositories/filtro_palabras_repo.py` + `control_pcs/ui/pcs_filtro_dialogo.py`. |
+| [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el mosaico de monitores de la pantalla principal se dibuja en `control_pcs/ui/pcs_mosaico.py` (solo dibuja: qué estado/color le toca a cada equipo lo decide `pcs_window.py`); el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y los fondos de las PCs (pantalla de bloqueo y wallpaper de Windows) en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py` (vista previa en `pcs_fondo_vista.py`), y el filtro de palabras en `control_pcs/repositories/filtro_palabras_repo.py` + `control_pcs/ui/pcs_filtro_dialogo.py`. |
 | [admin_remoto/](admin_remoto/) · [repositories/admin_remoto_repo.py](repositories/admin_remoto_repo.py) · [ui/admin_remoto_dialogo.py](ui/admin_remoto_dialogo.py) | Administrar desde otra PC del local (ver la sección propia más abajo). |
-| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo`, el fondo de la pantalla de bloqueo, y `GET /filtro` + `POST /filtro_bloqueo`, el filtro de palabras) y registro de fallos compartido con la UI. |
+| [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo` y `GET /escritorio`, el fondo de la pantalla de bloqueo y el wallpaper de Windows, y `GET /filtro` + `POST /filtro_bloqueo`, el filtro de palabras) y registro de fallos compartido con la UI. |
 | [tests/](tests/) | Tests de repositorios, migraciones, servidor y UI sobre bases SQLite temporales (no tocan `data/kiosko.db`). |
 | [tests/test_playstation.py](tests/test_playstation.py) · [tests/test_playstation_ui.py](tests/test_playstation_ui.py) | La PlayStation 5: permisos, catálogos separados, ventas, vencimiento del tiempo, caja/reportes y la migración de `ventas`; y su grilla/panel (con Qt "offscreen", sin abrir ventanas). |
 | [Kiosko.spec](Kiosko.spec) | Config de PyInstaller para generar el `.exe`. |
@@ -576,18 +576,28 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   También `DialogoCambiarClave` (accesible para cualquier rol desde el
   menú principal, no desde esta pantalla) — cambia la clave propia
   pidiendo la actual como confirmación (`usuarios_repo.cambiar_clave`).
-- **Fondo de pantalla de las PCs** (`control_pcs/ui/pcs_fondo_dialogo.py`,
-  `DialogoFondoPantalla`; botón "Fondo de pantalla de las PCs..." de Gestionar
-  Estaciones, en Configuración ADMIN) — la imagen que se ve detrás del cartel de la
-  pantalla de bloqueo de cada PC cliente. "Elegir imagen..." abre un JPG, PNG, BMP,
-  WEBP o GIF; `preparar_jpeg` respeta la orientación de las fotos de celular, la achica
-  a 1920x1080 sin deformarla (una más chica no se agranda: la PC la ajusta a su
-  pantalla), rellena las transparencias con el azul del bloqueo y la pasa a JPEG,
-  bajando la calidad si hace falta para entrar en 2 MB. `fondo_repo.guardar_jpeg` la
-  deja en `data/fondo_bloqueo.jpg` (fuera de git y de las copias de seguridad de la
-  base). "Quitar fondo" vuelve al azul liso. Cada Cliente PC lo pide al arrancar
-  (`GET /fondo`, ver `servidor_red.py`) y las que están prendidas se enteran solas,
-  porque `GET /estado` trae `fondo_version` (la huella del contenido).
+- **Fondos de las PCs** (`control_pcs/ui/pcs_fondo_dialogo.py`, `DialogoFondoPantalla`;
+  tarjeta "Fondos de pantalla" de Gestionar Estaciones, en Configuración ADMIN; con la
+  maqueta "B" que eligió el dueño el 2026-10-28) — lado a lado, las dos imágenes de cada
+  PC cliente, cada una con su vista previa en un monitor dibujado (`pcs_fondo_vista.py`),
+  "Elegir imagen..." y "Quitar", y abajo "Usar la misma imagen en los dos":
+  - **Pantalla de bloqueo**: la imagen detrás del nombre de la PC y del recuadro de
+    ingreso. Sin imagen, el gris liso de siempre.
+  - **Escritorio de Windows** (pedido del dueño, 2026-10-28): el wallpaper que ve el
+    cliente mientras juega. Lo pone cada Cliente PC desde la V2.1
+    (`CLIENTE PC/fondo_escritorio.py`), en modo "Rellenar", solo con la PC libre (si
+    alguien está jugando, cuando la sesión termina) y de nuevo en cada arranque, porque
+    Shadow Defender lo borra al reiniciar. Sin imagen, cada PC deja el que tiene Windows.
+
+  "Elegir imagen..." abre un JPG, PNG, BMP, WEBP o GIF; `preparar_jpeg` respeta la
+  orientación de las fotos de celular, la achica a 1920x1080 sin deformarla (una más chica
+  no se agranda: la PC la ajusta a su pantalla), rellena las transparencias con el gris del
+  bloqueo y la pasa a JPEG, bajando la calidad si hace falta para entrar en 2 MB.
+  `fondo_repo.guardar_jpeg(datos, cual)` la deja en `data/fondo_bloqueo.jpg` o
+  `data/fondo_escritorio.jpg` (fuera de git y de las copias de seguridad de la base). Cada
+  Cliente PC las pide al arrancar (`GET /fondo` y `GET /escritorio`, ver `servidor_red.py`)
+  y las que están prendidas se enteran solas, porque `GET /estado` trae `fondo_version` y
+  `escritorio_version` (la huella del contenido de cada una).
 - **Filtro de palabras de las PCs** (`control_pcs/ui/pcs_filtro_dialogo.py`,
   `DialogoFiltroPalabras`; botón "Filtro de palabras de las PCs..." de Gestionar
   Estaciones; pedido del dueño, 2026-10-17: "protección antiporno") — prender/apagar,
@@ -861,12 +871,12 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-1507 tests al 2026-10-28. Cubren turnos, caja y cajas con número
+1558 tests al 2026-10-28. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,
 PCs, Miembros, PlayStation 5, Trámites, reservas (`tests/test_reservas.py`,
-`tests/test_reservas_ui.py`, `tests/test_reservas_socios.py`), servidor de red (con el fondo de pantalla
+`tests/test_reservas_ui.py`, `tests/test_reservas_socios.py`), servidor de red (con los fondos
 y el filtro de palabras de las PCs), los cierres que se mandan a la app de gastos
 (`tests/test_envio_pwa.py`, con una app de mentira en vez de Google), migraciones y algunas interacciones de UI. Incluyen límites de fechas, redondeo y apertura de la
 interfaz con Qt fuera de pantalla.

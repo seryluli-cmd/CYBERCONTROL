@@ -59,8 +59,8 @@ class _DelegadoIp(QStyledItemDelegate):
 
 class DialogoGestionEstaciones(QDialog):
     """Alta, renombre y baja de estaciones, IP de cada una, la contraseña de
-    admin que usan los Clientes PC, el fondo de su pantalla de bloqueo, su
-    filtro de palabras y la actualización de su Cliente PC. (La
+    admin que usan los Clientes PC, el fondo de su pantalla de bloqueo y su
+    wallpaper de Windows, su filtro de palabras y la actualización de su Cliente PC. (La
     clave de conexión de los Clientes PC es fija: no se gestiona desde ninguna
     pantalla, ver `clientes_repo`.) Solo se llega desde Configuración ADMIN, y la
     usa también un Operador: todo menos la contraseña de las PCs clientes y
@@ -154,7 +154,8 @@ class DialogoGestionEstaciones(QDialog):
         capa_todas.setSpacing(8)
         capa_todas.addWidget(titulo_de_seccion("Para todas las PCs"))
         capa_todas.addWidget(tarjeta_de_menu(
-            "🖼️", "Fondo de pantalla", "La imagen de la pantalla de bloqueo", self._abrir_fondo, alto=50))
+            "🖼️", "Fondos de pantalla", "La pantalla de bloqueo y el escritorio de Windows",
+            self._abrir_fondo, alto=50))
         capa_todas.addWidget(tarjeta_de_menu(
             "🚫", "Filtro de palabras", "Lo que no se puede escribir en las PCs", self._abrir_filtro, alto=50))
         # Solo un Admin (con esa contraseña se sale del bloqueo de una PC): el
@@ -338,7 +339,7 @@ class DialogoGestionEstaciones(QDialog):
             self._cargar(seleccionar_id=estacion["id"])
 
     def _abrir_fondo(self):
-        """El fondo de la pantalla de bloqueo de todas las PCs (ver pcs_fondo_dialogo)."""
+        """Los fondos de todas las PCs: bloqueo y wallpaper de Windows (ver pcs_fondo_dialogo)."""
         DialogoFondoPantalla(self).exec()
 
     def _abrir_filtro(self):

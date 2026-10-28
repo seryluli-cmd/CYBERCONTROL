@@ -1207,7 +1207,7 @@ class TestCopiaRemota(unittest.TestCase):
         # Lo que solo se hace en el mostrador no aparece (y lo demás sí).
         self.assertIn("Gestionar Estaciones", textos(configuracion))
         self.assertFalse(any("otra pc" in texto.lower() for texto in textos(configuracion)))
-        self.assertIn("Fondo de pantalla", textos(estaciones))
+        self.assertIn("Fondos de pantalla", textos(estaciones))
         self.assertFalse(any("Actualizar el Cliente PC" in texto for texto in textos(estaciones)))
         self.assertNotIn("Copia de Seguridad", textos(usuarios))
         self.assertTrue(any("Entra solo un Administrador" in texto for texto in textos(login, QLabel)))

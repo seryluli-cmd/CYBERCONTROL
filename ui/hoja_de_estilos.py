@@ -789,6 +789,12 @@ HOJA_DE_ESTILOS = """
         border: 1px solid #3A4358;
         color: #C9CED8;
     }
+    /* Sin esta regla una pastilla verde no se veía: letra oscura sobre la cabecera oscura. */
+    QLabel#pastillaCabecera[tono="verde"] {
+        background-color: rgba(60, 200, 120, 36);
+        border: 1px solid rgba(60, 200, 120, 115);
+        color: #8FE6B4;
+    }
     QFrame#panelBlanco {
         background-color: #FFFFFF;
         border: 1px solid #DDE2EA;

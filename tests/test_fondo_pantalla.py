@@ -1,15 +1,16 @@
 """
 tests/test_fondo_pantalla.py
 ==============================
-El fondo de la pantalla de bloqueo de las PCs cliente, de punta a punta:
+Los fondos de las PCs cliente (el de la pantalla de bloqueo y el wallpaper de
+Windows), de punta a punta:
 
-- `fondo_repo`: dónde se guarda, la versión, lo que rechaza y que nunca deja un
-  fondo cortado.
-- `servidor_red.py`: `GET /fondo` y la `fondo_version` que viaja en `GET /estado`
-  (con el servidor real, como los demás tests de la capa HTTP).
+- `fondo_repo`: dónde se guarda, la versión, lo que rechaza, que nunca deja un
+  fondo cortado y que los dos fondos no se pisan.
+- `servidor_red.py`: `GET /fondo`, `GET /escritorio` y las versiones que viajan en
+  `GET /estado` (con el servidor real, como los demás tests de la capa HTTP).
 - `pcs_fondo_dialogo.preparar_jpeg`: lo que se le hace a la imagen que elige el
   Admin antes de guardarla (con Qt "offscreen", sin abrir ventanas).
-- La pantalla "Fondo de pantalla de las PCs..." y su botón en Gestionar Estaciones.
+- La ventana "Fondos de las PCs" (maqueta B) y su tarjeta en Gestionar Estaciones.
 
 Se ejecutan con:
 
@@ -94,7 +95,7 @@ class TestFondoRepo(_ConFondoLimpio):
 
         self.assertEqual(fondo_repo.obtener(), (nuevo, version))
 
-    def test_quitar_borra_el_archivo_y_las_pcs_vuelven_al_azul(self):
+    def test_quitar_borra_el_archivo_y_las_pcs_vuelven_al_gris_liso(self):
         fondo_repo.guardar_jpeg(jpeg_falso())
 
         self.assertTrue(fondo_repo.quitar())
@@ -157,7 +158,7 @@ class TestFondoRepo(_ConFondoLimpio):
 
     def test_un_archivo_que_no_es_un_jpeg_cuenta_como_que_no_hay_fondo(self):
         # Vacío, cortado por un apagón al copiarlo, un texto: las PCs se quedan con el
-        # azul liso en vez de intentar dibujar basura.
+        # gris liso en vez de intentar dibujar basura.
         for contenido in (b"", b"no soy una imagen"):
             with open(fondo_repo.ruta_del_fondo(), "wb") as archivo:
                 archivo.write(contenido)
@@ -190,6 +191,58 @@ class TestFondoRepo(_ConFondoLimpio):
         self.assertIsNone(fondo_repo.obtener())
 
 
+class TestFondoDelEscritorio(_ConFondoLimpio):
+    """El wallpaper de Windows: las mismas reglas que el de bloqueo, en su propio archivo."""
+
+    def test_se_guarda_aparte_y_no_toca_el_de_bloqueo(self):
+        version = fondo_repo.guardar_jpeg(jpeg_falso(b"escritorio"), fondo_repo.ESCRITORIO)
+
+        self.assertIsNone(fondo_repo.obtener())
+        self.assertEqual(fondo_repo.version_actual(), "")
+        self.assertEqual(fondo_repo.obtener(fondo_repo.ESCRITORIO), (jpeg_falso(b"escritorio"), version))
+        self.assertEqual(fondo_repo.version_actual(fondo_repo.ESCRITORIO), version)
+        self.assertEqual(os.path.basename(fondo_repo.ruta_del_fondo(fondo_repo.ESCRITORIO)), "fondo_escritorio.jpg")
+        self.assertTrue(os.path.exists(fondo_repo.ruta_del_fondo(fondo_repo.ESCRITORIO)))
+
+    def test_cada_uno_recuerda_lo_suyo(self):
+        bloqueo = fondo_repo.guardar_jpeg(jpeg_falso(b"uno"))
+        escritorio = fondo_repo.guardar_jpeg(jpeg_falso(b"dos"), fondo_repo.ESCRITORIO)
+
+        self.assertNotEqual(bloqueo, escritorio)
+        self.assertEqual(fondo_repo.version_actual(fondo_repo.BLOQUEO), bloqueo)
+        self.assertEqual(fondo_repo.version_actual(fondo_repo.ESCRITORIO), escritorio)
+
+    def test_la_misma_imagen_en_los_dos_da_la_misma_version(self):
+        self.assertEqual(fondo_repo.guardar_jpeg(jpeg_falso()),
+                         fondo_repo.guardar_jpeg(jpeg_falso(), fondo_repo.ESCRITORIO))
+
+    def test_quitar_uno_deja_el_otro(self):
+        fondo_repo.guardar_jpeg(jpeg_falso(b"uno"))
+        fondo_repo.guardar_jpeg(jpeg_falso(b"dos"), fondo_repo.ESCRITORIO)
+
+        self.assertTrue(fondo_repo.quitar(fondo_repo.ESCRITORIO))
+
+        self.assertIsNone(fondo_repo.obtener(fondo_repo.ESCRITORIO))
+        self.assertIsNotNone(fondo_repo.obtener(fondo_repo.BLOQUEO))
+        self.assertFalse(fondo_repo.quitar(fondo_repo.ESCRITORIO))
+
+    def test_rechaza_lo_que_no_es_un_jpeg_igual_que_el_de_bloqueo(self):
+        with self.assertRaises(ValueError):
+            fondo_repo.guardar_jpeg(b"no soy un jpeg", fondo_repo.ESCRITORIO)
+        self.assertIsNone(fondo_repo.obtener(fondo_repo.ESCRITORIO))
+
+    def test_un_fondo_que_no_existe_se_rechaza_y_no_arma_ninguna_ruta(self):
+        # Llega también desde otra PC (admin remoto): nunca un texto suelto como nombre de archivo.
+        for cual in ("..\\kiosko.db", "otro", None):
+            with self.assertRaises(ValueError):
+                fondo_repo.obtener(cual)
+            with self.assertRaises(ValueError):
+                fondo_repo.guardar_jpeg(jpeg_falso(), cual)
+            with self.assertRaises(ValueError):
+                fondo_repo.quitar(cual)
+        self.assertFalse(any(nombre.endswith((".jpg", ".nuevo")) for nombre in os.listdir(database.DATA_DIR)))
+
+
 class TestServidorRedFondo(test_control_pcs._ConServidorRed):
     """GET /fondo y `fondo_version` de GET /estado, con el servidor real."""
 
@@ -198,17 +251,78 @@ class TestServidorRedFondo(test_control_pcs._ConServidorRed):
         fondo_repo._olvidar()
         self.addCleanup(fondo_repo._olvidar)
 
-    def _get_crudo(self, ruta, con_clave=True):
+    def _get_crudo(self, ruta, con_clave=True, cabecera_version="X-Fondo-Version"):
         """(status, versión de la cabecera, tipo, cuerpo en bytes) sin interpretar nada."""
         conexion = http.client.HTTPConnection("127.0.0.1", self._puerto, timeout=5)
         try:
             cabeceras = {"Authorization": "Bearer " + self._clave} if con_clave else {}
             conexion.request("GET", ruta, headers=cabeceras)
             respuesta = conexion.getresponse()
-            return (respuesta.status, respuesta.getheader("X-Fondo-Version"),
+            return (respuesta.status, respuesta.getheader(cabecera_version),
                     respuesta.getheader("Content-Type"), respuesta.read())
         finally:
             conexion.close()
+
+    def _get_escritorio(self, con_clave=True):
+        return self._get_crudo("/escritorio", con_clave, cabecera_version="X-Escritorio-Version")
+
+    def test_escritorio_sin_imagen_responde_404_sin_cuerpo(self):
+        fondo_repo.guardar_jpeg(jpeg_falso())  # el de bloqueo no cuenta
+
+        status, version, _tipo, cuerpo = self._get_escritorio()
+
+        self.assertEqual((status, version, cuerpo), (404, None, b""))
+
+    def test_escritorio_manda_su_jpeg_con_su_version_y_no_el_de_bloqueo(self):
+        fondo_repo.guardar_jpeg(jpeg_falso(b"bloqueo"))
+        datos = jpeg_falso(b"escritorio")
+        version = fondo_repo.guardar_jpeg(datos, fondo_repo.ESCRITORIO)
+
+        status, version_recibida, tipo, cuerpo = self._get_escritorio()
+
+        self.assertEqual((status, tipo), (200, "image/jpeg"))
+        self.assertEqual((version_recibida, cuerpo), (version, datos))
+        self.assertEqual(self._get_crudo("/fondo")[3], jpeg_falso(b"bloqueo"))
+
+    def test_escritorio_sin_la_clave_de_los_clientes_responde_403(self):
+        fondo_repo.guardar_jpeg(jpeg_falso(), fondo_repo.ESCRITORIO)
+
+        status, version, _tipo, cuerpo = self._get_escritorio(con_clave=False)
+
+        self.assertEqual((status, version, cuerpo), (403, None, b""))
+
+    def test_estado_trae_la_version_del_escritorio_aparte_de_la_del_fondo(self):
+        pcs_repo.crear_estacion("PC 1")
+        _, datos = self._get("/estado?estacion=PC+1")
+        self.assertEqual((datos["fondo_version"], datos["escritorio_version"]), ("", ""))
+
+        version = fondo_repo.guardar_jpeg(jpeg_falso(b"escritorio"), fondo_repo.ESCRITORIO)
+        _, datos = self._get("/estado?estacion=PC+1")
+        self.assertEqual((datos["fondo_version"], datos["escritorio_version"]), ("", version))
+        self.assertEqual(self._get_escritorio()[1], version)
+
+        fondo_repo.quitar(fondo_repo.ESCRITORIO)
+        _, datos = self._get("/estado?estacion=PC+1")
+        self.assertEqual(datos["escritorio_version"], "")
+
+    def test_si_falla_la_version_del_escritorio_el_estado_sigue_con_la_del_fondo(self):
+        pcs_repo.crear_estacion("PC 1")
+        version_fondo = fondo_repo.guardar_jpeg(jpeg_falso())
+        original = fondo_repo.version_actual
+
+        def falla_el_escritorio(cual=fondo_repo.BLOQUEO):
+            if cual == fondo_repo.ESCRITORIO:
+                raise OSError("disco roto")
+            return original(cual)
+
+        with mock.patch.object(fondo_repo, "version_actual", side_effect=falla_el_escritorio), \
+                mock.patch.object(servidor_red, "registrar_error"):
+            status, datos = self._get("/estado?estacion=PC+1")
+
+        self.assertEqual(status, 200)
+        self.assertTrue(datos["bloqueada"])
+        self.assertEqual(datos["fondo_version"], version_fondo)
+        self.assertNotIn("escritorio_version", datos)
 
     def test_sin_fondo_responde_404_sin_cuerpo(self):
         status, version, _tipo, cuerpo = self._get_crudo("/fondo")
@@ -377,7 +491,7 @@ class TestPrepararJpeg(unittest.TestCase):
 
         self.assertIn("pesa demasiado", str(contexto.exception))
 
-    def test_lo_transparente_sale_del_azul_de_bloqueo_y_no_negro(self):
+    def test_lo_transparente_sale_del_gris_de_bloqueo_y_no_negro(self):
         ruta = _guardar_imagen(
             self.carpeta, "transparente.png", 200, 100, color="#00000000",
             formato=QImage.Format.Format_ARGB32,
@@ -412,13 +526,13 @@ class _ConDialogo(_ConFondoLimpio):
 
     def setUp(self):
         super().setUp()
-        self.errores, self.infos = [], []
+        self.errores = []
         self.respuesta_confirmar = True
+        self.preguntas = []
         self.ruta_elegida = ""
         parches = [
             mock.patch("ui.utils.mostrar_error", side_effect=lambda *a, **k: self.errores.append(a[2])),
-            mock.patch.object(pcs_fondo_dialogo, "mostrar_info", side_effect=lambda *a, **k: self.infos.append(a[2])),
-            mock.patch.object(pcs_fondo_dialogo, "confirmar", side_effect=lambda *a, **k: self.respuesta_confirmar),
+            mock.patch.object(pcs_fondo_dialogo, "confirmar", side_effect=self._confirmar),
             mock.patch.object(
                 pcs_fondo_dialogo.QFileDialog, "getOpenFileName",
                 side_effect=lambda *a, **k: (self.ruta_elegida, ""),
@@ -430,43 +544,97 @@ class _ConDialogo(_ConFondoLimpio):
         self.carpeta_imagenes = tempfile.TemporaryDirectory()
         self.addCleanup(self.carpeta_imagenes.cleanup)
 
+    def _confirmar(self, _padre, _titulo, texto):
+        self.preguntas.append(texto)
+        return self.respuesta_confirmar
+
     def _dialogo(self):
         dialogo = pcs_fondo_dialogo.DialogoFondoPantalla()
         self.addCleanup(dialogo.deleteLater)
         return dialogo
 
 
+BLOQUEO, ESCRITORIO = fondo_repo.BLOQUEO, fondo_repo.ESCRITORIO
+
+
 class TestDialogoFondoPantalla(_ConDialogo):
-    def test_sin_fondo_lo_dice_y_no_se_puede_quitar_nada(self):
+    def test_sin_fondos_lo_dice_en_los_dos_y_no_se_puede_quitar_nada(self):
         dialogo = self._dialogo()
 
-        self.assertIn("Sin fondo", dialogo.vista.text())
-        self.assertFalse(dialogo.boton_quitar.isEnabled())
+        self.assertIn("gris liso de siempre", dialogo.detalles[BLOQUEO].text())
+        self.assertIn("wallpaper que tiene Windows", dialogo.detalles[ESCRITORIO].text())
+        for cual in (BLOQUEO, ESCRITORIO):
+            self.assertFalse(dialogo.botones_quitar[cual].isEnabled())
+            self.assertFalse(dialogo.vistas[cual].pixmap().isNull())  # el monitor, con el liso
+            self.assertEqual(dialogo.pastillas[cual].property("tono"), "gris")
+        self.assertEqual(dialogo.pastillas[BLOQUEO].text(), "BLOQUEO: SIN IMAGEN")
+        self.assertEqual(dialogo.pastillas[ESCRITORIO].text(), "ESCRITORIO: SIN IMAGEN")
 
-    def test_con_un_fondo_ya_guardado_muestra_la_vista_previa_y_sus_datos(self):
+    def test_con_un_fondo_guardado_muestra_sus_datos_solo_en_su_lado(self):
         ruta = _guardar_imagen(self.carpeta_imagenes.name, "fondo.png", 1920, 1080)
-        fondo_repo.guardar_jpeg(pcs_fondo_dialogo.preparar_jpeg(ruta))
+        fondo_repo.guardar_jpeg(pcs_fondo_dialogo.preparar_jpeg(ruta), ESCRITORIO)
 
         dialogo = self._dialogo()
 
-        self.assertFalse(dialogo.vista.pixmap().isNull())
-        self.assertIn("1920 x 1080 px", dialogo.detalle.text())
-        self.assertTrue(dialogo.boton_quitar.isEnabled())
+        self.assertIn("1920 × 1080", dialogo.detalles[ESCRITORIO].text())
+        self.assertTrue(dialogo.botones_quitar[ESCRITORIO].isEnabled())
+        self.assertEqual(dialogo.pastillas[ESCRITORIO].text(), "ESCRITORIO ✔")
+        self.assertEqual(dialogo.pastillas[ESCRITORIO].property("tono"), "verde")
+        self.assertFalse(dialogo.botones_quitar[BLOQUEO].isEnabled())
+        self.assertIn("gris liso de siempre", dialogo.detalles[BLOQUEO].text())
 
-    def test_elegir_una_imagen_la_achica_la_guarda_y_avisa(self):
+    def test_elegir_el_wallpaper_lo_achica_lo_guarda_y_no_toca_el_de_bloqueo(self):
+        fondo_repo.guardar_jpeg(jpeg_falso())
+        antes = fondo_repo.obtener(BLOQUEO)
         self.ruta_elegida = _guardar_imagen(self.carpeta_imagenes.name, "foto.png", 4000, 2250)
         dialogo = self._dialogo()
 
-        dialogo._elegir()
+        dialogo._elegir(ESCRITORIO)
 
-        datos, version = fondo_repo.obtener()
+        datos, version = fondo_repo.obtener(ESCRITORIO)
         imagen = QImage.fromData(datos)
         self.assertEqual((imagen.width(), imagen.height()), (1920, 1080))
-        self.assertEqual(fondo_repo.version_actual(), version)
-        self.assertFalse(dialogo.vista.pixmap().isNull())
-        self.assertTrue(dialogo.boton_quitar.isEnabled())
-        self.assertEqual(len(self.infos), 1)
-        self.assertIn("lo toman solas", self.infos[0])
+        self.assertEqual(fondo_repo.version_actual(ESCRITORIO), version)
+        self.assertEqual(fondo_repo.obtener(BLOQUEO), antes)
+        self.assertTrue(dialogo.botones_quitar[ESCRITORIO].isEnabled())
+        self.assertIn("Wallpaper guardado", dialogo.etiqueta_estado.text())
+        self.assertIn("V2.1", dialogo.etiqueta_estado.text())
+        self.assertEqual(self.errores, [])
+
+    def test_elegir_el_de_bloqueo_no_toca_el_wallpaper(self):
+        self.ruta_elegida = _guardar_imagen(self.carpeta_imagenes.name, "foto.png", 800, 450)
+        dialogo = self._dialogo()
+
+        dialogo._elegir(BLOQUEO)
+
+        self.assertIsNotNone(fondo_repo.obtener(BLOQUEO))
+        self.assertIsNone(fondo_repo.obtener(ESCRITORIO))
+        self.assertIn("Fondo de bloqueo guardado", dialogo.etiqueta_estado.text())
+
+    def test_los_botones_de_cada_lado_eligen_su_fondo(self):
+        self.ruta_elegida = _guardar_imagen(self.carpeta_imagenes.name, "foto.png", 800, 450)
+        dialogo = self._dialogo()
+        elegir = [b for b in dialogo.findChildren(QPushButton) if "ELEGIR IMAGEN" in b.text()]
+        self.assertEqual(len(elegir), 2)
+
+        elegir[1].click()  # el de la derecha: el escritorio
+
+        self.assertIsNone(fondo_repo.obtener(BLOQUEO))
+        self.assertIsNotNone(fondo_repo.obtener(ESCRITORIO))
+        self.assertEqual(self.errores, [])
+
+    def test_usar_la_misma_imagen_la_pone_en_los_dos(self):
+        self.ruta_elegida = _guardar_imagen(self.carpeta_imagenes.name, "foto.png", 1280, 720)
+        dialogo = self._dialogo()
+
+        dialogo.boton_la_misma.click()
+
+        self.assertEqual(fondo_repo.obtener(BLOQUEO), fondo_repo.obtener(ESCRITORIO))
+        self.assertIsNotNone(fondo_repo.obtener(BLOQUEO))
+        for cual in (BLOQUEO, ESCRITORIO):
+            self.assertTrue(dialogo.botones_quitar[cual].isEnabled())
+            self.assertEqual(dialogo.pastillas[cual].property("tono"), "verde")
+        self.assertIn("La misma imagen", dialogo.etiqueta_estado.text())
         self.assertEqual(self.errores, [])
 
     def test_si_se_cancela_el_selector_no_cambia_nada(self):
@@ -474,54 +642,93 @@ class TestDialogoFondoPantalla(_ConDialogo):
         antes = fondo_repo.obtener()
         self.ruta_elegida = ""
         dialogo = self._dialogo()
+        texto_antes = dialogo.etiqueta_estado.text()
 
-        dialogo._elegir()
+        dialogo._elegir(BLOQUEO)
+        dialogo._usar_la_misma()
 
         self.assertEqual(fondo_repo.obtener(), antes)
-        self.assertEqual((self.infos, self.errores), ([], []))
+        self.assertIsNone(fondo_repo.obtener(ESCRITORIO))
+        self.assertEqual((dialogo.etiqueta_estado.text(), self.errores), (texto_antes, []))
 
-    def test_elegir_algo_que_no_es_una_imagen_muestra_el_motivo_y_no_toca_el_fondo(self):
-        buena = _guardar_imagen(self.carpeta_imagenes.name, "buena.png", 640, 360)
-        fondo_repo.guardar_jpeg(pcs_fondo_dialogo.preparar_jpeg(buena))
-        antes = fondo_repo.obtener()
+    def test_elegir_algo_que_no_es_una_imagen_muestra_el_motivo_y_no_toca_nada(self):
         mala = os.path.join(self.carpeta_imagenes.name, "mala.png")
         with open(mala, "w") as archivo:
             archivo.write("no soy una imagen")
         self.ruta_elegida = mala
         dialogo = self._dialogo()
 
-        dialogo._elegir()
+        dialogo._elegir(ESCRITORIO)
+        dialogo._usar_la_misma()
 
-        self.assertEqual(fondo_repo.obtener(), antes)
-        self.assertEqual(len(self.errores), 1)
+        self.assertIsNone(fondo_repo.obtener(BLOQUEO))
+        self.assertIsNone(fondo_repo.obtener(ESCRITORIO))
+        self.assertEqual(len(self.errores), 2)
         self.assertIn("No se pudo abrir esa imagen", self.errores[0])
-        self.assertEqual(self.infos, [])
 
     def test_quitar_pide_confirmacion_y_si_se_dice_que_no_no_pasa_nada(self):
-        fondo_repo.guardar_jpeg(jpeg_falso())
+        fondo_repo.guardar_jpeg(jpeg_falso(), ESCRITORIO)
         self.respuesta_confirmar = False
         dialogo = self._dialogo()
 
-        dialogo._quitar()
+        dialogo._quitar(ESCRITORIO)
 
-        self.assertIsNotNone(fondo_repo.obtener())
+        self.assertIsNotNone(fondo_repo.obtener(ESCRITORIO))
+        self.assertEqual(len(self.preguntas), 1)
+        self.assertIn("wallpaper", self.preguntas[0])
 
-    def test_quitar_con_confirmacion_saca_el_fondo_y_vuelve_al_azul(self):
+    def test_quitar_el_wallpaper_deja_el_de_bloqueo(self):
+        fondo_repo.guardar_jpeg(jpeg_falso(b"uno"))
+        fondo_repo.guardar_jpeg(jpeg_falso(b"dos"), ESCRITORIO)
+        dialogo = self._dialogo()
+
+        dialogo._quitar(ESCRITORIO)
+
+        self.assertIsNone(fondo_repo.obtener(ESCRITORIO))
+        self.assertIsNotNone(fondo_repo.obtener(BLOQUEO))
+        self.assertFalse(dialogo.botones_quitar[ESCRITORIO].isEnabled())
+        self.assertTrue(dialogo.botones_quitar[BLOQUEO].isEnabled())
+        self.assertEqual(dialogo.pastillas[ESCRITORIO].text(), "ESCRITORIO: SIN IMAGEN")
+        self.assertIn("Wallpaper quitado", dialogo.etiqueta_estado.text())
+
+    def test_quitar_el_de_bloqueo_vuelve_al_gris_liso(self):
         fondo_repo.guardar_jpeg(jpeg_falso())
         dialogo = self._dialogo()
 
-        dialogo._quitar()
+        dialogo._quitar(BLOQUEO)
 
         self.assertIsNone(fondo_repo.obtener())
-        self.assertIn("Sin fondo", dialogo.vista.text())
-        self.assertFalse(dialogo.boton_quitar.isEnabled())
+        self.assertIn("gris liso de siempre", dialogo.detalles[BLOQUEO].text())
+        self.assertIn("gris liso de siempre", self.preguntas[0])
+
+
+class TestVistaEnMonitor(unittest.TestCase):
+    def test_dibuja_el_monitor_con_y_sin_imagen_en_los_dos(self):
+        from control_pcs.ui import pcs_fondo_vista
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        datos = pcs_fondo_dialogo.preparar_jpeg(_guardar_imagen(carpeta.name, "f.png", 640, 480, "#00AA00"))
+        medida = (pcs_fondo_vista.ANCHO_PANTALLA + 2 * pcs_fondo_vista.MARCO,
+                  pcs_fondo_vista.ALTO_PANTALLA + 2 * pcs_fondo_vista.MARCO + pcs_fondo_vista.PIE)
+        for cual in (BLOQUEO, ESCRITORIO):
+            for con_imagen in (datos, None):
+                vista = pcs_fondo_vista.vista_en_monitor(con_imagen, cual)
+                self.assertEqual((vista.width(), vista.height()), medida)
+        # Sin imagen, el bloqueo es el gris liso de siempre; con imagen, la imagen (aunque sea 4:3,
+        # llena la pantalla del monitor: se recorta, no quedan franjas).
+        centro_izquierda = (pcs_fondo_vista.MARCO + 5, pcs_fondo_vista.MARCO + pcs_fondo_vista.ALTO_PANTALLA // 2)
+        sin = pcs_fondo_vista.vista_en_monitor(None, BLOQUEO).toImage().pixelColor(*centro_izquierda)
+        con = pcs_fondo_vista.vista_en_monitor(datos, BLOQUEO).toImage().pixelColor(*centro_izquierda)
+        self.assertEqual(sin.name(), pcs_fondo_vista.COLOR_BLOQUEO.lower())
+        self.assertGreater(con.green(), 150)
+        self.assertLess(con.red(), 60)
 
 
 class TestBotonEnGestionarEstaciones(_ConDialogo):
-    def test_gestionar_estaciones_tiene_el_boton_y_abre_la_pantalla_del_fondo(self):
+    def test_gestionar_estaciones_tiene_la_tarjeta_y_abre_la_ventana_de_los_fondos(self):
         gestion = pcs_gestion_dialogos.DialogoGestionEstaciones({"rol": dominio.ROL_ADMIN})
         self.addCleanup(gestion.deleteLater)
-        botones = [b for b in gestion.findChildren(QPushButton) if b.accessibleName() == "Fondo de pantalla"]
+        botones = [b for b in gestion.findChildren(QPushButton) if b.accessibleName() == "Fondos de pantalla"]
         self.assertEqual(len(botones), 1)
 
         with mock.patch.object(pcs_gestion_dialogos.DialogoFondoPantalla, "exec") as abrir:

@@ -35,6 +35,8 @@ GET /estado?estacion=<nombre>
     - Siempre viaja `fondo_version`: la versión del fondo de la pantalla de
       bloqueo (cadena vacía si no hay ninguno). Si cambia, el Cliente PC vuelve
       a pedir GET /fondo.
+    - Y `escritorio_version`: lo mismo para el wallpaper de Windows de las PCs
+      (GET /escritorio; lo pone el Cliente PC desde la V2.1).
     - Y `filtro_version`: la versión del filtro de palabras. Si cambia, el
       Cliente PC vuelve a pedir GET /filtro.
     - Y `cliente_version`: la versión del Cliente PC que le toca a esa PC (None si
@@ -78,6 +80,12 @@ GET /fondo
     la cabecera `X-Fondo-Version`. 404 sin cuerpo si no hay ninguno. Cada Cliente
     PC lo pide al arrancar, en un hilo aparte (nunca frena el bloqueo), y de
     nuevo solo cuando `fondo_version` de GET /estado cambia.
+
+GET /escritorio
+    El wallpaper de Windows de las PCs (pedido del dueño, 2026-10-28; mismo
+    fondo_repo, `fondo_repo.ESCRITORIO`): igual que GET /fondo, con la versión en
+    `X-Escritorio-Version`. Lo pide el Cliente PC V2.1 o más al arrancar y cuando
+    `escritorio_version` de GET /estado cambia, y lo pone con la PC libre.
 
 POST /login           {"estacion", "usuario", "clave", "pide_datos" (opcional), "datos_socio" (opcional)}
     Un Miembro se loguea directo desde su PC cliente con TODO su saldo
@@ -232,7 +240,10 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
         ruta = urlparse(self.path)
         if ruta.path == "/fondo":
-            self._manejar_fondo()
+            self._manejar_fondo(fondo_repo.BLOQUEO, "X-Fondo-Version")
+            return
+        if ruta.path == "/escritorio":
+            self._manejar_fondo(fondo_repo.ESCRITORIO, "X-Escritorio-Version")
             return
         if ruta.path == "/filtro":
             self._manejar_filtro()
@@ -377,6 +388,12 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             registrar_error(error, "Servidor de red: leer la versión del fondo")
 
         try:
+            # Lo mismo para el wallpaper de Windows, en su propio try: los dos son cosméticos.
+            cuerpo["escritorio_version"] = fondo_repo.version_actual(fondo_repo.ESCRITORIO)
+        except Exception as error:
+            registrar_error(error, "Servidor de red: leer la versión del fondo del escritorio")
+
+        try:
             # Igual que el fondo: así cada PC se entera sola de que el Admin cambió la
             # lista. Si falla, no viaja y la PC sigue con la lista que tiene.
             cuerpo["filtro_version"] = filtro_palabras_repo.version_actual()
@@ -397,17 +414,18 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             return
         self._responder_json(200, filtro)
 
-    def _manejar_fondo(self):
+    def _manejar_fondo(self, cual, cabecera_version):
         """
-        GET /fondo: el fondo de la pantalla de bloqueo (ver fondo_repo). La versión
-        sale del mismo `fondo_repo.obtener()` que los bytes: si el Admin lo cambia
-        justo en el medio, la versión que recibe el Cliente PC es la de la imagen
-        que de verdad le llegó. 404 sin cuerpo si no hay fondo.
+        GET /fondo y GET /escritorio: el fondo de la pantalla de bloqueo o el
+        wallpaper de Windows (ver fondo_repo). La versión sale del mismo
+        `fondo_repo.obtener()` que los bytes: si el Admin lo cambia justo en el
+        medio, la versión que recibe el Cliente PC es la de la imagen que de verdad
+        le llegó. 404 sin cuerpo si no hay ese fondo.
         """
         try:
-            fondo = fondo_repo.obtener()
+            fondo = fondo_repo.obtener(cual)
         except Exception as error:
-            registrar_error(error, "Servidor de red: leer el fondo de pantalla")
+            registrar_error(error, f"Servidor de red: leer el fondo ({cual})")
             self._responder_vacio(500)
             return
         if fondo is None:
@@ -417,7 +435,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
         self.send_header("Content-Length", str(len(datos)))
-        self.send_header("X-Fondo-Version", version)
+        self.send_header(cabecera_version, version)
         self.end_headers()
         try:
             self.wfile.write(datos)

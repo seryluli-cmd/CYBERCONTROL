@@ -241,7 +241,7 @@ class TestGestionarEstacionesParaUnOperador(_ConUsuarios):
 
         self.assertEqual(sorted(texto for texto, si in habilitados.items() if not si),
                          ["Actualizar el Cliente PC", "Contraseña de las PCs"])
-        for texto in ("＋  AGREGAR", "✏️  RENOMBRAR", "DESACTIVAR", "TRAER IP", "BORRAR IP", "Fondo de pantalla",
+        for texto in ("＋  AGREGAR", "✏️  RENOMBRAR", "DESACTIVAR", "TRAER IP", "BORRAR IP", "Fondos de pantalla",
                       "Filtro de palabras"):
             self.assertTrue(habilitados[texto], texto)
 
