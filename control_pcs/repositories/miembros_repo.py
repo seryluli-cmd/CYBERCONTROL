@@ -458,8 +458,10 @@ def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):
 
     Sirve para CUALQUIER venta, no solo una carga: si la venta no tiene
     ninguna CARGA asociada (un bono de PC walk-in, por ejemplo), se
-    comporta exactamente igual que ventas_repo.anular_venta.
+    comporta exactamente igual que ventas_repo.anular_venta: también exige un
+    Administrador activo y un motivo (ventas_repo.exigir_admin_y_motivo_para_anular).
     """
+    motivo = ventas_repo.exigir_admin_y_motivo_para_anular(usuario_admin_id, motivo)
     with conexion_db() as conexion:
         ventas_repo._anular_venta(conexion, venta_id, usuario_admin_id, motivo)
 

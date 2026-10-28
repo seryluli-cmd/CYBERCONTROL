@@ -271,9 +271,16 @@ def cerrar_turno(usuario_id: int, forzoso: bool = False, ahora_dt=None):
     with conexion_db() as conexion:
         ventana = _ventana_en_curso(conexion, ahora_dt)
         caja = ventana["caja"]
-        desglose = _desglose_de_totales(
-            _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
-        )
+        # Redondeado al guardar (regla 9): SUM() de muchos pagos en punto
+        # flotante deja colas como 0.30000000000000004, que quedarían grabadas
+        # para siempre en el cierre. Lo que se devuelve es lo mismo que se
+        # graba, así la pantalla muestra lo que después ve Control de Cierres.
+        desglose = {
+            campo: round(monto, 2)
+            for campo, monto in _desglose_de_totales(
+                _sumar_ventas_por_origen_y_metodo(conexion, ventana["desde"], ventana["hasta"])
+            ).items()
+        }
         turno = ventana["turno"]
         monto_a_retirar = desglose["ventas_efectivo"]
 

@@ -47,7 +47,8 @@ def mensaje_sin_articulo() -> str:
 def cobrar_impresiones(usuario_id: int, cantidad: int, precio_unitario: float, pagos: list) -> int:
     """
     Graba la venta de `cantidad` impresiones y devuelve su número. `pagos` son
-    los que devuelve la ventana de cobro (netos de vuelto).
+    los que devuelve la ventana de cobro (netos de vuelto): tienen que sumar
+    el total, si no, no se graba nada.
 
     `precio_unitario` es el que vio quien atiende al cobrar: si alguien cambió
     el precio en Artículos mientras tanto, no se graba (se le cobró al cliente
@@ -80,7 +81,6 @@ def cobrar_impresiones(usuario_id: int, cantidad: int, precio_unitario: float, p
             "cantidad": cantidad,
             "precio_unitario": articulo["precio_venta"],
         }
-        total = round(ventas_repo.subtotal_linea(linea), 2)
-        if sum(pago["monto"] for pago in pagos) < total - 0.01:
-            raise ValueError("Los pagos no cubren el total de las impresiones.")
+        # Que los pagos sumen el total lo revisa _grabar_venta_kiosko, igual
+        # que para cualquier venta de kiosko.
         return ventas_repo._grabar_venta_kiosko(conexion, usuario_id, [linea], pagos)

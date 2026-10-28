@@ -139,6 +139,14 @@ class TestCobrarImpresiones(_ConArticulo):
             impresiones_repo.cobrar_impresiones(self.usuario_id, 3, 150.0, [_pago(EF, 300.0)])
         self.assertEqual(ventas_repo.listar_ventas_recientes(), [])
 
+    def test_rechaza_pagos_que_pasan_el_total(self):
+        # Los pagos llegan netos de vuelto: $ 500 por $ 300 de impresiones
+        # sería el vuelto anotado como plata cobrada (lo revisa
+        # ventas_repo._grabar_venta_kiosko, igual que en Vender).
+        with self.assertRaises(ValueError):
+            impresiones_repo.cobrar_impresiones(self.usuario_id, 2, 150.0, [_pago(EF, 500.0)])
+        self.assertEqual(ventas_repo.listar_ventas_recientes(), [])
+
     def test_sin_precio_no_cobra(self):
         articulos_repo.modificar_articulo(dominio.CODIGO_ARTICULO_IMPRESIONES, "IMPRESIONES", None, None,
                                           0.0, 0.0, 0)

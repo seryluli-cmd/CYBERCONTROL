@@ -17,8 +17,14 @@ from datetime import datetime
 
 import dominio
 from database import conexion_db
-from repositories import cajas_repo
+from repositories import cajas_repo, usuarios_repo
 from turnos import calcular_turno
+
+# Cuánto pueden diferir lo que suman los pagos y el total de una venta: un
+# centavo, lo que se puede perder al repartir un total entre efectivo y
+# digital. Más que eso ya no es redondeo: Reportes (que suma ventas.total) y
+# el Cierre de Turno (que suma venta_pagos) mostrarían plata distinta.
+DIFERENCIA_MAXIMA_DE_PAGOS = 0.01
 
 
 def subtotal_linea(linea) -> float:
@@ -109,6 +115,33 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
         return _grabar_venta_kiosko(conexion, usuario_id, lineas, pagos)
 
 
+def _revisar_que_los_pagos_sumen_el_total(total: float, pagos: list):
+    """
+    ValueError si los pagos no suman el total de la venta (con hasta
+    DIFERENCIA_MAXIMA_DE_PAGOS de diferencia). Los pagos llegan netos de
+    vuelto (como los arma dominio.cuenta_del_cobro, y dominio.repartir_pagos
+    en la Cuenta de la PC), así que tienen que dar justo el total: ni menos
+    (se grabaría plata que no entró) ni más (el vuelto quedaría como si se
+    hubiera cobrado).
+
+    Se compara lo que se va a GRABAR (cada monto redondeado, como en
+    _insertar_pagos y _insertar_cabecera_venta): es lo que suman después
+    Reportes y el Cierre de Turno.
+
+    Un pago negativo se rechaza aunque la suma dé: $ 5.000 en efectivo y
+    -$ 2.000 digital "suman" una venta de $ 3.000, pero la Caja esperaría
+    $ 5.000 en el cajón. La ventana de cobro nunca arma uno así.
+    """
+    if any(round(pago["monto"], 2) < 0 for pago in pagos):
+        raise ValueError("Un pago no puede ser negativo. No se grabó nada: volvé a cobrar.")
+    cobrado = round(sum(round(pago["monto"], 2) for pago in pagos), 2)
+    if abs(round(cobrado - round(total, 2), 2)) > DIFERENCIA_MAXIMA_DE_PAGOS:
+        raise ValueError(
+            f"Lo cobrado ({dominio.texto_pesos(cobrado)}) no coincide con el total de la "
+            f"venta ({dominio.texto_pesos(total)}). No se grabó nada: volvé a cobrar."
+        )
+
+
 def _grabar_venta_kiosko(conexion, usuario_id: int, lineas: list, pagos: list, descontar_stock: bool = True) -> int:
     """
     Núcleo de confirmar_venta sobre una conexión YA ABIERTA: lo usa también
@@ -118,9 +151,18 @@ def _grabar_venta_kiosko(conexion, usuario_id: int, lineas: list, pagos: list, d
 
     `descontar_stock` en False es solo para el cobro de la Cuenta de la PC
     (cuentas_pc_repo.cobrar): esos artículos ya bajaron el stock al anotarlos.
+
+    Antes de grabar nada revisa que los pagos sumen el total: es el único
+    lugar por donde pasan todas las ventas de kiosko (Vender, Impresiones y
+    el kiosko de la Cuenta de la PC), así que ninguna pantalla (ni una nueva
+    que cobre distinto) puede dejar una venta descuadrada. Las ventas sin
+    detalle (bonos, cargas, PlayStation, trámites, reservas) no pasan por
+    acá: registrar_venta_sin_detalle no lo revisa.
     """
+    total = total_carrito(lineas)
+    _revisar_que_los_pagos_sumen_el_total(total, pagos)
     venta_id = _insertar_cabecera_venta(
-        conexion, datetime.now(), usuario_id, total_carrito(lineas), dominio.ORIGEN_KIOSKO
+        conexion, datetime.now(), usuario_id, total, dominio.ORIGEN_KIOSKO
     )
 
     for linea in lineas:
@@ -179,13 +221,30 @@ def _anular_venta(conexion, venta_id: int, usuario_admin_id: int, motivo: str):
     )
 
 
+def exigir_admin_y_motivo_para_anular(usuario_admin_id: int, motivo: str) -> str:
+    """
+    Devuelve el motivo sin espacios de más, o PermissionError si quien anula
+    no es un Administrador activo (usuarios_repo.exigir_admin, releído de la
+    base) y ValueError si no escribió por qué. La pantalla ya esconde el
+    botón, pero se vuelve a preguntar acá porque anular saca plata de la caja
+    y de los reportes, y también se pide desde otra PC. Sin motivo, una
+    anulación no se puede explicar cuando se audita un faltante. La usan
+    anular_venta y miembros_repo.anular_carga (las dos de Consulta de Ventas).
+    """
+    usuarios_repo.exigir_admin(usuario_admin_id, "anular una venta")
+    motivo = (motivo or "").strip()
+    if not motivo:
+        raise ValueError("Escribí por qué se anula la venta: sin motivo no se puede anular.")
+    return motivo
+
+
 def anular_venta(venta_id: int, usuario_admin_id: int, motivo: str):
     """
-    Anula una venta ya confirmada (solo lo puede hacer un Admin, eso se
-    valida en la pantalla, no acá). Repone el stock de cada artículo
+    Anula una venta ya confirmada. Repone el stock de cada artículo
     vendido y deja constancia de quién anuló, cuándo, y por qué — la
     venta NUNCA se borra de la base, solo cambia su estado a ANULADA,
-    para no perder el rastro.
+    para no perder el rastro. Solo un Administrador activo y con motivo
+    (ver exigir_admin_y_motivo_para_anular).
 
     Si la venta había cargado saldo a un socio (control_pcs, "Cargar
     Saldo"), usar control_pcs.repositories.miembros_repo.anular_carga en
@@ -193,6 +252,7 @@ def anular_venta(venta_id: int, usuario_admin_id: int, motivo: str):
     carga sin revertir el saldo le dejaría al socio minutos que ya nadie
     cobró (ver ese repo).
     """
+    motivo = exigir_admin_y_motivo_para_anular(usuario_admin_id, motivo)
     with conexion_db() as conexion:
         _anular_venta(conexion, venta_id, usuario_admin_id, motivo)
 

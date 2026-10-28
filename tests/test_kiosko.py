@@ -930,6 +930,161 @@ class TestTramites(BaseConBaseTemporal):
         self.assertEqual(tramites_repo.tramite_de_venta(venta_id), "Sacar boleta de luz")
 
 
+class TestLosPagosSumanElTotal(BaseConBaseTemporal):
+    """ventas_repo._grabar_venta_kiosko (por donde pasan Vender, Impresiones y
+    el kiosko de la Cuenta de la PC): los pagos llegan netos de vuelto y tienen
+    que sumar el total de la venta. Si no, Reportes (que suma ventas.total) y
+    el Cierre de Turno (que suma venta_pagos) mostrarían plata distinta sin
+    ningún aviso."""
+
+    def setUp(self):
+        super().setUp()
+        self.usuario_id = usuarios_repo.crear_usuario("Lucia", "1234", dominio.ROL_EMPLEADA)
+        articulos_repo.crear_articulo("COD1", "Alfajor", None, None, 1500.0, 900.0, 0)
+
+    def _vender(self, pagos, cantidad=2, precio=1500.0):
+        return ventas_repo.confirmar_venta(
+            self.usuario_id,
+            [{"codigo": "COD1", "descripcion": "Alfajor", "cantidad": cantidad, "precio_unitario": precio}],
+            pagos,
+        )
+
+    def _no_se_grabo_nada(self):
+        self.assertEqual(ventas_repo.listar_ventas_recientes(), [])
+        # Ni el stock se descontó: la venta entera quedó afuera.
+        self.assertEqual(articulos_repo.buscar_por_codigo("COD1")["stock"], 0)
+
+    def test_pagos_que_no_llegan_al_total_no_graban_nada(self):
+        with self.assertRaisesRegex(ValueError, "no coincide con el total"):
+            self._vender([{"metodo": dominio.PAGO_EFECTIVO, "monto": 2000.0}])
+        self._no_se_grabo_nada()
+
+    def test_pagos_que_pasan_el_total_tampoco(self):
+        # Con vuelto, la ventana de cobro manda solo lo que queda en la caja:
+        # $ 3.500 por una venta de $ 3.000 sería el vuelto anotado como cobrado.
+        with self.assertRaises(ValueError):
+            self._vender([{"metodo": dominio.PAGO_EFECTIVO, "monto": 3000.0},
+                          {"metodo": dominio.PAGO_DIGITAL, "monto": 500.0}])
+        self._no_se_grabo_nada()
+
+    def test_un_pago_negativo_que_compensa_a_otro_tampoco(self):
+        # Suma justo $ 3.000, pero la Caja esperaría $ 5.000 en el cajón.
+        with self.assertRaisesRegex(ValueError, "no puede ser negativo"):
+            self._vender([{"metodo": dominio.PAGO_EFECTIVO, "monto": 5000.0},
+                          {"metodo": dominio.PAGO_DIGITAL, "monto": -2000.0}])
+        self._no_se_grabo_nada()
+
+    def test_el_pago_justo_repartido_en_los_dos_medios_se_graba(self):
+        venta_id = self._vender([{"metodo": dominio.PAGO_EFECTIVO, "monto": 1000.0},
+                                 {"metodo": dominio.PAGO_DIGITAL, "monto": 2000.0}])
+
+        venta, _detalle, pagos = ventas_repo.buscar_venta(venta_id)
+        self.assertEqual(venta["total"], 3000.0)
+        self.assertEqual(sum(pago["monto"] for pago in pagos), 3000.0)
+
+    def test_un_centavo_de_redondeo_se_acepta_y_dos_ya_no(self):
+        # 3 x $ 33,333333 = $ 100 (redondeado): repartirlo en tercios puede
+        # perder un centavo, y eso no es plata que falte.
+        venta_id = self._vender([{"metodo": dominio.PAGO_EFECTIVO, "monto": 33.33},
+                                 {"metodo": dominio.PAGO_DIGITAL, "monto": 66.66}],
+                                cantidad=3, precio=33.333333)
+        self.assertEqual(ventas_repo.buscar_venta(venta_id)[0]["total"], 100.0)
+
+        with self.assertRaises(ValueError):
+            self._vender([{"metodo": dominio.PAGO_EFECTIVO, "monto": 99.98}], cantidad=3, precio=33.333333)
+
+
+class TestAnularVentaSoloElAdminYConMotivo(BaseConBaseTemporal):
+    """ventas_repo.anular_venta y miembros_repo.anular_carga (las dos de
+    Consulta de Ventas) vuelven a preguntar en el repo lo que la pantalla ya
+    esconde: que quien anula sea un Administrador activo
+    (usuarios_repo.exigir_admin) y que diga por qué."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin_id = usuarios_repo.crear_usuario("Dueño", "1234", dominio.ROL_ADMIN)
+        self.lucia_id = usuarios_repo.crear_usuario("Lucia", "1234", dominio.ROL_EMPLEADA)
+        articulos_repo.crear_articulo("COD1", "Alfajor", None, None, 1500.0, 900.0, 0)
+        self.venta_id = ventas_repo.confirmar_venta(
+            self.lucia_id,
+            [{"codigo": "COD1", "descripcion": "Alfajor", "cantidad": 1, "precio_unitario": 1500.0}],
+            [{"metodo": dominio.PAGO_EFECTIVO, "monto": 1500.0}],
+        )
+
+    def _sigue_confirmada(self):
+        venta, _detalle, _pagos = ventas_repo.buscar_venta(self.venta_id)
+        self.assertEqual(venta["estado"], dominio.VENTA_CONFIRMADA)
+        self.assertEqual(articulos_repo.buscar_por_codigo("COD1")["stock"], -1)
+
+    def test_una_empleada_no_puede_anular(self):
+        for anular in (ventas_repo.anular_venta, miembros_repo.anular_carga):
+            with self.subTest(anular=anular.__qualname__):
+                with self.assertRaisesRegex(PermissionError, "Solo un Administrador puede anular una venta."):
+                    anular(self.venta_id, self.lucia_id, "se cobró dos veces")
+        self._sigue_confirmada()
+
+    def test_un_admin_dado_de_baja_no_puede_anular(self):
+        # Se relee de la base: una sesión que quedó abierta no alcanza.
+        usuarios_repo.desactivar_usuario(self.admin_id)
+        with self.assertRaises(PermissionError):
+            ventas_repo.anular_venta(self.venta_id, self.admin_id, "se cobró dos veces")
+        self._sigue_confirmada()
+
+    def test_sin_motivo_no_se_anula(self):
+        for anular in (ventas_repo.anular_venta, miembros_repo.anular_carga):
+            for motivo in ("", "   ", None):
+                with self.subTest(anular=anular.__qualname__, motivo=motivo):
+                    with self.assertRaisesRegex(ValueError, "motivo"):
+                        anular(self.venta_id, self.admin_id, motivo)
+        self._sigue_confirmada()
+
+    def test_el_admin_anula_con_motivo_y_queda_quien_y_por_que(self):
+        ventas_repo.anular_venta(self.venta_id, self.admin_id, "  se cobró dos veces  ")
+
+        venta, _detalle, _pagos = ventas_repo.buscar_venta(self.venta_id)
+        self.assertEqual(venta["estado"], dominio.VENTA_ANULADA)
+        self.assertEqual(venta["anulada_por"], self.admin_id)
+        self.assertEqual(venta["anulada_motivo"], "se cobró dos veces")
+        self.assertEqual(articulos_repo.buscar_por_codigo("COD1")["stock"], 0)
+
+    def test_anular_carga_tambien_guarda_el_motivo_sin_espacios(self):
+        miembros_repo.anular_carga(self.venta_id, self.admin_id, "  se cobró dos veces  ")
+        venta, _detalle, _pagos = ventas_repo.buscar_venta(self.venta_id)
+        self.assertEqual((venta["estado"], venta["anulada_motivo"]), (dominio.VENTA_ANULADA, "se cobró dos veces"))
+
+
+class TestElCierreGrabaLaPlataRedondeada(BaseConBaseTemporal):
+    """Regla 9: turnos_repo.cerrar_turno redondea a centavos lo que graba en
+    cierres_turno. SQLite suma tres pagos de $ 0,10 como 0.30000000000000004,
+    y esa cola quedaría para siempre en el cierre."""
+
+    def test_tres_ventas_de_diez_centavos_quedan_grabadas_como_treinta(self):
+        usuario_id = usuarios_repo.crear_usuario("Dueño", "1234", dominio.ROL_ADMIN)
+        articulos_repo.crear_articulo("COD1", "Caramelo", None, None, 0.1, 0.05, 0)
+        for _ in range(3):
+            ventas_repo.confirmar_venta(
+                usuario_id,
+                [{"codigo": "COD1", "descripcion": "Caramelo", "cantidad": 1, "precio_unitario": 0.1}],
+                [{"metodo": dominio.PAGO_EFECTIVO, "monto": 0.1}],
+            )
+        with database.conexion_db() as conexion:
+            sin_redondear = conexion.execute("SELECT SUM(monto) AS total FROM venta_pagos").fetchone()["total"]
+        # Si este SQLite ya sumara justo, la prueba no estaría mostrando nada.
+        self.assertNotEqual(sin_redondear, 0.3)
+
+        cierre = turnos_repo.cerrar_turno(usuario_id)
+
+        with database.conexion_db() as conexion:
+            grabado = conexion.execute("SELECT * FROM cierres_turno WHERE id = ?", (cierre["id"],)).fetchone()
+        for campo in ("ventas_efectivo", "monto_a_retirar", *turnos_repo._CAMPOS_PLATA):
+            self.assertEqual(grabado[campo], round(grabado[campo], 2), msg=campo)
+        self.assertEqual((grabado["ventas_efectivo"], grabado["monto_a_retirar"], grabado["kiosko_efectivo"]),
+                         (0.3, 0.3, 0.3))
+        # Lo que devuelve (y muestra la pantalla al cerrar) es lo mismo que quedó grabado.
+        self.assertEqual((cierre["ventas_efectivo"], cierre["monto_a_retirar"], cierre["kiosko_efectivo"]),
+                         (0.3, 0.3, 0.3))
+
+
 class TestBorrarArticuloProtegido(BaseConBaseTemporal):
     def test_borrar_articulo_sin_movimientos_funciona(self):
         articulos_repo.crear_articulo("SINMOV", "Sin movimientos", None, None, 10.0, 5.0, 0)

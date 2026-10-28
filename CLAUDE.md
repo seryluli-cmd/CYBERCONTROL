@@ -172,7 +172,7 @@ sobra; uno que explica por qué esa línea es así vale oro.
 ### Cómo se verifica
 
 **14. Regla de negocio nueva, test nuevo.**
-`tests/` cubre turnos, stock, cierres, cajas con número, administrar desde otra PC, PCs, PCSTREAM, Miembros, PlayStation, totales y copias de seguridad, y que siempre quede un Administrador activo.
+`tests/` cubre turnos, stock, cierres, cajas con número, administrar desde otra PC, PCs, PCSTREAM, Miembros, PlayStation, totales y copias de seguridad, que siempre quede un Administrador activo, que los pagos de una venta de kiosko sumen el total y que anular sea solo del Admin y con motivo.
 Todo lo que se calcule con plata, fechas o
 turnos entra ahí antes de darse por terminado. La UI se prueba a mano;
 la lógica, no.
@@ -213,11 +213,12 @@ abra no alcanza si los tests no pasan.
 | `dominio.es_admin(usuario)` | se pregunta si alguien es Administrador |
 | `ventas_repo.subtotal_linea(linea)` | se calcula lo que se cobra por un renglón |
 | `ventas_repo.total_carrito(lineas)` | se suma el total de una venta en curso |
+| `ventas_repo._grabar_venta_kiosko(...)` | se graba una venta de kiosko sobre una conexión abierta (`confirmar_venta`, `impresiones_repo.cobrar_impresiones` y el kiosko de `cuentas_pc_repo.cobrar`): el único INSERT en `venta_detalle`, el único descuento de stock por una venta y el único lugar que revisa que los pagos (netos de vuelto, ninguno negativo) sumen el total, con un centavo de tolerancia (`DIFERENCIA_MAXIMA_DE_PAGOS`); si no, no graba nada. `registrar_venta_sin_detalle` (bonos, cargas, PlayStation, trámites, reservas) NO lo revisa. Ver `TestLosPagosSumanElTotal` |
 | `database.conexion_db()` | se abre una transacción contra la base. Todo lo que graba la abre así (con `get_connection`, que espera `ESPERA_BASE_OCUPADA_SEGUNDOS`, 30 s, si otra conexión la tiene ocupada; con la espera de fábrica de 5 s la venta fallaba con "database is locked") |
 | `database.DATA_DIR` / `DB_PATH` | se resuelve dónde viven los datos (código vs `.exe`) |
 | `database.hash_clave()` / `verificar_clave()` | se maneja una contraseña |
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
-| `usuarios_repo.exigir_admin(usuario_id, para)` · `.usuario_habilitado(usuario_id)` | un repo exige que quien opera siga activo (y sea Admin), releyéndolo de la base: un usuario dado de baja con la sesión abierta no puede seguir. Lo usan, entre otros, la PlayStation 5, ORDENAR Stock y la devolución de una reserva |
+| `usuarios_repo.exigir_admin(usuario_id, para)` · `.usuario_habilitado(usuario_id)` | un repo exige que quien opera siga activo (y sea Admin), releyéndolo de la base: un usuario dado de baja con la sesión abierta no puede seguir. Lo usan, entre otros, la PlayStation 5, ORDENAR Stock, la devolución de una reserva y anular una venta o una carga (`ventas_repo.exigir_admin_y_motivo_para_anular`, que además exige un motivo escrito) |
 | `usuarios_repo._exigir_que_quede_otro_admin(conexion, usuario_id, que_se_quiere)` | se decide que siempre quede al menos un Administrador activo: `modificar_usuario` (al pasarlo a Empleada), `desactivar_usuario` y `borrar_usuario` lo llaman con el permiso de escritura ya tomado (`BEGIN IMMEDIATE`: dos Admins que se bajan a la vez, uno desde otra PC, no dejan cero) y rechazan con ValueError tocar al único. Sin Admin nadie vuelve a entrar a Usuarios, anular ventas ni usar ORDENAR Stock sin tocar la base a mano. Crear y Modificar también rechazan un nombre vacío, y Crear una clave vacía. No cambia quién puede hacer qué; "no te podés borrar a vos mismo" sigue en `ui/usuarios_window.py`. Ver `TestSiempreQuedaUnAdministrador` |
 | `clientes_repo.es_clave_de_clientes(clave)` | se decide si un pedido de red viene de un Cliente PC (clave fija, comparada por su huella SHA-256; la usa `servidor_red._autorizado`) |
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
