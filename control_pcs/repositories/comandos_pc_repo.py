@@ -56,6 +56,12 @@ nuevo (reinicio_actualizacion_repo, 2026-10-28) lleva en el payload de qué vers
 mandarlo una sola vez por versión, para que el mosaico muestre la PC REINICIANDO hasta que vuelve
 (`reiniciando`) y para no dárselo a una PC que ya se reinició por su cuenta antes de pedirlo
 (`_dar_por_reiniciadas`): se reiniciaría dos veces.
+
+Un DESCONGELAR que contestó "OK: ..." también reinicia la PC: el Cliente PC contesta y recién
+después se reinicia (pedido del dueño, 2026-10-28: que el mosaico diga REINICIANDO hasta que
+vuelve). Su payload, la clave, se vació al entregarlo (`marcar_entregado`); cuando la PC vuelve
+con Windows recién arrancado se le anota PAYLOAD_VOLVIO_REINICIADA (`_dar_por_reiniciadas`), así
+deja de verse REINICIANDO sin pisar lo que contestó.
 """
 
 import base64
@@ -105,6 +111,11 @@ PREFIJO_REINICIO_POR_ACTUALIZACION = "ACTUALIZAR:"
 # Hasta cuánto se la ve REINICIANDO si no vuelve (se quedó apagada, o arrancó sin red).
 MINUTOS_REINICIANDO = 5
 RESULTADO_YA_REINICIADA = "OK: Volvió reiniciada."
+# El DESCONGELAR que contestó OK, cuando la PC ya volvió reiniciada (ver el docstring del módulo).
+PAYLOAD_VOLVIO_REINICIADA = "VOLVIÓ REINICIADA"
+# Por qué se está reiniciando una PC (`reiniciando`), para el texto del mosaico.
+REINICIANDO_POR_ACTUALIZACION = "actualizacion"
+REINICIANDO_POR_DESCONGELAR = "descongelar"
 
 
 def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
@@ -197,32 +208,56 @@ def _dar_por_reiniciadas(conexion, estacion_id: int, encendida):
     última vez (`encendida`: los segundos que lleva prendida, del pulso de su consulta; None si su
     Cliente PC no lo manda) ya se cumplieron: se reinició después. Quedan con
     RESULTADO_YA_REINICIADA, así dejan de verse REINICIANDO y uno que la PC todavía no había pedido
-    no se le da: se reinició sola antes (por ejemplo al terminar un cliente) y se reiniciaría dos veces."""
+    no se le da: se reinició sola antes (por ejemplo al terminar un cliente) y se reiniciaría dos veces.
+    Los DESCONGELAR que contestaron OK antes de ese arranque quedan con PAYLOAD_VOLVIO_REINICIADA
+    (solo los de los últimos MINUTOS_REINICIANDO: los viejos ya no se ven, no hace falta tocarlos)."""
     if encendida is None:
         return
-    arranco = datetime.now() - timedelta(seconds=encendida)
+    ahora = datetime.now()
+    arranco = (ahora - timedelta(seconds=encendida)).isoformat(timespec="seconds")
     conexion.execute(
         """
         UPDATE comandos_pc SET estado = ?, resultado = ?
         WHERE estacion_id = ? AND tipo = ? AND payload LIKE ? AND resultado IS NULL AND fecha_creacion < ?
         """,
         (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_YA_REINICIADA, estacion_id, TIPO_REINICIAR,
-         PREFIJO_REINICIO_POR_ACTUALIZACION + "%", arranco.isoformat(timespec="seconds")),
+         PREFIJO_REINICIO_POR_ACTUALIZACION + "%", arranco),
+    )
+    desde = (ahora - timedelta(minutes=MINUTOS_REINICIANDO)).isoformat(timespec="seconds")
+    conexion.execute(
+        """
+        UPDATE comandos_pc SET payload = ?
+        WHERE estacion_id = ? AND tipo = ? AND resultado LIKE 'OK:%' AND payload IS NULL
+          AND fecha_creacion < ? AND fecha_creacion >= ?
+        """,
+        (PAYLOAD_VOLVIO_REINICIADA, estacion_id, TIPO_DESCONGELAR, arranco, desde),
     )
 
 
-def reiniciando(conexion, ahora: datetime) -> set:
-    """Las estaciones (sus id) a las que se les mandó un Reiniciar por actualización hace menos de
-    MINUTOS_REINICIANDO y todavía no volvieron reiniciadas (`_dar_por_reiniciadas`; uno que la PC no
-    pidió a tiempo también tiene resultado, el de `_vencer_reinicios`). Para el mosaico."""
-    desde = ahora - timedelta(minutes=MINUTOS_REINICIANDO)
-    return {fila["estacion_id"] for fila in conexion.execute(
+def reiniciando(conexion, ahora: datetime) -> dict:
+    """{estacion_id: por qué} de las PCs que se están reiniciando, para el mosaico:
+    - REINICIANDO_POR_ACTUALIZACION: se le mandó un Reiniciar por actualización hace menos de
+      MINUTOS_REINICIANDO y todavía no volvió reiniciada (`_dar_por_reiniciadas`; uno que la PC no
+      pidió a tiempo también tiene resultado, el de `_vencer_reinicios`).
+    - REINICIANDO_POR_DESCONGELAR: un DESCONGELAR de hace menos de MINUTOS_REINICIANDO contestó
+      OK y la PC todavía no volvió. Con ERROR o sin respuesta no se reinicia: no cuenta."""
+    desde = (ahora - timedelta(minutes=MINUTOS_REINICIANDO)).isoformat(timespec="seconds")
+    por_que = {fila["estacion_id"]: REINICIANDO_POR_ACTUALIZACION for fila in conexion.execute(
         """
         SELECT DISTINCT estacion_id FROM comandos_pc
         WHERE tipo = ? AND payload LIKE ? AND resultado IS NULL AND fecha_creacion >= ?
         """,
-        (TIPO_REINICIAR, PREFIJO_REINICIO_POR_ACTUALIZACION + "%", desde.isoformat(timespec="seconds")),
+        (TIPO_REINICIAR, PREFIJO_REINICIO_POR_ACTUALIZACION + "%", desde),
     )}
+    for fila in conexion.execute(
+        """
+        SELECT DISTINCT estacion_id FROM comandos_pc
+        WHERE tipo = ? AND resultado LIKE 'OK:%' AND payload IS NULL AND fecha_creacion >= ?
+        """,
+        (TIPO_DESCONGELAR, desde),
+    ):
+        por_que.setdefault(fila["estacion_id"], REINICIANDO_POR_DESCONGELAR)
+    return por_que
 
 
 def descartar_clave_de_pendientes(comando_ids=None, todos=False):
@@ -238,8 +273,8 @@ def descartar_clave_de_pendientes(comando_ids=None, todos=False):
 def proximo_comando_pendiente(estacion_id: int, encendida=None):
     """El comando pendiente más viejo para esta estación, o None. Lo
     llama servidor_red.py en cada `GET /estado` de esa estación. Antes
-    da por cumplidos los Reiniciar por actualización si la PC ya se
-    reinició (`encendida`, ver `_dar_por_reiniciadas`) y vence los
+    da por cumplidos los Reiniciar por actualización y los DESCONGELAR si
+    la PC ya se reinició (`encendida`, ver `_dar_por_reiniciadas`) y vence los
     comandos con clave y los Reiniciar/Apagar de esa PC que esperaron
     demasiado (ver el docstring del módulo): con el índice por estación
     y estado, no recorre el historial."""

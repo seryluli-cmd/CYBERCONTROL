@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 import dominio  # noqa: E402
 from control_pcs.repositories import comandos_pc_repo, congelado_repo, pcs_repo  # noqa: E402
 from control_pcs.ui.pcs_congelado_dialogo import COLUMNA_RESPUESTA, DialogoCongelado  # noqa: E402
+from control_pcs.ui.pcs_window import PanelControlPcs  # noqa: E402
 from database import conexion_db  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
@@ -376,3 +377,69 @@ class TestCongelarPorLaRed(_ConServidorRed):
         self.assertEqual(self._post("/comando_resultado", {"comando_id": comando_id, "texto": texto})[0], 200)
         self.assertEqual(congelado_repo.interpretar_respuesta(fila(comando_id)["resultado"]),
                          (True, "Listo: C queda descongelado al reiniciar. La PC se reinicia ahora."))
+
+
+class TestReiniciandoAlDescongelar(_ConServidorRed):
+    """Un DESCONGELAR que contestó OK reinicia la PC: el mosaico la muestra REINICIANDO hasta que
+    vuelve (pedido del dueño, 2026-10-28), aunque la ventana de Congelar ya esté cerrada."""
+
+    OK = "OK: Listo: C queda descongelado al reiniciar. La PC se reinicia ahora."
+
+    def setUp(self):
+        super().setUp()
+        self.pc1 = pcs_repo.crear_estacion("PC1")
+        (self.comando_id,) = congelado_repo.pedir([self.pc1], congelado_repo.DESCONGELAR, CLAVE).values()
+        # La PC lo pide (prendida hace una hora) y contesta.
+        self.assertEqual(self._get("/estado?estacion=PC1&encendida=3600")[1]["comando"]["tipo"], "DESCONGELAR")
+
+    def contestar(self, texto):
+        self.assertEqual(self._post("/comando_resultado", {"comando_id": self.comando_id, "texto": texto})[0], 200)
+
+    def reiniciando(self):
+        item = next(item for item in pcs_repo.estado_estaciones() if item["estacion"]["id"] == self.pc1)
+        return item["reiniciando"]
+
+    def test_con_ok_dice_reiniciando(self):
+        self.contestar(self.OK)
+
+        self.assertEqual(self.reiniciando(), comandos_pc_repo.REINICIANDO_POR_DESCONGELAR)
+        item = next(item for item in pcs_repo.estado_estaciones() if item["estacion"]["id"] == self.pc1)
+        ficha = PanelControlPcs._ficha_de_pc(item)
+        self.assertEqual(ficha.aviso, "REINICIANDO")
+        self.assertIn("Reiniciando para descongelarse", ficha.estado)
+
+    def test_con_error_no(self):
+        self.contestar("ERROR: La clave no es correcta.")
+        self.assertIsNone(self.reiniciando())
+
+    def test_sin_respuesta_no(self):
+        self.assertIsNone(self.reiniciando())
+        # Ni cuando la ventana se cierra sin respuesta (se da por vencido).
+        comandos_pc_repo.descartar_clave_de_pendientes(todos=True)
+        self.assertIsNone(self.reiniciando())
+
+    def test_aunque_se_cierre_la_ventana(self):
+        self.contestar(self.OK)
+        comandos_pc_repo.descartar_clave_de_pendientes([self.comando_id])
+        self.assertEqual(self.reiniciando(), comandos_pc_repo.REINICIANDO_POR_DESCONGELAR)
+
+    def test_mientras_no_volvio_sigue_diciendolo(self):
+        self.contestar(self.OK)
+        envejecer(self.comando_id, 1)
+        # Todavía no se reinició: Windows sigue prendido desde antes.
+        self._get("/estado?estacion=PC1&encendida=3600")
+        self.assertEqual(self.reiniciando(), comandos_pc_repo.REINICIANDO_POR_DESCONGELAR)
+
+    def test_cuando_vuelve_deja_de_decirlo(self):
+        self.contestar(self.OK)
+        envejecer(self.comando_id, 1)
+        # Vuelve con Windows recién arrancado.
+        self._get("/estado?estacion=PC1&encendida=20")
+        self.assertIsNone(self.reiniciando())
+        # Lo que contestó queda como estaba.
+        self.assertEqual(fila(self.comando_id)["resultado"], self.OK)
+
+    def test_si_no_vuelve_deja_de_decirlo_a_los_5_minutos(self):
+        self.contestar(self.OK)
+        envejecer(self.comando_id, comandos_pc_repo.MINUTOS_REINICIANDO + 1)
+        self.assertIsNone(self.reiniciando())

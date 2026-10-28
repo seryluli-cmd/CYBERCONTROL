@@ -141,6 +141,12 @@ COLOR_RESERVADA = QColor("#22C3E6")
 COLOR_ALERTA_SESION_SIN_CLIENTE = QColor("#FF3B47")
 COLOR_ALERTA_SESION_SIN_CLIENTE_APAGADA = QColor("#FFFFFF")
 
+# Qué dice la ficha de una PC REINICIANDO, según por qué se reinicia (comandos_pc_repo.reiniciando).
+TEXTOS_REINICIANDO = {
+    comandos_pc_repo.REINICIANDO_POR_ACTUALIZACION: "Reiniciando para poner el Cliente PC nuevo",
+    comandos_pc_repo.REINICIANDO_POR_DESCONGELAR: "Reiniciando para descongelarse",
+}
+
 # Qué quiere decir cada color, en la leyenda de arriba del mosaico.
 LEYENDA = [
     (COLOR_DISPONIBLE, "Disponible"),
@@ -466,9 +472,10 @@ class PanelControlPcs(QWidget):
                 aviso = f"Res. {hora}"  # en uso: más urgente que el nombre del socio
 
         if item.get("reiniciando") and sesion is None and not en_alerta:
-            # Se reinicia sola para poner el Cliente PC nuevo (reinicio_actualizacion_repo), hasta
-            # que vuelve. Le gana al nombre de la reserva: dura un par de minutos.
-            icono, texto_estado, aviso = "🔄", "Reiniciando para poner el Cliente PC nuevo", "REINICIANDO"
+            # Se reinicia para poner el Cliente PC nuevo (reinicio_actualizacion_repo) o porque se
+            # descongeló, hasta que vuelve. Le gana al nombre de la reserva: dura un par de minutos.
+            icono, aviso = "🔄", "REINICIANDO"
+            texto_estado = TEXTOS_REINICIANDO.get(item["reiniciando"], "Reiniciando")
 
         if not aviso and dibujo == DIBUJO_SOCIO:
             aviso = quien_texto  # el nombre del socio, si no hay nada más urgente que avisar

@@ -632,6 +632,13 @@ al arrancar.
   o a los `comandos_pc_repo.MINUTOS_REINICIANDO` (5) si no vuelve. Si la PC se reinició
   por su cuenta antes de pedirlo (por ejemplo al terminar un cliente), al volver no se
   le da: se reiniciaría dos veces.
+- **También al descongelar** (pedido del dueño, 2026-10-28): un DESCONGELAR que contestó
+  "OK: ..." reinicia la PC (el Cliente PC contesta y recién después se reinicia), así que
+  su monitor dice REINICIANDO ("Reiniciando para descongelarse") hasta que vuelve con
+  Windows recién arrancado, o 5 minutos. Con ERROR o sin respuesta no. Sale de la base
+  (`comandos_pc_repo.reiniciando`), no de la ventana: vale aunque se haya cerrado. Al
+  volver, `_dar_por_reiniciadas` le anota `VOLVIÓ REINICIADA` en el payload (la clave ya
+  se había borrado al entregarlo); lo que contestó la PC no se toca.
 
 ## El tiempo de las PCs cuando el mostrador no está
 
@@ -854,7 +861,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-1494 tests al 2026-10-28. Cubren turnos, caja y cajas con número
+1507 tests al 2026-10-28. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,

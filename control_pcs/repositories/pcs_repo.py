@@ -267,8 +267,9 @@ def estado_estaciones():
     cuenta de la sesión en curso (o None): las demás son de clientes anteriores
     que se fueron debiendo.
 
-    Y "reiniciando": si se está reiniciando sola para poner el Cliente PC nuevo
-    (reinicio_actualizacion_repo), hasta que vuelve.
+    Y "reiniciando": por qué se está reiniciando, hasta que vuelve (None si no): para poner el
+    Cliente PC nuevo (reinicio_actualizacion_repo) o porque se descongeló (ver
+    comandos_pc_repo.reiniciando).
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
@@ -304,7 +305,7 @@ def estado_estaciones():
                 None,
             )
         estado["deuda"] = deuda
-        estado["reiniciando"] = estacion["id"] in reiniciando
+        estado["reiniciando"] = reiniciando.get(estacion["id"])
         estados.append(estado)
     return estados
 
@@ -367,7 +368,7 @@ def _estado_para_estacion(estacion, sesion, ahora, cortes=(), fin_pendiente=None
         # Solo la completa estado_estaciones: la Cuenta de la PC es cosa del mostrador.
         "deuda": None,
         # Solo la completa estado_estaciones: es para el mosaico.
-        "reiniciando": False,
+        "reiniciando": None,
     }
 
 
