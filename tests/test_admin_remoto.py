@@ -514,6 +514,20 @@ class TestPorLaRed(_ConServidor):
         conexion.salir()
         self.assertFalse(conexion.adentro)
 
+    def test_el_unico_administrador_tampoco_se_pasa_a_empleada_desde_otra_pc(self):
+        # La regla está en usuarios_repo: el rechazo llega a la otra PC como
+        # ValueError con su mensaje, y la pantalla lo muestra igual que en el
+        # mostrador (manejar_errores).
+        conexion = cliente.conectar("127.0.0.1", self.puerto)
+        usuario = conexion.entrar("Administrador", "1234")
+        with self.assertRaises(ValueError) as error:
+            conexion.llamar(
+                "usuarios_repo", "modificar_usuario", (usuario["id"], "Administrador", dominio.ROL_EMPLEADA), {}
+            )
+        self.assertIn("Administrador es el único Administrador activo", str(error.exception))
+        self.assertEqual(usuarios_repo.obtener_usuario(usuario["id"])["rol"], dominio.ROL_ADMIN)
+        conexion.salir()
+
     def test_las_pcs_del_cyber_siguen_necesitando_su_clave(self):
         import urllib.error
         import urllib.request

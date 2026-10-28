@@ -14,6 +14,9 @@ Se ejecutan con:
 """
 
 import hashlib
+import sqlite3
+import threading
+import time
 import unittest
 from datetime import date, datetime, timedelta
 from unittest import mock
@@ -592,6 +595,147 @@ class TestGestionDeUsuarios(BaseConBaseTemporal):
         usuario_id = usuarios_repo.crear_usuario("Matías", "1234", "EMPLEADA")
         usuarios_repo.modificar_usuario(usuario_id, "Matías", "ADMIN")
         self.assertEqual(usuarios_repo.obtener_usuario(usuario_id)["rol"], "ADMIN")
+
+    def test_no_se_crea_un_usuario_sin_nombre(self):
+        # El formulario ya lo frena, pero la regla es del repo (regla 3).
+        antes = len(usuarios_repo.listar_usuarios(incluir_inactivos=True))
+        for nombre in ("", "   ", None):
+            with self.subTest(nombre=nombre):
+                with self.assertRaisesRegex(ValueError, "Ingresá el nombre"):
+                    usuarios_repo.crear_usuario(nombre, "1234", dominio.ROL_EMPLEADA)
+        self.assertEqual(len(usuarios_repo.listar_usuarios(incluir_inactivos=True)), antes)
+
+    def test_no_se_crea_un_usuario_sin_clave(self):
+        antes = len(usuarios_repo.listar_usuarios(incluir_inactivos=True))
+        for clave in ("", None):
+            with self.subTest(clave=clave):
+                with self.assertRaisesRegex(ValueError, "necesita una clave"):
+                    usuarios_repo.crear_usuario("Rocío", clave, dominio.ROL_EMPLEADA)
+        self.assertEqual(len(usuarios_repo.listar_usuarios(incluir_inactivos=True)), antes)
+
+    def test_modificar_no_deja_el_nombre_vacio(self):
+        usuario_id = usuarios_repo.crear_usuario("Rocío", "1234", dominio.ROL_EMPLEADA)
+        for nombre in ("", "   ", None):
+            with self.subTest(nombre=nombre):
+                with self.assertRaisesRegex(ValueError, "Ingresá el nombre"):
+                    usuarios_repo.modificar_usuario(usuario_id, nombre, dominio.ROL_EMPLEADA)
+        self.assertEqual(usuarios_repo.obtener_usuario(usuario_id)["nombre"], "Rocío")
+
+    def test_modificar_con_la_clave_vacia_la_deja_como_estaba(self):
+        # En Modificar, el campo Clave vacío quiere decir "no cambiarla".
+        usuario_id = usuarios_repo.crear_usuario("Rocío", "1234", dominio.ROL_EMPLEADA)
+        usuarios_repo.modificar_usuario(usuario_id, "Rocío", dominio.ROL_EMPLEADA, clave="")
+        usuarios_repo.modificar_usuario(usuario_id, "Rocío", dominio.ROL_EMPLEADA, clave=None)
+        self.assertIsNotNone(usuarios_repo.autenticar_por_nombre("Rocío", "1234"))
+
+
+class TestSiempreQuedaUnAdministrador(BaseConBaseTemporal):
+    """Sin ningún Administrador activo nadie puede volver a entrar a Usuarios,
+    anular ventas ni usar ORDENAR Stock sin tocar la base a mano: el único que
+    hay no se puede pasar a Empleada, desactivar ni borrar. Antes el único Admin
+    se podía pasar a sí mismo a Empleada desde Usuarios > Modificar."""
+
+    def setUp(self):
+        super().setUp()
+        # El Administrador que se siembra solo en una base nueva (id 1).
+        self.admin_id = usuarios_repo.listar_usuarios()[0]["id"]
+
+    def _rol(self, usuario_id):
+        return usuarios_repo.obtener_usuario(usuario_id)["rol"]
+
+    def test_el_unico_administrador_no_se_puede_pasar_a_empleada(self):
+        with self.assertRaisesRegex(ValueError, "Administrador es el único Administrador activo"):
+            usuarios_repo.modificar_usuario(self.admin_id, "Administrador", dominio.ROL_EMPLEADA)
+        self.assertEqual(self._rol(self.admin_id), dominio.ROL_ADMIN)
+
+    def test_el_rechazo_no_deja_nada_a_medio_guardar(self):
+        # Ni el nombre, ni la clave, ni los permisos que venían en el mismo pedido.
+        with self.assertRaises(ValueError):
+            usuarios_repo.modificar_usuario(
+                self.admin_id, "Sergio", dominio.ROL_EMPLEADA, clave="nueva",
+                permisos={"permiso_reportes": True},
+            )
+        admin = usuarios_repo.obtener_usuario(self.admin_id)
+        self.assertEqual((admin["nombre"], admin["permiso_reportes"]), ("Administrador", 0))
+        self.assertIsNotNone(usuarios_repo.autenticar_por_nombre("Administrador", "1234"))
+
+    def test_el_unico_administrador_si_puede_cambiar_su_nombre_y_su_clave(self):
+        usuarios_repo.modificar_usuario(self.admin_id, "Sergio", dominio.ROL_ADMIN, clave="nueva")
+        self.assertIsNotNone(usuarios_repo.autenticar_por_nombre("Sergio", "nueva"))
+
+    def test_con_otro_administrador_activo_si_se_puede_pasar_a_empleada(self):
+        usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN)
+        usuarios_repo.modificar_usuario(self.admin_id, "Administrador", dominio.ROL_EMPLEADA)
+        self.assertEqual(self._rol(self.admin_id), dominio.ROL_EMPLEADA)
+
+    def test_un_administrador_dado_de_baja_no_cuenta_como_el_otro(self):
+        sergio_id = usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN)
+        usuarios_repo.desactivar_usuario(sergio_id)
+        with self.assertRaisesRegex(ValueError, "único Administrador activo"):
+            usuarios_repo.modificar_usuario(self.admin_id, "Administrador", dominio.ROL_EMPLEADA)
+
+    def test_el_unico_administrador_no_se_puede_desactivar(self):
+        with self.assertRaisesRegex(ValueError, "No se lo puede desactivar"):
+            usuarios_repo.desactivar_usuario(self.admin_id)
+        self.assertTrue(usuarios_repo.obtener_usuario(self.admin_id)["activo"])
+
+    def test_el_unico_administrador_no_se_puede_borrar(self):
+        # Sin historial, antes se borraba del todo.
+        with self.assertRaisesRegex(ValueError, "No se lo puede borrar"):
+            usuarios_repo.borrar_usuario(self.admin_id)
+        self.assertIsNotNone(usuarios_repo.obtener_usuario(self.admin_id))
+
+    def test_con_historial_el_aviso_es_el_del_unico_administrador(self):
+        # El del historial sugiere desactivarlo, y eso tampoco se puede.
+        articulos_repo.crear_articulo("CODA", "Producto", None, None, 10.0, 5.0, 0)
+        compras_repo.registrar_compra(self.admin_id, [{"codigo": "CODA", "cantidad": 1, "costo_unitario": 5.0}])
+        with self.assertRaises(ValueError) as error:
+            usuarios_repo.borrar_usuario(self.admin_id)
+        self.assertIn("único Administrador activo", str(error.exception))
+        self.assertNotIn("historial", str(error.exception))
+
+    def test_con_otro_administrador_activo_si_se_puede_desactivar_y_borrar(self):
+        usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN)
+        jefa_id = usuarios_repo.crear_usuario("Jefa", "1234", dominio.ROL_ADMIN)
+        usuarios_repo.borrar_usuario(jefa_id)
+        usuarios_repo.desactivar_usuario(self.admin_id)
+        self.assertIsNone(usuarios_repo.obtener_usuario(jefa_id))
+        self.assertFalse(usuarios_repo.obtener_usuario(self.admin_id)["activo"])
+
+    def test_dos_administradores_que_se_bajan_a_la_vez_no_dejan_al_local_sin_ninguno(self):
+        # Uno en el mostrador y otro desde otra PC: el segundo pedido llega cuando
+        # el primero ya bajó a B pero todavía no guardó. Sin el BEGIN IMMEDIATE de
+        # usuarios_repo, los dos veían "hay otro Admin" y quedaban cero.
+        b_id = usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN)
+        primero = sqlite3.connect(database.DB_PATH, isolation_level=None)
+        resultado = {}
+
+        def segundo_pedido():
+            try:
+                usuarios_repo.modificar_usuario(self.admin_id, "Administrador", dominio.ROL_EMPLEADA)
+            except ValueError as error:
+                resultado["error"] = error
+
+        try:
+            primero.execute("BEGIN IMMEDIATE")
+            primero.execute("UPDATE usuarios SET rol = ? WHERE id = ?", (dominio.ROL_EMPLEADA, b_id))
+            hilo = threading.Thread(target=segundo_pedido)
+            hilo.start()
+            time.sleep(0.5)  # el segundo queda esperando el permiso de escritura
+            primero.execute("COMMIT")
+            hilo.join(10)
+        finally:
+            primero.close()
+        self.assertIn("error", resultado)
+        self.assertEqual(self._rol(self.admin_id), dominio.ROL_ADMIN)
+
+    def test_las_empleadas_se_dan_de_baja_igual_que_siempre(self):
+        lucia_id = usuarios_repo.crear_usuario("Lucia", "1234", dominio.ROL_EMPLEADA)
+        rocio_id = usuarios_repo.crear_usuario("Rocío", "1234", dominio.ROL_EMPLEADA)
+        usuarios_repo.desactivar_usuario(lucia_id)
+        usuarios_repo.borrar_usuario(rocio_id)
+        self.assertFalse(usuarios_repo.obtener_usuario(lucia_id)["activo"])
+        self.assertIsNone(usuarios_repo.obtener_usuario(rocio_id))
 
 
 class TestVentasYStock(BaseConBaseTemporal):

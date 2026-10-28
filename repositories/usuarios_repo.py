@@ -284,6 +284,49 @@ def _exigir_nombre_libre(conexion, nombre: str, excluir_id: int = None):
         )
 
 
+def _exigir_nombre(nombre: str):
+    """ValueError si el nombre está vacío o son puros espacios. Se entra por
+    nombre (ver autenticar_por_nombre): un usuario sin nombre no se puede
+    elegir para entrar ni distinguir en la lista. El formulario de Usuarios ya
+    lo frena antes, pero la regla vive acá (regla 3): vale para quien sea que
+    llame, no solo para esa pantalla."""
+    if not (nombre or "").strip():
+        raise ValueError("Ingresá el nombre de la persona.")
+
+
+def _exigir_que_quede_otro_admin(conexion, usuario_id: int, que_se_quiere: str):
+    """
+    ValueError (con un mensaje pensado para mostrar tal cual) si `usuario_id` es
+    hoy un Administrador ACTIVO y no hay ningún otro. Pasarlo a Empleada,
+    desactivarlo o borrarlo dejaría al local sin nadie que pueda entrar a
+    Usuarios (para nombrar otro Administrador), anular ventas ni usar ORDENAR
+    Stock, y salir de ahí exigiría tocar la base a mano. Si el usuario no es un
+    Administrador activo (una empleada, uno ya dado de baja o uno que no existe)
+    no le saca nada a nadie y no se frena.
+
+    `que_se_quiere` completa el mensaje: "No se lo puede {que_se_quiere}".
+    Se llama con el permiso de escritura ya tomado (BEGIN IMMEDIATE): si dos
+    Administradores se pasaran a Empleada a la vez (uno en el mostrador y otro
+    desde otra PC), el segundo ya ve el cambio del primero y se frena.
+    """
+    fila = conexion.execute(
+        "SELECT nombre, rol, activo FROM usuarios WHERE id = ?", (usuario_id,)
+    ).fetchone()
+    if fila is None or not fila["activo"] or not dominio.es_admin(fila):
+        return
+    otros_admins = conexion.execute(
+        "SELECT COUNT(*) FROM usuarios WHERE activo = 1 AND rol = ? AND id <> ?",
+        (dominio.ROL_ADMIN, usuario_id),
+    ).fetchone()[0]
+    if otros_admins == 0:
+        raise ValueError(
+            f"{fila['nombre'].strip()} es el único Administrador activo. No se lo puede "
+            f"{que_se_quiere}: sin un Administrador nadie podría volver a entrar a "
+            "Usuarios, anular ventas ni usar ORDENAR Stock. Primero hacé "
+            "Administrador a otra persona."
+        )
+
+
 def _columnas_y_valores_de_permisos(permisos: dict = None):
     """
     (columnas, valores) de TODOS los permisos de PERMISOS_EMPLEADA, listos
@@ -299,7 +342,9 @@ def crear_usuario(nombre: str, clave: str, rol: str, permisos: dict = None):
     """
     Crea un nuevo usuario (Admin o Empleada) y devuelve su id (el
     menor "Usuario Nº" disponible, ver _proximo_numero_disponible).
-    Levanta ValueError si ya hay otro usuario activo con ese nombre.
+    Levanta ValueError si el nombre está vacío, si ya hay otro usuario
+    activo con ese nombre o si no tiene clave: sin clave cualquiera
+    entraría con su nombre.
 
     `permisos` es un dict {columna: bool} con algunas (o todas, o
     ninguna) de las claves de PERMISOS_EMPLEADA — las que no se pasen
@@ -307,6 +352,9 @@ def crear_usuario(nombre: str, clave: str, rol: str, permisos: dict = None):
     (ya tiene todo, ver tiene_permiso()), pero igual se guarda tal cual
     para no perderlo si algún día lo bajan a EMPLEADA.
     """
+    _exigir_nombre(nombre)
+    if not clave:
+        raise ValueError("Un usuario nuevo necesita una clave.")
     ahora = datetime.now().isoformat(timespec="seconds")
     with conexion_db() as conexion:
         _exigir_nombre_libre(conexion, nombre)
@@ -327,13 +375,20 @@ def modificar_usuario(usuario_id: int, nombre: str, rol: str, clave: str = None,
     """
     Actualiza nombre, rol y permisos de un usuario. Si se pasa una
     clave nueva (no vacía), también la actualiza; si no, deja la clave
-    como estaba. Levanta ValueError si el nombre nuevo ya lo usa otro
-    usuario activo (ver _nombre_en_uso). `permisos` funciona igual que
-    en crear_usuario (las claves de PERMISOS_EMPLEADA que no se pasen
+    como estaba. Levanta ValueError si el nombre queda vacío, si el
+    nombre nuevo ya lo usa otro usuario activo (ver _nombre_en_uso) o si
+    pasaría a Empleada al único Administrador activo (ver
+    _exigir_que_quede_otro_admin: el único Admin se lo podía hacer a sí
+    mismo desde Usuarios > Modificar). `permisos` funciona igual que en
+    crear_usuario (las claves de PERMISOS_EMPLEADA que no se pasen
     quedan en False, no como estaban antes).
     """
+    _exigir_nombre(nombre)
     with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
         _exigir_nombre_libre(conexion, nombre, excluir_id=usuario_id)
+        if rol != dominio.ROL_ADMIN:
+            _exigir_que_quede_otro_admin(conexion, usuario_id, "pasar a Empleada")
         columnas_permiso, valores_permiso = _columnas_y_valores_de_permisos(permisos)
         asignaciones = ["nombre = ?", "rol = ?"]
         valores = [nombre, rol]
@@ -354,9 +409,12 @@ def desactivar_usuario(usuario_id: int):
     poder loguearse, pero su "Usuario Nº" queda reservado para siempre
     (no lo libera para reusar, a diferencia de borrar_usuario) — lo usa
     la UI como respaldo cuando borrar_usuario() rechaza el borrado por
-    tener historial.
+    tener historial. ValueError si es el único Administrador activo (ver
+    _exigir_que_quede_otro_admin).
     """
     with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+        _exigir_que_quede_otro_admin(conexion, usuario_id, "desactivar")
         conexion.execute("UPDATE usuarios SET activo = 0 WHERE id = ?", (usuario_id,))
 
 
@@ -372,9 +430,17 @@ def borrar_usuario(usuario_id: int):
     rechaza el borrado (SQLite lo avisa como IntegrityError) y acá se
     traduce en un ValueError con un mensaje pensado para mostrar tal
     cual, sugiriendo desactivar_usuario() en su lugar.
+
+    Antes que eso, ValueError si es el único Administrador activo (ver
+    _exigir_que_quede_otro_admin). Se pregunta ANTES del DELETE a
+    propósito: el único Admin casi siempre tiene historial, y si se
+    preguntara después le llegaría el aviso del historial, que sugiere
+    desactivarlo (y eso tampoco se puede).
     """
     try:
         with conexion_db() as conexion:
+            conexion.execute("BEGIN IMMEDIATE")
+            _exigir_que_quede_otro_admin(conexion, usuario_id, "borrar")
             conexion.execute("DELETE FROM usuarios WHERE id = ?", (usuario_id,))
     except sqlite3.IntegrityError:
         raise ValueError(

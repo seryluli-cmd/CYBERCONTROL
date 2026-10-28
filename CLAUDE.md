@@ -172,7 +172,7 @@ sobra; uno que explica por qué esa línea es así vale oro.
 ### Cómo se verifica
 
 **14. Regla de negocio nueva, test nuevo.**
-`tests/` cubre turnos, stock, cierres, cajas con número, administrar desde otra PC, PCs, PCSTREAM, Miembros, PlayStation, totales y copias de seguridad.
+`tests/` cubre turnos, stock, cierres, cajas con número, administrar desde otra PC, PCs, PCSTREAM, Miembros, PlayStation, totales y copias de seguridad, y que siempre quede un Administrador activo.
 Todo lo que se calcule con plata, fechas o
 turnos entra ahí antes de darse por terminado. La UI se prueba a mano;
 la lógica, no.
@@ -218,6 +218,7 @@ abra no alcanza si los tests no pasan.
 | `database.hash_clave()` / `verificar_clave()` | se maneja una contraseña |
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
 | `usuarios_repo.exigir_admin(usuario_id, para)` · `.usuario_habilitado(usuario_id)` | un repo exige que quien opera siga activo (y sea Admin), releyéndolo de la base: un usuario dado de baja con la sesión abierta no puede seguir. Lo usan, entre otros, la PlayStation 5, ORDENAR Stock y la devolución de una reserva |
+| `usuarios_repo._exigir_que_quede_otro_admin(conexion, usuario_id, que_se_quiere)` | se decide que siempre quede al menos un Administrador activo: `modificar_usuario` (al pasarlo a Empleada), `desactivar_usuario` y `borrar_usuario` lo llaman con el permiso de escritura ya tomado (`BEGIN IMMEDIATE`: dos Admins que se bajan a la vez, uno desde otra PC, no dejan cero) y rechazan con ValueError tocar al único. Sin Admin nadie vuelve a entrar a Usuarios, anular ventas ni usar ORDENAR Stock sin tocar la base a mano. Crear y Modificar también rechazan un nombre vacío, y Crear una clave vacía. No cambia quién puede hacer qué; "no te podés borrar a vos mismo" sigue en `ui/usuarios_window.py`. Ver `TestSiempreQuedaUnAdministrador` |
 | `clientes_repo.es_clave_de_clientes(clave)` | se decide si un pedido de red viene de un Cliente PC (clave fija, comparada por su huella SHA-256; la usa `servidor_red._autorizado`) |
 | `fondo_repo.obtener()` · `.version_actual()` · `.guardar_jpeg(datos)` · `.quitar()` | se lee y se cambia el fondo de la pantalla de bloqueo de las PCs: un solo archivo `data/fondo_bloqueo.jpg`, con su versión (la huella del contenido) que viaja en `GET /estado` como `fondo_version`. La pantalla (`pcs_fondo_dialogo.preparar_jpeg`) lo achica con Qt; el repo valida que sea un JPEG y que no pase del tope |
 | `filtro_palabras_repo.obtener()` · `.guardar(...)` · `.registrar_bloqueo(...)` | se lee y se cambia el filtro de palabras de las PCs ("protección antiporno", pedido del dueño 2026-10-17: prendido, lista y mensaje, como JSON en `configuracion`; su versión viaja en `GET /estado` como `filtro_version`) y se anota cada página que cerró una PC (`bloqueos_filtro_pc`). Buscar las palabras en los títulos es tarea de cada Cliente PC (`CLIENTE PC/filtro_palabras.py`), no de este repo |
