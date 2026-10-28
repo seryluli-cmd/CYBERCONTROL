@@ -16,7 +16,8 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import dominio  # noqa: E402
 from control_pcs.repositories import comandos_pc_repo, pcs_libres_repo, pcs_repo  # noqa: E402
-from control_pcs.ui.pcs_botones_libres import COLOR_APAGAR, BotonesParaLasLibres  # noqa: E402
+from control_pcs.ui.pcs_botones_libres import BotonesParaLasLibres  # noqa: E402
+from control_pcs.ui.pcs_dibujos import COLOR_APAGAR  # noqa: E402
 from control_pcs.ui.pcs_congelado_dialogo import COLUMNA_PC, DialogoCongelado  # noqa: E402
 from control_pcs.ui.pcs_reiniciar_dialogo import DialogoApagar, DialogoReiniciar  # noqa: E402
 from control_pcs.ui.pcs_window import PanelControlPcs  # noqa: E402
@@ -137,6 +138,15 @@ class TestBotones(_TresPcs):
         with mock.patch("control_pcs.ui.pcs_botones_libres.DialogoCongelado") as ventana:
             botones.boton_descongelar.click()
         ventana.return_value.exec.assert_called_once()
+
+    def test_descongelar_le_pasa_quien_esta_logueado(self):
+        # Para que el Administrador vea ACTUALIZAR CLIENTES en esa ventana (2026-10-28).
+        admin = {"rol": dominio.ROL_ADMIN}
+        botones = BotonesParaLasLibres(pcs_repo.estado_estaciones, admin)
+        self.addCleanup(botones.deleteLater)
+        with mock.patch("control_pcs.ui.pcs_botones_libres.DialogoCongelado") as ventana:
+            botones.boton_descongelar.click()
+        self.assertIs(ventana.call_args.args[2], admin)
 
     def test_reiniciar_abre_la_ventana_para_elegir(self):
         botones = self.botones()

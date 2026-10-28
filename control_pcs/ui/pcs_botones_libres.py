@@ -15,12 +15,9 @@ de las PCs lo suelen hacer los operadores). "Congelar / descongelar..." del
 clic derecho sigue siendo solo del Admin. Desde otra PC se ven igual y avisan
 que eso se hace en el mostrador (pedido del dueño, 2026-10-24).
 
-El copo de nieve de DESCONGELAR y el símbolo de APAGAR se dibujan acá (pedido
-del dueño, 2026-10-23): el emoji del cubito de hielo 🧊 salía como un
-rectángulo en la PC del mostrador, porque su Windows no lo trae, y al de
-apagar ⏻ le pasa lo mismo. Así se ven igual en cualquier PC. Las flechas
-rojas de REINICIAR también (pedido del dueño, 2026-10-24): antes era el 🔄
-azul, el mismo que quedó en el botón Operador de la barra de arriba.
+El copo de nieve de DESCONGELAR, el símbolo de APAGAR y las flechas de
+REINICIAR van dibujados (pcs_dibujos): los emojis salían como un rectángulo
+en el Windows del mostrador.
 
 Van debajo del fondo negro del mosaico, no adentro (pedido del dueño, mismo
 día): ver PanelControlPcs._armar_interfaz.
@@ -29,100 +26,23 @@ Cuáles son las prendidas y libres lo decide pcs_libres_repo: las PCs con un
 cliente nunca se tocan.
 """
 
-import math
-
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from control_pcs.repositories import pcs_libres_repo
 from control_pcs.ui.pcs_congelado_dialogo import DialogoCongelado
+from control_pcs.ui.pcs_dibujos import TAMANO_ICONO, icono_apagar, icono_copo_de_nieve, icono_reiniciar
 from control_pcs.ui.pcs_reiniciar_dialogo import DialogoApagar, DialogoReiniciar
 from ui.utils import aplicar_clase, manejar_errores, mostrar_info, solo_en_el_mostrador
 
-# Los íconos se dibujan grandes y Qt los achica al tamaño del botón: así salen
-# prolijos también en un monitor con la escala de Windows al 125 % o al 150 %.
-_LADO_DIBUJO = 64
-TAMANO_ICONO = QSize(18, 18)
-COLOR_HIELO = "#8FD8FF"
-COLOR_APAGAR = "#FF6B6B"
-# El mismo rojo que APAGAR (pedido del dueño, 2026-10-24: era el 🔄 azul, igual al de Operador).
-COLOR_REINICIAR = COLOR_APAGAR
-
-
-def _lienzo(color: str, grosor: float):
-    """Un dibujo transparente de _LADO_DIBUJO x _LADO_DIBUJO, y su pincel ya
-    listo para trazar con `color`."""
-    dibujo = QPixmap(_LADO_DIBUJO, _LADO_DIBUJO)
-    dibujo.fill(Qt.transparent)
-    pincel = QPainter(dibujo)
-    pincel.setRenderHint(QPainter.Antialiasing)
-    pincel.setPen(QPen(QColor(color), grosor, Qt.SolidLine, Qt.RoundCap))
-    return dibujo, pincel
-
-
-def icono_copo_de_nieve() -> QIcon:
-    """Un copo de nieve celeste: seis brazos, cada uno con dos pares de ramitas."""
-    dibujo, pincel = _lienzo(COLOR_HIELO, 5)
-    centro = _LADO_DIBUJO / 2
-    largo = _LADO_DIBUJO / 2 - 4
-
-    def punto(distancia, angulo):
-        return QPointF(centro + distancia * math.cos(angulo), centro - distancia * math.sin(angulo))
-
-    for brazo in range(6):
-        angulo = math.radians(90 + 60 * brazo)
-        pincel.drawLine(punto(0, 0), punto(largo, angulo))
-        for donde, ramita in ((0.45, 0.32), (0.72, 0.24)):
-            base = punto(largo * donde, angulo)
-            for lado in (-1, 1):
-                direccion = angulo + lado * math.radians(45)
-                pincel.drawLine(base, QPointF(base.x() + largo * ramita * math.cos(direccion),
-                                              base.y() - largo * ramita * math.sin(direccion)))
-    pincel.end()
-    return QIcon(dibujo)
-
-
-def icono_apagar() -> QIcon:
-    """El símbolo de encendido de siempre: un círculo abierto arriba con una
-    rayita que entra por la abertura."""
-    dibujo, pincel = _lienzo(COLOR_APAGAR, 6)
-    margen = 9
-    circulo = QRectF(margen, margen + 2, _LADO_DIBUJO - 2 * margen, _LADO_DIBUJO - 2 * margen)
-    # Qt mide los ángulos en dieciseisavos de grado, desde las 3 en contra del reloj.
-    pincel.drawArc(circulo, 125 * 16, 290 * 16)
-    pincel.drawLine(QPointF(_LADO_DIBUJO / 2, 5), QPointF(_LADO_DIBUJO / 2, _LADO_DIBUJO / 2))
-    pincel.end()
-    return QIcon(dibujo)
-
-
-def icono_reiniciar() -> QIcon:
-    """Dos flechas que giran en círculo, contra el reloj, cada una con su punta."""
-    dibujo, pincel = _lienzo(COLOR_REINICIAR, 6)
-    margen = 11
-    centro, radio = _LADO_DIBUJO / 2, _LADO_DIBUJO / 2 - margen
-    circulo = QRectF(margen, margen, 2 * radio, 2 * radio)
-    pincel.setBrush(QColor(COLOR_REINICIAR))
-    for desde in (25, 205):
-        pincel.drawArc(circulo, desde * 16, 125 * 16)
-        fin = math.radians(desde + 125)
-        punta = QPointF(centro + radio * math.cos(fin), centro - radio * math.sin(fin))
-        avance = QPointF(-math.sin(fin), -math.cos(fin))   # hacia donde gira
-        afuera = QPointF(math.cos(fin), -math.sin(fin))
-        trazo = pincel.pen()
-        pincel.setPen(Qt.NoPen)
-        pincel.drawPolygon(QPolygonF([punta + avance * 11, punta + afuera * 9, punta - afuera * 9]))
-        pincel.setPen(trazo)
-    pincel.end()
-    return QIcon(dibujo)
-
 
 class BotonesParaLasLibres(QWidget):
-    def __init__(self, estados, parent=None):
+    def __init__(self, estados, usuario=None, parent=None):
         """`estados` devuelve lo último que leyó la pantalla de PCs
-        (pcs_repo.estado_estaciones): las PCs, sin la PlayStation 5."""
+        (pcs_repo.estado_estaciones): las PCs, sin la PlayStation 5. `usuario` es
+        quien está logueado (el Administrador ve ACTUALIZAR CLIENTES en DESCONGELAR)."""
         super().__init__(parent)
         self._estados = estados
+        self._usuario = usuario
 
         layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -150,7 +70,7 @@ class BotonesParaLasLibres(QWidget):
     @solo_en_el_mostrador
     @manejar_errores
     def _descongelar(self):
-        DialogoCongelado(None, self._estados(), self).exec()
+        DialogoCongelado(None, self._estados(), self._usuario, self).exec()
 
     @solo_en_el_mostrador
     @manejar_errores

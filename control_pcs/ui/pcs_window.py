@@ -297,7 +297,7 @@ class PanelControlPcs(QWidget):
         # dueño, 2026-10-22), abajo a la izquierda y AFUERA del fondo negro: el fondo
         # negro y el panel de la derecha terminan más arriba, parejos, y los botones
         # quedan en su propia franja, sobre el gris claro.
-        self.botones_libres = BotonesParaLasLibres(lambda: self._estados, self)
+        self.botones_libres = BotonesParaLasLibres(lambda: self._estados, self.usuario, self)
         # CONTROL DE STOCK a la derecha de APAGAR (pedido del dueño, 2026-10-24): la
         # lista del kiosko para que la supervisora cuente el estante. Lo ven todos y
         # solo el Admin lo abre (ver ui/control_stock_window.py).
@@ -791,7 +791,7 @@ class PanelControlPcs(QWidget):
         elif elegida == accion_mantenimiento:
             self._mantenimiento(estacion, orden_mantenimiento)
         elif accion_congelar is not None and elegida == accion_congelar:
-            DialogoCongelado(estacion, self._estados, self).exec()
+            DialogoCongelado(estacion, self._estados, self.usuario, self).exec()
 
     @solo_en_el_mostrador
     @manejar_errores

@@ -849,6 +849,33 @@ HOJA_DE_ESTILOS = """
     QLabel#tituloTarjeta:disabled, QLabel#detalleTarjeta:disabled {
         color: #A7ADB8;
     }
+    /* Tarjetas con tono (Congelar / descongelar PCs, 2026-10-28): la roja es lo
+       peligroso (Descongelar y reiniciar), la verde Actualizar clientes. */
+    QPushButton[clase="tarjetaMenu"][tono="rojo"] {
+        border-color: #E9C3C6;
+        border-bottom-color: #D49AA0;
+    }
+    QPushButton[clase="tarjetaMenu"][tono="rojo"]:hover {
+        background-color: #FFF6F6;
+        border-color: #C96870;
+        border-bottom-color: #A6323C;
+    }
+    QPushButton[clase="tarjetaMenu"][tono="rojo"] QLabel#tituloTarjeta {
+        color: #A6323C;
+    }
+    QPushButton[clase="tarjetaMenu"][tono="verde"] {
+        background-color: #F1F9F4;
+        border-color: #BCE3CA;
+        border-bottom-color: #8CCBA4;
+    }
+    QPushButton[clase="tarjetaMenu"][tono="verde"]:hover {
+        background-color: #E6F5EC;
+        border-color: #34C374;
+        border-bottom-color: #1F9D55;
+    }
+    QPushButton[clase="tarjetaMenu"][tono="verde"] QLabel#tituloTarjeta {
+        color: #146B3A;
+    }
     /* Teclas con relieve (como la barra y Venta): se hunden al apretarlas. */
     QPushButton[clase="teclaBlanca"], QPushButton[clase="teclaAzul"],
     QPushButton[clase="teclaVerde"], QPushButton[clase="teclaRoja"] {
@@ -930,8 +957,28 @@ HOJA_DE_ESTILOS = """
         border: none;
         color: #FFFFFF;
     }
-    QTableWidget#tablaEstaciones, QTableWidget#tablaReservas {
+    QTableWidget#tablaEstaciones, QTableWidget#tablaReservas, QTableWidget#tablaCongelado {
         border-radius: 10px;
+    }
+    /* Las casillas de Congelar / descongelar PCs, como las QCheckBox del programa. */
+    QTableWidget#tablaCongelado::indicator {
+        width: 17px;
+        height: 17px;
+        border: 1.5px solid #B7BFCC;
+        border-radius: 4px;
+        background-color: #FFFFFF;
+    }
+    QTableWidget#tablaCongelado::indicator:checked {
+        background-color: #2F6FED;
+        border-color: #2F6FED;
+    }
+    QLineEdit#campoClaveShadow {
+        font-size: 15px;
+        padding: 8px 10px;
+    }
+    QLabel#ayudaChica {
+        color: #6B7585;
+        font-size: 11px;
     }
     QLabel#nombreEstacion {
         font-size: 22px;

@@ -11,6 +11,7 @@ en la base. Lo que hace cada PC con su CmdTool se prueba en el Cliente PC
 import json
 import os
 from datetime import datetime, timedelta
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -145,10 +146,85 @@ class TestVentana(BaseConBaseTemporal):
             dialogo.campo_clave.setText(CLAVE)
             dialogo.boton_congelar.click()
 
-            self.assertEqual(respuesta(pc1), congelado_repo.texto_salteada())
-            self.assertEqual(respuesta(pc2), "Esperando que la PC conteste...")
+            # Cada respuesta con su marca: ✖ no se pudo, ⏳ todavía no contestó.
+            self.assertEqual(respuesta(pc1), f"✖  {congelado_repo.texto_salteada()}")
+            self.assertEqual(respuesta(pc2), "⏳  Esperando que la PC conteste...")
             self.assertEqual(set(dialogo._esperando), {pc2})
             self.assertIn("1 salteada", dialogo.etiqueta_estado.text())
+        finally:
+            dialogo.close()
+
+
+class TestVentanaNueva(BaseConBaseTemporal):
+    """El diseño de la maqueta "A" (2026-10-28): los números de la cabecera y
+    ACTUALIZAR CLIENTES, que solo ve el Administrador."""
+
+    ADMIN = {"rol": dominio.ROL_ADMIN}
+    OPERADOR = {"rol": dominio.ROL_EMPLEADA}
+
+    def setUp(self):
+        super().setUp()
+        self.ocupada = pcs_repo.crear_estacion("PC1")
+        self.libre = pcs_repo.crear_estacion("PC2")
+        self.apagada = pcs_repo.crear_estacion("PC3")
+        pcs_repo.registrar_conexion(self.libre)
+        ocupar(self.ocupada)
+
+    def abrir(self, usuario=None):
+        """La ventana del botón DESCONGELAR. Cada prueba la cierra adentro (y no con
+        addCleanup, que corre después de borrar la base temporal): al cerrar, toca la base."""
+        dialogo = DialogoCongelado(None, pcs_repo.estado_estaciones(), usuario)
+        self.addCleanup(dialogo.deleteLater)
+        return dialogo
+
+    def test_la_cabecera_cuenta_las_elegidas_y_como_estan(self):
+        dialogo = self.abrir()
+        try:
+            self.assertEqual(dialogo.pastilla_elegidas.text(), "1 ELEGIDA")
+            self.assertEqual(dialogo.pastilla_con_cliente.text(), "1 CON CLIENTE")
+            self.assertEqual(dialogo.pastilla_sin_conexion.text(), "1 SIN CONEXIÓN")
+            # Cambia sola al marcar y desmarcar.
+            dialogo._marcar(lambda _item: True)
+            self.assertEqual(dialogo.pastilla_elegidas.text(), "3 ELEGIDAS")
+            dialogo._marcar(lambda _item: False)
+            self.assertEqual(dialogo.pastilla_elegidas.text(), "0 ELEGIDAS")
+        finally:
+            dialogo.close()
+
+    def test_si_todas_tienen_conexion_no_muestra_esa_pastilla(self):
+        pcs_repo.registrar_conexion(self.apagada)
+        dialogo = self.abrir()
+        try:
+            self.assertTrue(dialogo.pastilla_sin_conexion.isHidden())
+            self.assertFalse(dialogo.pastilla_con_cliente.isHidden())
+        finally:
+            dialogo.close()
+
+    def test_el_admin_ve_actualizar_clientes_y_abre_la_ventana_de_siempre(self):
+        dialogo = self.abrir(self.ADMIN)
+        try:
+            self.assertEqual(dialogo.boton_actualizar.accessibleName(), "Actualizar clientes")
+            with mock.patch("control_pcs.ui.pcs_congelado_dialogo.DialogoActualizarCliente") as ventana:
+                dialogo.boton_actualizar.click()
+            ventana.assert_called_once_with(dialogo)
+            ventana.return_value.exec.assert_called_once()
+        finally:
+            dialogo.close()
+
+    def test_un_operador_no_ve_actualizar_clientes(self):
+        for usuario in (self.OPERADOR, None):
+            dialogo = self.abrir(usuario)
+            try:
+                self.assertIsNone(dialogo.boton_actualizar)
+            finally:
+                dialogo.close()
+
+    def test_desde_otra_pc_tampoco(self):
+        # La versión nueva se firma con la clave que vive en el mostrador.
+        with mock.patch("control_pcs.ui.pcs_congelado_dialogo.modo_remoto.es_copia_remota", return_value=True):
+            dialogo = self.abrir(self.ADMIN)
+        try:
+            self.assertIsNone(dialogo.boton_actualizar)
         finally:
             dialogo.close()
 

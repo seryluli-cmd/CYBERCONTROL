@@ -34,7 +34,8 @@ TEXTO_SOLO_ADMIN = "Solo el Administrador"
 def cabecera_oscura(icono: str, titulo: str, detalle: str = "") -> QFrame:
     """La cabecera oscura de la ventana: dibujito, título y una línea de detalle a la
     izquierda; a la derecha, las pastillas que se le agreguen con `agregar_pastilla`.
-    `cabecera.detalle` es la etiqueta del detalle, por si cambia."""
+    `cabecera.detalle` es la etiqueta del detalle, por si cambia, y `cabecera.icono` la
+    del dibujito (para ponerle uno dibujado: hay emojis que el mostrador no trae)."""
     cabecera = QFrame()
     cabecera.setObjectName("cabeceraOscura")
     capa = QVBoxLayout(cabecera)
@@ -43,6 +44,7 @@ def cabecera_oscura(icono: str, titulo: str, detalle: str = "") -> QFrame:
 
     etiqueta_icono = QLabel(icono)
     etiqueta_icono.setObjectName("iconoCabecera")
+    cabecera.icono = etiqueta_icono
     etiqueta_titulo = QLabel(titulo)
     etiqueta_titulo.setObjectName("tituloCabecera")
     cabecera.detalle = QLabel(detalle)
@@ -117,15 +119,19 @@ def titulo_de_seccion(texto: str) -> QLabel:
     return etiqueta
 
 
-def tarjeta_de_menu(icono: str, titulo: str, detalle: str, al_apretar, alto: int = 62) -> QPushButton:
+def tarjeta_de_menu(icono: str, titulo: str, detalle: str, al_apretar, alto: int = 62,
+                    tono: str = "") -> QPushButton:
     """
     Un botón grande con el dibujito a la izquierda, el título en mayúscula y negrita
     y debajo una línea de para qué es. El texto lo dibujan etiquetas de adentro, así
     que `text()` queda vacío: el título está en `accessibleName()` (lo usan las
-    pruebas y los lectores de pantalla).
+    pruebas y los lectores de pantalla). `tono`: TONO_ROJO (lo peligroso, el título en
+    rojo) o TONO_VERDE (fondo verdecito); sin tono, blanca.
     """
     boton = QPushButton()
     aplicar_clase(boton, "tarjetaMenu")
+    if tono:
+        boton.setProperty("tono", tono)
     boton.setAccessibleName(titulo)
     boton.setFixedHeight(alto)
     boton.clicked.connect(al_apretar)
