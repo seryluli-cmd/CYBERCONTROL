@@ -213,7 +213,7 @@ abra no alcanza si los tests no pasan.
 | `dominio.es_admin(usuario)` | se pregunta si alguien es Administrador |
 | `ventas_repo.subtotal_linea(linea)` | se calcula lo que se cobra por un renglón |
 | `ventas_repo.total_carrito(lineas)` | se suma el total de una venta en curso |
-| `database.conexion_db()` | se abre una transacción contra la base |
+| `database.conexion_db()` | se abre una transacción contra la base. Todo lo que graba la abre así (con `get_connection`, que espera `ESPERA_BASE_OCUPADA_SEGUNDOS`, 30 s, si otra conexión la tiene ocupada; con la espera de fábrica de 5 s la venta fallaba con "database is locked") |
 | `database.DATA_DIR` / `DB_PATH` | se resuelve dónde viven los datos (código vs `.exe`) |
 | `database.hash_clave()` / `verificar_clave()` | se maneja una contraseña |
 | `usuarios_repo.tiene_permiso(usuario, clave)` | se decide si alguien puede entrar a algo |
@@ -795,10 +795,23 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   cada 30 s (cada intento sin respuesta traba la ventana hasta 2 s,
   `cliente.ESPERA_CONECTAR_SEGUNDOS`); (4) el cierre forzoso de la caja y dar
   de baja las sesiones vencidas lo hace solo el mostrador; (5) una consulta de reporte lenta frena las
-  ventas del mostrador mientras dura (SQLite no deja grabar mientras otro lee):
-  todo lo que se lee desde otra PC tiene que andar rápido con un año de ventas
+  ventas del mostrador mientras dura (sin WAL, SQLite no deja grabar mientras otro
+  lee): cada conexión de `get_connection` espera hasta 30 s
+  (`database.ESPERA_BASE_OCUPADA_SEGUNDOS`, 2026-10-28; con la espera de fábrica de
+  5 s la venta FALLABA con "database is locked"), así que la venta espera y se
+  graba, pero el mostrador queda trabado mientras tanto. Todo lo que se lee desde
+  otra PC tiene que andar rápido con un año de ventas
   (medido el 2026-10-18: todo < 0,2 s con 110.000 ventas, después de sumar
-  `idx_venta_pagos_venta`; sin ese índice Por Operador tardaba 6 minutos).
+  `idx_venta_pagos_venta`; sin ese índice Por Operador tardaba 6 minutos). No
+  pases la base a WAL sin hablarlo: deja archivos -wal/-shm y cambia cómo se
+  recupera una copia; (6) si la red se corta DESPUÉS de mandar un pedido (se
+  perdió la respuesta o pasó la espera), el mostrador pudo haberlo grabado:
+  `admin_remoto/cliente.py` lo distingue (`SinRespuesta`, una `SinConexion`) y
+  avisa que se fije antes de repetirlo. No lo juntes con el "No encuentro el
+  CyberBIOS del mostrador", que es solo para cuando el pedido no llegó (repetir a
+  ciegas una compra la carga dos veces y suma el stock doble; lo vigila
+  `TestSeCortaEsperandoLaRespuesta`). El saludo y el ingreso no graban nada: ahí
+  un corte da un aviso neutro.
 - **Un cierre hecho tras días sin cerrar NO aparece en las filas de hoy.** Cubre
   desde el cierre anterior, así que queda anotado en el turno viejo (días atrás) y
   el Resumen del Día de hoy sale en cero. No es un error ni plata perdida: el

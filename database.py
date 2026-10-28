@@ -39,6 +39,15 @@ BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) \
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "kiosko.db")
 
+# Cuánto espera una conexión cuando otra tiene la base ocupada, antes de rendirse
+# con "database is locked". La base usa el journal clásico (no WAL): mientras
+# alguien lee (un reporte pedido desde otra PC, la copia automática), nadie puede
+# grabar. Con la espera de fábrica de sqlite3 (5 s), una venta que chocaba con
+# una lectura un poco más larga FALLABA en vez de esperar; con 30 s la venta
+# espera a que termine la lectura y se graba. No se pasó a WAL a propósito: deja
+# archivos -wal/-shm al lado de la base y cambia la forma de recuperar una copia.
+ESPERA_BASE_OCUPADA_SEGUNDOS = 30
+
 
 def hash_clave(texto_plano: str, salt: str = None) -> str:
     """
@@ -81,7 +90,7 @@ def get_connection() -> sqlite3.Connection:
     posición (fila[1]), lo cual hace el código mucho más legible.
     """
     os.makedirs(DATA_DIR, exist_ok=True)
-    conexion = sqlite3.connect(DB_PATH)
+    conexion = sqlite3.connect(DB_PATH, timeout=ESPERA_BASE_OCUPADA_SEGUNDOS)
     conexion.row_factory = sqlite3.Row
     # Activamos el chequeo de claves foráneas: SQLite lo trae desactivado
     # por defecto, y sin esto no se respetarían las relaciones entre tablas.

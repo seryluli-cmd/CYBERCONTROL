@@ -9,6 +9,9 @@ admin_remoto/ y repositories/admin_remoto_repo.py):
 - Quién puede entrar: solo un Administrador, y solo con la entrada prendida.
 - El servidor del mostrador: lista blanca, sesiones atadas a la PC que entró,
   bloqueo tras claves mal puestas, el "quién lo hizo" lo pone el mostrador.
+- Una lectura larga (un reporte pedido desde otra PC) no hace fallar una venta
+  del mostrador: la venta espera. Y si la red se corta después de mandar un
+  pedido, el aviso dice que el mostrador pudo haberlo grabado.
 - Una copia remota de verdad (este proceso) contra un mostrador de prueba en
   otro proceso (tests/mostrador_de_prueba.py): las pantallas abren sin errores,
   lo que se guarda queda en la base del mostrador, y esta copia nunca abre ni
@@ -30,7 +33,7 @@ import tempfile
 import threading
 import unittest
 from datetime import date, datetime
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -435,6 +438,53 @@ class TestServidorDelMostrador(_ConServidor):
         self.assertNotIn("secreta", log)
 
 
+class TestUnaLecturaLargaNoTiraUnaVenta(BaseConBaseTemporal):
+    """La base usa el journal clásico (no WAL): mientras alguien lee (un reporte
+    pedido desde otra PC, la copia automática), nadie puede grabar. Con la espera
+    de fábrica de sqlite3 (5 s), una venta que chocaba con una lectura más larga
+    fallaba con "database is locked"; cada conexión del programa espera ahora
+    database.ESPERA_BASE_OCUPADA_SEGUNDOS."""
+
+    def test_cada_conexion_espera_30_segundos_si_la_base_esta_ocupada(self):
+        with database.conexion_db() as conexion:
+            self.assertEqual(conexion.execute("PRAGMA busy_timeout").fetchone()[0], 30000)
+
+    def test_una_venta_espera_a_que_termine_la_lectura_y_se_graba(self):
+        # Muestra el mecanismo (la venta espera y se graba), pero con una lectura
+        # de 0,3 s también pasaría con la espera de fábrica de 5 s: lo que vigila
+        # que sean 30 s es la prueba de arriba (PRAGMA busy_timeout).
+        from repositories import articulos_repo
+        rubro = articulos_repo.listar_rubros()[0]["id"]
+        articulos_repo.crear_articulo("111", "Chicle", None, rubro, 100.0, 50.0, 0)
+        admin = usuarios_repo.listar_usuarios()[0]
+
+        # Una lectura en curso: mientras su transacción siga abierta, la base no
+        # deja grabar a nadie.
+        lectora = sqlite3.connect(database.DB_PATH, check_same_thread=False)
+        apurada = sqlite3.connect(database.DB_PATH, timeout=0)
+        try:
+            lectora.execute("BEGIN")
+            lectora.execute("SELECT COUNT(*) FROM ventas").fetchone()
+            # Una conexión que no espera choca contra la lectura...
+            with self.assertRaisesRegex(sqlite3.OperationalError, "locked"):
+                with apurada:
+                    apurada.execute("UPDATE configuracion SET valor = '1' WHERE clave = 'fondo_cambio'")
+            # ...y la venta, que sí espera, se graba apenas termina la lectura.
+            termina = threading.Timer(0.3, lectora.rollback)
+            termina.start()
+            try:
+                venta_id = ventas_repo.confirmar_venta(
+                    admin["id"], [{"codigo": "111", "descripcion": "Chicle", "cantidad": 1, "precio_unitario": 100.0}],
+                    [{"metodo": dominio.PAGO_EFECTIVO, "monto": 100.0}],
+                )
+            finally:
+                termina.join()
+        finally:
+            apurada.close()
+            lectora.close()
+        self.assertEqual(ventas_repo.buscar_venta(venta_id)[0]["estado"], dominio.VENTA_CONFIRMADA)
+
+
 class TestPorLaRed(_ConServidor):
     """El ida y vuelta de verdad, por HTTP, con el servidor de red de siempre."""
 
@@ -486,6 +536,8 @@ class TestPorLaRed(_ConServidor):
         with self.assertRaises(cliente.SinConexion) as error:
             cliente.conectar("127.0.0.1", _puerto_libre())
         self.assertIn("No encuentro el CyberBIOS del mostrador", str(error.exception))
+        # El pedido no llegó a ningún lado: no hay nada guardado que mirar antes de repetirlo.
+        self.assertNotIsInstance(error.exception, cliente.SinRespuesta)
 
     def test_conectar_espera_poco_y_la_respuesta_lo_de_siempre(self):
         # Con el programa del mostrador cerrado, Windows no contesta nada: cada pedido
@@ -531,6 +583,92 @@ class _EnchufeQueAnota:
 
     def __getattr__(self, nombre):
         return getattr(self._enchufe, nombre)
+
+
+class _MostradorQueNoContesta(BaseHTTPRequestHandler):
+    """Lee el pedido entero, lo anota y no contesta: como un mostrador que lo
+    recibió (y pudo haberlo grabado) justo antes de que se cortara la red. Con
+    `suelta` sin marcar se queda callado hasta que la prueba termina, como uno
+    que tarda más que la espera de la otra PC."""
+
+    def log_message(self, formato, *args):
+        pass
+
+    def do_POST(self):
+        cuerpo = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        self.server.pedidos.append(cuerpo)
+        self.server.llego.set()
+        self.server.suelta.wait(10)
+        # Vuelve sin mandar nada: el servidor cierra la conexión sin respuesta.
+
+
+class TestSeCortaEsperandoLaRespuesta(unittest.TestCase):
+    """Si el pedido ya llegó al mostrador y lo que se perdió fue la respuesta, el
+    mostrador pudo haberlo grabado: repetir una compra a ciegas la cargaría dos
+    veces y sumaría el stock doble. El aviso no puede ser el de "no encuentro el
+    mostrador" (ese es para cuando el pedido no llegó)."""
+
+    def setUp(self):
+        self.mostrador = ThreadingHTTPServer(("127.0.0.1", 0), _MostradorQueNoContesta)
+        self.mostrador.pedidos = []
+        self.mostrador.llego = threading.Event()
+        self.mostrador.suelta = threading.Event()
+        self.mostrador.suelta.set()  # corta apenas lee el pedido
+        threading.Thread(target=self.mostrador.serve_forever, daemon=True).start()
+        self.addCleanup(self.mostrador.server_close)
+        self.addCleanup(self.mostrador.shutdown)
+        self.addCleanup(self.mostrador.suelta.set)
+        self.conexion = cliente.ConexionConElMostrador("127.0.0.1", self.mostrador.server_address[1])
+        self.conexion._token = "sesion de prueba"  # como si ya hubiera entrado
+
+    def _cargar_una_compra(self):
+        compra = [{"codigo": "111", "cantidad": 10, "costo_unitario": 650.0}]
+        with self.assertRaises(cliente.SinRespuesta) as error:
+            self.conexion.llamar("compras_repo", "registrar_compra", (1, compra), {})
+        # El pedido llegó entero al mostrador: por eso no vale el "no lo encuentro".
+        self.assertTrue(self.mostrador.llego.wait(5))
+        self.assertEqual([pedido["funcion"] for pedido in self.mostrador.pedidos], ["registrar_compra"])
+        return str(error.exception)
+
+    def test_se_corta_la_red_despues_de_mandar_la_compra(self):
+        mensaje = self._cargar_una_compra()
+        self.assertNotIn("No encuentro", mensaje)
+        self.assertIn("puede que el mostrador lo haya guardado igual", mensaje)
+        self.assertIn("fijate antes de repetirlo", mensaje)
+
+    def test_pasan_los_segundos_de_espera_sin_respuesta(self):
+        self.mostrador.suelta.clear()  # lee el pedido y se queda callado
+        with mock.patch.object(cliente, "ESPERA_LLAMADA_SEGUNDOS", 0.5):
+            mensaje = self._cargar_una_compra()
+        self.assertIn("fijate antes de repetirlo", mensaje)
+
+    def test_al_entrar_no_habla_de_algo_guardado(self):
+        # El saludo y el ingreso no graban nada del negocio: si se corta la
+        # respuesta, no hay nada que revisar antes de repetirlo.
+        for pedir in (self.conexion.hola, self.conexion.nombres_para_entrar,
+                      lambda: self.conexion.entrar("Admin", "1234")):
+            with self.subTest(pedir=pedir), self.assertRaises(cliente.SinConexion) as error:
+                pedir()
+            self.assertNotIsInstance(error.exception, cliente.SinRespuesta)
+            self.assertIn("no contestó a tiempo", str(error.exception))
+
+    def test_un_nombre_de_mostrador_con_espacios_no_dice_que_pudo_guardar(self):
+        # http.client lo rechaza antes de mandar nada (no es un corte de la red).
+        conexion = cliente.ConexionConElMostrador("PC MOSTRADOR", self.mostrador.server_address[1])
+        conexion._token = "sesion de prueba"
+        with self.assertRaises(cliente.SinConexion) as error:
+            conexion.llamar("compras_repo", "registrar_compra", (1, []), {})
+        self.assertNotIsInstance(error.exception, cliente.SinRespuesta)
+        self.assertIn("no puede tener espacios", str(error.exception))
+        self.assertEqual(self.mostrador.pedidos, [])
+
+    def test_las_pantallas_lo_muestran_como_un_aviso(self):
+        # Es una SinConexion (un ValueError): manejar_errores lo muestra con su
+        # mensaje, y lo que ya atrapaba SinConexion (salir) lo sigue atrapando.
+        self.assertTrue(issubclass(cliente.SinRespuesta, cliente.SinConexion))
+        self.assertTrue(issubclass(cliente.SinRespuesta, ValueError))
+        self.conexion.salir()
+        self.assertFalse(self.conexion.adentro)
 
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,9 @@ Errores: un rechazo "de negocio" del mostrador (ValueError, PermissionError)
 llega como la misma excepción con el mismo mensaje, así las pantallas lo
 muestran igual que en el mostrador. Sin red, o con el mostrador cerrado, es
 SinConexion (un ValueError: las pantallas lo muestran como un aviso, no como un
-error del programa).
+error del programa). Si el pedido ya había salido y lo que se cortó fue la
+espera de la respuesta, es SinRespuesta (una SinConexion): el mostrador pudo
+haberlo hecho, y el aviso dice que se fije antes de repetirlo.
 """
 
 import http.client
@@ -69,8 +71,27 @@ class _ManejadorHttp(urllib.request.HTTPHandler):
 _abrir = urllib.request.build_opener(urllib.request.ProxyHandler({}), _ManejadorHttp).open
 
 
+def _mandar(pedido, espera: float) -> bytes:
+    """Manda el pedido y devuelve el cuerpo de la respuesta. Un 400/404/500 viene
+    igual con su explicación en JSON: se lee como cualquier otra respuesta."""
+    try:
+        with _abrir(pedido, timeout=espera) as respuesta:
+            return respuesta.read()
+    except urllib.error.HTTPError as error:
+        return error.read()
+
+
 class SinConexion(ValueError):
     """No se pudo hablar con el CyberBIOS del mostrador."""
+
+
+class SinRespuesta(SinConexion):
+    """El pedido salió hacia el mostrador, pero se cortó la red (o pasaron los
+    segundos de espera) antes de que llegara la respuesta. A diferencia de
+    SinConexion a secas, el mostrador pudo haberlo hecho: repetir a ciegas una
+    compra (compras_repo.registrar_compra) la cargaría dos veces y sumaría el
+    stock doble. Es una SinConexion para que lo que ya atrapa SinConexion la siga
+    atrapando."""
 
 
 class _ErrorDelMostrador(Exception):
@@ -95,21 +116,47 @@ class ConexionConElMostrador:
 
     # --- el ida y vuelta ---------------------------------------------------
 
-    def _pedir(self, ruta: str, cuerpo: dict, espera: float) -> dict:
+    def _pedir(self, ruta: str, cuerpo: dict, espera: float, puede_haber_grabado: bool = True) -> dict:
+        """`puede_haber_grabado`: False en lo que nunca graba nada del negocio
+        (el saludo y el ingreso). Ahí una respuesta cortada no deja nada que
+        revisar, y avisar "puede haberlo guardado" confundiría a quien solo estaba
+        abriendo el programa."""
         datos = json.dumps(cuerpo).encode("utf-8")
         pedido = urllib.request.Request(
             self._base + ruta, data=datos, method="POST", headers={"Content-Type": "application/json"},
         )
+        # urllib separa las dos fallas que importan acá: lo que sale mal al
+        # conectar o al MANDAR el pedido llega envuelto en URLError (el mostrador
+        # no lo recibió entero, así que no hizo nada y se puede repetir); lo que
+        # sale mal DESPUÉS, esperando o leyendo la respuesta, llega suelto
+        # (TimeoutError, la conexión cortada, una respuesta a medias). En ese
+        # caso el pedido ya estaba allá y el mostrador pudo haberlo grabado.
+        # Una sola excepción: http.client.InvalidURL (el nombre del mostrador con un
+        # espacio, en un acceso directo con --mostrador "PC MOSTRADOR") sale ANTES
+        # de mandar nada, pero urllib no la envuelve porque no es un OSError.
         try:
-            with _abrir(pedido, timeout=espera) as respuesta:
-                contenido = respuesta.read()
-        except urllib.error.HTTPError as error:
-            # 400/404/500 vienen igual con su explicación en JSON.
-            contenido = error.read()
-        except (urllib.error.URLError, OSError) as error:
+            contenido = _mandar(pedido, espera)
+        except urllib.error.URLError as error:
             raise SinConexion(
                 f"No encuentro el CyberBIOS del mostrador ({self.mostrador}). Fijate que esa PC esté "
                 "prendida, con el programa abierto, y que esta PC tenga red."
+            ) from error
+        except http.client.InvalidURL as error:
+            raise SinConexion(
+                f"\"{self.mostrador}\" no sirve como nombre del mostrador (no puede tener espacios). "
+                "Usá la IP de esa PC, por ejemplo --mostrador 192.168.0.10."
+            ) from error
+        except (OSError, http.client.HTTPException) as error:
+            if not puede_haber_grabado:
+                raise SinConexion(
+                    f"El CyberBIOS del mostrador ({self.mostrador}) no contestó a tiempo. "
+                    "Probá de nuevo en un momento."
+                ) from error
+            raise SinRespuesta(
+                f"Se cortó la comunicación con el CyberBIOS del mostrador ({self.mostrador}) mientras "
+                "esperaba su respuesta (se cayó la red o tardó demasiado).\n\n"
+                "Si estabas guardando algo (una compra, un precio, una anulación), puede que el "
+                "mostrador lo haya guardado igual: fijate antes de repetirlo, así no queda dos veces."
             ) from error
         try:
             respuesta = json.loads(contenido.decode("utf-8"))
@@ -124,13 +171,14 @@ class ConexionConElMostrador:
 
     def hola(self) -> dict:
         """{"activo", "misma_version"} del mostrador (SinConexion si no está)."""
-        return self._pedir("hola", {"huella": self._huella}, ESPERA_HOLA_SEGUNDOS)
+        return self._pedir("hola", {"huella": self._huella}, ESPERA_HOLA_SEGUNDOS, puede_haber_grabado=False)
 
     def nombres_para_entrar(self) -> list:
         """Los Administradores del mostrador, para la lista de la pantalla de
         ingreso."""
         try:
-            return self._pedir("usuarios", {"huella": self._huella}, ESPERA_HOLA_SEGUNDOS)["nombres"]
+            return self._pedir("usuarios", {"huella": self._huella}, ESPERA_HOLA_SEGUNDOS,
+                               puede_haber_grabado=False)["nombres"]
         except _ErrorDelMostrador as error:
             raise PermissionError(error.mensaje) from None
 
@@ -141,6 +189,7 @@ class ConexionConElMostrador:
         try:
             respuesta = self._pedir(
                 "entrar", {"huella": self._huella, "nombre": nombre, "clave": clave}, ESPERA_HOLA_SEGUNDOS,
+                puede_haber_grabado=False,
             )
         except _ErrorDelMostrador as error:
             if error.tipo == "Clave":
@@ -156,7 +205,7 @@ class ConexionConElMostrador:
         if token is None:
             return
         try:
-            self._pedir("salir", {"token": token}, ESPERA_HOLA_SEGUNDOS)
+            self._pedir("salir", {"token": token}, ESPERA_HOLA_SEGUNDOS, puede_haber_grabado=False)
         except (SinConexion, _ErrorDelMostrador):
             pass
 
