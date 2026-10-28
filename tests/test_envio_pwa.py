@@ -240,6 +240,39 @@ class TestLoQueViaja(_BaseDeEnvios):
 
         self.assertEqual((datos["registradoPor"], datos["caja"], datos["importe"]), ("Dueño", None, 700.0))
 
+    def test_viaja_quien_abrio_la_caja_y_a_que_hora(self):
+        self._turno_de_toby()
+        cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(14, 0))
+
+        datos = self._datos(cierre["id"])
+        campos = envio_pwa_repo.a_campos_firestore(datos)["fields"]
+
+        self.assertEqual((datos["abiertaPor"], datos["abiertaEn"]), ("TOBY", _a_las(5, 55)))
+        self.assertEqual(campos["abiertaPor"], {"stringValue": "TOBY"})
+        self.assertEqual(_utc(campos["abiertaEn"]["timestampValue"]), _a_las(5, 55))
+
+    def test_en_ausencia_viaja_quien_abrio_no_quien_cerro(self):
+        self._turno_de_toby()
+        relevo_repo.cierre_forzoso_si_corresponde(_a_las(14, 31))
+        relevo_repo.abrir_caja(self.gabriela_id, 50000.0, _a_las(14, 40))
+        cierre = relevo_repo.cerrar_para_entrar(self.toby_id, relevo_repo.SITUACION_CERRAR_LA_DE_OTRA, _a_las(22, 10))
+
+        datos = self._datos(cierre["id"])
+
+        self.assertEqual((datos["abiertaPor"], datos["abiertaEn"], datos["cerradoPor"]),
+                         ("Gabriela", _a_las(14, 40), "TOBY"))
+
+    def test_sin_caja_no_viaja_quien_la_abrio(self):
+        self._vender(self.admin_id, _a_las(9), 700.0)
+        cierre = turnos_repo.cerrar_turno(self.admin_id, ahora_dt=_a_las(14, 0))
+
+        datos = self._datos(cierre["id"])
+        campos = envio_pwa_repo.a_campos_firestore(datos)["fields"]
+
+        self.assertEqual((datos["abiertaPor"], datos["abiertaEn"]), (None, None))
+        self.assertNotIn("abiertaPor", campos)
+        self.assertNotIn("abiertaEn", campos)
+
     def test_el_domingo_va_como_t1(self):
         self._turno_de_toby(DOMINGO)
         cierre = turnos_repo.cerrar_turno(self.toby_id, ahora_dt=_a_las(18, 0, DOMINGO))

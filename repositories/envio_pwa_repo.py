@@ -46,7 +46,8 @@ Reglas:
   la app (mayúsculas incluidas); si no, se ve sin color y no entra en sus
   estadísticas. No hacen falta contraseñas compartidas: el PIN de la app no
   participa. Van además campos que la app ignora y sirven para distinguirlo:
-  origen, cierreId, caja, forzoso y cerradoPor.
+  origen, cierreId, caja, forzoso y cerradoPor; y, con caja, quién la abrió y a
+  qué hora (abiertaPor, abiertaEn), que la app muestra al tocar el cierre.
 - Desde otra PC (admin_remoto) no hay nada de esto: la cola y el hilo son del
   mostrador.
 """
@@ -202,7 +203,9 @@ def datos_del_cierre(conexion, cierre_id: int) -> dict:
     comentario del módulo): importe, efectivo, digital, turno, registradoPor,
     fecha (date: el día en que arrancó el turno), creadoEn (datetime: la hora
     real del cierre), más origen, cierreId, caja (None sin caja), forzoso,
-    enAusencia, cerradoPor y "detalle": el resumen tal como lo muestra la tarjeta
+    enAusencia, cerradoPor, abiertaPor y abiertaEn (quién abrió la caja y a qué
+    hora, pedido del dueño 2026-10-28: "La inició X a las 06:20"; None sin caja)
+    y "detalle": el resumen tal como lo muestra la tarjeta
     del Cierre de Turno (pedido del dueño, 2026-10-26: tocar el cierre en la app
     y ver lo mismo que en el programa): el Cambio Fijo, lo que había que retirar,
     cada negocio de dominio.NEGOCIOS_DEL_CIERRE con su efectivo y su digital, qué
@@ -241,6 +244,9 @@ def datos_del_cierre(conexion, cierre_id: int) -> dict:
         "forzoso": bool(caja["cierre_forzoso"]),
         "enAusencia": bool(caja["cerrada_en_ausencia"]),
         "cerradoPor": cierre["cerrado_por"],
+        # Quien ABRIÓ la caja, no la responsable: si hubo un relevo son distintas.
+        "abiertaPor": caja["responsables"][0] if caja["caja_numero"] is not None else None,
+        "abiertaEn": datetime.fromisoformat(caja["abierta_en"]) if caja["abierta_en"] else None,
         "detalle": {
             "cambioFijo": round(resumen["cambio_inicial"], 2),
             "aRetirar": efectivo,
@@ -313,6 +319,9 @@ def a_campos_firestore(datos: dict) -> dict:
     }
     if datos["caja"] is not None:
         campos["caja"] = {"integerValue": str(datos["caja"])}
+    if datos["abiertaEn"] is not None:
+        campos["abiertaPor"] = {"stringValue": datos["abiertaPor"]}
+        campos["abiertaEn"] = {"timestampValue": _momento_utc(datos["abiertaEn"])}
     return {"fields": campos}
 
 

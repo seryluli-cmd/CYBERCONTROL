@@ -693,7 +693,9 @@ mano desde el celular. Propuesta y decisiones en
   NOMBRE de la **responsable de la caja** (sin caja, quien cerró; si el Admin
   cierra en ausencia de Gabriela, allá figura Gabriela) y `creadoEn` (la hora
   real del cierre). Más `origen: "cybercontrol"`, `cierreId`, `caja`, `forzoso`,
-  `enAusencia`, `cerradoPor` y **`detalle`**: el resumen tal cual la tarjeta
+  `enAusencia`, `cerradoPor`, `abiertaPor` y `abiertaEn` (quién ABRIÓ la caja
+  y a qué hora, solo con caja: la app muestra "La inició X a las 06:20" arriba
+  de "La cerró...", pedido del dueño 2026-10-28) y **`detalle`**: el resumen tal cual la tarjeta
   del Cierre de Turno (Cambio Fijo, a retirar, cada negocio de
   `dominio.NEGOCIOS_DEL_CIERRE` con su efectivo y su digital —la misma lista
   que usa la tarjeta—, los pagos de reservas y de qué hora a qué hora va el
