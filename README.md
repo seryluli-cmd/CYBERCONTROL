@@ -610,6 +610,29 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   pantalla lo marca en rojo con un aviso. "Traer IP" relee la base; "Borrar IP" la
   olvida para que se asiente la nueva. No hizo falta tocar el Cliente PC.
 
+## La PC se reinicia sola al copiar el Cliente PC nuevo (`reinicio_actualizacion_repo.py`)
+
+Pedido del dueño (2026-10-28). Antes, una PC que terminaba de copiar la versión
+nueva del Cliente PC (el PCcliente.exe o el .zip de una versión en carpeta) la ponía
+recién en el próximo reinicio de siempre, el de cada cliente que termina. Ahora, en
+la consulta siguiente a la que cuenta que la copió, si la PC está **libre** y no está
+en mantenimiento, el mostrador le manda Reiniciar en esa misma respuesta y su monitor
+del mosaico dice **REINICIANDO** hasta que vuelve. El Lanzador pone la versión nueva
+al arrancar.
+
+- Con un cliente jugando no se toca: la pone en el reinicio de siempre, cuando ese
+  cliente termina. En mantenimiento ("Hacer mantenimiento" o el de la "A") espera a
+  que termine.
+- **Una sola vez por versión**: si el reinicio no la pone (Shadow Defender borra la
+  copia, o la PC no arranca con Lanzador.exe), la PC la vuelve a copiar y no se la
+  reinicia de nuevo; "Actualizar el Cliente PC" ya dice por qué no se puso.
+- El Reiniciar lleva en el payload `ACTUALIZAR:<versión>` (el Cliente PC no lo lee:
+  no hizo falta un Cliente PC nuevo). Con eso se sabe si ya se mandó, y deja de decir
+  REINICIANDO cuando la PC vuelve con Windows recién arrancado (`encendida` del pulso)
+  o a los `comandos_pc_repo.MINUTOS_REINICIANDO` (5) si no vuelve. Si la PC se reinició
+  por su cuenta antes de pedirlo (por ejemplo al terminar un cliente), al volver no se
+  le da: se reiniciaría dos veces.
+
 ## El tiempo de las PCs cuando el mostrador no está
 
 Explicación para el dueño, con ejemplos: [docs/TIEMPO_DE_LAS_PCS.md](docs/TIEMPO_DE_LAS_PCS.md).
@@ -831,7 +854,7 @@ python -m unittest discover tests
 ```
 
 Corren contra una base SQLite temporal (nunca tocan `data/kiosko.db`).
-1428 tests al 2026-10-26. Cubren turnos, caja y cajas con número
+1488 tests al 2026-10-28. Cubren turnos, caja y cajas con número
 (`tests/test_cajas.py`, `tests/test_cajas_ui.py`), el detalle del día (`tests/test_detalle_dia.py`), administrar desde otra PC
 (`tests/test_admin_remoto.py`, con un mostrador de prueba en otro proceso:
 `tests/mostrador_de_prueba.py`), stock, ventas y anulaciones,

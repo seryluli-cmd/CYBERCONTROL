@@ -17,6 +17,8 @@ Cómo viaja una versión:
    nueva que la suya, pide GET /cliente_pc (el manifiesto y la firma) y GET /cliente_pc/exe,
    aunque haya un cliente usándola, comprueba todo y la deja lista; su lanzador la pone en uso en
    el próximo reinicio y vuelve solo a la anterior si no arranca bien (ver CLIENTE PC/lanzador.py).
+   Si la PC está libre, ese reinicio se lo manda el mostrador apenas la copió
+   (reinicio_actualizacion_repo, 2026-10-28).
    Si recibe None (la desmarcaron), borra la que tenga copiada y sin poner.
 4. Cada PC cuenta en cada consulta su versión, su carpeta y cómo va (`registrar_reporte`), y eso
    se ve en la pantalla, en palabras (`estado_de_las_pcs` y `situacion`).

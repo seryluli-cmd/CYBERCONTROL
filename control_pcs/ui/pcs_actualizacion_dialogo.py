@@ -110,7 +110,7 @@ def texto_del_estado(pc: dict) -> str:
         repo.INSTALACION_VIEJA: "Instalación vieja: hay que reinstalarla con el pendrive (preparar_pc.bat)",
         repo.NO_SELECCIONADA: "No seleccionada",
         repo.FUNCIONANDO: funcionando,
-        repo.LISTA: "Actualizada con éxito · se aplica en el próximo reinicio",
+        repo.LISTA: "Actualizada con éxito · se aplica al reiniciarse (sola, si está libre)",
         repo.SE_BORRA: ("No se puso: el reinicio borró la copia (la volvió a copiar). Excluí la carpeta del "
                         "Cliente PC en Shadow Defender y reiniciala"),
         repo.SIN_LANZADOR: ("No se puso al reiniciar: la PC no arranca con Lanzador.exe. Con Shadow Defender "
@@ -170,7 +170,8 @@ class DialogoActualizarCliente(QDialog):
         explicacion = QLabel(
             "Marcá las PCs y tocá «Actualizar las seleccionadas». Cada una copia la versión sola en "
             "unos segundos, aunque tenga un cliente, y acá te avisa «Actualizada con éxito». Se pone "
-            "en uso en su próximo reinicio; si no arranca bien, vuelve sola a la anterior."
+            "en uso al reiniciarse: si está libre se reinicia sola (en Control de PCs dice REINICIANDO); "
+            "si tiene un cliente, cuando ese cliente termina. Si no arranca bien, vuelve sola a la anterior."
         )
         explicacion.setWordWrap(True)
 
@@ -350,8 +351,8 @@ class DialogoActualizarCliente(QDialog):
         if ids:
             mostrar_info(self, "Actualizar",
                          f"Listo: va a {len(ids)} PC{'s' if len(ids) != 1 else ''}. Cada una la copia sola en "
-                         "unos segundos y acá vas a ver «Actualizada con éxito». Se pone en uso en su "
-                         "próximo reinicio.")
+                         "unos segundos y acá vas a ver «Actualizada con éxito». Las libres se reinician "
+                         "solas para ponerla; las que tienen un cliente, cuando ese cliente termina.")
         else:
             mostrar_info(self, "Actualizar", "Listo: la versión no va a ninguna PC.")
 

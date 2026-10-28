@@ -465,6 +465,11 @@ class PanelControlPcs(QWidget):
             elif not aviso:
                 aviso = f"Res. {hora}"  # en uso: más urgente que el nombre del socio
 
+        if item.get("reiniciando") and sesion is None and not en_alerta:
+            # Se reinicia sola para poner el Cliente PC nuevo (reinicio_actualizacion_repo), hasta
+            # que vuelve. Le gana al nombre de la reserva: dura un par de minutos.
+            icono, texto_estado, aviso = "🔄", "Reiniciando para poner el Cliente PC nuevo", "REINICIANDO"
+
         if not aviso and dibujo == DIBUJO_SOCIO:
             aviso = quien_texto  # el nombre del socio, si no hay nada más urgente que avisar
 

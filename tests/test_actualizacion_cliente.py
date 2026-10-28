@@ -943,7 +943,7 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         repo.registrar_reporte(self.pc1, {"version": "1", "carpeta": "C:\\c", "act": "descargada",
                                           "act_detalle": "", "act_version": str(version)})
         d = self.dialogo()
-        self.assertEqual(d.tabla.item(0, 2).text(), "Actualizada con éxito · se aplica en el próximo reinicio")
+        self.assertEqual(d.tabla.item(0, 2).text(), "Actualizada con éxito · se aplica al reiniciarse (sola, si está libre)")
         d._marcar_todas(False)
         self.respuesta_confirmar = False
 
@@ -982,7 +982,7 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         self.assertEqual(texto(base), "Esperando")
         self.assertEqual(texto({**base, "version": 5}), "Funcionando con la versión nueva")
         self.assertEqual(texto({**base, "estado": "bajando"}), "Copiando…")
-        self.assertEqual(texto({**base, "estado": "descargada"}), "Actualizada con éxito · se aplica en el próximo reinicio")
+        self.assertEqual(texto({**base, "estado": "descargada"}), "Actualizada con éxito · se aplica al reiniciarse (sola, si está libre)")
         self.assertEqual(texto({**base, "estado": "error", "detalle": "No se pudo conectar con el Servidor."}),
                          "Error: No se pudo conectar con el Servidor · reintenta sola")
         self.assertEqual(texto({**base, "conectada": False}), "Apagada / sin conexión · se actualiza sola al prenderla")

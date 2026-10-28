@@ -49,6 +49,13 @@ da por no hecho y queda RESULTADO_REINICIO_VENCIDO. Lo mismo los de "Programas
 y estado" y el mantenimiento (2026-10-22): cerrar o abrir un programa, o dejar
 la PC libre 15 minutos, horas después y a otro cliente, sería peor que no
 hacerlo; y un INFO_PC que nadie espera solo atrasaría a los que siguen.
+
+El Reiniciar que manda solo el programa cuando una PC libre terminó de copiar el Cliente PC
+nuevo (reinicio_actualizacion_repo, 2026-10-28) lleva en el payload de qué versión es
+(`payload_reinicio_por_actualizacion`). El Cliente PC no lo lee: reinicia igual. Acá sirve para
+mandarlo una sola vez por versión, para que el mosaico muestre la PC REINICIANDO hasta que vuelve
+(`reiniciando`) y para no dárselo a una PC que ya se reinició por su cuenta antes de pedirlo
+(`_dar_por_reiniciadas`): se reiniciaría dos veces.
 """
 
 import base64
@@ -92,6 +99,12 @@ COMANDOS_QUE_VENCEN = (TIPO_REINICIAR, TIPO_APAGAR, TIPO_INFO_PC, TIPO_CERRAR_PR
                        TIPO_MANTENIMIENTO)
 RESULTADO_REINICIO_VENCIDO = ("ERROR: La PC no lo pidió a tiempo (¿apagada o sin conexión?). "
                               "No se hizo, para que no le llegue más tarde a otro cliente.")
+
+# El Reiniciar por actualización (ver el docstring del módulo).
+PREFIJO_REINICIO_POR_ACTUALIZACION = "ACTUALIZAR:"
+# Hasta cuánto se la ve REINICIANDO si no vuelve (se quedó apagada, o arrancó sin red).
+MINUTOS_REINICIANDO = 5
+RESULTADO_YA_REINICIADA = "OK: Volvió reiniciada."
 
 
 def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
@@ -165,6 +178,53 @@ def _vencer_reinicios(conexion, estacion_id: int):
     )
 
 
+def payload_reinicio_por_actualizacion(version) -> str:
+    """El payload del Reiniciar por actualización de `version` (ver el docstring del módulo)."""
+    return f"{PREFIJO_REINICIO_POR_ACTUALIZACION}{version}"
+
+
+def existe_comando(estacion_id: int, tipo: str, payload: str) -> bool:
+    """¿A esa PC ya se le mandó alguna vez un `tipo` con ese `payload` (esté como esté)?"""
+    with conexion_db() as conexion:
+        return conexion.execute(
+            "SELECT 1 FROM comandos_pc WHERE estacion_id = ? AND tipo = ? AND payload = ? LIMIT 1",
+            (estacion_id, tipo, payload),
+        ).fetchone() is not None
+
+
+def _dar_por_reiniciadas(conexion, estacion_id: int, encendida):
+    """Los Reiniciar por actualización de esta PC mandados antes de que arrancara Windows por
+    última vez (`encendida`: los segundos que lleva prendida, del pulso de su consulta; None si su
+    Cliente PC no lo manda) ya se cumplieron: se reinició después. Quedan con
+    RESULTADO_YA_REINICIADA, así dejan de verse REINICIANDO y uno que la PC todavía no había pedido
+    no se le da: se reinició sola antes (por ejemplo al terminar un cliente) y se reiniciaría dos veces."""
+    if encendida is None:
+        return
+    arranco = datetime.now() - timedelta(seconds=encendida)
+    conexion.execute(
+        """
+        UPDATE comandos_pc SET estado = ?, resultado = ?
+        WHERE estacion_id = ? AND tipo = ? AND payload LIKE ? AND resultado IS NULL AND fecha_creacion < ?
+        """,
+        (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_YA_REINICIADA, estacion_id, TIPO_REINICIAR,
+         PREFIJO_REINICIO_POR_ACTUALIZACION + "%", arranco.isoformat(timespec="seconds")),
+    )
+
+
+def reiniciando(conexion, ahora: datetime) -> set:
+    """Las estaciones (sus id) a las que se les mandó un Reiniciar por actualización hace menos de
+    MINUTOS_REINICIANDO y todavía no volvieron reiniciadas (`_dar_por_reiniciadas`; uno que la PC no
+    pidió a tiempo también tiene resultado, el de `_vencer_reinicios`). Para el mosaico."""
+    desde = ahora - timedelta(minutes=MINUTOS_REINICIANDO)
+    return {fila["estacion_id"] for fila in conexion.execute(
+        """
+        SELECT DISTINCT estacion_id FROM comandos_pc
+        WHERE tipo = ? AND payload LIKE ? AND resultado IS NULL AND fecha_creacion >= ?
+        """,
+        (TIPO_REINICIAR, PREFIJO_REINICIO_POR_ACTUALIZACION + "%", desde.isoformat(timespec="seconds")),
+    )}
+
+
 def descartar_clave_de_pendientes(comando_ids=None, todos=False):
     """Borra la clave de Shadow Defender de los comandos que todavía no viajaron:
     los de `comando_ids` (la ventana de congelar al cerrarse, para que no lleguen
@@ -175,13 +235,16 @@ def descartar_clave_de_pendientes(comando_ids=None, todos=False):
         _vencer_con_clave(conexion, comando_ids=None if comando_ids is None else list(comando_ids), todos=todos)
 
 
-def proximo_comando_pendiente(estacion_id: int):
+def proximo_comando_pendiente(estacion_id: int, encendida=None):
     """El comando pendiente más viejo para esta estación, o None. Lo
     llama servidor_red.py en cada `GET /estado` de esa estación. Antes
-    vence los comandos con clave y los Reiniciar/Apagar de esa PC que
-    esperaron demasiado (ver el docstring del módulo): con el índice por
-    estación y estado, no recorre el historial."""
+    da por cumplidos los Reiniciar por actualización si la PC ya se
+    reinició (`encendida`, ver `_dar_por_reiniciadas`) y vence los
+    comandos con clave y los Reiniciar/Apagar de esa PC que esperaron
+    demasiado (ver el docstring del módulo): con el índice por estación
+    y estado, no recorre el historial."""
     with conexion_db() as conexion:
+        _dar_por_reiniciadas(conexion, estacion_id, encendida)
         _vencer_con_clave(conexion, estacion_id=estacion_id)
         _vencer_reinicios(conexion, estacion_id)
         return conexion.execute(

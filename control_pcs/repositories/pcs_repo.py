@@ -38,7 +38,8 @@ import dominio
 from database import conexion_db
 from repositories import ventas_repo
 from control_pcs.repositories import (
-    avisos_fin_pc_repo, cortes_pc_repo, deudas_pc_repo, pcstream_repo, reservas_horario_repo, temperatura_pc_repo,
+    avisos_fin_pc_repo, comandos_pc_repo, cortes_pc_repo, deudas_pc_repo, pcstream_repo, reservas_horario_repo,
+    temperatura_pc_repo,
 )
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 from control_pcs.repositories.actividad_repo import actividad_reciente  # noqa: F401 (API de las pantallas y las pruebas)
@@ -265,6 +266,9 @@ def estado_estaciones():
     deudas_pc_repo.por_estacion), o None si no debe nada. Con "de_la_sesion", la
     cuenta de la sesión en curso (o None): las demás son de clientes anteriores
     que se fueron debiendo.
+
+    Y "reiniciando": si se está reiniciando sola para poner el Cliente PC nuevo
+    (reinicio_actualizacion_repo), hasta que vuelve.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
@@ -282,6 +286,7 @@ def estado_estaciones():
         reservas = reservas_horario_repo.pendientes(conexion, ahora)
         fines_pendientes = avisos_fin_pc_repo.pendientes(conexion)
         deudas = deudas_pc_repo.por_estacion(conexion)
+        reiniciando = comandos_pc_repo.reiniciando(conexion, ahora)
 
     sesiones_por_estacion = {sesion["estacion_id"]: sesion for sesion in sesiones}
 
@@ -299,6 +304,7 @@ def estado_estaciones():
                 None,
             )
         estado["deuda"] = deuda
+        estado["reiniciando"] = estacion["id"] in reiniciando
         estados.append(estado)
     return estados
 
@@ -360,6 +366,8 @@ def _estado_para_estacion(estacion, sesion, ahora, cortes=(), fin_pendiente=None
         "reserva": None,
         # Solo la completa estado_estaciones: la Cuenta de la PC es cosa del mostrador.
         "deuda": None,
+        # Solo la completa estado_estaciones: es para el mosaico.
+        "reiniciando": False,
     }
 
 

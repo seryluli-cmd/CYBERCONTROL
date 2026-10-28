@@ -43,6 +43,8 @@ GET /estado?estacion=<nombre>
     - La PC cuenta, como parámetros de la misma consulta, su versión, su carpeta y
       cómo va su actualización (`version`, `carpeta`, `act`, `act_detalle`; un
       Cliente PC viejo no los manda): ver actualizacion_cliente_repo.registrar_reporte.
+      Si ya copió la versión que le toca y está libre, se le manda Reiniciar para que la
+      ponga (reinicio_actualizacion_repo).
     - Y su pulso (`arranque`, `fallas`, `sin_ok`, `encendida`; tampoco los manda un
       Cliente PC viejo): si la PC estaba titilando "SIN CLIENTE", con eso se anota
       por qué se cortó (cortes_pc_repo.registrar_si_volvio_de_un_corte).
@@ -135,7 +137,7 @@ from errores import registrar_error
 from control_pcs.repositories import (
     accesos_admin_pc_repo, actualizacion_cliente_repo, clientes_repo, comandos_pc_repo, cortes_pc_repo,
     filtro_palabras_repo, fondo_repo, mantenimiento_pc_repo, miembros_repo, pcs_repo, reconexion_repo,
-    reinicios_pc_repo, reservas_horario_repo, temperatura_pc_repo,
+    reinicio_actualizacion_repo, reinicios_pc_repo, reservas_horario_repo, temperatura_pc_repo,
 )
 
 PUERTO_SERVIDOR = 8899
@@ -342,7 +344,13 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             except Exception as error:
                 registrar_error(error, "Servidor de red: leer la reserva de una PC")
             try:
-                comando = comandos_pc_repo.proximo_comando_pendiente(item["estacion"]["id"])
+                # Si está libre y ya copió el Cliente PC nuevo, se reinicia sola para ponerlo
+                # (pedido del dueño, 2026-10-28): el Reiniciar sale en esta misma respuesta.
+                reinicio_actualizacion_repo.reiniciar_si_corresponde(item)
+            except Exception as error:
+                registrar_error(error, "Servidor de red: reiniciar una PC que copió el Cliente PC nuevo")
+            try:
+                comando = comandos_pc_repo.proximo_comando_pendiente(item["estacion"]["id"], pulso["encendida"])
                 if comando is not None:
                     comandos_pc_repo.marcar_entregado(comando["id"])
                     cuerpo["comando"] = {
