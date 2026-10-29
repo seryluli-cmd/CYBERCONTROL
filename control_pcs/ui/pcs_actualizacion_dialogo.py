@@ -12,46 +12,62 @@ Las versiones se muestran con su número (V1, V1.1...: pedido del dueño, 2026-1
 cada PCcliente.exe desde la V1. Uno armado antes no tiene: se lo muestra por la fecha en que se
 cargó.
 
-Desde el 2026-10-22 (pedido del dueño) la tabla dice además el número del Lanzador.exe de cada PC
+Desde el 2026-10-22 (pedido del dueño) se dice además el número del Lanzador.exe de cada PC
 (desde la V1.4 el Cliente PC se lo cambia solo) y, si una PC ya copió la versión, se reinició y
 sigue sin ponerla, por qué y qué hacer en esa PC (`repo.seguir_la_copia`).
+
+Desde el 2026-10-29 la tabla es un tablero por etapas (diseño "D", que eligió el dueño entre seis):
+una columna por cómo va la actualización (Copiando, Falta reiniciar, Al día, Con problema, Sin
+conexión y, si hay alguna, Sin marcar) y una tarjeta por PC con su casilla. Qué le pasa a cada PC lo
+decide `repo.situacion`; acá solo se la pone en su columna. Las que están al día van chiquitas, solo
+con la casilla y el nombre, para que entren muchas. Los colores están en ui/hoja_de_estilos.py.
 """
 
 import re
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QHBoxLayout, QLabel, QPushButton, QTableWidgetItem, QVBoxLayout,
+    QDialog, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from control_pcs.repositories import actualizacion_cliente_repo as repo
+from control_pcs.ui.dibujos_de_ventana import CasillaDibujada, pixmap_de, poner_icono
 from errores import registrar_error
-from ui.utils import (
-    aplicar_clase, confirmar, crear_tabla, manejar_errores, mostrar_info, sin_boton_por_defecto,
-)
+from ui.piezas_ventana import TONO_AMARILLO, TONO_AZUL, TONO_GRIS, TONO_ROJO, TONO_VERDE, pastilla_clara, tecla
+from ui.utils import confirmar, manejar_errores, mostrar_info, sin_boton_por_defecto
 
 # Desde la V2 del Cliente PC (2026-10-28) la versión puede ser un .zip: el Cliente PC armado en
 # carpeta, para que las PCs no lo desempaqueten en cada arranque (ver actualizacion_cliente_repo).
 FILTRO_EXE = "El Cliente PC (PCcliente.exe o PCcliente_V2.zip) (*.exe *.zip)"
-COLUMNAS = ["", "PC", "Estado", "Versión en uso", "Lanzador"]
-COLUMNA_CASILLA, COLUMNA_PC, COLUMNA_ESTADO, COLUMNA_VERSION, COLUMNA_LANZADOR = range(5)
 # Cada cuánto se vuelve a leer cómo está cada PC (las PCs cuentan cada 5 s).
 REFRESCO_MS = 3000
 
-# Colores de la columna Estado: (fondo, letra). Sin fondo, solo la letra en gris.
-_VERDE = (QColor("#DCF3E1"), QColor("#1B5E20"))
-_AZUL = (QColor("#DCE8FB"), QColor("#0D47A1"))
-_ROJO = (QColor("#FBE3E1"), QColor("#B3261E"))
-_AMARILLO = (QColor("#FFF3CD"), QColor("#7A5300"))
-_GRIS = (None, QColor("#5F6B7A"))
-COLORES = {
-    repo.FUNCIONANDO: _VERDE, repo.LISTA: _VERDE, repo.COPIANDO: _AZUL,
-    repo.ERROR: _ROJO, repo.FALLO: _ROJO, repo.SE_BORRA: _ROJO, repo.SIN_LANZADOR: _ROJO,
-    repo.ESPERANDO: _AMARILLO, repo.FALTA_PUENTE: _AMARILLO,
-    repo.APAGADA: _GRIS, repo.NO_SELECCIONADA: _GRIS, repo.NUNCA_CONECTADA: _GRIS,
-    repo.INSTALACION_VIEJA: _GRIS,
+# El tablero (diseño "D" que eligió el dueño el 2026-10-29): cada PC es una tarjeta que cambia de
+# columna a medida que avanza la actualización. (clave, título, color, situaciones que caen ahí.)
+# "Sin marcar" solo se ve si hay alguna PC en esa situación: casi siempre están todas marcadas.
+COLUMNAS_DEL_TABLERO = (
+    ("sin_marcar", "Sin marcar", "gris", (repo.NO_SELECCIONADA,)),
+    ("copiando", "Copiando", "azul", (repo.ESPERANDO, repo.COPIANDO)),
+    ("falta_reiniciar", "Falta reiniciar", "turquesa", (repo.LISTA,)),
+    ("al_dia", "Al día", "verde", (repo.FUNCIONANDO,)),
+    ("con_problema", "Con problema", "rojo",
+     (repo.ERROR, repo.FALLO, repo.SE_BORRA, repo.SIN_LANZADOR, repo.FALTA_PUENTE)),
+    ("sin_conexion", "Sin conexión", "gris", (repo.APAGADA, repo.NUNCA_CONECTADA, repo.INSTALACION_VIEJA)),
+)
+# Cuánto ancho se lleva cada columna (la de las que están al día, con sus casillas en fila, más).
+ANCHO_DE_LAS_COLUMNAS = {"sin_marcar": 3, "copiando": 3, "falta_reiniciar": 3, "al_dia": 6, "con_problema": 4,
+                         "sin_conexion": 3}
+CASILLAS_POR_FILA = 3
+# El tono de cada tarjeta (el borde y el color de lo que dice): ver ui/hoja_de_estilos.py.
+TONO_DE_LA_SITUACION = {
+    repo.FUNCIONANDO: TONO_VERDE, repo.LISTA: TONO_VERDE, repo.COPIANDO: TONO_AZUL, repo.ESPERANDO: TONO_AMARILLO,
+    repo.ERROR: TONO_ROJO, repo.FALLO: TONO_ROJO, repo.SE_BORRA: TONO_ROJO, repo.SIN_LANZADOR: TONO_ROJO,
+    repo.FALTA_PUENTE: TONO_AMARILLO, repo.APAGADA: TONO_GRIS, repo.NO_SELECCIONADA: TONO_GRIS,
+    repo.NUNCA_CONECTADA: TONO_GRIS, repo.INSTALACION_VIEJA: TONO_GRIS,
 }
+PASOS = ("Marcás la PC", "Copia la versión sola", "Se reinicia para ponerla", "Queda al día")
+ANCHO_DE_LA_VENTANA = 1320
+ALTO_DE_LA_VENTANA = 860
 # Para el resumen de arriba: por qué le falta a cada una.
 _POR_QUE_FALTA = {
     repo.APAGADA: "apagada", repo.COPIANDO: "copiando", repo.ERROR: "error", repo.FALLO: "falló",
@@ -144,13 +160,98 @@ def texto_del_resumen(pcs: list, hay_version: bool) -> str:
     return f"{listas} de {len(marcadas)} listas · faltan: {detalle}"
 
 
+class TarjetaPc(QFrame):
+    """Una PC en el tablero: su casilla, su nombre y cómo va. La "compacta" es la de las que ya
+    están al día (solo la casilla y el nombre, para que entren muchas); las demás llevan además su
+    versión, su lanzador y lo que pasa. Un clic en cualquier parte de la tarjeta tilda o destilda
+    su casilla. Los textos están siempre (aunque la compacta no los muestre): salen de las mismas
+    funciones de abajo que usaba la tabla de antes."""
+
+    def __init__(self, pc: dict, marcada: bool, compacta: bool):
+        super().__init__()
+        self.pc_id = pc["id"]
+        self.situacion = repo.situacion(pc)
+        tono = TONO_DE_LA_SITUACION[self.situacion]
+        self.setObjectName("chipPc" if compacta else "tarjetaPc")
+        self.setProperty("tono", tono)
+        self.setCursor(Qt.PointingHandCursor)
+        self.casilla = CasillaDibujada(marcada, 14 if compacta else 16)
+        self.nombre = QLabel(pc["nombre"])
+        self.nombre.setObjectName("nombrePc")
+        texto_del_estado_de_la_pc = texto_del_estado(pc)
+        self.estado = QLabel(texto_del_estado_de_la_pc)
+        self.estado.setObjectName("estadoPc")
+        self.estado.setProperty("tono", tono)
+        self.estado.setWordWrap(True)
+        version = texto_de_la_version(pc)
+        self.version = pastilla_clara(version, TONO_GRIS, chica=True)
+        lanzador = texto_del_lanzador(pc)
+        self.lanzador = pastilla_clara(f"Lanz. {lanzador}" if lanzador else "", TONO_GRIS, chica=True)
+        if lanzador == "—":
+            self.lanzador.setToolTip("Su Cliente PC es anterior a la V1.4 y no lo dice")
+        lineas = [pc["nombre"], texto_del_estado_de_la_pc]
+        if version or lanzador:
+            lineas.append(f"Versión en uso: {version or '—'} · Lanzador: {lanzador or '—'}")
+        if pc["carpeta"]:
+            lineas.append(f"Instalado en: {pc['carpeta']}")
+        self.setToolTip("\n".join(lineas))
+
+        if compacta:
+            capa = QHBoxLayout(self)
+            capa.setContentsMargins(7, 0, 6, 0)
+            capa.setSpacing(6)
+            capa.addWidget(self.casilla)
+            capa.addWidget(self.nombre)
+            capa.addStretch()
+            self.setFixedHeight(32)
+            for sobrante in (self.estado, self.version, self.lanzador):
+                sobrante.setParent(self)
+                sobrante.hide()
+            return
+        capa = QVBoxLayout(self)
+        capa.setContentsMargins(12, 10, 12, 10)
+        capa.setSpacing(4)
+        arriba = QHBoxLayout()
+        arriba.setSpacing(8)
+        arriba.addWidget(self.casilla)
+        arriba.addWidget(self.nombre)
+        arriba.addStretch()
+        capa.addLayout(arriba)
+        pastillas = QHBoxLayout()
+        pastillas.setSpacing(6)
+        hay_pastillas = False
+        for pastilla in (self.version, self.lanzador):
+            if pastilla.text():
+                pastillas.addWidget(pastilla)
+                hay_pastillas = True
+            else:
+                pastilla.setParent(self)
+                pastilla.hide()
+        pastillas.addStretch()
+        if hay_pastillas:
+            capa.addLayout(pastillas)
+        capa.addWidget(self.estado)
+
+    def mousePressEvent(self, evento):
+        if evento.button() == Qt.LeftButton:
+            self.casilla.toggle()
+
+
 class DialogoActualizarCliente(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Actualizar el Cliente PC de las PCs")
-        # Ancha para que entren los avisos de qué hacer en una PC que no la puso (2026-10-22).
-        self.resize(1100, 600)
+        # Ancha para que entren las columnas del tablero con los avisos de qué hacer en una PC que
+        # no puso la versión (2026-10-22), sin pasar del tamaño de la pantalla.
+        ancho, alto = ANCHO_DE_LA_VENTANA, ALTO_DE_LA_VENTANA
+        if self.screen() is not None:
+            disponible = self.screen().availableGeometry()
+            ancho, alto = min(ancho, disponible.width() - 20), min(alto, disponible.height() - 60)
+        self.resize(ancho, alto)
         self.pcs = []
+        self.tarjetas = {}      # id de la PC -> su TarjetaPc
+        self._marcas = {}       # id de la PC -> si está tildada (también lo que no se guardó)
+        self._firma = None      # cómo se veía el tablero la última vez, para no rehacerlo si no cambió
         self._armar_interfaz()
         self._cargar()
         self._timer = QTimer(self)
@@ -159,50 +260,97 @@ class DialogoActualizarCliente(QDialog):
         self._timer.start()
 
     def _armar_interfaz(self):
+        # Título, la versión cargada y el botón para cargar otra.
+        titulos = QVBoxLayout()
+        titulos.setSpacing(0)
+        titulo = QLabel("Actualizar el Cliente PC")
+        titulo.setObjectName("tituloVentana")
+        subtitulo = QLabel("Cada PC avanza de izquierda a derecha hasta quedar al día")
+        subtitulo.setObjectName("subtituloVentana")
+        titulos.addWidget(titulo)
+        titulos.addWidget(subtitulo)
+        self.caption_version = QLabel("VERSIÓN CARGADA")
+        self.caption_version.setObjectName("captionChip")
         self.etiqueta_version = QLabel()
-        self.etiqueta_version.setStyleSheet("font-weight: bold;")
-        boton_cargar = QPushButton("Cargar versión nueva...")
-        boton_cargar.clicked.connect(self._cargar_version)
-        fila_version = QHBoxLayout()
-        fila_version.addWidget(self.etiqueta_version, 1)
-        fila_version.addWidget(boton_cargar)
+        self.etiqueta_version.setObjectName("valorChip")
+        chip = QFrame()
+        chip.setObjectName("chipVersion")
+        capa_chip = QHBoxLayout(chip)
+        capa_chip.setContentsMargins(14, 7, 14, 7)
+        capa_chip.setSpacing(10)
+        capa_chip.addWidget(self.caption_version)
+        capa_chip.addWidget(self.etiqueta_version)
+        boton_cargar = tecla("Cargar versión nueva...", self._cargar_version)
+        poner_icono(boton_cargar, "subir")
+        fila_titulo = QHBoxLayout()
+        fila_titulo.setSpacing(12)
+        fila_titulo.addLayout(titulos)
+        fila_titulo.addStretch()
+        fila_titulo.addWidget(chip)
+        fila_titulo.addWidget(boton_cargar)
 
-        explicacion = QLabel(
-            "Marcá las PCs y tocá «Actualizar las seleccionadas». Cada una copia la versión sola en "
-            "unos segundos, aunque tenga un cliente, y acá te avisa «Actualizada con éxito». Se pone "
-            "en uso al reiniciarse: si está libre se reinicia sola (en Control de PCs dice REINICIANDO); "
-            "si tiene un cliente, cuando ese cliente termina. Si no arranca bien, vuelve sola a la anterior."
-        )
-        explicacion.setWordWrap(True)
+        # El camino de una actualización, en una línea.
+        cinta = QFrame()
+        cinta.setObjectName("cintaDePasos")
+        capa_cinta = QHBoxLayout(cinta)
+        capa_cinta.setContentsMargins(18, 10, 18, 10)
+        capa_cinta.setSpacing(10)
+        for numero, texto in enumerate(PASOS, start=1):
+            etiqueta_numero = QLabel(str(numero))
+            etiqueta_numero.setObjectName("numeroDePaso")
+            etiqueta_texto = QLabel(texto)
+            etiqueta_texto.setObjectName("textoDePaso")
+            capa_cinta.addWidget(etiqueta_numero)
+            capa_cinta.addWidget(etiqueta_texto)
+            if numero < len(PASOS):
+                flecha = QLabel()
+                flecha.setPixmap(pixmap_de("flecha", 18, "#A7B0C0"))
+                capa_cinta.addWidget(flecha)
+        capa_cinta.addStretch()
+        nota = QLabel("Si no arranca bien, vuelve sola a la anterior")
+        nota.setObjectName("notaDePasos")
+        capa_cinta.addWidget(nota)
 
         self.etiqueta_resumen = QLabel()
+        self.etiqueta_resumen.setObjectName("resumenActualizacion")
         self.etiqueta_resumen.setWordWrap(True)
-        self.etiqueta_resumen.setStyleSheet("font-weight: bold;")
 
-        self.tabla = crear_tabla(COLUMNAS, estirar=COLUMNA_ESTADO, por_filas=True)
+        # El tablero: una columna por etapa, con una tarjeta por PC.
+        self.area = QScrollArea()
+        self.area.setObjectName("areaTablero")
+        self.area.setWidgetResizable(True)
+        self.area.setFrameShape(QFrame.NoFrame)
+        self.area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        tablero = QWidget()
+        self.capa_columnas = QHBoxLayout(tablero)
+        self.capa_columnas.setContentsMargins(0, 0, 0, 0)
+        self.capa_columnas.setSpacing(12)
+        self.area.setWidget(tablero)
 
-        boton_todas = QPushButton("Marcar todas")
-        boton_todas.clicked.connect(lambda: self._marcar_todas(True))
-        boton_ninguna = QPushButton("Desmarcar todas")
-        boton_ninguna.clicked.connect(lambda: self._marcar_todas(False))
-        self.boton_actualizar = QPushButton("Actualizar las seleccionadas")
-        aplicar_clase(self.boton_actualizar, "primario")
-        self.boton_actualizar.clicked.connect(self._actualizar_seleccionadas)
-        boton_cerrar = QPushButton("Cerrar")
-        boton_cerrar.clicked.connect(self.reject)
-
+        boton_todas = tecla("Marcar todas", lambda: self._marcar_todas(True))
+        boton_ninguna = tecla("Desmarcar todas", lambda: self._marcar_todas(False))
+        self.boton_actualizar = tecla("Actualizar las seleccionadas", self._actualizar_seleccionadas, "teclaAzul")
+        poner_icono(self.boton_actualizar, "subir", 16, "#FFFFFF")
+        self.boton_actualizar.setStyleSheet("padding: 10px 26px; font-size: 14px;")
+        boton_cerrar = tecla("Cerrar", self.reject, "teclaRoja")
+        self.etiqueta_marcadas = QLabel()
+        self.etiqueta_marcadas.setObjectName("notaDePasos")
         fila_abajo = QHBoxLayout()
+        fila_abajo.setSpacing(10)
+        fila_abajo.addWidget(self.etiqueta_marcadas)
+        fila_abajo.addStretch()
         fila_abajo.addWidget(boton_todas)
         fila_abajo.addWidget(boton_ninguna)
-        fila_abajo.addStretch()
         fila_abajo.addWidget(self.boton_actualizar)
         fila_abajo.addWidget(boton_cerrar)
 
         layout = QVBoxLayout()
-        layout.addLayout(fila_version)
-        layout.addWidget(explicacion)
+        layout.setContentsMargins(24, 20, 24, 18)
+        layout.setSpacing(14)
+        layout.addLayout(fila_titulo)
+        layout.addWidget(cinta)
         layout.addWidget(self.etiqueta_resumen)
-        layout.addWidget(self.tabla, 1)
+        layout.addWidget(self.area, 1)
         layout.addLayout(fila_abajo)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
@@ -216,75 +364,117 @@ class DialogoActualizarCliente(QDialog):
             self.etiqueta_version.setText("Todavía no cargaste ninguna versión.")
         else:
             megas = f"{paquete['tamano'] / 1024 / 1024:.1f}".replace(".", ",")
-            self.etiqueta_version.setText(f"Versión cargada: {texto_de_la_version_cargada(paquete)} · {megas} MB")
+            self.etiqueta_version.setText(f"{texto_de_la_version_cargada(paquete)} · {megas} MB")
+        self.caption_version.setVisible(paquete is not None)
         self._hay_version = paquete is not None
         self._mostrar(conservar_casillas=False)
         self._guardado = self._ids_marcados()
 
     def _refrescar_solo(self):
         """Lo que dispara el timer: sin carteles si algo falla (se volvería a mostrar cada 3 s); queda
-        en el log de errores y la tabla sigue con lo último que leyó."""
+        en el log de errores y el tablero sigue con lo último que leyó."""
         try:
             self._mostrar(conservar_casillas=True)
         except RuntimeError as error:
             if "already deleted" not in str(error):    # la ventana se está cerrando
-                registrar_error(error, "Actualizar el Cliente PC: refrescar la tabla")
+                registrar_error(error, "Actualizar el Cliente PC: refrescar el tablero")
         except Exception as error:
-            registrar_error(error, "Actualizar el Cliente PC: refrescar la tabla")
+            registrar_error(error, "Actualizar el Cliente PC: refrescar el tablero")
 
     def _mostrar(self, conservar_casillas: bool):
         """Vuelve a leer cómo está cada PC. Con `conservar_casillas`, lo que el Admin tildó y no
-        guardó queda como está. Si son las mismas PCs, cambia los textos en su lugar (así no se
-        mueve la tabla ni se pierde la fila elegida mientras se refresca)."""
-        tildadas = self._ids_marcados() if conservar_casillas else None
+        guardó queda como está. El tablero solo se rehace si algo cambió (una PC pasó de etapa, un
+        texto es otro): si no, no se mueve nada mientras se mira o se tilda."""
         pcs = repo.estado_de_las_pcs()
-        mismas = [pc["id"] for pc in pcs] == [pc["id"] for pc in self.pcs]
+        if conservar_casillas:
+            self._marcas = {pc["id"]: self._marcas.get(pc["id"], False) for pc in pcs}
+        else:
+            self._marcas = {pc["id"]: bool(pc["seleccionada"]) for pc in pcs}
+            self._firma = None
         self.pcs = pcs
-        if not mismas:
-            self.tabla.setRowCount(0)
-        for fila, pc in enumerate(pcs):
-            if not mismas:
-                self.tabla.insertRow(fila)
-                casilla = QTableWidgetItem()
-                casilla.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-                self.tabla.setItem(fila, COLUMNA_CASILLA, casilla)
-                for columna in (COLUMNA_PC, COLUMNA_ESTADO, COLUMNA_VERSION, COLUMNA_LANZADOR):
-                    self.tabla.setItem(fila, columna, QTableWidgetItem())
-            if tildadas is None or not mismas:
-                marcada = pc["id"] in tildadas if tildadas is not None else pc["seleccionada"]
-                self.tabla.item(fila, COLUMNA_CASILLA).setCheckState(
-                    Qt.CheckState.Checked if marcada else Qt.CheckState.Unchecked)
-            self._llenar_fila(fila, pc)
-        if not mismas:
-            for columna in (COLUMNA_CASILLA, COLUMNA_PC, COLUMNA_VERSION, COLUMNA_LANZADOR):
-                self.tabla.resizeColumnToContents(columna)
+        firma = tuple((pc["id"], pc["nombre"], repo.situacion(pc), texto_del_estado(pc), texto_de_la_version(pc),
+                       texto_del_lanzador(pc), pc["carpeta"]) for pc in pcs)
+        if firma != self._firma:
+            self._firma = firma
+            self._armar_el_tablero()
         self.etiqueta_resumen.setText(texto_del_resumen(pcs, self._hay_version))
+        self._contar_las_marcadas()
 
-    def _llenar_fila(self, fila: int, pc: dict):
-        nombre = self.tabla.item(fila, COLUMNA_PC)
-        nombre.setText(pc["nombre"])
-        nombre.setToolTip(f"Instalado en: {pc['carpeta']}" if pc["carpeta"] else "")
-        estado = self.tabla.item(fila, COLUMNA_ESTADO)
-        texto = texto_del_estado(pc)
-        estado.setText(texto)
-        estado.setToolTip(texto)    # un error largo puede no entrar entero
-        fondo, letra = COLORES[repo.situacion(pc)]
-        estado.setData(Qt.ItemDataRole.BackgroundRole, fondo)
-        estado.setForeground(letra)
-        self.tabla.item(fila, COLUMNA_VERSION).setText(texto_de_la_version(pc))
-        lanzador = self.tabla.item(fila, COLUMNA_LANZADOR)
-        lanzador.setText(texto_del_lanzador(pc))
-        lanzador.setToolTip("Su Cliente PC es anterior a la V1.4 y no lo dice" if lanzador.text() == "—" else "")
+    def _armar_el_tablero(self):
+        while self.capa_columnas.count():
+            columna = self.capa_columnas.takeAt(0).widget()
+            if columna is not None:
+                # Sin padre ya no se ve (si no, quedaría encima de la nueva hasta que Qt la borre).
+                columna.setParent(None)
+                columna.deleteLater()
+        self.tarjetas = {}
+        for clave, titulo, tono, situaciones in COLUMNAS_DEL_TABLERO:
+            propias = [pc for pc in self.pcs if repo.situacion(pc) in situaciones]
+            if clave == "sin_marcar" and not propias:
+                continue
+            tarjetas = []
+            for pc in propias:
+                tarjeta = TarjetaPc(pc, self._marcas.get(pc["id"], False), compacta=clave == "al_dia")
+                tarjeta.casilla.toggled.connect(lambda marcada, pc_id=pc["id"]: self._al_tildar(pc_id, marcada))
+                self.tarjetas[pc["id"]] = tarjeta
+                tarjetas.append(tarjeta)
+            self.capa_columnas.addWidget(self._columna(titulo, tono, tarjetas, en_grilla=clave == "al_dia"),
+                                         ANCHO_DE_LAS_COLUMNAS[clave])
+
+    @staticmethod
+    def _columna(titulo: str, tono: str, tarjetas: list, en_grilla: bool) -> QFrame:
+        marco = QFrame()
+        marco.setObjectName("columnaTablero")
+        capa = QVBoxLayout(marco)
+        capa.setContentsMargins(12, 12, 12, 12)
+        capa.setSpacing(10)
+        punto = QLabel()
+        punto.setObjectName("puntoColumna")
+        punto.setProperty("tono", tono)
+        punto.setFixedSize(10, 10)
+        etiqueta_titulo = QLabel(titulo)
+        etiqueta_titulo.setObjectName("tituloColumna")
+        cuenta = QLabel(str(len(tarjetas)))
+        cuenta.setObjectName("cuentaColumna")
+        cuenta.setProperty("tono", tono)
+        cuenta.setAlignment(Qt.AlignCenter)
+        cabecera = QHBoxLayout()
+        cabecera.setSpacing(8)
+        cabecera.addWidget(punto)
+        cabecera.addWidget(etiqueta_titulo)
+        cabecera.addStretch()
+        cabecera.addWidget(cuenta)
+        capa.addLayout(cabecera)
+        if en_grilla:
+            grilla = QGridLayout()
+            grilla.setSpacing(8)
+            for lugar, tarjeta in enumerate(tarjetas):
+                grilla.addWidget(tarjeta, lugar // CASILLAS_POR_FILA, lugar % CASILLAS_POR_FILA)
+            for columna in range(CASILLAS_POR_FILA):
+                grilla.setColumnStretch(columna, 1)
+            capa.addLayout(grilla)
+        else:
+            for tarjeta in tarjetas:
+                capa.addWidget(tarjeta)
+        capa.addStretch()
+        return marco
+
+    def _al_tildar(self, pc_id: int, marcada: bool):
+        self._marcas[pc_id] = marcada
+        self._contar_las_marcadas()
+
+    def _contar_las_marcadas(self):
+        cuantas = len(self._ids_marcados())
+        self.etiqueta_marcadas.setText(f"{cuantas} PC{'s' if cuantas != 1 else ''} "
+                                       f"marcada{'s' if cuantas != 1 else ''}")
 
     def _ids_marcados(self) -> set:
-        return {pc["id"] for fila, pc in enumerate(self.pcs)
-                if self.tabla.item(fila, COLUMNA_CASILLA).checkState() == Qt.CheckState.Checked}
+        return {pc["id"] for pc in self.pcs if self._marcas.get(pc["id"])}
 
     # -- acciones ----------------------------------------------------------------
     def _marcar_todas(self, marcar: bool):
-        estado = Qt.CheckState.Checked if marcar else Qt.CheckState.Unchecked
-        for fila in range(self.tabla.rowCount()):
-            self.tabla.item(fila, COLUMNA_CASILLA).setCheckState(estado)
+        for tarjeta in self.tarjetas.values():
+            tarjeta.casilla.setChecked(marcar)
 
     @manejar_errores
     def _cargar_version(self):

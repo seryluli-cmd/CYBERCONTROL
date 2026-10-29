@@ -25,6 +25,7 @@ TONO_AZUL = "azul"
 TONO_VERDE = "verde"
 TONO_CELESTE = "celeste"
 TONO_NARANJA = "naranja"
+TONO_AMARILLO = "amarillo"
 TONO_ROJO = "rojo"
 TONO_GRIS = "gris"
 
@@ -110,6 +111,18 @@ def cifra_destacada(titulo: str, aclaracion: str, tono: str) -> QFrame:
     capa.addWidget(cifra.valor)
     capa.addWidget(cifra.aclaracion)
     return cifra
+
+
+def pastilla_clara(texto: str, tono: str, chica: bool = False) -> QLabel:
+    """Una etiqueta de color suave ("ACTIVO", "V2", "FALTA DNI"), para usar sobre fondo
+    claro (las de `agregar_pastilla` son para la cabecera oscura). `tono`: TONO_VERDE,
+    TONO_AZUL, TONO_ROJO, TONO_NARANJA, TONO_AMARILLO o TONO_GRIS; `chica` la achica."""
+    pastilla = QLabel(texto)
+    pastilla.setObjectName("pastillaClara")
+    pastilla.setProperty("tono", tono)
+    pastilla.setProperty("chica", "true" if chica else "false")
+    pastilla.setAlignment(Qt.AlignCenter)
+    return pastilla
 
 
 def titulo_de_seccion(texto: str) -> QLabel:

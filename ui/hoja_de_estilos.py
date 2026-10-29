@@ -1257,4 +1257,199 @@ HOJA_DE_ESTILOS = """
         color: #C2620A;
         font-weight: 600;
     }
+
+    /* Pastillas claras (una etiqueta de color suave): las usan la ficha de Miembros y el
+       tablero de Actualizar el Cliente PC (diseños del 2026-10-29). Por objectName, como
+       el resto del diseño nuevo: los avisos que se abren encima no heredan nada. */
+    QLabel#pastillaClara {
+        background-color: #ECEFF4;
+        color: #5F6B7A;
+        border-radius: 9px;
+        padding: 2px 9px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel#pastillaClara[chica="true"] {
+        padding: 1px 7px;
+        font-size: 10px;
+    }
+    QLabel#pastillaClara[tono="verde"] { background-color: #DCF3E1; color: #1B5E20; }
+    QLabel#pastillaClara[tono="azul"] { background-color: #DCE8FB; color: #0D47A1; }
+    QLabel#pastillaClara[tono="rojo"] { background-color: #FBE3E1; color: #B3261E; }
+    QLabel#pastillaClara[tono="naranja"] { background-color: #FFE8D1; color: #9A4A00; }
+    QLabel#pastillaClara[tono="amarillo"] { background-color: #FFF3CD; color: #7A5300; }
+    QLabel#pastillaClara[tono="gris"] { background-color: #ECEFF4; color: #5F6B7A; }
+
+    /* Miembros: la ficha del socio elegido (control_pcs/ui/miembros_ficha.py). */
+    QFrame#fichaBloque {
+        background-color: #FFFFFF;
+        border: 1px solid #E1E5EC;
+        border-radius: 12px;
+    }
+    QFrame#fichaBloque[destacado="true"] {
+        background-color: #F2F6FF;
+        border-color: #D5E2FB;
+    }
+    QLabel#fichaTituloBloque {
+        color: #6B7585;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel#fichaValorBloque {
+        color: #1B2233;
+        font-size: 24px;
+        font-weight: 700;
+    }
+    QLabel#fichaValorBloque[destacado="true"] {
+        color: #2F6FED;
+        font-size: 30px;
+    }
+    QLabel#fichaSubBloque {
+        color: #6B7585;
+        font-size: 12px;
+    }
+    QLabel#fichaNombre {
+        color: #1B2233;
+        font-size: 22px;
+        font-weight: 700;
+    }
+    QLabel#fichaUsuario {
+        color: #6B7585;
+        font-size: 13px;
+    }
+    QLabel#fichaEtiquetaDato {
+        color: #6B7585;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel#fichaValorDato {
+        color: #1B2233;
+        font-size: 14px;
+    }
+    QLabel#fichaValorDato[vacio="true"] {
+        color: #A7ADB8;
+    }
+    QLabel#fichaValorDato[falta="true"] {
+        color: #B3261E;
+        font-weight: 700;
+    }
+    QLabel#fichaVacia {
+        color: #8A94A6;
+        font-size: 15px;
+    }
+
+    /* Actualizar el Cliente PC: el tablero por etapas
+       (control_pcs/ui/pcs_actualizacion_dialogo.py, diseño "D" del 2026-10-29). */
+    QLabel#tituloVentana {
+        color: #1B2233;
+        font-size: 26px;
+        font-weight: 700;
+    }
+    QLabel#subtituloVentana {
+        color: #6B7585;
+        font-size: 13px;
+    }
+    QFrame#chipVersion {
+        background-color: #F2F6FF;
+        border: 1px solid #D5E2FB;
+        border-radius: 10px;
+    }
+    QLabel#captionChip {
+        color: #6B7585;
+        font-size: 10px;
+        font-weight: 700;
+    }
+    QLabel#valorChip {
+        color: #3C4350;
+        font-size: 12px;
+    }
+    QFrame#cintaDePasos {
+        background-color: #FFFFFF;
+        border: 1px solid #E1E5EC;
+        border-radius: 12px;
+    }
+    QLabel#numeroDePaso {
+        background-color: #1E2330;
+        color: #FFFFFF;
+        border-radius: 10px;
+        padding: 1px 7px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel#textoDePaso {
+        color: #3C4350;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    QLabel#notaDePasos {
+        color: #6B7585;
+        font-size: 12px;
+    }
+    QLabel#resumenActualizacion {
+        color: #3C4350;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    QScrollArea#areaTablero,
+    QScrollArea#areaTablero > QWidget,
+    QScrollArea#areaTablero > QWidget > QWidget {
+        background: transparent;
+        border: none;
+    }
+    QFrame#columnaTablero {
+        background-color: #F7F9FC;
+        border: 1px solid #E1E5EC;
+        border-radius: 14px;
+    }
+    QLabel#tituloColumna {
+        color: #1B2233;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    QLabel#cuentaColumna {
+        background-color: #8A94A6;
+        color: #FFFFFF;
+        border-radius: 10px;
+        padding: 1px 8px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel#puntoColumna {
+        background-color: #8A94A6;
+        border-radius: 5px;
+    }
+    QLabel#cuentaColumna[tono="azul"], QLabel#puntoColumna[tono="azul"] { background-color: #2F6FED; }
+    QLabel#cuentaColumna[tono="turquesa"], QLabel#puntoColumna[tono="turquesa"] { background-color: #1F9AA0; }
+    QLabel#cuentaColumna[tono="verde"], QLabel#puntoColumna[tono="verde"] { background-color: #1E9E50; }
+    QLabel#cuentaColumna[tono="rojo"], QLabel#puntoColumna[tono="rojo"] { background-color: #C9444F; }
+    QFrame#tarjetaPc {
+        background-color: #FFFFFF;
+        border: 1px solid #E1E5EC;
+        border-radius: 10px;
+    }
+    QFrame#tarjetaPc[tono="verde"] { border-color: #BCE3CA; }
+    QFrame#tarjetaPc[tono="azul"] { border-color: #A9C6FA; }
+    QFrame#tarjetaPc[tono="rojo"] { border-color: #E9B3B8; }
+    QFrame#tarjetaPc[tono="amarillo"] { border-color: #F1D98B; }
+    QFrame#chipPc {
+        background-color: #F1F9F4;
+        border: 1px solid #BCE3CA;
+        border-radius: 8px;
+    }
+    QLabel#nombrePc {
+        color: #1B2233;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    QFrame#chipPc QLabel#nombrePc {
+        font-size: 12px;
+    }
+    QLabel#estadoPc {
+        color: #6B7585;
+        font-size: 11px;
+    }
+    QLabel#estadoPc[tono="verde"] { color: #146B3A; }
+    QLabel#estadoPc[tono="azul"] { color: #1D4FA8; }
+    QLabel#estadoPc[tono="rojo"] { color: #A6323C; }
+    QLabel#estadoPc[tono="amarillo"] { color: #7A5300; }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)

@@ -40,7 +40,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from cryptography.hazmat.primitives import serialization  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey  # noqa: E402
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton  # noqa: E402
 
 import database  # noqa: E402
 import dominio  # noqa: E402
@@ -867,13 +868,21 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         return dialogo
 
     def casillas(self, d):
-        return [d.tabla.item(f, 0).checkState() == Qt.CheckState.Checked for f in range(d.tabla.rowCount())]
+        return [d.tarjetas[pc["id"]].casilla.isChecked() for pc in d.pcs]
+
+    def estado(self, d, pc_id):
+        """Lo que dice la tarjeta de esa PC de cómo va."""
+        return d.tarjetas[pc_id].estado.text()
+
+    def columna_de(self, d, pc_id):
+        """El título de la columna del tablero en la que está esa PC."""
+        return d.tarjetas[pc_id].parentWidget().findChild(QLabel, "tituloColumna").text()
 
     def test_sin_version_lo_dice_y_lista_las_pcs(self):
         d = self.dialogo()
 
         self.assertEqual(d.etiqueta_version.text(), "Todavía no cargaste ninguna versión.")
-        self.assertEqual([d.tabla.item(f, 1).text() for f in range(d.tabla.rowCount())], ["PC1", "PC2"])
+        self.assertEqual([d.tarjetas[pc["id"]].nombre.text() for pc in d.pcs], ["PC1", "PC2"])
         self.assertIn("Primero cargá la versión nueva", d.etiqueta_resumen.text())
 
     def test_cargar_una_version_la_firma_y_deja_todas_sin_marcar(self):
@@ -884,7 +893,8 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         d._cargar_version()
 
         self.assertIsNotNone(repo.paquete())
-        self.assertIn("Versión cargada:", d.etiqueta_version.text())
+        self.assertRegex(d.etiqueta_version.text(),
+                         r"^\d\d/\d\d/\d{4} \d\d:\d\d \(sin número: armada antes de la V1\) · \d+,\d MB$")
         self.assertIn("Ahora marcá las PCs", self.infos[-1])
         self.assertEqual(self.casillas(d), [False, False])
         self.assertEqual(repo.obtener_seleccion(), set())
@@ -906,14 +916,15 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
     def test_marcar_y_actualizar_las_seleccionadas(self):
         repo.publicar(exe_de_cliente())
         d = self.dialogo()
-        d.tabla.item(1, 0).setCheckState(Qt.CheckState.Checked)
+        d.tarjetas[self.pc2].casilla.setChecked(True)
+        self.assertEqual(d.etiqueta_marcadas.text(), "1 PC marcada")
 
         d._actualizar_seleccionadas()
 
         self.assertEqual(repo.obtener_seleccion(), {self.pc2})
         self.assertIn("Listo: va a 1 PC.", self.infos[-1])
-        self.assertEqual(d.tabla.item(1, 2).text(), "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
-        self.assertEqual(d.tabla.item(0, 2).text(), "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
+        self.assertEqual(self.estado(d, self.pc2), "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
+        self.assertEqual(self.estado(d, self.pc1), "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)")
 
     def test_marcar_y_desmarcar_todas(self):
         repo.publicar(exe_de_cliente())
@@ -943,7 +954,7 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         repo.registrar_reporte(self.pc1, {"version": "1", "carpeta": "C:\\c", "act": "descargada",
                                           "act_detalle": "", "act_version": str(version)})
         d = self.dialogo()
-        self.assertEqual(d.tabla.item(0, 2).text(), "Actualizada con éxito · se aplica al reiniciarse (sola, si está libre)")
+        self.assertEqual(self.estado(d, self.pc1), "Actualizada con éxito · se aplica al reiniciarse (sola, si está libre)")
         d._marcar_todas(False)
         self.respuesta_confirmar = False
 
@@ -958,13 +969,14 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         version = repo.publicar(exe_de_cliente())["version"]
         repo.guardar_seleccion([self.pc1])
         d = self.dialogo()
-        d.tabla.item(1, 0).setCheckState(Qt.CheckState.Checked)       # tildada y sin guardar
+        d.tarjetas[self.pc2].casilla.setChecked(True)       # tildada y sin guardar
         repo.registrar_reporte(self.pc1, {"version": str(version), "carpeta": "C:\\c", "act": "", "act_detalle": ""})
 
         d._refrescar_solo()
 
         self.assertEqual(self.casillas(d), [True, True])
-        self.assertEqual(d.tabla.item(0, 2).text(), "Funcionando con la versión nueva")
+        self.assertEqual(self.estado(d, self.pc1), "Funcionando con la versión nueva")
+        self.assertEqual(self.columna_de(d, self.pc1), "Al día")
         self.assertEqual(d.etiqueta_resumen.text(), "✔ La PC seleccionada está actualizada.")
 
     def test_el_refresco_no_muestra_carteles_si_algo_falla(self):
@@ -1036,7 +1048,7 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
             d._cargar_version()
             self.assertIn("(V1.3)", preguntas[-1])
             self.assertNotIn("más vieja", preguntas[-1])
-            self.assertTrue(d.etiqueta_version.text().startswith("Versión cargada: V1.3 (cargada el "))
+            self.assertTrue(d.etiqueta_version.text().startswith("V1.3 (cargada el "))
             self.assertTrue(self.infos[-1].startswith("V1.3 cargada y firmada."))
 
             with open(self.ruta_elegida, "wb") as archivo:
@@ -1067,17 +1079,15 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
             conexion.execute("UPDATE estaciones SET ultima_conexion = '2026-10-19T12:00:00' WHERE id = ?", (self.pc2,))
         d = self.dialogo()
 
-        self.assertEqual([d.tabla.item(f, 3).text() for f in range(d.tabla.rowCount())], ["V1.2", "anterior a la V1"])
+        self.assertEqual([d.tarjetas[pc].version.text() for pc in (self.pc1, self.pc2)], ["V1.2", "anterior a la V1"])
 
     def test_la_columna_lanzador(self):
         repo.registrar_reporte(self.pc1, {"version": "1", "carpeta": "C:\\c", "act": "", "act_detalle": "", "lanzador": "2"})
         repo.registrar_reporte(self.pc2, {"version": "1", "carpeta": "C:\\c", "act": "", "act_detalle": ""})
         d = self.dialogo()
 
-        columna = pcs_actualizacion_dialogo.COLUMNA_LANZADOR
-        self.assertEqual(d.tabla.horizontalHeaderItem(columna).text(), "Lanzador")
-        self.assertEqual([d.tabla.item(f, columna).text() for f in range(d.tabla.rowCount())], ["2", "—"])
-        self.assertIn("anterior a la V1.4", d.tabla.item(1, columna).toolTip())
+        self.assertEqual([d.tarjetas[pc].lanzador.text() for pc in (self.pc1, self.pc2)], ["Lanz. 2", "Lanz. —"])
+        self.assertIn("anterior a la V1.4", d.tarjetas[self.pc2].lanzador.toolTip())
         self.assertEqual(pcs_actualizacion_dialogo.texto_del_lanzador({"lanzador": None, "carpeta": ""}), "")
 
     def test_el_resumen_dice_cuantas_estan_listas_y_que_les_falta(self):
@@ -1112,6 +1122,79 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         self.respuesta_confirmar = True
         d.reject()
         self.assertFalse(d._timer.isActive())
+
+    def test_cada_situacion_cae_en_una_sola_columna_del_tablero(self):
+        situaciones = [repo.NUNCA_CONECTADA, repo.INSTALACION_VIEJA, repo.NO_SELECCIONADA, repo.FUNCIONANDO,
+                       repo.LISTA, repo.FALLO, repo.APAGADA, repo.COPIANDO, repo.ERROR, repo.ESPERANDO,
+                       repo.SE_BORRA, repo.SIN_LANZADOR, repo.FALTA_PUENTE]
+        en_columnas = [s for _clave, _titulo, _tono, propias in pcs_actualizacion_dialogo.COLUMNAS_DEL_TABLERO
+                       for s in propias]
+        self.assertCountEqual(en_columnas, situaciones)
+        self.assertEqual(set(pcs_actualizacion_dialogo.TONO_DE_LA_SITUACION), set(situaciones))
+
+    def test_cada_pc_esta_en_la_columna_de_como_va(self):
+        version = repo.publicar(exe_de_cliente())["version"]
+        for pc in (self.pc1, self.pc2):
+            repo.registrar_reporte(pc, {"version": "1", "carpeta": "C:\\c", "act": "", "act_detalle": ""})
+        d = self.dialogo()
+        # Sin marcar ninguna: las dos esperan en "Sin marcar", y esa columna se ve.
+        self.assertEqual([self.columna_de(d, pc) for pc in (self.pc1, self.pc2)], ["Sin marcar"] * 2)
+
+        repo.guardar_seleccion([self.pc1, self.pc2])
+        repo.registrar_reporte(self.pc1, {"version": str(version), "carpeta": "C:\\c", "act": "", "act_detalle": ""})
+        repo.registrar_reporte(self.pc2, {"version": "1", "carpeta": "C:\\c", "act": "error",
+                                          "act_detalle": "No se pudo copiar.", "act_version": str(version)})
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE estaciones SET ultima_conexion = ? WHERE id = ?",
+                             (datetime.now().isoformat(timespec="seconds"), self.pc2))
+        d._cargar()
+
+        self.assertEqual(self.columna_de(d, self.pc1), "Al día")
+        self.assertEqual(self.columna_de(d, self.pc2), "Con problema")
+        # "Sin marcar" ya no tiene ninguna: no se muestra.
+        titulos = [e.text() for e in d.findChildren(QLabel, "tituloColumna")]
+        self.assertNotIn("Sin marcar", titulos)
+        self.assertEqual(titulos, ["Copiando", "Falta reiniciar", "Al día", "Con problema", "Sin conexión"])
+
+    def test_un_clic_en_la_tarjeta_tilda_la_casilla_y_se_cuentan_las_marcadas(self):
+        d = self.dialogo()
+        d._marcar_todas(False)
+        self.assertEqual(d.etiqueta_marcadas.text(), "0 PCs marcadas")
+
+        QTest.mouseClick(d.tarjetas[self.pc1], Qt.LeftButton)
+        self.assertTrue(d.tarjetas[self.pc1].casilla.isChecked())
+        self.assertEqual(d._ids_marcados(), {self.pc1})
+        self.assertEqual(d.etiqueta_marcadas.text(), "1 PC marcada")
+        QTest.mouseClick(d.tarjetas[self.pc1], Qt.LeftButton)
+        self.assertEqual(d._ids_marcados(), set())
+
+    def test_el_tablero_no_se_rehace_si_nada_cambio(self):
+        repo.publicar(exe_de_cliente())
+        for pc in (self.pc1, self.pc2):
+            repo.registrar_reporte(pc, {"version": "1", "carpeta": "C:\\c", "act": "", "act_detalle": ""})
+        d = self.dialogo()
+        antes = d.tarjetas[self.pc1]
+
+        d._refrescar_solo()
+        self.assertIs(d.tarjetas[self.pc1], antes)
+
+        # Pero si una PC cambia de etapa (la marcaron y guardaron), sí, y lo que se tildó sin
+        # guardar sigue tildado.
+        d.tarjetas[self.pc2].casilla.setChecked(True)
+        repo.guardar_seleccion([self.pc1])
+        d._refrescar_solo()
+        self.assertIsNot(d.tarjetas[self.pc1], antes)
+        self.assertEqual(self.casillas(d), [False, True])
+
+    def test_las_que_estan_al_dia_van_chiquitas_y_las_demas_con_su_aviso(self):
+        version = repo.publicar(exe_de_cliente())["version"]
+        repo.guardar_seleccion([self.pc1, self.pc2])
+        repo.registrar_reporte(self.pc1, {"version": str(version), "carpeta": "C:\\c", "act": "", "act_detalle": ""})
+        d = self.dialogo()
+
+        self.assertEqual(d.tarjetas[self.pc1].objectName(), "chipPc")
+        self.assertEqual(d.tarjetas[self.pc2].objectName(), "tarjetaPc")
+        self.assertIn("Instalado en: C:\\c", d.tarjetas[self.pc1].toolTip())
 
     def test_gestionar_estaciones_tiene_el_boton(self):
         gestion = pcs_gestion_dialogos.DialogoGestionEstaciones({"rol": dominio.ROL_ADMIN})

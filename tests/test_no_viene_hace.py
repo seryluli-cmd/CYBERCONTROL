@@ -15,14 +15,12 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import dominio  # noqa: E402
 from control_pcs.repositories import bonos_miembro_repo, miembros_repo, pcs_repo, ultima_visita_repo  # noqa: E402
-from control_pcs.ui.miembros_window import (  # noqa: E402
-    COLOR_NO_VIENE, COLOR_NUNCA_VINO, COLUMNA_NO_VIENE, MiembrosWindow, texto_no_viene,
-)
+from control_pcs.ui.miembros_ficha import ROL_DATOS, texto_de_la_lista  # noqa: E402
+from control_pcs.ui.miembros_window import MiembrosWindow, texto_no_viene  # noqa: E402
 from database import conexion_db  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
@@ -48,9 +46,13 @@ class TestLaCuenta(BaseConBaseTemporal):
         self.assertFalse(ultima_visita_repo.no_viene_hace_mas_de(15, 15))
         self.assertTrue(ultima_visita_repo.no_viene_hace_mas_de(None, 15))
 
-    def test_lo_que_dice_la_columna(self):
+    def test_lo_que_dice_la_ficha(self):
         self.assertEqual([texto_no_viene(d) for d in (None, 0, 1, 15, 59, 60, 95)],
                          ["Nunca vino", "Hoy", "Ayer", "15 días", "59 días", "2 meses", "3 meses"])
+
+    def test_lo_que_dice_la_lista(self):
+        self.assertEqual([texto_de_la_lista(d) for d in (None, 0, 1, 15, 60)],
+                         ["Nunca vino", "Vino hoy", "Vino ayer", "Hace 15 días", "Hace 2 meses"])
 
 
 class BaseSocios(BaseConBaseTemporal):
@@ -131,55 +133,56 @@ class TestEnMiembros(BaseSocios):
         self.addCleanup(ventana.deleteLater)
         return ventana
 
-    def filas(self, ventana):
-        return {ventana.tabla.item(fila, 0).text(): ventana.tabla.item(fila, COLUMNA_NO_VIENE)
-                for fila in range(ventana.tabla.rowCount())}
+    def renglones(self, ventana):
+        """{usuario: el renglón de la lista}."""
+        renglones = (ventana.lista.item(fila) for fila in range(ventana.lista.count()))
+        return {renglon.data(ROL_DATOS)["miembro"]["usuario"]: renglon for renglon in renglones}
 
-    def test_la_columna_con_colores_y_el_detalle_al_pasar_el_mouse(self):
-        filas = self.filas(self.ventana())
-        self.assertEqual({usuario: item.text() for usuario, item in filas.items()},
-                         {"cargo": "3 días", "jugo": "20 días", "nunca": "Nunca vino"})
-        self.assertEqual(filas["jugo"].foreground().color(), COLOR_NO_VIENE)
-        self.assertEqual(filas["nunca"].foreground().color(), COLOR_NUNCA_VINO)
-        self.assertNotEqual(filas["cargo"].foreground().color(), COLOR_NO_VIENE)
-        self.assertIn("Entró a la PC07 el", filas["jugo"].toolTip())
-        self.assertIn("Última carga", filas["jugo"].toolTip())
+    def test_la_lista_sabe_hace_cuanto_no_viene_cada_uno_y_lo_cuenta_al_pasar_el_mouse(self):
+        renglones = self.renglones(self.ventana())
+        self.assertEqual({usuario: renglon.data(ROL_DATOS)["dias"] for usuario, renglon in renglones.items()},
+                         {"cargo": 3, "jugo": 20, "nunca": None})
+        self.assertIn("Entró a la PC07 el", renglones["jugo"].toolTip())
+        self.assertIn("Última carga", renglones["jugo"].toolTip())
+        self.assertIn("Nunca entró", renglones["nunca"].toolTip())
+
+    def test_la_ficha_dice_la_ultima_visita_del_que_esta_elegido(self):
+        ventana = self.ventana()
+        for usuario, valor, aclaracion in (("jugo", "20 días", "Entró a la PC07 el"),
+                                           ("nunca", "Nunca vino", "Nunca entró a una PC"),
+                                           ("cargo", "3 días", "Nunca entró a una PC")):
+            fila = next(i for i, m in enumerate(ventana.miembros) if m["usuario"] == usuario)
+            ventana.lista.setCurrentRow(fila)
+            self.assertEqual(ventana.ficha.valor_visita.text(), valor, usuario)
+            self.assertIn(aclaracion, ventana.ficha.aclaracion_visita.text(), usuario)
 
     def test_el_filtro_de_los_que_no_vienen(self):
         ventana = self.ventana()
-        ventana.check_sin_venir.setChecked(True)
-        self.assertEqual(set(self.filas(ventana)), {"jugo", "nunca"})
+        ventana.segmentos.elegir("no_vienen")
+        self.assertFalse(ventana.caja_dias.isHidden())
+        self.assertEqual(set(self.renglones(ventana)), {"jugo", "nunca"})
         ventana.campo_dias_sin_venir.setValue(30)
-        self.assertEqual(set(self.filas(ventana)), {"nunca"})
+        self.assertEqual(set(self.renglones(ventana)), {"nunca"})
         ventana.campo_dias_sin_venir.setValue(2)
-        self.assertEqual(set(self.filas(ventana)), {"cargo", "jugo", "nunca"})
+        self.assertEqual(set(self.renglones(ventana)), {"cargo", "jugo", "nunca"})
+        # El botón dice con cuántos días se está filtrando.
+        self.assertEqual(ventana.segmentos._botones["no_vienen"].text(), "No vienen +2 días")
+        ventana.segmentos.elegir("todos")
+        self.assertTrue(ventana.caja_dias.isHidden())
+        self.assertEqual(set(self.renglones(ventana)), {"cargo", "jugo", "nunca"})
 
-    def test_la_tabla_sigue_ocupando_todo_el_ancho_despues_de_filtrar(self):
-        # Hasta el 2026-10-24, cada búsqueda achicaba Nombre a su texto y la tabla
-        # quedaba más angosta que la ventana.
+    def test_ordenar_por_los_que_hace_mas_que_no_vienen_y_elegir_sigue_andando(self):
         ventana = self.ventana()
-        ventana.setAttribute(Qt.WA_DontShowOnScreen)
-        ventana.resize(860, 400)
-        ventana.show()
-        self.addCleanup(ventana.hide)
-        ventana.check_sin_venir.setChecked(True)
-        ventana.campo_buscar.setText("o")
-        _app.processEvents()
-        self.assertEqual(ventana.tabla.horizontalHeader().length(), ventana.tabla.viewport().width())
-
-    def test_ordenar_con_un_clic_en_el_titulo_y_elegir_sigue_andando(self):
-        ventana = self.ventana()
-        titulo = ventana.tabla.horizontalHeader()
-        titulo.sectionClicked.emit(COLUMNA_NO_VIENE)
-        self.assertEqual(list(self.filas(ventana)), ["nunca", "jugo", "cargo"])
-        self.assertTrue(ventana.tabla.horizontalHeaderItem(COLUMNA_NO_VIENE).text().endswith("▼"))
-        titulo.sectionClicked.emit(COLUMNA_NO_VIENE)
-        self.assertEqual(list(self.filas(ventana)), ["cargo", "jugo", "nunca"])
+        ventana.combo_orden.setCurrentIndex(1)       # más tiempo sin venir
+        self.assertEqual(list(self.renglones(ventana)), ["nunca", "jugo", "cargo"])
+        ventana.combo_orden.setCurrentIndex(2)       # menos tiempo sin venir
+        self.assertEqual(list(self.renglones(ventana)), ["cargo", "jugo", "nunca"])
         # El socio de la fila elegida es el que se ve, no el del orden de antes.
-        ventana.tabla.selectRow(1)
+        ventana.lista.setCurrentRow(1)
         with mock.patch("control_pcs.ui.miembros_window.VentanaHistorialCargas") as historial:
-            ventana.boton_historial.click()
+            ventana.ficha.boton_historial.click()
         self.assertEqual(historial.call_args.args[1]["usuario"], "jugo")
-        titulo.sectionClicked.emit(COLUMNA_NO_VIENE)
-        self.assertEqual(list(self.filas(ventana)), ["cargo", "jugo", "nunca"])
-        self.assertEqual(ventana.tabla.horizontalHeaderItem(COLUMNA_NO_VIENE).text(), "No viene hace")
+        ventana.combo_orden.setCurrentIndex(0)       # por usuario, como siempre
+        self.assertEqual(list(self.renglones(ventana)), ["cargo", "jugo", "nunca"])
+        # Y vuelve a estar elegido el mismo socio.
+        self.assertEqual(ventana._seleccionado()["usuario"], "jugo")

@@ -19,11 +19,17 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 import dominio  # noqa: E402
 
 from control_pcs.repositories import miembros_repo  # noqa: E402
-from control_pcs.ui.miembros_window import ALTO_DE_LA_VENTANA, MiembrosWindow  # noqa: E402
+from control_pcs.ui.miembros_ficha import ROL_DATOS  # noqa: E402
+from control_pcs.ui.miembros_window import ALTO_DE_LA_VENTANA, ANCHO_DE_LA_VENTANA, MiembrosWindow  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
+
+
+def usuarios_de_la_lista(ventana):
+    """Los usuarios de los socios de la lista, en el orden en que se ven."""
+    return [ventana.lista.item(fila).data(ROL_DATOS)["miembro"]["usuario"] for fila in range(ventana.lista.count())]
 
 # Cargados desordenados, con nombres en otro orden y mayúsculas mezcladas.
 SOCIOS = [("zenex", "Cris"), ("MissGloom", "Gaby"), ("agus555", "Zulema"), ("Toxin", "Agustin")]
@@ -52,10 +58,9 @@ class TestOrdenPorUsuario(BaseConBaseTemporal):
         operador = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Ana", "1234", dominio.ROL_EMPLEADA))
         ventana = MiembrosWindow(operador)
 
-        self.assertEqual([ventana.tabla.item(fila, 0).text() for fila in range(ventana.tabla.rowCount())],
-                         EN_ORDEN)
+        self.assertEqual(usuarios_de_la_lista(ventana), EN_ORDEN)
         # Elegir un renglón elige a ese socio (la lista de atrás va en el mismo orden).
-        ventana.tabla.selectRow(1)
+        ventana.lista.setCurrentRow(1)
         self.assertEqual(ventana._seleccionado()["usuario"], "MissGloom")
 
 
@@ -94,14 +99,13 @@ class TestLupa(BaseConBaseTemporal):
         ventana = MiembrosWindow(operador)
 
         ventana.campo_buscar.setText("cris")
-        self.assertEqual([ventana.tabla.item(fila, 0).text() for fila in range(ventana.tabla.rowCount())],
-                         ["cris_77", "crisxx", "elcris"])
+        self.assertEqual(usuarios_de_la_lista(ventana), ["cris_77", "crisxx", "elcris"])
         # Lo elegido en la lista filtrada es ese socio, no el de esa fila sin filtrar.
-        ventana.tabla.selectRow(2)
+        ventana.lista.setCurrentRow(2)
         self.assertEqual(ventana._seleccionado()["usuario"], "elcris")
 
         ventana.campo_buscar.clear()
-        self.assertEqual(ventana.tabla.rowCount(), 7)
+        self.assertEqual(ventana.lista.count(), 7)
 
 
 class TestVentanaAlta(BaseConBaseTemporal):
@@ -109,6 +113,7 @@ class TestVentanaAlta(BaseConBaseTemporal):
         operador = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Ana", "1234", dominio.ROL_EMPLEADA))
         ventana = MiembrosWindow(operador)
 
-        disponible = ventana.screen().availableGeometry().height()
-        self.assertEqual(ventana.height(), min(ALTO_DE_LA_VENTANA, disponible - 80))
-        self.assertEqual(ventana.width(), 860)
+        disponible = ventana.screen().availableGeometry()
+        self.assertEqual(ventana.height(), min(ALTO_DE_LA_VENTANA, disponible.height() - 80))
+        # Y ancha, para tener la ficha del socio al lado de la lista (2026-10-29).
+        self.assertEqual(ventana.width(), min(ANCHO_DE_LA_VENTANA, disponible.width() - 20))

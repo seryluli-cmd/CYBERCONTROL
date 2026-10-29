@@ -9,12 +9,15 @@ de la barra superior ("Miembros"), accesible para cualquier operador
 logueado (pedido del dueño, 2026-10-19: antes pedía permiso_control_pcs o
 Admin, pero cargarle saldo a un socio tiene que poder hacerlo cualquiera)
 — son tareas de *usar* el catálogo (cargar saldo con la tarifa y los
-bonos ya definidos), no de editarlo. "Historial de Cargas" (al lado de
-Cargar Saldo, 2026-10-24) abre miembros_historial_cargas.py. "$ Para Reserva"
-(2026-10-26, solo el Admin) abre reservas_socio_dialogo.DialogoSaldoParaReserva. La columna
-"No viene hace" (mismo día) y su filtro salen de ultima_visita_repo: en
-naranja pasados dominio.DIAS_SIN_VENIR_AVISO días, y se ordena con un clic
-en su título.
+bonos ya definidos), no de editarlo.
+
+Desde el 2026-10-29 la ventana es la "ficha del socio" (maqueta B, que eligió el dueño entre
+tres): la lista a la izquierda y, a la derecha, la ficha del elegido con sus botones (ver
+miembros_ficha.py). "Historial de este socio" y "Historial de Cargas" (el de todos, abajo; el
+historial nació el 2026-10-24) abren miembros_historial_cargas.py. "$ Para Reserva" (2026-10-26,
+solo el Admin) abre reservas_socio_dialogo.DialogoSaldoParaReserva. "Hace cuánto no viene" (y su
+filtro, con los días a elección, y su orden) salen de ultima_visita_repo: en naranja pasados
+dominio.DIAS_SIN_VENIR_AVISO días.
 
 La configuración de la tabla de tramos de tarifa $/hora (ver
 config_repo.obtener_tramos_tarifa_hora_miembro) y la gestión del
@@ -28,240 +31,281 @@ en ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLineEdit, QLabel, QComboBox, QCheckBox, QFormLayout,
-    QHeaderView, QSpinBox, QStackedWidget, QWidget
+    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QSpinBox, QStackedWidget, QTableWidget, QVBoxLayout, QWidget,
 )
 
 import dominio
 from repositories import config_repo
-from control_pcs.repositories import miembros_repo, bonos_miembro_repo, ultima_visita_repo
+from control_pcs.repositories import (
+    bonos_miembro_repo, historial_cargas_repo, miembros_repo, ultima_visita_repo,
+)
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
+from control_pcs.ui.dibujos_de_ventana import icono_de, pixmap_de, poner_icono
+# texto_no_viene y detalle_de_la_visita viven en miembros_ficha: texto_no_viene se sigue
+# pudiendo importar de acá (lo usan las pruebas).
+from control_pcs.ui.miembros_ficha import (  # noqa: F401
+    ROL_DATOS, DelegadoDeSocios, FichaDelSocio, Segmentos, detalle_de_la_visita, texto_no_viene,
+)
 from control_pcs.ui.miembros_historial_cargas import VentanaHistorialCargas
 from control_pcs.ui.reservas_socio_dialogo import DialogoSaldoParaReserva
 from ui.dialogo_pago import cobrar
+from ui.piezas_ventana import TONO_AZUL, TONO_GRIS, TONO_NARANJA, TONO_VERDE, agregar_pastilla, cabecera_oscura, \
+    panel_blanco, tecla
 from ui.utils import (
     CampoPesos, formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
-    aplicar_clase, encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar,
-    crear_tabla, fila_agregar_quitar,
+    encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar, fila_agregar_quitar, fecha_iso, hoy_del_local,
 )
 
-# Alto de la lista de socios (ver MiembrosWindow).
+# Tamaño de la ventana: alta, para ver muchos socios en la lista sin bajar (pedido del dueño,
+# 2026-10-20), y ancha para tener la ficha del socio al lado (diseño del 2026-10-29). Ninguna
+# pasa del tamaño de la pantalla.
 ALTO_DE_LA_VENTANA = 960
+ANCHO_DE_LA_VENTANA = 1240
 
-COLUMNAS_MIEMBROS = ["Usuario", "Nombre", "DNI", "Celular", "WhatsApp", "Saldo", "No viene hace", "Estado"]
-COLUMNA_NO_VIENE = 6
-COLUMNA_ESTADO = 7
-# "No viene hace" pasados dominio.DIAS_SIN_VENIR_AVISO días, y "Nunca vino".
-COLOR_NO_VIENE = QColor("#D35400")
-COLOR_NUNCA_VINO = QColor("#8A94A6")
-
-
-def texto_no_viene(dias) -> str:
-    """Lo que dice la columna "No viene hace" (de ultima_visita_repo.dias_sin_venir)."""
-    if dias is None:
-        return "Nunca vino"
-    if dias == 0:
-        return "Hoy"
-    if dias == 1:
-        return "Ayer"
-    if dias < 60:
-        return f"{dias} días"
-    return f"{dias // 30} meses"
-
-
-def detalle_de_la_visita(visita) -> str:
-    """Lo que se ve al pasar el mouse por "No viene hace": cuándo y qué hizo."""
-    if visita is None:
-        return "Nunca entró a una PC con su usuario ni se le cargó saldo."
-    partes = []
-    if visita["pc"] is not None:
-        desde = visita["pc_desde"].strftime("%d/%m %H:%M")
-        partes.append(f"Está usando la {visita['pc']} desde el {desde}" if visita["jugando"]
-                      else f"Entró a la {visita['pc']} el {desde}")
-    if visita["carga"] is not None:
-        partes.append(f"Última carga {visita['carga'].strftime('%d/%m %H:%M')}")
-    return " · ".join(partes)
+# Los filtros de arriba de la lista: (clave, texto). El de "no vienen" lleva los días que se
+# elijan (ver MiembrosWindow._al_cambiar_los_dias).
+FILTROS = (("todos", "Todos"), ("con_saldo", "Con saldo"),
+           ("no_vienen", f"No vienen +{dominio.DIAS_SIN_VENIR_AVISO} días"), ("sin_dni", "Sin DNI"))
+# Cómo se ordena la lista (clave, texto). "usuario" es el de siempre.
+ORDENES = (("usuario", "Por usuario (A-Z)"), ("mas", "Más tiempo sin venir"), ("menos", "Menos tiempo sin venir"))
 
 
 class MiembrosWindow(QDialog):
-    """Grilla de socios con alta, modificación, carga de saldo y baja."""
+    """Administración de Miembros: a la izquierda la lista de socios (con buscador y filtros) y a
+    la derecha la ficha del que está elegido, con los botones que actúan sobre él: modificar,
+    cargar saldo, ver sus cargas y desactivarlo. Abajo, lo que no es de un socio en particular:
+    "$ Para Reserva", el Historial de Cargas de todos y Salir."""
 
     def __init__(self, usuario_operador, parent=None):
         super().__init__(parent)
         self.usuario_operador = usuario_operador
         self.setWindowTitle("Administración de Miembros")
-        # Alta, para ver unos 28 socios sin bajar (pedido del dueño, 2026-10-20:
-        # con 480 se veían 11). No más alta que la pantalla.
-        alto = ALTO_DE_LA_VENTANA
+        alto, ancho = ALTO_DE_LA_VENTANA, ANCHO_DE_LA_VENTANA
         if self.screen() is not None:
-            alto = min(alto, self.screen().availableGeometry().height() - 80)
-        self.resize(860, alto)
-        # Orden por "No viene hace" (clic en el título): None = por usuario, como
-        # siempre; Qt.DescendingOrder = los que hace más que no vienen arriba.
-        self._orden_sin_venir = None
+            disponible = self.screen().availableGeometry()
+            alto = min(alto, disponible.height() - 80)
+            ancho = min(ancho, disponible.width() - 20)
+        self.resize(ancho, alto)
+        # Lo que se ve, en el mismo orden que la lista: _seleccionado lee de acá por número de fila.
+        self.miembros = []
+        self._visitas = {}
+        self._dias = {}
         self._armar_interfaz()
         self._cargar_grilla()
 
     def _armar_interfaz(self):
-        barra_botones = QHBoxLayout()
-        boton_nuevo = QPushButton("Nuevo")
-        aplicar_clase(boton_nuevo, "primario")
-        boton_nuevo.clicked.connect(self._nuevo_miembro)
-        boton_modificar = QPushButton("Modificar")
-        boton_modificar.clicked.connect(self._modificar_miembro)
-        boton_cargar_saldo = QPushButton("Cargar Saldo")
-        aplicar_clase(boton_cargar_saldo, "primario")
-        boton_cargar_saldo.clicked.connect(self._cargar_saldo)
-        # Al lado de Cargar Saldo (pedido del dueño, 2026-10-24): qué se le cargó a
-        # cada socio, cuánto, quién y cuándo (ver miembros_historial_cargas.py).
-        self.boton_historial = QPushButton("📜  Historial de Cargas")
-        self.boton_historial.clicked.connect(self._ver_historial_de_cargas)
-        boton_desactivar = QPushButton("Desactivar")
-        aplicar_clase(boton_desactivar, "peligro")
-        boton_desactivar.clicked.connect(self._desactivar_miembro)
-        # Cuántas horas de saldo necesita un socio para reservar sin seña (pedido del
-        # dueño, 2026-10-26): lo cambia solo el Admin; los demás lo ven en gris y con candado.
+        raiz = QVBoxLayout(self)
+        raiz.setContentsMargins(12, 12, 12, 12)
+        raiz.setSpacing(10)
+
+        cabecera = cabecera_oscura("", "Miembros", "Elegí un socio y hacé todo desde su ficha")
+        cabecera.icono.setPixmap(pixmap_de("usuario", 30, "#EAF4FF", 1.6))
+        self.pastilla_socios = agregar_pastilla(cabecera, "", TONO_AZUL)
+        self.pastilla_con_saldo = agregar_pastilla(cabecera, "", TONO_VERDE)
+        self.pastilla_sin_dni = agregar_pastilla(cabecera, "", TONO_NARANJA)
+        self.pastilla_sin_venir = agregar_pastilla(cabecera, "", TONO_GRIS)
+        self.pastilla_sin_venir.setToolTip("Incluye a los que nunca vinieron.")
+        raiz.addWidget(cabecera)
+
+        cuerpo = QHBoxLayout()
+        cuerpo.setSpacing(12)
+
+        # ---- la lista
+        izquierda, capa = panel_blanco()
+        izquierda.setFixedWidth(480)
+        self.campo_buscar = QLineEdit()
+        self.campo_buscar.setPlaceholderText("Buscar por usuario...")
+        self.campo_buscar.setClearButtonEnabled(True)
+        self.campo_buscar.addAction(icono_de("lupa", 18, "#8A94A6"), QLineEdit.ActionPosition.LeadingPosition)
+        self.campo_buscar.textChanged.connect(self._cargar_grilla)
+        self.boton_nuevo = tecla("Nuevo", self._nuevo_miembro, "teclaVerde")
+        poner_icono(self.boton_nuevo, "mas", 16, "#FFFFFF")
+        fila_buscar = QHBoxLayout()
+        fila_buscar.setSpacing(8)
+        fila_buscar.addWidget(self.campo_buscar, 1)
+        fila_buscar.addWidget(self.boton_nuevo)
+        capa.addLayout(fila_buscar)
+
+        self.segmentos = Segmentos(FILTROS)
+        self.segmentos.cambio.connect(self._al_cambiar_el_filtro)
+        capa.addWidget(self.segmentos)
+
+        self.check_inactivos = QCheckBox("Mostrar inactivos")
+        self.check_inactivos.stateChanged.connect(self._cargar_grilla)
+        # Los que no vienen hace más de N días (pedido del dueño, 2026-10-24): para armar la
+        # lista de a quién escribirle por WhatsApp. Solo se ve con ese filtro elegido.
+        self.campo_dias_sin_venir = QSpinBox()
+        self.campo_dias_sin_venir.setRange(1, 999)
+        self.campo_dias_sin_venir.setValue(dominio.DIAS_SIN_VENIR_AVISO)
+        self.campo_dias_sin_venir.setSuffix(" días")
+        # Sin flechitas, como la cantidad de Impresiones: con esta hoja de estilos salían
+        # como una rayita, y el número se escribe.
+        self.campo_dias_sin_venir.setButtonSymbols(QSpinBox.NoButtons)
+        self.campo_dias_sin_venir.setFixedWidth(90)
+        self.campo_dias_sin_venir.valueChanged.connect(self._al_cambiar_los_dias)
+        self.caja_dias = QWidget()
+        capa_dias = QHBoxLayout(self.caja_dias)
+        capa_dias.setContentsMargins(0, 0, 0, 0)
+        capa_dias.setSpacing(8)
+        capa_dias.addWidget(QLabel("No vienen hace más de"))
+        capa_dias.addWidget(self.campo_dias_sin_venir)
+        capa_dias.addStretch()
+        self.caja_dias.setVisible(False)
+        capa.addWidget(self.caja_dias)
+        self.combo_orden = QComboBox()
+        for clave, texto in ORDENES:
+            self.combo_orden.addItem(texto, clave)
+        self.combo_orden.setMinimumWidth(190)
+        self.combo_orden.currentIndexChanged.connect(self._cargar_grilla)
+        fila_opciones = QHBoxLayout()
+        fila_opciones.setSpacing(10)
+        fila_opciones.addWidget(self.check_inactivos)
+        fila_opciones.addStretch()
+        fila_opciones.addWidget(self.combo_orden)
+        capa.addLayout(fila_opciones)
+
+        self.lista = QListWidget()
+        self.lista.setItemDelegate(DelegadoDeSocios(self.lista))
+        self.lista.setStyleSheet("QListWidget { border: none; background: transparent; outline: none; }")
+        self.lista.setMouseTracking(True)
+        self.lista.setUniformItemSizes(True)
+        self.lista.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        self.lista.currentRowChanged.connect(self._al_cambiar_la_fila)
+        self.lista.itemDoubleClicked.connect(lambda _item: self._modificar_miembro())
+        capa.addWidget(self.lista, 1)
+        cuerpo.addWidget(izquierda)
+
+        # ---- la ficha del elegido
+        self.ficha = FichaDelSocio()
+        self.ficha.boton_modificar.clicked.connect(self._modificar_miembro)
+        self.ficha.boton_cargar_saldo.clicked.connect(self._cargar_saldo)
+        self.ficha.boton_historial.clicked.connect(self._ver_historial_del_socio)
+        self.ficha.boton_desactivar.clicked.connect(self._desactivar_miembro)
+        cuerpo.addWidget(self.ficha, 1)
+        raiz.addLayout(cuerpo, 1)
+
+        # ---- abajo: lo que no es de un socio en particular
+        # Cuántas horas de saldo necesita un socio para reservar sin seña (pedido del dueño,
+        # 2026-10-26): lo cambia solo el Admin; los demás lo ven en gris y con candado.
         es_admin = dominio.es_admin(self.usuario_operador)
-        self.boton_saldo_para_reserva = QPushButton("$ Para Reserva" if es_admin else "$ Para Reserva  🔒")
+        self.boton_saldo_para_reserva = tecla("$ Para Reserva" if es_admin else "$ Para Reserva  🔒")
         self.boton_saldo_para_reserva.setEnabled(es_admin)
         self.boton_saldo_para_reserva.setToolTip(
             "Las horas de saldo que necesita un socio para reservar" if es_admin else "Solo el Administrador")
         self.boton_saldo_para_reserva.clicked.connect(
             lambda: DialogoSaldoParaReserva(self.usuario_operador, self).exec())
-        botones = [boton_nuevo, boton_modificar, boton_cargar_saldo, self.boton_historial,
-                   self.boton_saldo_para_reserva, boton_desactivar]
-        boton_salir = QPushButton("Salir")
-        boton_salir.clicked.connect(self.close)
-        botones.append(boton_salir)
-        for boton in botones:
-            barra_botones.addWidget(boton)
-        barra_botones.addStretch()
+        # Las cargas de TODOS los socios (pedido del dueño, 2026-10-24); las de uno solo se ven
+        # con "Historial de este socio", en su ficha.
+        self.boton_historial_todos = tecla("Historial de Cargas", self._ver_historial_de_todos)
+        poner_icono(self.boton_historial_todos, "reloj")
+        boton_salir = tecla("Salir", self.close)
+        pie = QHBoxLayout()
+        pie.setSpacing(8)
+        pie.addWidget(self.boton_saldo_para_reserva)
+        pie.addWidget(self.boton_historial_todos)
+        pie.addStretch()
+        pie.addWidget(boton_salir)
+        raiz.addLayout(pie)
 
-        self.check_inactivos = QCheckBox("Mostrar inactivos")
-        self.check_inactivos.stateChanged.connect(self._cargar_grilla)
-
-        # La lupa: filtra por usuario mientras se escribe (pedido del dueño, 2026-10-20).
-        lupa = QLabel("🔍")
-        lupa.setStyleSheet("font-size: 20px;")
-        self.campo_buscar = QLineEdit()
-        self.campo_buscar.setPlaceholderText("Buscar por usuario...")
-        self.campo_buscar.setClearButtonEnabled(True)
-        self.campo_buscar.setMinimumWidth(320)
-        self.campo_buscar.textChanged.connect(self._cargar_grilla)
-        fila_buscar = QHBoxLayout()
-        fila_buscar.addWidget(lupa)
-        fila_buscar.addWidget(self.campo_buscar)
-        fila_buscar.addSpacing(16)
-        fila_buscar.addWidget(self.check_inactivos)
-        # Los que no vienen hace más de N días (pedido del dueño, 2026-10-24): para
-        # armar la lista de a quién escribirle por WhatsApp.
-        self.check_sin_venir = QCheckBox("No vienen hace más de")
-        self.check_sin_venir.stateChanged.connect(self._cargar_grilla)
-        self.campo_dias_sin_venir = QSpinBox()
-        self.campo_dias_sin_venir.setRange(1, 999)
-        self.campo_dias_sin_venir.setValue(dominio.DIAS_SIN_VENIR_AVISO)
-        self.campo_dias_sin_venir.setSuffix(" días")
-        # Sin flechitas, como la cantidad de Impresiones: con esta hoja de estilos
-        # salían como una rayita, y el número se escribe.
-        self.campo_dias_sin_venir.setButtonSymbols(QSpinBox.NoButtons)
-        self.campo_dias_sin_venir.setFixedWidth(90)
-        self.campo_dias_sin_venir.valueChanged.connect(self._al_cambiar_los_dias)
-        fila_buscar.addSpacing(16)
-        fila_buscar.addWidget(self.check_sin_venir)
-        fila_buscar.addWidget(self.campo_dias_sin_venir)
-        fila_buscar.addStretch()
-
-        self.tabla = crear_tabla(COLUMNAS_MIEMBROS, estirar=1, por_filas=True)
-        self.tabla.doubleClicked.connect(self._modificar_miembro)
-        self.tabla.horizontalHeader().sectionClicked.connect(self._ordenar_por_columna)
-
-        layout = QVBoxLayout()
-        layout.addLayout(barra_botones)
-        layout.addLayout(fila_buscar)
-        layout.addWidget(self.tabla)
-        self.setLayout(layout)
         sin_boton_por_defecto(self)
         # Se abre escribiendo el usuario: casi siempre se busca a alguien.
         self.campo_buscar.setFocus()
 
     @manejar_errores
     def _cargar_grilla(self, _=None):
-        # El "_=None" absorbe lo que mandan textChanged y stateChanged (ver
-        # ArticulosWindow._cargar_grilla).
+        # El "_=None" absorbe lo que mandan textChanged, stateChanged y currentIndexChanged.
+        elegido = self._id_elegido()
         miembros = miembros_repo.listar_miembros(
             incluir_inactivos=self.check_inactivos.isChecked(), texto_busqueda=self.campo_buscar.text(),
         )
         visitas = ultima_visita_repo.ultimas_visitas()
         ahora = datetime.now()
-        dias = {m["id"]: ultima_visita_repo.dias_sin_venir(visitas.get(m["id"]), ahora) for m in miembros}
-        if self.check_sin_venir.isChecked():
-            limite = self.campo_dias_sin_venir.value()
-            miembros = [m for m in miembros if ultima_visita_repo.no_viene_hace_mas_de(dias[m["id"]], limite)]
-        if self._orden_sin_venir is not None:
+        # Las cifras de la cabecera son de todos los socios activos, se filtre lo que se filtre.
+        activos = miembros_repo.listar_miembros()
+        dias = {m["id"]: ultima_visita_repo.dias_sin_venir(visitas.get(m["id"]), ahora) for m in (*activos, *miembros)}
+        self._actualizar_cifras(activos, dias)
+        miembros = self._filtrar(miembros, dias)
+        orden = self.combo_orden.currentData()
+        if orden != "usuario":
             # El que nunca vino cuenta como el que hace más que no viene.
             miembros = sorted(miembros, key=lambda m: float("inf") if dias[m["id"]] is None else dias[m["id"]],
-                              reverse=self._orden_sin_venir == Qt.DescendingOrder)
-        # Lo que se ve, en el mismo orden: _seleccionado lee de acá por número de fila.
-        self.miembros = miembros
-        self.tabla.setRowCount(0)
-        for miembro in self.miembros:
-            fila = self.tabla.rowCount()
-            self.tabla.insertRow(fila)
-            self.tabla.setItem(fila, 0, QTableWidgetItem(miembro["usuario"]))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(miembro["nombre"]))
-            if miembros_repo.tiene_dni(miembro):
-                item_dni = QTableWidgetItem(miembro["dni"])
-            else:
-                # Se lo pide su PC la primera vez que entra (ver miembros_repo).
-                item_dni = QTableWidgetItem("Falta DNI")
-                item_dni.setForeground(Qt.red)
-            self.tabla.setItem(fila, 2, item_dni)
-            self.tabla.setItem(fila, 3, QTableWidgetItem(miembro["telefono"]))
-            self.tabla.setItem(fila, 4, QTableWidgetItem(miembro["whatsapp"]))
-            self.tabla.setItem(fila, 5, QTableWidgetItem(formato_tiempo(miembro["saldo_minutos"] * 60)))
-            sin_venir = dias[miembro["id"]]
-            item_no_viene = QTableWidgetItem(texto_no_viene(sin_venir))
-            item_no_viene.setToolTip(detalle_de_la_visita(visitas.get(miembro["id"])))
-            if sin_venir is None:
-                item_no_viene.setForeground(COLOR_NUNCA_VINO)
-            elif sin_venir > dominio.DIAS_SIN_VENIR_AVISO:
-                item_no_viene.setForeground(COLOR_NO_VIENE)
-            self.tabla.setItem(fila, COLUMNA_NO_VIENE, item_no_viene)
-            self.tabla.setItem(fila, COLUMNA_ESTADO, QTableWidgetItem("Activo" if miembro["activo"] else "Inactivo"))
-        # Con el ancho fijo de siempre, un WhatsApp con +54 9 se veía cortado. Todas
-        # menos Nombre, la que se estira: achicarla a su texto dejaba la tabla más
-        # angosta que la ventana después de cada búsqueda.
-        for columna in range(len(COLUMNAS_MIEMBROS)):
-            if columna != 1:
-                self.tabla.resizeColumnToContents(columna)
+                              reverse=orden == "mas")
+        self.miembros, self._visitas, self._dias = miembros, visitas, dias
 
-    def _al_cambiar_los_dias(self, _dias):
-        if self.check_sin_venir.isChecked():
-            self._cargar_grilla()
+        self.lista.blockSignals(True)
+        self.lista.clear()
+        for miembro in miembros:
+            renglon = QListWidgetItem()
+            renglon.setData(ROL_DATOS, {"miembro": miembro, "dias": dias[miembro["id"]]})
+            renglon.setToolTip(detalle_de_la_visita(visitas.get(miembro["id"])))
+            self.lista.addItem(renglon)
+        # Sigue elegido el mismo socio (o el primero): la ficha nunca queda vacía habiendo socios.
+        fila = next((i for i, m in enumerate(miembros) if m["id"] == elegido), 0 if miembros else -1)
+        self.lista.setCurrentRow(fila)
+        self.lista.blockSignals(False)
+        if fila >= 0:
+            self.lista.scrollToItem(self.lista.item(fila))
+        self._mostrar_la_ficha()
 
-    def _ordenar_por_columna(self, columna):
-        """Clic en "No viene hace": primero los que hace más que no vienen, otro
-        clic al revés, y otro vuelve al orden por usuario. Las demás columnas no
-        ordenan. La flecha va en el título (el indicador de Qt ordenaría solo)."""
-        if columna != COLUMNA_NO_VIENE:
+    def _filtrar(self, miembros, dias):
+        filtro = self.segmentos.elegido()
+        if filtro == "con_saldo":
+            return [m for m in miembros if m["saldo_minutos"] > 0]
+        if filtro == "sin_dni":
+            return [m for m in miembros if not miembros_repo.tiene_dni(m)]
+        if filtro == "no_vienen":
+            limite = self.campo_dias_sin_venir.value()
+            return [m for m in miembros if ultima_visita_repo.no_viene_hace_mas_de(dias[m["id"]], limite)]
+        return miembros
+
+    def _actualizar_cifras(self, activos, dias):
+        limite = dominio.DIAS_SIN_VENIR_AVISO
+        con_saldo = sum(1 for m in activos if m["saldo_minutos"] > 0)
+        sin_dni = sum(1 for m in activos if not miembros_repo.tiene_dni(m))
+        sin_venir = sum(1 for m in activos if ultima_visita_repo.no_viene_hace_mas_de(dias[m["id"]], limite))
+        self.pastilla_socios.setText("1 SOCIO" if len(activos) == 1 else f"{len(activos)} SOCIOS")
+        self.pastilla_con_saldo.setText(f"{con_saldo} CON SALDO")
+        self.pastilla_sin_dni.setText(f"{sin_dni} SIN DNI")
+        self.pastilla_sin_venir.setText(f"{sin_venir} NO VIENEN HACE +{limite} DÍAS")
+
+    @manejar_errores
+    def _mostrar_la_ficha(self):
+        miembro = self._elegido()
+        if miembro is None:
+            self.ficha.vaciar()
             return
-        self._orden_sin_venir = {None: Qt.DescendingOrder, Qt.DescendingOrder: Qt.AscendingOrder}.get(
-            self._orden_sin_venir
-        )
-        flecha = {Qt.DescendingOrder: " ▼", Qt.AscendingOrder: " ▲"}.get(self._orden_sin_venir, "")
-        self.tabla.horizontalHeaderItem(COLUMNA_NO_VIENE).setText(COLUMNAS_MIEMBROS[COLUMNA_NO_VIENE] + flecha)
+        hoy = hoy_del_local()
+        cargas = historial_cargas_repo.listar_cargas(
+            fecha_iso(hoy.addYears(-1)), fecha_iso(hoy), miembro_id=miembro["id"])
+        self.ficha.mostrar(miembro, self._dias[miembro["id"]], self._visitas.get(miembro["id"]), cargas)
+
+    def _al_cambiar_la_fila(self, _fila):
+        self._mostrar_la_ficha()
+
+    def _al_cambiar_el_filtro(self, clave):
+        self.caja_dias.setVisible(clave == "no_vienen")
         self._cargar_grilla()
 
+    def _al_cambiar_los_dias(self, dias):
+        self.segmentos.poner_texto("no_vienen", f"No vienen +{dias} días")
+        if self.segmentos.elegido() == "no_vienen":
+            self._cargar_grilla()
+
+    def _elegido(self):
+        fila = self.lista.currentRow()
+        return self.miembros[fila] if 0 <= fila < len(self.miembros) else None
+
+    def _id_elegido(self):
+        miembro = self._elegido()
+        return miembro["id"] if miembro is not None else None
+
     def _seleccionado(self):
-        fila = self.tabla.currentRow()
-        if fila < 0:
+        miembro = self._elegido()
+        if miembro is None:
             mostrar_error(self, "Nada seleccionado", "Elegí primero un socio de la lista.")
-            return None
-        return self.miembros[fila]
+        return miembro
 
     def _nuevo_miembro(self):
         if DialogoMiembro(self).exec():
@@ -281,12 +325,13 @@ class MiembrosWindow(QDialog):
         if DialogoCargarSaldo(self.usuario_operador, miembro, self).exec():
             self._cargar_grilla()
 
-    def _ver_historial_de_cargas(self):
-        # Con un socio marcado (resaltado) abre con sus cargas; si no, con las de
-        # todos. No usa _seleccionado(): sin ninguno no es un error.
-        filas = self.tabla.selectionModel().selectedRows()
-        miembro = self.miembros[filas[0].row()] if filas else None
-        VentanaHistorialCargas(self, miembro).exec()
+    def _ver_historial_del_socio(self):
+        miembro = self._seleccionado()
+        if miembro is not None:
+            VentanaHistorialCargas(self, miembro).exec()
+
+    def _ver_historial_de_todos(self):
+        VentanaHistorialCargas(self, None).exec()
 
     @manejar_errores
     def _desactivar_miembro(self):

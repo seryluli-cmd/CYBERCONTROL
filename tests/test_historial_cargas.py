@@ -201,19 +201,23 @@ class TestBotonEnMiembros(BaseHistorial):
         self.addCleanup(ventana.deleteLater)
         return ventana
 
-    def test_va_al_lado_de_cargar_saldo(self):
+    def test_el_de_un_socio_esta_en_su_ficha_al_lado_de_cargar_saldo_y_el_de_todos_abajo(self):
         ventana = self.miembros()
-        botones = [ventana.layout().itemAt(0).layout().itemAt(i).widget() for i in range(5)]
-        textos = [boton.text() for boton in botones]
-        self.assertEqual(textos.index("📜  Historial de Cargas"), textos.index("Cargar Saldo") + 1)
+        ficha = ventana.ficha
+        self.assertEqual(ficha.boton_historial.text(), "Historial de este socio")
+        # En la ficha, los botones van en este orden: Cargar Saldo, Historial de este socio.
+        acciones = [boton for boton in ficha.findChildren(type(ficha.boton_historial))
+                    if boton in (ficha.boton_cargar_saldo, ficha.boton_historial)]
+        self.assertEqual([boton.text() for boton in acciones], ["Cargar Saldo", "Historial de este socio"])
+        self.assertEqual(ventana.boton_historial_todos.text(), "Historial de Cargas")
 
-    def test_con_un_socio_marcado_abre_con_ese_socio_y_sin_ninguno_con_todos(self):
+    def test_el_de_la_ficha_abre_con_ese_socio_y_el_de_abajo_con_todos(self):
         ventana = self.miembros()
         with mock.patch("control_pcs.ui.miembros_window.VentanaHistorialCargas") as historial:
-            ventana.boton_historial.click()
+            ventana.boton_historial_todos.click()
             self.assertIsNone(historial.call_args.args[1])
 
             fila = next(i for i, m in enumerate(ventana.miembros) if m["usuario"] == "mariana")
-            ventana.tabla.selectRow(fila)
-            ventana.boton_historial.click()
+            ventana.lista.setCurrentRow(fila)
+            ventana.ficha.boton_historial.click()
             self.assertEqual(historial.call_args.args[1]["id"], self.mariana)
