@@ -6,17 +6,24 @@ desplegable (en vez de tipearlo, para evitar errores de tipeo y que sea
 más cómodo con pantalla táctil) y pide "Clave"; si coinciden, abre la
 ventana principal con los permisos que correspondan según el rol
 (ADMIN o EMPLEADA).
+
+Desde el 2026-10-30 tiene el diseño "Portal" que eligió el dueño ("demasiado
+básica, nuestro programa está a otro nivel"; maqueta D de cinco): el joystick
+en el centro de anillos de neón que giran, con estrellas, y el nombre, la clave
+y ENTRAR en una fila. Los dibujos están en ui/ingreso_dibujos.py y los colores
+de los campos en ui/hoja_de_estilos.py.
 """
 
 import time
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QFormLayout, QFrame, QComboBox,
+    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox,
     QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette, QColor, QPixmap
+from PySide6.QtCore import Qt, QPointF, QRect, QTimer
+from PySide6.QtGui import QColor, QPainter, QPalette, QPixmap
 
 import dominio
 from admin_remoto import modo as modo_remoto
@@ -24,7 +31,8 @@ from database import verificar_clave
 # El módulo y no las funciones sueltas: en la copia para administrar desde otra
 # PC, admin_remoto/cliente.py las cambia por las que le preguntan al mostrador.
 from repositories import usuarios_repo
-from ui.utils import mostrar_error, mostrar_aviso, manejar_errores, aplicar_clase, encadenar_enter
+from ui.ingreso_dibujos import CIAN, LADO_DEL_ICONO, VIOLETA, Portal, TextoConDegradado, hora_y_fecha
+from ui.utils import mostrar_error, mostrar_aviso, manejar_errores, encadenar_enter
 
 # Mismo ícono que usa main.py para las ventanas (carpeta assets, junto al código).
 RUTA_ICONO_PNG = Path(__file__).resolve().parent.parent / "assets" / "icono.png"
@@ -39,6 +47,45 @@ MAX_INTENTOS = 5
 BLOQUEO_SEGUNDOS = 60
 _intentos_fallidos = {}  # nombre (en minúsculas) -> (cantidad_seguidos, bloqueado_hasta)
 
+ANCHO, ALTO = 960, 600
+# Dónde va el centro de los anillos, y hasta qué altura cambia algo de un cuadro al
+# siguiente (los anillos y las estrellas): de ahí para abajo, los campos y ENTRAR
+# quedan quietos y no hace falta redibujarlos 30 veces por segundo.
+CENTRO_DEL_PORTAL = QPointF(ANCHO / 2, 196)
+ALTO_QUE_SE_MUEVE = 430
+# Unos 30 cuadros por segundo, como el cometa del mosaico.
+MILISEGUNDOS_POR_CUADRO = 33
+# El mismo azul noche de QComboBox#nombreIngreso QAbstractItemView en ui/hoja_de_estilos.py.
+FONDO_DE_LA_LISTA = "#0B1226"
+
+
+def _brillo(widget, color: str, radio: int, alfa: int):
+    """El resplandor de neón alrededor de un widget. Es un efecto de Qt: el motor de
+    hojas de estilo no tiene box-shadow."""
+    efecto = QGraphicsDropShadowEffect(widget)
+    efecto.setBlurRadius(radio)
+    efecto.setOffset(0, 0)
+    color_del_brillo = QColor(color)
+    color_del_brillo.setAlpha(alfa)
+    efecto.setColor(color_del_brillo)
+    widget.setGraphicsEffect(efecto)
+
+
+class _ListaDeNombres(QComboBox):
+    """La lista de nombres. Lo que se despliega es una ventanita aparte y la hoja de
+    estilos no llega a su marco: quedaban franjas blancas arriba y abajo de los
+    nombres sobre el fondo oscuro. Se oscurece con la paleta, solo esa ventanita y
+    justo antes de abrirla: puesta antes, la hoja de estilos la pisaba al mostrar
+    la pantalla."""
+
+    def showPopup(self):
+        desplegable = self.view().window()
+        paleta = desplegable.palette()
+        paleta.setColor(QPalette.Window, QColor(FONDO_DE_LA_LISTA))
+        paleta.setColor(QPalette.Base, QColor(FONDO_DE_LA_LISTA))
+        desplegable.setPalette(paleta)
+        super().showPopup()
+
 
 class LoginWindow(QWidget):
     def __init__(self, al_loguearse):
@@ -49,36 +96,35 @@ class LoginWindow(QWidget):
         """
         super().__init__()
         self._al_loguearse = al_loguearse
+        self._inicio = time.monotonic()
+        # La animación corre solo mientras la ventana se ve (showEvent / hideEvent).
+        self._animacion = QTimer(self)
+        self._animacion.setInterval(MILISEGUNDOS_POR_CUADRO)
+        self._animacion.timeout.connect(self._siguiente_cuadro)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
         self.setWindowTitle("CyberBIOS - Ingreso")
-        self.setFixedSize(400, 420)
-        # Fondo gris claro detrás de la tarjeta blanca, para que la
-        # tarjeta se destaque en vez de que todo sea un único blanco liso.
-        # Se hace con QPalette (no setStyleSheet): ponerle una hoja de
-        # estilos LOCAL a esta ventana rompe la cascada de la regla
-        # [clase="primario"] de la hoja de estilos global para el botón
-        # "Entrar" de más abajo (limitación del motor de QSS de Qt).
-        self.setAutoFillBackground(True)
-        paleta = self.palette()
-        paleta.setColor(QPalette.Window, QColor("#EEF1F6"))
-        self.setPalette(paleta)
+        self.setFixedSize(ANCHO, ALTO)
+        # El fondo lo pinta entero paintEvent, así Qt no lo borra antes de cada cuadro.
+        # Nada de setStyleSheet ni colores de paleta en esta ventana: los avisos y la
+        # caja al entrar se abren como hijos suyos y tienen que verse como siempre.
+        # Los campos oscuros se pintan por objectName en ui/hoja_de_estilos.py.
+        self.setAttribute(Qt.WA_OpaquePaintEvent)
 
-        # El ícono real del programa (la caja registradora). Si el archivo no
-        # estuviera, se cae al emoji de siempre en vez de dejar el hueco vacío.
-        icono = QLabel()
-        imagen = QPixmap(str(RUTA_ICONO_PNG))
-        if imagen.isNull():
-            icono.setText("🏪")
-            icono.setStyleSheet("font-size: 42px;")
-        else:
-            icono.setPixmap(imagen.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        icono.setAlignment(Qt.AlignCenter)
+        # El ícono real del programa (el joystick), en el centro de los anillos. Si el
+        # archivo no estuviera, los anillos giran igual alrededor del hueco.
+        icono = QPixmap(str(RUTA_ICONO_PNG))
+        if not icono.isNull():
+            escala = self.devicePixelRatioF()
+            icono = icono.scaled(int(LADO_DEL_ICONO * escala), int(LADO_DEL_ICONO * escala),
+                                 Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            icono.setDevicePixelRatio(escala)
+        self._portal = Portal(ANCHO, ALTO, CENTRO_DEL_PORTAL, icono)
 
-        titulo = QLabel("CyberBIOS")
-        titulo.setStyleSheet("font-size: 21px; font-weight: 700; color: #1F2430;")
-        titulo.setAlignment(Qt.AlignCenter)
+        titulo = TextoConDegradado("CyberBIOS", ["#FFFFFF", "#BFE9FF"])
+        titulo.setObjectName("tituloIngreso")
+        _brillo(titulo, CIAN, 34, 190)
 
         if modo_remoto.es_copia_remota():
             subtitulo = QLabel(
@@ -87,7 +133,7 @@ class LoginWindow(QWidget):
             )
         else:
             subtitulo = QLabel("Elegí tu nombre e ingresá la clave para continuar")
-        subtitulo.setStyleSheet("color: #6B7280; font-size: 12px;")
+        subtitulo.setObjectName("subtituloIngreso")
         subtitulo.setAlignment(Qt.AlignCenter)
         subtitulo.setWordWrap(True)
 
@@ -99,11 +145,13 @@ class LoginWindow(QWidget):
         # SQLite el orden por defecto es por valor de byte, así que
         # "admin" (minúscula) quedaría después de cualquier nombre en
         # mayúscula en vez de intercalarse alfabéticamente de verdad.
-        self.combo_nombre = QComboBox()
+        self.combo_nombre = _ListaDeNombres()
+        self.combo_nombre.setObjectName("nombreIngreso")
         usuarios_ordenados = sorted(usuarios_repo.listar_usuarios(), key=lambda u: u["nombre"].lower())
         for usuario in usuarios_ordenados:
             self.combo_nombre.addItem(usuario["nombre"])
         self.campo_clave = QLineEdit()
+        self.campo_clave.setObjectName("claveIngreso")
         self.campo_clave.setEchoMode(QLineEdit.Password)
         # Al apretar Enter en la clave, intenta entrar directamente (más
         # rápido para el uso diario que tener que hacer clic siempre).
@@ -111,54 +159,75 @@ class LoginWindow(QWidget):
         # Enter en el nombre pasa a la clave, como Tab.
         encadenar_enter(self.combo_nombre, self.campo_clave)
 
-        formulario = QFormLayout()
-        formulario.setSpacing(10)
-        formulario.addRow("Nombre:", self.combo_nombre)
-        formulario.addRow("Clave:", self.campo_clave)
-
-        boton_entrar = QPushButton("Entrar")
-        aplicar_clase(boton_entrar, "primario")
-        boton_entrar.setFixedHeight(42)
+        boton_entrar = QPushButton("ENTRAR")
+        boton_entrar.setObjectName("botonEntrar")
         boton_entrar.setDefault(True)
         boton_entrar.clicked.connect(self._intentar_ingresar)
+        # El brillo se ve porque el botón cuelga de esta ventana (los layouts no
+        # recortan): dentro de un widget justo de su tamaño quedaría cortado.
+        _brillo(boton_entrar, VIOLETA, 34, 190)
 
-        # Tarjeta blanca centrada, con borde suave, que agrupa todo el
-        # formulario. Su estilo vive en la hoja de estilos GLOBAL (ui/hoja_de_estilos.py)
-        # (selector "#tarjetaLogin"), no en un setStyleSheet local, por el
-        # mismo motivo que el fondo de arriba: una hoja local rompería la
-        # regla [clase="primario"] del botón "Entrar" que va adentro.
-        tarjeta = QFrame()
-        tarjeta.setObjectName("tarjetaLogin")
-        layout_tarjeta = QVBoxLayout()
-        layout_tarjeta.setContentsMargins(36, 32, 36, 32)
-        layout_tarjeta.setSpacing(6)
-        layout_tarjeta.addWidget(icono)
-        layout_tarjeta.addWidget(titulo)
-        layout_tarjeta.addWidget(subtitulo)
-        layout_tarjeta.addSpacing(20)
-        layout_tarjeta.addLayout(formulario)
-        layout_tarjeta.addSpacing(20)
-        layout_tarjeta.addWidget(boton_entrar)
-        tarjeta.setLayout(layout_tarjeta)
+        # Nombre, clave y ENTRAR en una sola fila, cada uno con su rótulo arriba.
+        fila = QGridLayout()
+        fila.setHorizontalSpacing(14)
+        fila.setVerticalSpacing(6)
+        for columna, texto in enumerate(("NOMBRE", "CLAVE")):
+            rotulo = QLabel(texto)
+            rotulo.setObjectName("rotuloIngreso")
+            fila.addWidget(rotulo, 0, columna)
+        fila.addWidget(self.combo_nombre, 1, 0)
+        fila.addWidget(self.campo_clave, 1, 1)
+        fila.addWidget(boton_entrar, 1, 2)
+        fila.setColumnMinimumWidth(0, 230)
+        fila.setColumnMinimumWidth(1, 230)
+        fila.setColumnMinimumWidth(2, 160)
+        centrada = QHBoxLayout()
+        centrada.addStretch()
+        centrada.addLayout(fila)
+        centrada.addStretch()
 
-        # Sombra suave para que la tarjeta se sienta "flotando" sobre el
-        # fondo gris, en vez de quedar pegada — un detalle chico que
-        # ayuda a que la pantalla de entrada se vea más cuidada. Tiene
-        # que ser un efecto de Qt (QGraphicsDropShadowEffect), no CSS:
-        # el motor de hojas de estilo de Qt no soporta box-shadow.
-        sombra = QGraphicsDropShadowEffect(self)
-        sombra.setBlurRadius(28)
-        sombra.setXOffset(0)
-        sombra.setYOffset(6)
-        sombra.setColor(QColor(31, 41, 61, 45))
-        tarjeta.setGraphicsEffect(sombra)
+        self.reloj = QLabel(hora_y_fecha(datetime.now()))
+        self.reloj.setObjectName("relojIngreso")
+        self.reloj.setAlignment(Qt.AlignCenter)
 
+        # De arriba abajo: el lugar de los anillos (los dibuja paintEvent), el
+        # nombre, la línea de ayuda, la fila para entrar y la hora.
         layout = QVBoxLayout()
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.addWidget(tarjeta)
+        layout.setContentsMargins(0, 0, 0, 18)
+        layout.setSpacing(0)
+        layout.addSpacing(330)
+        layout.addWidget(titulo)
+        layout.addWidget(subtitulo)
+        layout.addSpacing(22)
+        layout.addLayout(centrada)
+        layout.addStretch()
+        layout.addWidget(self.reloj)
         self.setLayout(layout)
 
         self.combo_nombre.setFocus()
+
+    def paintEvent(self, _evento):
+        pintor = QPainter(self)
+        self._portal.pintar(pintor, time.monotonic() - self._inicio, self.devicePixelRatioF())
+        pintor.end()
+
+    def showEvent(self, evento):
+        super().showEvent(evento)
+        self._animacion.start()
+
+    def hideEvent(self, evento):
+        # Al entrar, la ventana se cierra (se oculta): sin esto los anillos
+        # seguirían girando de fondo todo el turno.
+        super().hideEvent(evento)
+        self._animacion.stop()
+
+    def _siguiente_cuadro(self):
+        if self.isMinimized():
+            return
+        texto = hora_y_fecha(datetime.now())
+        if self.reloj.text() != texto:
+            self.reloj.setText(texto)
+        self.update(QRect(0, 0, ANCHO, ALTO_QUE_SE_MUEVE))
 
     @manejar_errores
     def _intentar_ingresar(self):

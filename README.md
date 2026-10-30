@@ -802,6 +802,17 @@ mostrador quedaba abierto como Administrador.
 
 ## Identidad y permisos
 
+La pantalla de ingreso ("CyberBIOS - Ingreso", 960 × 600) tiene desde el 2026-10-30 el
+diseño **"Portal"** que eligió el dueño entre cinco (maqueta D de `PROPUESTA_PANTALLA_INGRESO`,
+en la carpeta de los proyectos, donde quedan guardadas las cinco para otros programas):
+- El joystick va en el centro de anillos de neón que giran, con estrellas que salen hacia afuera.
+- Debajo van "CyberBIOS" grande con brillo, y el nombre, la clave y ENTRAR en una fila.
+- Al pie, la hora y la fecha en castellano.
+
+Los dibujos están en `ui/ingreso_dibujos.py` (QPainter, unos 30 cuadros por segundo, solo mientras la
+pantalla se ve) y los colores de los campos en `ui/hoja_de_estilos.py`, por objectName: los avisos se abren
+como hijos de esta ventana y tienen que verse como siempre. Tests: `tests/test_pantalla_ingreso.py`.
+
 Login por **nombre + clave** (`login_window.py`, vía
 `usuarios_repo.autenticar_por_nombre`) — ignora mayúsculas/minúsculas y
 espacios de más al comparar. ⚠️ La comparación se hace en **Python**

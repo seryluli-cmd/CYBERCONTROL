@@ -17,6 +17,8 @@ from pathlib import Path
 # La carpeta assets está junto al código, un nivel arriba de ui/ (igual que
 # el ícono de ui/login_window.py).
 RUTA_FLECHA_ABAJO = (Path(__file__).resolve().parent.parent / "assets" / "flecha_abajo.svg").as_posix()
+# La misma flecha en celeste, para la lista desplegable oscura de la pantalla de ingreso.
+RUTA_FLECHA_ABAJO_CLARA = (Path(__file__).resolve().parent.parent / "assets" / "flecha_abajo_clara.svg").as_posix()
 
 
 # --------------------------------------------------------------------
@@ -249,10 +251,89 @@ HOJA_DE_ESTILOS = """
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
         height: 0px;
     }
-    #tarjetaLogin {
-        background-color: #FFFFFF;
-        border: 1px solid #E1E4EA;
-        border-radius: 14px;
+    /* Pantalla de ingreso con el diseño "Portal" (maqueta D que eligió el dueño el
+       2026-10-30; ui/login_window.py): todo por objectName, porque los avisos y la
+       caja al entrar se abren como hijos de esa ventana y tienen que verse como siempre. */
+    QLabel#tituloIngreso {
+        font-family: "Bahnschrift";
+        font-size: 44px;
+        font-weight: 300;
+        letter-spacing: 9px;
+        padding: 4px 0px;
+    }
+    QLabel#subtituloIngreso {
+        color: #8796B5;
+        font-size: 13px;
+    }
+    QLabel#rotuloIngreso {
+        color: #6E86B0;
+        font-family: "Bahnschrift";
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 2px;
+        padding-left: 18px;
+    }
+    QLabel#relojIngreso {
+        color: #5D6B8A;
+        font-family: "Bahnschrift";
+        font-size: 13px;
+        letter-spacing: 2px;
+    }
+    QComboBox#nombreIngreso, QLineEdit#claveIngreso {
+        background-color: rgba(255, 255, 255, 16);
+        color: #EEF6FF;
+        font-size: 16px;
+        border: 1px solid rgba(140, 180, 255, 80);
+        border-radius: 23px;
+        padding: 9px 20px;
+        min-height: 26px;
+        selection-background-color: #1D5C86;
+    }
+    QComboBox#nombreIngreso:focus, QLineEdit#claveIngreso:focus {
+        border: 1.5px solid #22D3EE;
+        background-color: rgba(34, 211, 238, 22);
+    }
+    QLineEdit#claveIngreso {
+        letter-spacing: 5px;
+    }
+    QComboBox#nombreIngreso::drop-down {
+        border: none;
+        width: 38px;
+        background-color: transparent;
+    }
+    QComboBox#nombreIngreso::down-arrow {
+        image: url(__RUTA_FLECHA_ABAJO_CLARA__);
+        width: 11px;
+        height: 7px;
+        margin-right: 14px;
+    }
+    QComboBox#nombreIngreso QAbstractItemView {
+        background-color: #0B1226;
+        color: #EEF6FF;
+        border: 1px solid #2A3A66;
+        selection-background-color: #1D5C86;
+        selection-color: #FFFFFF;
+        outline: none;
+    }
+    QPushButton#botonEntrar {
+        color: #FFFFFF;
+        font-family: "Bahnschrift";
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 4px;
+        border: none;
+        border-radius: 23px;
+        min-height: 46px;
+        background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4C8DFF, stop:1 #A855F7);
+    }
+    QPushButton#botonEntrar:hover {
+        background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6AA2FF, stop:1 #BA78F9);
+    }
+    QPushButton#botonEntrar:focus {
+        border: 1.5px solid #E6F6FF;
+    }
+    QPushButton#botonEntrar:pressed {
+        background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3B74DB, stop:1 #8E3FD6);
     }
     /* Barra de arriba oscura, estilo cyber, haciendo juego con el mosaico de PCs
        (pedido del dueño, 2026-10-19: "no parecen ni botones"). */
@@ -1452,4 +1533,5 @@ HOJA_DE_ESTILOS = """
     QLabel#estadoPc[tono="azul"] { color: #1D4FA8; }
     QLabel#estadoPc[tono="rojo"] { color: #A6323C; }
     QLabel#estadoPc[tono="amarillo"] { color: #7A5300; }
-""".replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO)
+""".replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO).replace(
+    "__RUTA_FLECHA_ABAJO_CLARA__", RUTA_FLECHA_ABAJO_CLARA)
