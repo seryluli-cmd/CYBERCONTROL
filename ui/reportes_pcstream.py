@@ -18,6 +18,7 @@ from PySide6.QtCore import Qt, QDate
 
 import dominio
 from control_pcs.repositories import pcstream_repo
+from ui.piezas_ventana import panel_de_tabla, pie_de_ventana
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, formato_tiempo, hoy_del_local, manejar_errores,
     sin_boton_por_defecto, crear_tabla, rango_de_fechas,
@@ -75,21 +76,21 @@ class PestañaPcstream(QWidget):
         for columna in _COLUMNAS_A_LA_DERECHA:
             self.tabla.horizontalHeader().setSectionResizeMode(columna, QHeaderView.ResizeToContents)
 
-        nota = QLabel(
+        nota = pie_de_ventana(
             f"Lo recaudado por {dominio.NOMBRE_PCSTREAM} ya está sumado en \"Alquiler de PCs\" "
             "(Caja, Cierre de Turno y Totales). Tiempo de uso: lo que estuvo habilitada de verdad; "
             "es menos que lo vendido si se cortó una sesión antes de tiempo. Cada sesión cuenta "
             "en el día en que empezó."
         )
-        nota.setWordWrap(True)
-        nota.setStyleSheet("color: #7A869A;")
 
+        # Como las demás pestañas de Reportes (maqueta B): alineada con la cabecera y
+        # la grilla en su panel blanco.
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 12, 0, 0)
+        layout.setSpacing(12)
         layout.addLayout(filtros)
-        layout.addSpacing(12)
         layout.addLayout(totales)
-        layout.addSpacing(12)
-        layout.addWidget(self.tabla)
+        layout.addWidget(panel_de_tabla(self.tabla), 1)
         layout.addWidget(nota)
         self.setLayout(layout)
         sin_boton_por_defecto(self)

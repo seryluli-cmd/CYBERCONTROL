@@ -23,19 +23,31 @@ código sin querer), se escanea o escribe, Enter, y se confirma.
 """
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout,
-)
+from PySide6.QtWidgets import QAbstractItemView, QDialog, QHBoxLayout, QLabel, QVBoxLayout
 
+import dominio
 from repositories import articulos_repo
 from ui.articulos_tabla import (
-    COLUMNA_CODIGO, COLUMNA_DESCRIPCION, COLUMNA_STOCK, COLUMNA_STOCK_MINIMO,
-    crear_tabla_de_articulos, llenar_tabla_de_articulos, poner_codigo, poner_stock,
+    COLUMNA_CODIGO, COLUMNA_DESCRIPCION, COLUMNA_PRECIO_COMPRA, COLUMNA_PRECIO_VENTA, COLUMNA_RUBRO,
+    COLUMNA_STOCK, COLUMNA_STOCK_MINIMO, crear_tabla_de_articulos, llenar_tabla_de_articulos, poner_codigo,
+    poner_stock,
+)
+from ui.dibujos_tabla import DelegadoEtiqueta
+from ui.piezas_ventana import (
+    agregar_indicador, buscador, cabecera_oscura, panel_de_tabla, pie_de_ventana, poner_indicador, tecla,
 )
 from ui.utils import confirmar, encadenar_enter, manejar_errores, mostrar_error, sin_boton_por_defecto
 
 
 class OrdenarStockWindow(QDialog):
+    """La grilla de Artículos con el stock y el código para escribir.
+
+    Con la maqueta B que eligió el dueño el 2026-10-30 (ui/piezas_ventana.py), como
+    Artículos: la cabecera oscura con los números del catálogo, el buscador grande,
+    la grilla en su panel con el rubro en una etiqueta de color y la ayuda abajo.
+    Las celdas que se escriben siguen con su fondo amarillo (articulos_tabla): el
+    stock va sin la barrita de Artículos, que taparía ese fondo y lo que se teclea."""
+
     def __init__(self, parent, usuario_id: int, clave: str):
         super().__init__(parent)
         self.usuario_id = usuario_id
@@ -46,25 +58,37 @@ class OrdenarStockWindow(QDialog):
         # algo que tecleó el Admin y no hay que guardarlo.
         self._llenando = False
         self.setWindowTitle("ORDENAR Stock")
-        self.resize(950, 600)
+        self.resize(1180, 720)
         self._armar_interfaz()
         self._cargar_grilla()
 
     def _armar_interfaz(self):
-        aviso = QLabel(
-            "Acá se corrigen el STOCK y el CÓDIGO (las columnas amarillas). Stock: un clic en el "
-            "artículo, escribí cuántos hay de verdad y Enter. Código mal cargado: doble clic en el "
-            "código, escaneá con la pistola (o escribilo) y Enter. Los precios, los costos y la caja "
-            "no se tocan; cada cambio queda anotado en los Movimientos del artículo."
+        cabecera = cabecera_oscura(
+            "⚙", "ORDENAR Stock",
+            "Acá se corrigen el STOCK y el CÓDIGO (las columnas amarillas). Los precios, los costos y la caja no se tocan",
         )
-        aviso.setWordWrap(True)
+        self.indicador_articulos = agregar_indicador(cabecera, "Artículos")
+        self.indicador_bajo_minimo = agregar_indicador(cabecera, "Bajo el mínimo")
 
-        self.campo_buscar = QLineEdit()
-        self.campo_buscar.setPlaceholderText("Buscar por código o descripción (o escanear con la pistola)...")
+        self.campo_buscar = buscador("Buscar por código o descripción (o escanear con la pistola)...")
         self.campo_buscar.textChanged.connect(self._cargar_grilla)
         encadenar_enter(self.campo_buscar, accion_final=self._ir_a_la_lista)
+        # Sin otras teclas que Salir: va en la misma fila que el buscador.
+        fila_buscar = QHBoxLayout()
+        fila_buscar.setSpacing(12)
+        fila_buscar.addWidget(self.campo_buscar, 1)
+        fila_buscar.addWidget(tecla("SALIR", self.close))
 
         self.tabla = crear_tabla_de_articulos()
+        # El rubro en una etiqueta de color, como en Artículos. No se escribe, así que
+        # el dibujo no se mete con las celdas amarillas (esas siguen con el delegado
+        # de siempre, el que abre el campo para escribir).
+        self.etiqueta_rubro = DelegadoEtiqueta(self.tabla)
+        self.tabla.setItemDelegateForColumn(COLUMNA_RUBRO, self.etiqueta_rubro)
+        self.tabla.setColumnWidth(COLUMNA_RUBRO, 170)
+        for columna in (COLUMNA_PRECIO_VENTA, COLUMNA_PRECIO_COMPRA):
+            self.tabla.setColumnWidth(columna, 125)
+        self.tabla.setColumnWidth(COLUMNA_STOCK, 90)
         # Solo la celda del stock se arma con permiso para escribir
         # (llenar_tabla_de_articulos), así que estos disparadores no abren ninguna
         # otra. "Cualquier tecla" es para escribir el número sin doble clic.
@@ -78,18 +102,22 @@ class OrdenarStockWindow(QDialog):
         self.tabla.itemChanged.connect(self._stock_escrito)
         self.tabla.itemChanged.connect(self._codigo_escrito)
 
+        # Lo último que se guardó ("Guardado: ..."), en negrita para que se vea al
+        # toque que el número quedó.
         self.etiqueta_estado = QLabel("")
-        boton_salir = QPushButton("Salir")
-        boton_salir.clicked.connect(self.close)
-        fila_abajo = QHBoxLayout()
-        fila_abajo.addWidget(self.etiqueta_estado, 1)
-        fila_abajo.addWidget(boton_salir)
+        self.etiqueta_estado.setStyleSheet("font-weight: bold;")
 
         layout = QVBoxLayout()
-        layout.addWidget(aviso)
-        layout.addWidget(self.campo_buscar)
-        layout.addWidget(self.tabla)
-        layout.addLayout(fila_abajo)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addLayout(fila_buscar)
+        layout.addWidget(panel_de_tabla(self.tabla), 1)
+        layout.addWidget(self.etiqueta_estado)
+        layout.addWidget(pie_de_ventana(
+            "Stock: un clic en el artículo, escribí cuántos hay de verdad y Enter  ·  Código mal cargado: doble "
+            "clic en el código, escaneá con la pistola (o escribilo) y Enter  ·  Cada cambio queda anotado en "
+            "los Movimientos del artículo"))
         self.setLayout(layout)
         sin_boton_por_defecto(self)
         self.campo_buscar.setFocus()
@@ -98,12 +126,27 @@ class OrdenarStockWindow(QDialog):
     def _cargar_grilla(self, _=None):
         # El "_=None" absorbe el texto que manda `textChanged` (ver
         # ArticulosWindow._cargar_grilla).
-        articulos = articulos_repo.listar_articulos(self.campo_buscar.text().strip())
+        texto = self.campo_buscar.text().strip()
+        articulos = articulos_repo.listar_articulos(texto)
         self._llenando = True
         try:
             llenar_tabla_de_articulos(self.tabla, articulos, stock_editable=True, codigo_editable=True)
         finally:
             self._llenando = False
+        # Los números de arriba son de todo el catálogo, no de lo que se está
+        # buscando: sin texto, la lista que ya se trajo es el catálogo entero.
+        self._poner_numeros(articulos if not texto else articulos_repo.listar_articulos())
+
+    def _poner_numeros(self, todos):
+        """Los números de la cabecera, con la misma cuenta que Artículos. Los colores
+        de los rubros, en el orden alfabético de Gestionar Rubros (el mismo que usa
+        Artículos), con los rubros que tienen algún artículo: un rubro vacío no sale
+        en la grilla, aunque corre los colores de los que vienen después."""
+        numeros = dominio.numeros_de_los_articulos(todos)
+        poner_indicador(self.indicador_articulos, str(numeros["cantidad"]))
+        poner_indicador(self.indicador_bajo_minimo, str(numeros["bajo_el_minimo"]),
+                        alerta=numeros["bajo_el_minimo"] > 0)
+        self.etiqueta_rubro.colores_en_orden(sorted({a["rubro"] for a in todos if a["rubro"]}))
 
     def _apuntar_al_stock(self, fila, _columna):
         # Un clic en cualquier parte del renglón deja lista la celda del stock: así
@@ -164,6 +207,8 @@ class OrdenarStockWindow(QDialog):
         self.etiqueta_estado.setText(
             f"Guardado: {descripcion}, stock {resultado['stock_anterior']} → {resultado['stock_nuevo']}"
         )
+        # Puede haber salido de (o entrado a) los que están bajo el mínimo.
+        self._poner_numeros(articulos_repo.listar_articulos())
         # Se pregunta recién ahora: con la grilla ordenada por Stock, el renglón
         # ya se movió a su lugar nuevo.
         fila = self.tabla.row(item)

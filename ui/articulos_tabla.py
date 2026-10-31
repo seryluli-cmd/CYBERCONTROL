@@ -17,6 +17,9 @@ TITULOS = ("Código", "Descripción", "Marca", "Rubro", "Precio Venta",
            "Precio Compra", "Stock", "Stock Mínimo")
 COLUMNA_CODIGO = 0
 COLUMNA_DESCRIPCION = 1
+COLUMNA_RUBRO = 3
+COLUMNA_PRECIO_VENTA = 4
+COLUMNA_PRECIO_COMPRA = 5
 COLUMNA_STOCK = 6
 COLUMNA_STOCK_MINIMO = 7
 

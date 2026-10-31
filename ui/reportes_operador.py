@@ -21,6 +21,7 @@ from PySide6.QtGui import QColor
 import dominio
 from repositories import reportes_repo
 from turnos import dia_en_que_empezo_el_turno, etiqueta_turno
+from ui.piezas_ventana import panel_de_tabla, pie_de_ventana
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, formato_fecha_hora, manejar_errores,
     sin_boton_por_defecto, crear_tabla, rango_de_fechas,
@@ -43,7 +44,9 @@ def _celda(texto, derecha=False, color=None):
 
 
 class PestañaPorOperador(QWidget):
-    """Arriba, un resumen por operador; abajo, las ventas del elegido."""
+    """Arriba, un resumen por operador; abajo, las ventas del elegido. Con la
+    maqueta B (2026-10-30): cada grilla en su panel blanco (panel_de_tabla) y la
+    nota abajo como pie_de_ventana."""
 
     def __init__(self):
         super().__init__()
@@ -61,7 +64,7 @@ class PestañaPorOperador(QWidget):
         self.tabla_operadores.itemSelectionChanged.connect(self._mostrar_ventas_del_elegido)
 
         self.etiqueta_detalle = QLabel()
-        self.etiqueta_detalle.setStyleSheet("font-weight: bold; font-size: 13px; padding-top: 6px;")
+        self.etiqueta_detalle.setStyleSheet("font-weight: bold; font-size: 13px;")
 
         self.tabla_ventas = crear_tabla(
             ["Fecha y hora", "Turno", "Origen", "Concepto", "Efectivo", "Digital", "Total", "Estado"],
@@ -73,19 +76,17 @@ class PestañaPorOperador(QWidget):
             if columna != 3:
                 self.tabla_ventas.horizontalHeader().setSectionResizeMode(columna, QHeaderView.ResizeToContents)
 
-        nota = QLabel(
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 12, 0, 0)   # alineada con la cabecera (ver reportes_window)
+        layout.setSpacing(12)
+        layout.addLayout(filtros)
+        layout.addWidget(panel_de_tabla(self.tabla_operadores), 2)
+        layout.addWidget(self.etiqueta_detalle)
+        layout.addWidget(panel_de_tabla(self.tabla_ventas), 3)
+        layout.addWidget(pie_de_ventana(
             "Cada venta queda a nombre de quien tenía la sesión abierta. Las anuladas se "
             "muestran en rojo y no suman en los totales."
-        )
-        nota.setWordWrap(True)
-        nota.setStyleSheet("color: #7A869A;")
-
-        layout = QVBoxLayout()
-        layout.addLayout(filtros)
-        layout.addWidget(self.tabla_operadores, 2)
-        layout.addWidget(self.etiqueta_detalle)
-        layout.addWidget(self.tabla_ventas, 3)
-        layout.addWidget(nota)
+        ))
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 

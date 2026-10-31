@@ -18,11 +18,12 @@ anotar a mano lo que hay en el estante.
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QTableWidgetItem, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QPushButton, QTableWidgetItem, QVBoxLayout
 
 import dominio
 from repositories import articulos_repo
 from ui import imprimir
+from ui.piezas_ventana import agregar_indicador, cabecera_oscura, panel_de_tabla, pie_de_ventana, poner_indicador, tecla
 from ui.utils import aplicar_clase, crear_tabla, manejar_errores, sin_boton_por_defecto
 
 TITULO = "Control de Stock"
@@ -57,17 +58,39 @@ def _subtitulo(cantidad: int) -> str:
 
 
 class VentanaControlStock(QDialog):
+    """La lista para contar el estante, lista para imprimir.
+
+    Con la maqueta B que eligió el dueño el 2026-10-30 (ui/piezas_ventana.py), como
+    Artículos: la cabecera oscura con cuántos artículos y unidades hay que contar,
+    las teclas arriba, la grilla en su panel y la ayuda abajo."""
+
     def __init__(self, usuario_id: int, parent=None):
         super().__init__(parent)
         # Si no es Admin, el repo no deja y la ventana no llega a abrirse.
         self._articulos = articulos_repo.listar_para_control_de_stock(usuario_id)
         self.setWindowTitle(TITULO)
-        self.resize(620, 720)
+        self.resize(820, 720)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
-        self.etiqueta = QLabel(_subtitulo(len(self._articulos)))
-        self.etiqueta.setWordWrap(True)
+        # La línea de la cabecera dice cuántos son y que los de 0 o negativo no
+        # salen: es la misma frase que encabeza la hoja impresa.
+        cabecera = cabecera_oscura("📦", TITULO, _subtitulo(len(self._articulos)))
+        self.etiqueta = cabecera.detalle
+        # Para la supervisora: cuántos renglones tiene la hoja y cuántas unidades
+        # tendría que encontrar en total. Salen de la lista que ya se muestra.
+        poner_indicador(agregar_indicador(cabecera, "Artículos"), str(len(self._articulos)))
+        poner_indicador(agregar_indicador(cabecera, "Unidades"),
+                        str(sum(articulo["stock"] for articulo in self._articulos)))
+
+        self.boton_imprimir = tecla("🖨  IMPRIMIR", self._imprimir, "teclaAzul")
+        self.boton_imprimir.setToolTip("Abre la vista previa para imprimir la lista (o guardarla en PDF).")
+        self.boton_imprimir.setEnabled(bool(self._articulos))
+        barra_botones = QHBoxLayout()
+        barra_botones.setSpacing(8)
+        barra_botones.addWidget(self.boton_imprimir)
+        barra_botones.addStretch()
+        barra_botones.addWidget(tecla("CERRAR", self.close))
 
         self.tabla = crear_tabla(COLUMNAS, estirar=0, por_filas=True)
         self.tabla.setRowCount(len(self._articulos))
@@ -76,24 +99,20 @@ class VentanaControlStock(QDialog):
             unidades = QTableWidgetItem(str(articulo["stock"]))
             unidades.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.tabla.setItem(fila, COLUMNA_UNIDADES, unidades)
-        self.tabla.resizeColumnToContents(COLUMNA_UNIDADES)
-
-        self.boton_imprimir = QPushButton("🖨️  Imprimir")
-        self.boton_imprimir.setToolTip("Abre la vista previa para imprimir la lista (o guardarla en PDF).")
-        aplicar_clase(self.boton_imprimir, "primario")
-        self.boton_imprimir.clicked.connect(self._imprimir)
-        self.boton_imprimir.setEnabled(bool(self._articulos))
-        boton_cerrar = QPushButton("Cerrar")
-        boton_cerrar.clicked.connect(self.close)
-        fila_abajo = QHBoxLayout()
-        fila_abajo.addStretch()
-        fila_abajo.addWidget(self.boton_imprimir)
-        fila_abajo.addWidget(boton_cerrar)
+        # Ancha como para el título en mayúscula de la hoja de estilos, con aire, y el
+        # título contra la derecha, encima de los números.
+        self.tabla.setColumnWidth(COLUMNA_UNIDADES, 140)
+        self.tabla.horizontalHeaderItem(COLUMNA_UNIDADES).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         layout = QVBoxLayout()
-        layout.addWidget(self.etiqueta)
-        layout.addWidget(self.tabla, 1)
-        layout.addLayout(fila_abajo)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addLayout(barra_botones)
+        layout.addWidget(panel_de_tabla(self.tabla), 1)
+        layout.addWidget(pie_de_ventana(
+            "La hoja impresa trae la columna \"Contado\" para anotar a mano  ·  "
+            "Un stock mal contado se corrige con ORDENAR Stock, en Artículos"))
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 

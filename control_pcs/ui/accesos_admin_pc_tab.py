@@ -20,6 +20,7 @@ from PySide6.QtGui import QColor
 
 import dominio
 from control_pcs.repositories import accesos_admin_pc_repo, pcs_repo
+from ui.piezas_ventana import panel_de_tabla, pie_de_ventana
 from ui.utils import (
     armar_filtro_por_fechas, formato_tiempo, formato_transcurrido, manejar_errores,
     rango_de_fechas,
@@ -53,18 +54,19 @@ class PestañaAccesosAdminPc(QWidget):
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
 
-        nota = QLabel(
+        nota = pie_de_ventana(
             "La contraseña admin es una sola para todos: acá se ve QUÉ PC y CUÁNDO, no quién. "
             "\"Estuvo sin bloqueo\" corre hasta que el Cliente PC volvió a conectarse; si apagaron "
             "la PC en el medio, incluye el tiempo que estuvo apagada."
         )
-        nota.setWordWrap(True)
-        nota.setStyleSheet("color: #7A869A;")
 
+        # Como la pestaña de los logins (maqueta B): la grilla en su panel blanco.
         layout = QVBoxLayout()
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
         layout.addLayout(filtros)
         layout.addWidget(self.etiqueta_ahora)
-        layout.addWidget(self.tabla)
+        layout.addWidget(panel_de_tabla(self.tabla), 1)
         layout.addWidget(nota)
         self.setLayout(layout)
 

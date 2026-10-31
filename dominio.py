@@ -461,6 +461,22 @@ def bajo_el_minimo(stock: int, stock_minimo: int) -> bool:
     return stock < stock_minimo
 
 
+def numeros_de_los_articulos(articulos) -> dict:
+    """
+    Los números de arriba de Artículos (maqueta B del kiosko, 2026-10-30): cuántos artículos
+    hay, cuántos quedaron bajo el mínimo y cuánto vale la mercadería del estante a
+    precio de compra. Impresiones no entra: no es mercadería que se cuenta y su
+    stock baja sin que nadie lo cargue, así que siempre estaría "bajo el mínimo".
+    El stock negativo (puede quedar a propósito) vale cero, no resta.
+    """
+    mercaderia = [a for a in articulos if a["codigo"] != CODIGO_ARTICULO_IMPRESIONES]
+    return {
+        "cantidad": len(mercaderia),
+        "bajo_el_minimo": sum(1 for a in mercaderia if bajo_el_minimo(a["stock"], a["stock_minimo"])),
+        "valor_del_stock": round(sum(max(0, a["stock"]) * a["precio_compra"] for a in mercaderia), 2),
+    }
+
+
 def es_pcstream(nombre_estacion: str) -> bool:
     """
     Único lugar donde se decide si una estación es la PC de streaming. Compara

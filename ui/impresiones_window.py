@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QDialog, QLabel, QSpinBox, QVBoxLayout
 
 from repositories import impresiones_repo, ventas_repo
 from ui.dialogo_pago import DialogoPago
+from ui.piezas_ventana import cabecera_oscura, panel_blanco
 from ui.utils import (
     encadenar_enter, fila_guardar_cancelar, formato_pesos, manejar_errores, mostrar_info,
     sin_boton_por_defecto,
@@ -25,14 +26,16 @@ from ui.utils import (
 class DialogoImpresiones(QDialog):
     """Cantidad de impresiones, precio por unidad y total; Cobrar abre la
     ventana de cobro. `articulo` es el de impresiones_repo.articulo_impresiones()
-    (quien abre la ventana ya comprobó que existe)."""
+    (quien abre la ventana ya comprobó que existe).
+
+    Con la cabecera oscura y la cantidad en un panel blanco (maqueta B, 2026-10-30)."""
 
     def __init__(self, usuario, articulo, parent=None):
         super().__init__(parent)
         self.usuario = usuario
         self.articulo = articulo
         self.setWindowTitle("Impresiones")
-        self.resize(340, 200)
+        self.resize(460, 330)
         self._armar_interfaz()
         self._actualizar_total()
 
@@ -44,8 +47,9 @@ class DialogoImpresiones(QDialog):
         return True
 
     def _armar_interfaz(self):
-        precio = QLabel(f"{self.articulo['descripcion']} · {formato_pesos(self.articulo['precio_venta'])} cada una")
-        precio.setStyleSheet("color: #6B7585;")
+        cabecera = cabecera_oscura(
+            "🖨️", "Impresiones",
+            f"{self.articulo['descripcion']} · {formato_pesos(self.articulo['precio_venta'])} cada una")
 
         self.spin_cantidad = QSpinBox()
         self.spin_cantidad.setRange(1, impresiones_repo.CANTIDAD_MAXIMA)
@@ -61,11 +65,16 @@ class DialogoImpresiones(QDialog):
         self.etiqueta_total.setAlignment(Qt.AlignCenter)
         self.etiqueta_total.setStyleSheet("font-size: 20px; font-weight: bold; color: #2F6FED;")
 
+        panel, capa = panel_blanco()
+        capa.addWidget(QLabel("¿Cuántas impresiones?"))
+        capa.addWidget(self.spin_cantidad)
+        capa.addWidget(self.etiqueta_total)
+
         layout = QVBoxLayout()
-        layout.addWidget(precio)
-        layout.addWidget(QLabel("¿Cuántas impresiones?"))
-        layout.addWidget(self.spin_cantidad)
-        layout.addWidget(self.etiqueta_total)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addWidget(panel)
         layout.addStretch()
         layout.addLayout(fila_guardar_cancelar(self, self._cobrar, texto_guardar="Cobrar"))
         self.setLayout(layout)

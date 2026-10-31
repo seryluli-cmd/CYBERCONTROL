@@ -8,91 +8,133 @@ cierres de turno y las copias de seguridad (ui/copias_dialogo.py). Es exclusivo 
 que vive acá pero la usa cualquier usuario para su propia clave.
 """
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
-    QComboBox, QFormLayout, QCheckBox, QGroupBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QLineEdit, QLabel,
+    QComboBox, QFormLayout, QCheckBox,
 )
 
 import dominio
 from admin_remoto import modo as modo_remoto
 from repositories import usuarios_repo, config_repo
 from ui.copias_dialogo import DialogoCopiasDeSeguridad
+from ui.dibujos_tabla import DelegadoEtiqueta
+from ui.piezas_ventana import (
+    agregar_indicador, cabecera_oscura, panel_blanco, panel_de_tabla, pie_de_ventana, poner_indicador, tecla,
+    titulo_de_seccion,
+)
 from ui.utils import (
-    CampoPesos, mostrar_error, confirmar, mostrar_info, manejar_errores, aplicar_clase,
+    CampoPesos, mostrar_error, confirmar, mostrar_info, manejar_errores,
     encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar, crear_tabla,
 )
+
+COLUMNA_ROL = 2
+COLUMNA_ESTADO = 3
+# Un usuario dado de baja se ve apagado: sigue en la lista para poder borrarlo del todo.
+_COLOR_INACTIVO = QColor("#A7ADB8")
 
 
 class UsuariosWindow(QDialog):
     """Grilla de usuarios con alta/modificación/baja, Cambio Fijo y
     copias de seguridad. `usuario_actual` es quien está logueado (no puede borrarse a
-    sí mismo)."""
+    sí mismo).
+
+    Con la maqueta B que eligió el dueño el 2026-10-30 (como Artículos): la cabecera
+    oscura con cuántos usuarios activos hay y de qué rol, las teclas, la grilla con el
+    rol en una etiqueta de color y una línea de ayuda abajo."""
 
     def __init__(self, usuario_actual, parent=None):
         super().__init__(parent)
         self.usuario_actual = usuario_actual
         self.setWindowTitle("Administración de Usuarios")
-        self.resize(650, 480)
+        self.resize(1000, 640)
         self._armar_interfaz()
         self._cargar_grilla()
 
     def _armar_interfaz(self):
+        cabecera = cabecera_oscura("👤", "Usuarios", "Quién entra, claves, permisos y copias")
+        self.indicador_activos = agregar_indicador(cabecera, "Activos")
+        self.indicador_admins = agregar_indicador(cabecera, "Administradores")
+        self.indicador_empleadas = agregar_indicador(cabecera, "Empleadas")
+
         barra_botones = QHBoxLayout()
-        boton_nuevo = QPushButton("Nuevo")
-        boton_nuevo.clicked.connect(self._nuevo_usuario)
-        boton_modificar = QPushButton("Modificar")
-        boton_modificar.clicked.connect(self._modificar_usuario)
-        boton_borrar = QPushButton("Borrar")
-        boton_borrar.clicked.connect(self._borrar_usuario)
-        boton_fondo = QPushButton("Configurar Cambio Fijo")
-        boton_fondo.clicked.connect(self._configurar_fondo)
-        boton_backup = QPushButton("Copias de Seguridad")
-        boton_backup.setToolTip(
+        barra_botones.setSpacing(8)
+        self.boton_nuevo = tecla("＋  NUEVO", self._nuevo_usuario, "teclaAzul")
+        self.boton_modificar = tecla("✎  MODIFICAR", self._modificar_usuario)
+        self.boton_cambio_fijo = tecla("＄  CAMBIO FIJO", self._configurar_fondo)
+        self.boton_copias = tecla("⎘  COPIAS DE SEGURIDAD", self._abrir_copias)
+        self.boton_copias.setToolTip(
             "Cuándo se hacen solas las copias de la base, cuál es la última, las "
             "otras carpetas donde se guardan, hacer una copia ahora o una suelta a un pendrive."
         )
-        boton_backup.clicked.connect(self._abrir_copias)
-        boton_salir = QPushButton("Salir")
-        boton_salir.clicked.connect(self.close)
-        aplicar_clase(boton_nuevo, "primario")
-        aplicar_clase(boton_borrar, "peligro")
-        botones = [boton_nuevo, boton_modificar, boton_borrar, boton_fondo, boton_backup, boton_salir]
+        self.boton_borrar = tecla("✕  BORRAR", self._borrar_usuario, "teclaRoja")
+        self.boton_salir = tecla("SALIR", self.close)
+        botones = [self.boton_nuevo, self.boton_modificar, self.boton_cambio_fijo, self.boton_copias,
+                   self.boton_borrar]
         # Las copias son del archivo de la base de ESTA PC: desde otra PC
         # (admin_remoto/) no hay ninguno, se hacen en el mostrador.
         if modo_remoto.es_copia_remota():
-            botones.remove(boton_backup)
-            boton_backup.deleteLater()
+            botones.remove(self.boton_copias)
+            self.boton_copias.deleteLater()
         for boton in botones:
             barra_botones.addWidget(boton)
         barra_botones.addStretch()
+        barra_botones.addWidget(self.boton_salir)
 
         # Los usuarios desactivados no aparecen en la grilla por defecto, así
         # que sin este check no habría forma de encontrarlos para borrarlos
         # del todo y liberar su número.
         self.check_inactivos = QCheckBox("Mostrar inactivos")
         self.check_inactivos.stateChanged.connect(self._cargar_grilla)
+        fila_inactivos = QHBoxLayout()
+        fila_inactivos.addWidget(self.check_inactivos)
+        fila_inactivos.addStretch()
 
         self.tabla = crear_tabla(["Usuario Nº", "Nombre", "Rol", "Estado"], estirar=1, por_filas=True)
         self.tabla.doubleClicked.connect(self._modificar_usuario)
+        etiqueta_rol = DelegadoEtiqueta(self.tabla)
+        etiqueta_rol.colores_en_orden(dominio.ROLES)
+        self.tabla.setItemDelegateForColumn(COLUMNA_ROL, etiqueta_rol)
+        self.tabla.setColumnWidth(0, 130)
+        self.tabla.setColumnWidth(COLUMNA_ROL, 170)
+        self.tabla.setColumnWidth(COLUMNA_ESTADO, 130)
 
         layout = QVBoxLayout()
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
         layout.addLayout(barra_botones)
-        layout.addWidget(self.check_inactivos)
-        layout.addWidget(self.tabla)
+        layout.addLayout(fila_inactivos)
+        layout.addWidget(panel_de_tabla(self.tabla), 1)
+        layout.addWidget(pie_de_ventana(
+            "Doble clic en un usuario para modificarlo  ·  Quien ya vendió, compró o cerró un turno no se "
+            "borra: se desactiva  ·  \"Mostrar inactivos\" trae a los dados de baja"))
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
     @manejar_errores
-    def _cargar_grilla(self):
+    def _cargar_grilla(self, _=None):
+        # El "_=None" no se usa: absorbe el estado que manda `stateChanged` (ver
+        # ArticulosWindow._cargar_grilla).
         usuarios = usuarios_repo.listar_usuarios(incluir_inactivos=self.check_inactivos.isChecked())
         self.tabla.setRowCount(0)
         for usuario in usuarios:
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
-            self.tabla.setItem(fila, 0, QTableWidgetItem(str(usuario["id"])))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(usuario["nombre"]))
-            self.tabla.setItem(fila, 2, QTableWidgetItem(usuario["rol"]))
-            self.tabla.setItem(fila, 3, QTableWidgetItem("Activo" if usuario["activo"] else "Inactivo"))
+            celdas = [str(usuario["id"]), usuario["nombre"], usuario["rol"],
+                      "Activo" if usuario["activo"] else "Inactivo"]
+            for columna, texto in enumerate(celdas):
+                item = QTableWidgetItem(texto)
+                if not usuario["activo"]:
+                    item.setForeground(_COLOR_INACTIVO)
+                self.tabla.setItem(fila, columna, item)
+        # Los números de arriba cuentan solo a los activos (los que pueden entrar),
+        # se muestren o no los inactivos en la grilla.
+        activos = [usuario for usuario in usuarios if usuario["activo"]]
+        admins = sum(1 for usuario in activos if dominio.es_admin(usuario))
+        poner_indicador(self.indicador_activos, str(len(activos)))
+        poner_indicador(self.indicador_admins, str(admins))
+        poner_indicador(self.indicador_empleadas, str(len(activos) - admins))
 
     def _id_seleccionado(self):
         fila = self.tabla.currentRow()
@@ -155,18 +197,23 @@ class UsuariosWindow(QDialog):
 
 class DialogoUsuario(QDialog):
     """Alta (sin `usuario_id`) o edición de un usuario: nombre, clave, rol
-    y, para una Empleada, sus permisos extra."""
+    y, para una Empleada, sus permisos extra. Con la cabecera oscura y los datos
+    en paneles blancos (maqueta B, 2026-10-30)."""
 
     def __init__(self, parent, usuario_id: int = None):
         super().__init__(parent)
         self.usuario_id = usuario_id
         self.setWindowTitle("Modificación de Usuario" if usuario_id else "Nuevo Usuario")
-        self.resize(400, 380)
+        self.resize(500, 600)
         self._armar_interfaz()
         if usuario_id:
             self._cargar_datos(usuario_id)
 
     def _armar_interfaz(self):
+        cabecera = cabecera_oscura(
+            "👤", "Modificar usuario" if self.usuario_id else "Nuevo usuario",
+            "Nombre, clave, rol y qué puede usar")
+
         self.campo_nombre = QLineEdit()
         self.campo_clave = QLineEdit()
         self.campo_clave.setEchoMode(QLineEdit.Password)
@@ -177,10 +224,14 @@ class DialogoUsuario(QDialog):
         self.combo_rol.addItem("Admin — acceso completo", dominio.ROL_ADMIN)
         self.combo_rol.currentIndexChanged.connect(self._actualizar_visibilidad_permisos)
 
+        panel_datos, capa_datos = panel_blanco()
         formulario = QFormLayout()
+        formulario.setSpacing(10)
         formulario.addRow("Nombre:", self.campo_nombre)
         formulario.addRow("Clave:", self.campo_clave)
         formulario.addRow("Rol:", self.combo_rol)
+        capa_datos.addWidget(titulo_de_seccion("Datos"))
+        capa_datos.addLayout(formulario)
 
         # Permisos extra para una Empleada, además de lo que ya puede
         # hacer cualquiera (Ventas/Caja/Cierre de Turno/Cambiar mi
@@ -188,19 +239,22 @@ class DialogoUsuario(QDialog):
         # sección se oculta cuando el Rol de arriba es Admin (ver
         # _actualizar_visibilidad_permisos).
         self.checks_permisos = {}
-        self.grupo_permisos = QGroupBox("Permisos extra (Empleada)")
-        layout_permisos = QVBoxLayout()
+        self.grupo_permisos, layout_permisos = panel_blanco()
+        layout_permisos.addWidget(titulo_de_seccion("Permisos extra (Empleada)"))
         for columna, etiqueta in usuarios_repo.PERMISOS_EMPLEADA:
             check = QCheckBox(etiqueta)
             layout_permisos.addWidget(check)
             self.checks_permisos[columna] = check
-        self.grupo_permisos.setLayout(layout_permisos)
 
         botones = fila_guardar_cancelar(self, self._guardar)
 
         layout = QVBoxLayout()
-        layout.addLayout(formulario)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addWidget(panel_datos)
         layout.addWidget(self.grupo_permisos)
+        layout.addStretch()
         layout.addLayout(botones)
         self.setLayout(layout)
         encadenar_enter(self.campo_nombre, self.campo_clave, self.combo_rol, accion_final=self._guardar)
@@ -246,22 +300,33 @@ class DialogoUsuario(QDialog):
 
 class DialogoFondoCambio(QDialog):
     """Pide el monto del Cambio Fijo (fondo de cambio); quien lo abre lo lee de
-    `spin_monto` si se aceptó (ver UsuariosWindow._configurar_fondo)."""
+    `spin_monto` si se aceptó (ver UsuariosWindow._configurar_fondo). Con la
+    cabecera oscura y el monto en un panel blanco (maqueta B, 2026-10-30)."""
 
     def __init__(self, parent, valor_actual: float):
         super().__init__(parent)
         self.setWindowTitle("Cambio Fijo")
-        self.resize(320, 140)
+        self.resize(440, 270)
+
+        cabecera = cabecera_oscura("💵", "Cambio Fijo", "La plata para dar cambio en el cajón")
 
         self.spin_monto = CampoPesos()
         self.spin_monto.setValue(valor_actual)
+        self.spin_monto.setMinimumHeight(36)
         encadenar_enter(self.spin_monto, accion_final=self.accept)
+
+        panel, capa = panel_blanco()
+        capa.addWidget(QLabel("Cambio Fijo que arranca cada turno:"))
+        capa.addWidget(self.spin_monto)
 
         botones = fila_guardar_cancelar(self)
 
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("Cambio Fijo que arranca cada turno:"))
-        layout.addWidget(self.spin_monto)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addWidget(panel)
+        layout.addStretch()
         layout.addLayout(botones)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
@@ -271,16 +336,19 @@ class DialogoCambiarClave(QDialog):
     """Para que cualquier usuario logueado (Admin o Empleada) cambie su
     propia clave — a diferencia de DialogoUsuario, que es Admin-only y
     puede resetear la clave de cualquier otra persona sin pedir la
-    vieja. Se abre desde el menú principal, no desde esta pantalla."""
+    vieja. Se abre desde el menú principal, no desde esta pantalla. Con la
+    cabecera oscura y los campos en un panel blanco (maqueta B, 2026-10-30)."""
 
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Cambiar mi Clave")
-        self.resize(340, 220)
+        self.resize(460, 330)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
+        cabecera = cabecera_oscura("🔑", "Cambiar mi clave", f"{self.usuario['nombre']} · pide la clave de ahora")
+
         self.campo_actual = QLineEdit()
         self.campo_actual.setEchoMode(QLineEdit.Password)
         self.campo_nueva = QLineEdit()
@@ -288,16 +356,23 @@ class DialogoCambiarClave(QDialog):
         self.campo_confirmar = QLineEdit()
         self.campo_confirmar.setEchoMode(QLineEdit.Password)
 
+        panel, capa = panel_blanco()
         formulario = QFormLayout()
+        formulario.setSpacing(10)
         formulario.addRow("Clave actual:", self.campo_actual)
         formulario.addRow("Clave nueva:", self.campo_nueva)
         formulario.addRow("Confirmar clave nueva:", self.campo_confirmar)
+        capa.addLayout(formulario)
         encadenar_enter(self.campo_actual, self.campo_nueva, self.campo_confirmar, accion_final=self._guardar)
 
         botones = fila_guardar_cancelar(self, self._guardar)
 
         layout = QVBoxLayout()
-        layout.addLayout(formulario)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addWidget(panel)
+        layout.addStretch()
         layout.addLayout(botones)
         self.setLayout(layout)
         sin_boton_por_defecto(self)

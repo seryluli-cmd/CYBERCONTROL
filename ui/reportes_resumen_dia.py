@@ -20,6 +20,7 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor
 
 from repositories import detalle_dia_repo, turnos_repo
+from ui.piezas_ventana import panel_de_tabla, pie_de_ventana, tecla, titulo_de_seccion
 from ui.reportes_detalle_dia import PanelDetalleDelDia
 from ui.utils import (
     formato_pesos, manejar_errores, sin_boton_por_defecto, fecha_iso, crear_selector_de_fecha, hoy_del_local,
@@ -31,7 +32,10 @@ class PestañaResumenDelDia(QWidget):
     Domingo T1/T2): qué se vendió en cada uno, quién lo cerró y si el
     sobre cuadró. A diferencia de "Por Turno" (que suma un rango entero),
     acá cada fila es un turno real con su cierre -- ver
-    turnos_repo.resumen_del_dia."""
+    turnos_repo.resumen_del_dia.
+
+    Con la maqueta B (2026-10-30): teclas para moverse de día, la grilla de los
+    turnos en su panel blanco (panel_de_tabla) y las notas como pie_de_ventana."""
 
     _DIAS = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
     _TEXTO_ESTADO = {
@@ -57,12 +61,9 @@ class PestañaResumenDelDia(QWidget):
     def _armar_interfaz(self):
         self.fecha = crear_selector_de_fecha(hoy_del_local())
         self.fecha.dateChanged.connect(self._buscar)
-        boton_anterior = QPushButton("◀ Día anterior")
-        boton_anterior.clicked.connect(lambda: self._mover_dia(-1))
-        boton_siguiente = QPushButton("Día siguiente ▶")
-        boton_siguiente.clicked.connect(lambda: self._mover_dia(1))
-        boton_hoy = QPushButton("Hoy")
-        boton_hoy.clicked.connect(lambda: self.fecha.setDate(hoy_del_local()))
+        boton_anterior = tecla("◀  DÍA ANTERIOR", lambda: self._mover_dia(-1))
+        boton_siguiente = tecla("DÍA SIGUIENTE  ▶", lambda: self._mover_dia(1))
+        boton_hoy = tecla("HOY", lambda: self.fecha.setDate(hoy_del_local()))
 
         filtros = QHBoxLayout()
         filtros.addWidget(QLabel("Día:"))
@@ -70,11 +71,11 @@ class PestañaResumenDelDia(QWidget):
         filtros.addWidget(boton_anterior)
         filtros.addWidget(boton_siguiente)
         filtros.addWidget(boton_hoy)
+        filtros.addSpacing(12)
+        # El día elegido con su nombre ("VIERNES 30/10/2026"), al lado de las teclas.
+        self.etiqueta_titulo = titulo_de_seccion("")
+        filtros.addWidget(self.etiqueta_titulo)
         filtros.addStretch()
-
-        self.etiqueta_titulo = QLabel()
-        self.etiqueta_titulo.setStyleSheet("font-weight: bold; font-size: 14px;")
-        self.etiqueta_titulo.setAlignment(Qt.AlignCenter)
 
         self.tabla = QTableWidget(0, len(self._COLUMNAS))
         self.tabla.setHorizontalHeaderLabels(self._COLUMNAS)
@@ -90,13 +91,11 @@ class PestañaResumenDelDia(QWidget):
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
 
-        nota = QLabel(
+        nota = pie_de_ventana(
             "Cada turno cuenta lo que se vendió hasta que se lo cerró (la Noche incluye hasta las 06:00 "
             "del día siguiente). \"Sin contar\": el Admin todavía no cargó cuánto contó del sobre. "
             "Impresiones y Trámites se muestran aparte: no están sumados en Kiosko."
         )
-        nota.setWordWrap(True)
-        nota.setStyleSheet("color: #7A869A;")
 
         # Aviso (oculto salvo que haga falta) de los cierres hechos este día que
         # quedaron anotados en otro: ver _mostrar_aviso.
@@ -122,10 +121,11 @@ class PestañaResumenDelDia(QWidget):
 
         arriba = QWidget()
         layout_arriba = QVBoxLayout(arriba)
-        layout_arriba.setContentsMargins(0, 0, 0, 0)
-        layout_arriba.addWidget(self.etiqueta_titulo)
-        layout_arriba.addWidget(self.tabla)
+        layout_arriba.setContentsMargins(0, 0, 0, 6)
+        layout_arriba.setSpacing(8)
+        layout_arriba.addWidget(panel_de_tabla(self.tabla))
         layout_arriba.addWidget(nota)
+        layout_arriba.addStretch()
 
         # Abajo, el detalle de lo vendido (ver ui/reportes_detalle_dia.py). La
         # línea entre las dos partes se puede correr con el mouse.
@@ -135,11 +135,15 @@ class PestañaResumenDelDia(QWidget):
         division = QSplitter(Qt.Vertical)
         division.addWidget(arriba)
         division.addWidget(self.panel_detalle)
-        division.setStretchFactor(0, 2)
-        division.setStretchFactor(1, 3)
+        # Arriba solo lo que ocupan los turnos (ver el alto fijo en _buscar); lo que
+        # sobra es para el detalle, que es la lista larga.
+        division.setStretchFactor(0, 0)
+        division.setStretchFactor(1, 1)
         division.setChildrenCollapsible(False)
 
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 12, 0, 0)   # alineada con la cabecera (ver reportes_window)
+        layout.setSpacing(12)
         layout.addLayout(filtros)
         layout.addWidget(self.aviso)
         layout.addWidget(division, 1)
@@ -233,7 +237,7 @@ class PestañaResumenDelDia(QWidget):
         # ControlCierresWindow._ver_detalle en caja_window.py).
         dia = self.fecha.date()
         resumen = turnos_repo.resumen_del_dia(fecha_iso(dia))
-        self.etiqueta_titulo.setText(f"{self._DIAS[dia.dayOfWeek() - 1]} {dia.toString('dd/MM/yyyy')}")
+        self.etiqueta_titulo.setText(f"{self._DIAS[dia.dayOfWeek() - 1]} {dia.toString('dd/MM/yyyy')}".upper())
 
         self.tabla.setRowCount(0)
         # Qué turno es cada fila (None = TOTAL DEL DÍA), para el detalle de abajo.
@@ -293,6 +297,12 @@ class PestañaResumenDelDia(QWidget):
             ],
             negrita=True,
         )
+
+        # Los turnos y el TOTAL DEL DÍA siempre a la vista, sin barra ni hueco abajo:
+        # la grilla mide justo sus renglones. Con solo un mínimo, la nota de abajo (que
+        # ocupa dos renglones) le robaba lugar y el TOTAL DEL DÍA quedaba cortado.
+        self.tabla.setFixedHeight(self.tabla.horizontalHeader().sizeHint().height()
+                                  + self.tabla.verticalHeader().length() + 2 * self.tabla.frameWidth())
 
         self._mostrar_aviso(resumen["cierres_de_otro_dia"], dia)
         self._detalle = detalle_dia_repo.detalle_del_dia(fecha_iso(dia))

@@ -298,7 +298,7 @@ class TestBotonEnArticulos(BasePantallas):
             with self.subTest(usuario=usuario and usuario["nombre"]):
                 ventana = self._abrir(ArticulosWindow(None, usuario))
                 self.assertEqual(ventana.boton_ordenar_stock.isVisible(), lo_ve)
-                self.assertEqual(ventana.boton_ordenar_stock.text(), "ORDENAR Stock")
+                self.assertTrue(ventana.boton_ordenar_stock.text().endswith("ORDENAR STOCK"))
 
     def _apretar_con(self, respuesta):
         ventana = self._abrir(ArticulosWindow(None, usuarios_repo.obtener_usuario(self.admin_id)))

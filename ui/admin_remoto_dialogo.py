@@ -12,6 +12,7 @@ import socket
 from PySide6.QtWidgets import QCheckBox, QDialog, QLabel, QVBoxLayout
 
 from repositories import admin_remoto_repo
+from ui.piezas_ventana import TONO_AZUL, TONO_GRIS, agregar_pastilla, cabecera_oscura, panel_blanco, titulo_de_seccion
 from ui.utils import fila_guardar_cancelar, manejar_errores, mostrar_info, sin_boton_por_defecto
 
 
@@ -27,19 +28,23 @@ def _nombre_y_ips_de_esta_pc():
 
 
 class DialogoEntrarDesdeOtraPC(QDialog):
+    """Con la cabecera oscura (y una pastilla que dice si hoy está prendido), los
+    pasos en un panel blanco y la casilla en otro (maqueta B, 2026-10-30)."""
+
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Entrar desde otra PC")
-        self.resize(560, 470)
+        self.resize(640, 580)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
         nombre, ips = _nombre_y_ips_de_esta_pc()
         ips_texto = " o ".join(ips) if ips else "(no se pudo saber)"
 
-        titulo = QLabel("🌐  Entrar desde otra PC del local")
-        titulo.setStyleSheet("font-size: 17px; font-weight: 700; color: #1B2233;")
+        activo = admin_remoto_repo.esta_activo()
+        cabecera = cabecera_oscura("🌐", "Entrar desde otra PC", "Que el Administrador administre desde otra PC del local")
+        agregar_pastilla(cabecera, "PRENDIDO" if activo else "APAGADO", TONO_AZUL if activo else TONO_GRIS)
 
         explicacion = QLabel(
             "Con esto prendido, el <b>Administrador</b> puede administrar desde otra PC del local "
@@ -59,14 +64,20 @@ class DialogoEntrarDesdeOtraPC(QDialog):
         explicacion.setWordWrap(True)
 
         self.check_activo = QCheckBox("Permitir que el Administrador entre desde otra PC")
-        self.check_activo.setChecked(admin_remoto_repo.esta_activo())
+        self.check_activo.setChecked(activo)
+
+        panel_pasos, capa_pasos = panel_blanco()
+        capa_pasos.addWidget(titulo_de_seccion("Cómo funciona"))
+        capa_pasos.addWidget(explicacion)
+        panel_casilla, capa_casilla = panel_blanco()
+        capa_casilla.addWidget(self.check_activo)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.addWidget(titulo)
-        layout.addWidget(explicacion)
-        layout.addSpacing(8)
-        layout.addWidget(self.check_activo)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addWidget(panel_pasos)
+        layout.addWidget(panel_casilla)
         layout.addStretch()
         layout.addLayout(fila_guardar_cancelar(self, self._guardar))
         self.setLayout(layout)

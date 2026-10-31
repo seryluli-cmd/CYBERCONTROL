@@ -17,11 +17,10 @@ sumaron columnas (caja, responsable, apertura, cómo se cerró) y ese archivo
 pasaba las 600 líneas (CLAUDE.md, regla 12). caja_window las reexporta.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidgetItem,
-    QWidget, QListWidget,
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTableWidgetItem, QWidget, QListWidget,
 )
 from PySide6.QtCore import Qt
 
@@ -29,18 +28,61 @@ import dominio
 from admin_remoto import modo as modo_remoto
 from turnos import MINUTOS_AVISO_ANTES_DEL_FIN, MINUTOS_PARA_CIERRE_FORZOSO, etiqueta_turno
 from repositories import envio_pwa_repo, turnos_repo
-from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta
+from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta, etiqueta_de_estado
+from ui.dibujos_tabla import DelegadoEtiqueta
 from ui.envio_pwa_progreso import DialogoEnviandoCierre
 from ui.ingreso_caja import texto_de_la_diferencia
+from ui.piezas_ventana import (
+    agregar_indicador, cabecera_oscura, fila_de_filtros, marcar_solo_admin, panel_blanco, panel_de_tabla,
+    pie_de_ventana, poner_indicador, tecla, titulo_de_seccion,
+)
 from ui.tarjeta_cierre import TarjetaCierreDeTurno
 from ui.utils import (
-    formato_pesos, mostrar_error, manejar_errores, aplicar_clase, sin_boton_por_defecto, crear_tabla, pedir_pesos,
+    formato_pesos, mostrar_error, manejar_errores, sin_boton_por_defecto, crear_tabla, pedir_pesos,
     mostrar_columna_entera, confirmar, mostrar_info,
 )
 
-# Columnas de la tabla de cierres que se ensanchan para leerse enteras.
+# Columnas de la tabla de cierres (las de Apertura y Cierre se ensanchan para
+# leerse enteras).
+_COLUMNA_FECHA = 0
+_COLUMNA_TURNO = 1
+_COLUMNA_CAJA = 2
 _COLUMNA_APERTURA = 4
 _COLUMNA_CIERRE = 5
+_COLUMNAS_DE_PLATA = range(6, 14)
+
+# Los filtros de arriba de la tabla de cierres.
+_FILTRO_SIN_CONTAR = "sin_contar"
+_FILTRO_CON_DIFERENCIA = "con_diferencia"
+_FILTRO_FORZOSO_O_EN_AUSENCIA = "forzoso_o_en_ausencia"
+
+# Columnas de la tabla de ventas del detalle de un cierre.
+_DETALLE_HORA = 0
+_DETALLE_ORIGEN = 2
+_DETALLE_TOTAL = 3
+_DETALLE_METODO = 4
+_DETALLE_ESTADO = 5
+
+
+def _sin_contar(cierre) -> bool:
+    return cierre["monto_contado"] is None
+
+
+def _con_diferencia(cierre) -> bool:
+    """Un sobre contado que no coincide (más de un centavo de diferencia): la
+    misma regla que pinta de rojo la columna Diferencia."""
+    return cierre["diferencia"] is not None and abs(cierre["diferencia"]) > 0.01
+
+
+def _forzoso_o_en_ausencia(cierre) -> bool:
+    return bool(cierre["cierre_forzoso"] or cierre["cerrada_en_ausencia"])
+
+
+_CONDICION_DEL_FILTRO = {
+    _FILTRO_SIN_CONTAR: _sin_contar,
+    _FILTRO_CON_DIFERENCIA: _con_diferencia,
+    _FILTRO_FORZOSO_O_EN_AUSENCIA: _forzoso_o_en_ausencia,
+}
 
 
 def _hora(fecha_iso: str) -> str:
@@ -103,17 +145,36 @@ class ControlCierresWindow(QDialog):
     """Pantalla para revisar el historial de cierres de turno (Admin, o
     Empleada con `permiso_control_cierres`): cargar cuánto se contó
     realmente en cada sobre y ver qué turnos del mes en curso quedaron sin
-    cerrar."""
+    cerrar.
+
+    Con la maqueta B que eligió el dueño el 2026-10-30 (ui/piezas_ventana.py, el
+    modelo es ArticulosWindow): la cabecera oscura con los números de la lista
+    (cierres, sobres sin contar, sobres con diferencia y turnos sin cerrar del mes),
+    las teclas, los filtros y la grilla en su panel, con el turno en una etiqueta de
+    color. Los números y los filtros salen de los cierres que ya trae la lista."""
 
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
+        self._todos = []
+        self._filtro_elegido = None
         self.setWindowTitle("Control de Cierres de Turno")
-        self.resize(1360, 540)
+        # Ancha por las 14 columnas: con menos, la de Diferencia quedaba afuera.
+        self.resize(1640, 720)
         self._armar_interfaz()
         self._cargar()
 
     def _armar_interfaz(self):
+        es_admin = dominio.es_admin(self.usuario)
+        cabecera = cabecera_oscura(
+            "🗂️", "Control de Cierres de Turno",
+            "Cada cierre de caja con su sobre: lo que había que retirar y lo que se contó",
+        )
+        self.indicador_cierres = agregar_indicador(cabecera, "Cierres")
+        self.indicador_sin_contar = agregar_indicador(cabecera, "Sobres sin contar")
+        self.indicador_con_diferencia = agregar_indicador(cabecera, "Con diferencia")
+        self.indicador_sin_cerrar = agregar_indicador(cabecera, "Sin cerrar este mes")
+
         # Aviso de turnos ya vencidos (ventana + turnos.TURNO_GRACIA_MIN) del
         # mes en curso que todavía no tienen cierre cargado — ver
         # turnos_repo.turnos_faltantes(). Es una QListWidget (no un QLabel)
@@ -133,7 +194,9 @@ class ControlCierresWindow(QDialog):
         self.titulo_faltantes.setStyleSheet("color: #A6323C; font-weight: 600;")
 
         self.lista_faltantes = QListWidget()
-        self.lista_faltantes.setMaximumHeight(140)
+        # Va abajo de la grilla (la cuenta ya está en la cabecera): más baja que
+        # antes, para que la grilla de cierres siga siendo lo principal.
+        self.lista_faltantes.setMaximumHeight(96)
         self.lista_faltantes.setStyleSheet(
             "QListWidget { background-color: #FBEAEA; border: 1px solid #D9838A; "
             "border-radius: 6px; color: #A6323C; } "
@@ -163,41 +226,86 @@ class ControlCierresWindow(QDialog):
             estirar=3, por_filas=True,
         )
         self.tabla.doubleClicked.connect(self._ver_detalle)
+        # El turno en una etiqueta de color, con los mismos colores que en Consulta
+        # de Ventas (Mañana, Tarde y Noche en ese orden) y después los dos del
+        # domingo ("Domingo T1" y "T2", ver turnos.etiqueta_turno).
+        un_lunes, un_domingo = date(2026, 11, 2), date(2026, 11, 1)
+        self.etiqueta_turno = DelegadoEtiqueta(self.tabla)
+        self.etiqueta_turno.colores_en_orden(
+            [etiqueta_turno(un_lunes, turno) for turno in dominio.TURNOS]
+            + [etiqueta_turno(un_domingo, turno) for turno in dominio.TURNOS_DOMINGO])
+        self.tabla.setItemDelegateForColumn(_COLUMNA_TURNO, self.etiqueta_turno)
+        # Justos para los títulos en negrita y espaciados de la maqueta B: así entran
+        # las 12 columnas sin barra para correr de costado y Responsable no se corta.
+        for columna, ancho in zip((_COLUMNA_FECHA, _COLUMNA_TURNO, _COLUMNA_CAJA, *_COLUMNAS_DE_PLATA),
+                                  (92, 90, 76, 100, 98, 84, 118, 126, 90, 86, 96)):
+            self.tabla.setColumnWidth(columna, ancho)
 
-        boton_detalle = QPushButton("Ver Detalle del cierre seleccionado")
-        boton_detalle.clicked.connect(self._ver_detalle)
-        boton_verificar = QPushButton("Cargar monto contado en el cierre seleccionado")
-        aplicar_clase(boton_verificar, "primario")
-        boton_verificar.clicked.connect(self._verificar)
+        self.boton_detalle = tecla("☰  VER DETALLE", self._ver_detalle, "teclaAzul")
+        self.boton_verificar = tecla("✎  CARGAR LO CONTADO", self._verificar)
         # Lo contado en el sobre lo carga solo el dueño (pedido 2026-10-18; el repo
         # también lo exige): una empleada con el permiso ve los cierres, nada más.
-        boton_verificar.setVisible(dominio.es_admin(self.usuario))
+        self.boton_verificar.setVisible(es_admin)
         # Mandar (o volver a mandar) un cierre a la app de gastos del dueño (pedido
         # suyo, 2026-10-26): para uno hecho con el envío apagado o borrado por error
         # allá. Solo el Admin, como el sobre.
-        self.boton_mandar = QPushButton("Mandar este cierre a la PWA")
-        self.boton_mandar.clicked.connect(self._mandar_a_la_app)
-        self.boton_mandar.setVisible(dominio.es_admin(self.usuario))
-        boton_salir = QPushButton("Salir")
-        boton_salir.clicked.connect(self.close)
+        self.boton_mandar = tecla("↗  MANDAR A LA APP DE GASTOS", self._mandar_a_la_app)
+        self.boton_mandar.setVisible(es_admin)
+        marcar_solo_admin(self.boton_verificar)
+        marcar_solo_admin(self.boton_mandar)
+        self.boton_salir = tecla("SALIR", self.close)
 
         botones = QHBoxLayout()
-        botones.addWidget(boton_detalle)
-        botones.addWidget(boton_verificar)
+        botones.setSpacing(8)
+        botones.addWidget(self.boton_detalle)
+        botones.addWidget(self.boton_verificar)
         botones.addWidget(self.boton_mandar)
         botones.addStretch()
-        botones.addWidget(boton_salir)
+        botones.addWidget(self.boton_salir)
+
+        self.filtros = fila_de_filtros(
+            [("Sobres sin contar", _FILTRO_SIN_CONTAR), ("Con diferencia", _FILTRO_CON_DIFERENCIA),
+             ("Forzosos o en ausencia", _FILTRO_FORZOSO_O_EN_AUSENCIA)],
+            self._elegir_filtro,
+        )
+
+        ayuda = "Doble clic en un cierre para ver su detalle  ·  En rojo: cerrado solo o en ausencia, y el sobre que no coincide"
+        if es_admin:
+            ayuda += "  ·  Las teclas con borde punteado las ve solo el Administrador"
 
         layout = QVBoxLayout()
-        layout.addWidget(self.panel_faltantes)
-        layout.addWidget(self.tabla)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
         layout.addLayout(botones)
+        layout.addWidget(self.filtros)
+        layout.addWidget(panel_de_tabla(self.tabla), 1)
+        layout.addWidget(self.panel_faltantes)
+        layout.addWidget(pie_de_ventana(ayuda))
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
+    def _elegir_filtro(self, filtro):
+        self._filtro_elegido = filtro
+        self._mostrar_lista()
+
     @manejar_errores
     def _cargar(self):
-        self.cierres = turnos_repo.listar_cierres()
+        self._todos = turnos_repo.listar_cierres()
+        # Los números de arriba son de todos los cierres de la lista, no de lo filtrado.
+        sin_contar = sum(1 for cierre in self._todos if _sin_contar(cierre))
+        con_diferencia = sum(1 for cierre in self._todos if _con_diferencia(cierre))
+        poner_indicador(self.indicador_cierres, str(len(self._todos)))
+        poner_indicador(self.indicador_sin_contar, str(sin_contar))
+        poner_indicador(self.indicador_con_diferencia, str(con_diferencia), alerta=con_diferencia > 0)
+        self._mostrar_lista()
+        self._cargar_faltantes()
+
+    def _mostrar_lista(self):
+        # `self.cierres` queda con las filas que se ven y en su orden: de ahí salen
+        # el cierre elegido para el detalle, el sobre y el envío.
+        condicion = _CONDICION_DEL_FILTRO.get(self._filtro_elegido)
+        self.cierres = [cierre for cierre in self._todos if condicion is None or condicion(cierre)]
         self.tabla.setRowCount(0)
         for cierre in self.cierres:
             fila = self.tabla.rowCount()
@@ -224,7 +332,7 @@ class ControlCierresWindow(QDialog):
             valores.append(QTableWidgetItem(formato_pesos(contado) if contado is not None else "—"))
             diferencia = cierre["diferencia"]
             item_diferencia = QTableWidgetItem(formato_pesos(diferencia) if diferencia is not None else "—")
-            if diferencia is not None and abs(diferencia) > 0.01:
+            if _con_diferencia(cierre):
                 item_diferencia.setForeground(Qt.red)
             valores.append(item_diferencia)
             for columna, item in enumerate(valores):
@@ -235,12 +343,11 @@ class ControlCierresWindow(QDialog):
         for columna in (_COLUMNA_APERTURA, _COLUMNA_CIERRE):
             mostrar_columna_entera(self.tabla, columna)
 
-        self._cargar_faltantes()
-
     def _cargar_faltantes(self):
         """Turnos del mes en curso ya vencidos (con su gracia) que todavía
         no tienen cierre — ver turnos_repo.turnos_faltantes()."""
         faltantes = turnos_repo.turnos_faltantes()
+        poner_indicador(self.indicador_sin_cerrar, str(len(faltantes)), alerta=bool(faltantes))
         if not faltantes:
             self.panel_faltantes.hide()
             return
@@ -344,6 +451,11 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
     venta, abajo aparecen sus artículos -- una venta sin detalle real (bono de
     PC, bono de la PlayStation 5, carga de saldo de Miembro) simplemente deja
     esa tabla vacía, no hace falta un caso especial.
+
+    La tarjeta ya tiene su diseño (ui/tarjeta_cierre.py, con su cabecera oscura):
+    la columna de la derecha va con la maqueta B del kiosko (2026-10-30), la caja
+    en un panel blanco y cada grilla en su panel_de_tabla, sin otra cabecera que
+    repita la de la tarjeta.
     """
 
     def __init__(self, cierre, parent=None):
@@ -368,32 +480,47 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
         columna_tarjeta.addWidget(self.tarjeta)
         columna_tarjeta.addStretch()
 
+        panel_caja, capa_caja = panel_blanco()
+        capa_caja.setContentsMargins(14, 10, 14, 10)
+        capa_caja.setSpacing(4)
         self.encabezado = QLabel()
         self.encabezado.setWordWrap(True)
         self.encabezado.setStyleSheet("font-weight: 600;")
+        capa_caja.addWidget(titulo_de_seccion("La caja"))
+        capa_caja.addWidget(self.encabezado)
 
         self.tabla = crear_tabla(
             ["Hora", "Vendedor", "Origen", "Total", "Método", "Estado"],
             estirar=1, por_filas=True,
         )
         self.tabla.itemSelectionChanged.connect(self._mostrar_detalle)
+        self.etiqueta_estado = etiqueta_de_estado(self.tabla, _DETALLE_ESTADO)
+        # El negocio de la venta en etiqueta, con los colores de Consulta de Ventas.
+        self.etiqueta_origen = DelegadoEtiqueta(self.tabla)
+        self.etiqueta_origen.colores_en_orden(dominio.NOMBRE_ORIGEN_VENTA.values())
+        self.tabla.setItemDelegateForColumn(_DETALLE_ORIGEN, self.etiqueta_origen)
+        self.tabla.setColumnWidth(_DETALLE_ORIGEN, 160)
+        self.tabla.setColumnWidth(_DETALLE_HORA, 80)
+        self.tabla.setColumnWidth(_DETALLE_TOTAL, 105)
+        # "Digital (Mercado Pago / Transferencia)" entero: cortado no se sabía qué era.
+        self.tabla.setColumnWidth(_DETALLE_METODO, 270)
 
         self.tabla_detalle = crear_tabla_detalle_venta()
 
-        boton_cerrar = QPushButton("Cerrar")
-        boton_cerrar.clicked.connect(self.close)
         botones = QHBoxLayout()
         botones.addStretch()
-        botones.addWidget(boton_cerrar)
+        botones.addWidget(tecla("CERRAR", self.close))
 
         columna_ventas = QVBoxLayout()
-        columna_ventas.addWidget(self.encabezado)
-        columna_ventas.addWidget(QLabel("Ventas del turno:"))
-        columna_ventas.addWidget(self.tabla)
-        columna_ventas.addWidget(QLabel(
-            "Artículos de la venta seleccionada (vacío si es bono de PC, de PlayStation o carga de saldo):"
-        ))
-        columna_ventas.addWidget(self.tabla_detalle)
+        columna_ventas.setSpacing(6)
+        columna_ventas.addWidget(panel_caja)
+        columna_ventas.addSpacing(6)
+        columna_ventas.addWidget(titulo_de_seccion("Ventas del turno"))
+        columna_ventas.addWidget(panel_de_tabla(self.tabla), 3)
+        columna_ventas.addSpacing(6)
+        columna_ventas.addWidget(titulo_de_seccion(
+            "Qué se llevó en la venta elegida (vacío si es bono de PC, de PlayStation o carga de saldo)"))
+        columna_ventas.addWidget(panel_de_tabla(self.tabla_detalle), 2)
 
         columnas = QHBoxLayout()
         columnas.addLayout(columna_tarjeta)
@@ -401,7 +528,9 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
         columnas.addLayout(columna_ventas, 1)
 
         layout = QVBoxLayout()
-        layout.addLayout(columnas)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addLayout(columnas, 1)
         layout.addLayout(botones)
         self.setLayout(layout)
         sin_boton_por_defecto(self)

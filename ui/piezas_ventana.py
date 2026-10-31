@@ -9,13 +9,22 @@ blancos con títulos de sección; tarjetas de menú (un botón con dibujito, tí
 línea de para qué es); cifras destacadas (un monto grande en un recuadro verde o azul) y
 teclas con relieve.
 
+Las listas (Artículos y las demás pantallas con una grilla) usan además la maqueta
+B que eligió el dueño para el kiosko el 2026-10-30 y pidió también acá el
+2026-10-31: indicadores con números grandes en la cabecera, un buscador grande,
+filtros en pastillas, la grilla en un panel con renglones altos y una línea de
+ayuda abajo (indicadores, buscador, fila_de_filtros, panel_de_tabla,
+pie_de_ventana; lo que se dibuja adentro de las celdas, en ui/dibujos_tabla.py).
+
 Solo arman widgets con su objectName o su "clase": los colores están en
 ui/hoja_de_estilos.py. Ninguna regla de esas va por tipo de widget, así que las
 ventanas que se abren desde estas (avisos, confirmaciones) no heredan nada.
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import (
+    QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QVBoxLayout, QWidget,
+)
 
 from ui.utils import aplicar_clase
 
@@ -237,3 +246,73 @@ def poner_indicador(indicador: QFrame, texto: str, alerta: bool = False):
     for widget in (indicador, indicador.valor):
         widget.setProperty("alerta", alerta)
         _repintar(widget)
+
+
+def buscador(texto: str) -> QLineEdit:
+    """El campo grande para buscar en una lista, con la lupa adelante."""
+    campo = QLineEdit()
+    campo.setObjectName("buscador")
+    campo.setPlaceholderText(f"🔍  {texto}")
+    campo.setClearButtonEnabled(True)
+    return campo
+
+
+def fila_de_filtros(opciones, al_elegir, todos: str = "Todos") -> QWidget:
+    """
+    Una fila de pastillas para filtrar una lista: la primera (`todos`) muestra todo y
+    cada una de `opciones` ((texto, valor), o solo el texto, que es también el valor)
+    se queda con lo suyo. Se elige una sola a la vez; al cambiar se llama a
+    `al_elegir(valor)`, con None para `todos`. `fila.elegido()` dice cuál está.
+    """
+    fila = QWidget()
+    capa = QHBoxLayout(fila)
+    capa.setContentsMargins(0, 0, 0, 0)
+    capa.setSpacing(6)
+    grupo = QButtonGroup(fila)
+    grupo.setExclusive(True)
+    valores = {}
+    for texto, valor in [(todos, None)] + [o if isinstance(o, tuple) else (o, o) for o in opciones]:
+        pastilla = QPushButton(texto.upper())
+        aplicar_clase(pastilla, "filtro")
+        pastilla.setCheckable(True)
+        pastilla.setCursor(Qt.PointingHandCursor)
+        grupo.addButton(pastilla)
+        valores[pastilla] = valor
+        capa.addWidget(pastilla)
+    grupo.buttons()[0].setChecked(True)
+    grupo.buttonClicked.connect(lambda pastilla: al_elegir(valores[pastilla]))
+    capa.addStretch()
+    fila.pastillas = grupo.buttons()
+    fila.elegido = lambda: valores[grupo.checkedButton()]
+    return fila
+
+
+def panel_de_tabla(tabla: QTableWidget, alto_de_renglon: int = 36) -> QFrame:
+    """La grilla de una lista dentro de un panel blanco redondeado, sin las rayas de
+    la cuadrícula y con renglones más altos (los títulos de las columnas, en
+    mayúscula y con la raya azul abajo, los pone la hoja de estilos)."""
+    panel = QFrame()
+    panel.setObjectName("panelTabla")
+    capa = QVBoxLayout(panel)
+    capa.setContentsMargins(1, 1, 1, 1)
+    tabla.setShowGrid(False)
+    tabla.verticalHeader().setDefaultSectionSize(alto_de_renglon)
+    tabla.horizontalHeader().setHighlightSections(False)
+    capa.addWidget(tabla)
+    return panel
+
+
+def pie_de_ventana(texto: str) -> QLabel:
+    """La línea de ayuda gris de abajo de una lista ("Doble clic para modificar")."""
+    etiqueta = QLabel(texto)
+    etiqueta.setObjectName("pieDeVentana")
+    etiqueta.setWordWrap(True)
+    return etiqueta
+
+
+def marcar_solo_admin(boton: QPushButton):
+    """Un botón que solo ve el Administrador: con el borde punteado, para que se
+    sepa que una empleada no lo tiene."""
+    boton.setProperty("soloAdmin", True)
+    boton.setToolTip(TEXTO_SOLO_ADMIN)
+    _repintar(boton)

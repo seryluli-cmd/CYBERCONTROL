@@ -128,7 +128,8 @@ class TestCierreDeTurnoEnPantalla(BaseConBaseTemporal):
 
         self.assertFalse([t for t in textos if "fondo" in t.lower()], textos)
         self.assertIn("Caja inicial (Cambio Fijo)", textos)
-        self.assertIn("Configurar Cambio Fijo", textos)
+        # La tecla de Usuarios, con la maqueta B: "＄  CAMBIO FIJO".
+        self.assertTrue(any(t.endswith("CAMBIO FIJO") for t in textos), textos)
         self.assertIn("Cambio Fijo", [control.tabla.horizontalHeaderItem(c).text() for c in range(control.tabla.columnCount())])
 
     def _cifra(self, ventana, titulo):

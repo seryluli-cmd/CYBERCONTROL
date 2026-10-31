@@ -14,11 +14,12 @@ reportes_window.py, como "PCSTREAM" y "Por Operador" (CLAUDE.md, regla 12).
 from PySide6.QtCore import QDate, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QPushButton, QTableWidgetItem, QVBoxLayout, QWidget,
+    QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from control_pcs.repositories import socios_bonos_repo
 from ui import excel
+from ui.piezas_ventana import panel_de_tabla, pie_de_ventana, tecla
 from ui.utils import (
     armar_filtro_por_fechas, crear_tabla, formato_pesos, formato_tiempo, hoy_del_local, manejar_errores,
     rango_de_fechas, sin_boton_por_defecto,
@@ -155,8 +156,7 @@ class PestañaSociosYBonos(QWidget):
         )
         # A la derecha de los filtros (pedido del dueño, 2026-10-24): la tabla de
         # abajo, con números que Excel suma (ver ui/excel.py).
-        self.boton_excel = QPushButton("📊  Bajar a Excel")
-        self.boton_excel.clicked.connect(self._bajar_a_excel)
+        self.boton_excel = tecla("📊  BAJAR A EXCEL", self._bajar_a_excel)
         filtros.addWidget(self.boton_excel)
         self._resultado = None
 
@@ -173,22 +173,23 @@ class PestañaSociosYBonos(QWidget):
         for columna in _A_LA_DERECHA:
             self.tabla.horizontalHeader().setSectionResizeMode(columna, QHeaderView.ResizeToContents)
 
-        nota = QLabel(
+        nota = pie_de_ventana(
             "Bonos: los de walk-ins, los de PCSTREAM y lo cobrado por reservas de PCs. Socios + Bonos = "
             "\"Alquiler de PCs\" de Caja y Totales. El tiempo de los bonos es el de los que se pusieron en una "
             "PC: una reserva que no vino suma plata pero no tiempo."
         )
-        nota.setWordWrap(True)
-        nota.setStyleSheet("color: #7A869A;")
 
+        # Como las demás pestañas de Reportes (maqueta B): alineada con la cabecera y
+        # la grilla en su panel blanco.
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 12, 0, 0)
         layout.addLayout(filtros)
         layout.addSpacing(8)
         layout.addLayout(tarjetas)
         layout.addWidget(self.barra)
         layout.addWidget(self.etiqueta_diferencia)
         layout.addSpacing(6)
-        layout.addWidget(self.tabla, 1)
+        layout.addWidget(panel_de_tabla(self.tabla), 1)
         layout.addWidget(nota)
         self.setLayout(layout)
         sin_boton_por_defecto(self)

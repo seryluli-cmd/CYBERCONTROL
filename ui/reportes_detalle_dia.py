@@ -14,11 +14,12 @@ las filas de arriba); esta pantalla solo los muestra.
 
 from datetime import datetime
 
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTabWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QTabWidget, QTableWidgetItem, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
 from ui import imprimir
+from ui.piezas_ventana import panel_de_tabla, pie_de_ventana, tecla
 from ui.utils import crear_tabla, formato_pesos
 
 _COLOR_ANULADA = QColor("#C62828")
@@ -82,7 +83,9 @@ def _pie_de_renglones(totales) -> list:
 class PanelDetalleDelDia(QWidget):
     """Cuatro pestañas (renglón por renglón, venta por venta, lo vendido, por
     operador) sobre el detalle de detalle_dia_repo.detalle_del_dia, del día
-    entero o de un turno, y el botón para imprimir el renglón por renglón."""
+    entero o de un turno, y el botón para imprimir el renglón por renglón. Con la
+    maqueta B (2026-10-30): cada tabla en su panel blanco (panel_de_tabla) e
+    IMPRIMIR como tecla."""
 
     _COLUMNAS_VENTAS = ["Nº", "Hora", "Turno", "Operador", "Rubro", "Qué se vendió",
                         "Efectivo", "Digital", "Total", "Estado"]
@@ -94,9 +97,8 @@ class PanelDetalleDelDia(QWidget):
         self.titulo = QLabel()
         self.titulo.setStyleSheet("font-weight: bold; font-size: 13px;")
         self.titulo.setWordWrap(True)
-        self.boton_imprimir = QPushButton("🖨️  Imprimir")
+        self.boton_imprimir = tecla("🖨  IMPRIMIR", self._imprimir)
         self.boton_imprimir.setToolTip("Imprime el renglón por renglón de lo que se ve (o lo guarda en PDF).")
-        self.boton_imprimir.clicked.connect(self._imprimir)
         self.boton_imprimir.setEnabled(False)
         # Lo que se está viendo, para imprimirlo: (nombre, día, parte, resumen).
         self._a_la_vista = None
@@ -105,26 +107,28 @@ class PanelDetalleDelDia(QWidget):
         self.tabla_ventas = crear_tabla(self._COLUMNAS_VENTAS, estirar=5)
         self.tabla_productos = crear_tabla(self._COLUMNAS_PRODUCTOS, estirar=1)
         self.tabla_operadores = crear_tabla(self._COLUMNAS_OPERADORES, estirar=0)
+        # Cada tabla en su panel blanco (diseño B); sin el recuadro de las pestañas,
+        # que con el del panel se veía un cuadro adentro de otro.
         self.pestañas = QTabWidget()
-        self.pestañas.addTab(self.tabla_renglones, "Renglón por renglón")
-        self.pestañas.addTab(self.tabla_ventas, "Venta por venta")
-        self.pestañas.addTab(self.tabla_productos, "Lo vendido (cantidades)")
-        self.pestañas.addTab(self.tabla_operadores, "Por operador")
+        self.pestañas.setDocumentMode(True)
+        self.pestañas.addTab(panel_de_tabla(self.tabla_renglones), "Renglón por renglón")
+        self.pestañas.addTab(panel_de_tabla(self.tabla_ventas), "Venta por venta")
+        self.pestañas.addTab(panel_de_tabla(self.tabla_productos), "Lo vendido (cantidades)")
+        self.pestañas.addTab(panel_de_tabla(self.tabla_operadores), "Por operador")
 
-        nota = QLabel(
+        nota = pie_de_ventana(
             "Tocá un turno de arriba para ver solo ese turno (o TOTAL DEL DÍA para ver todo). Las ventas "
             "anuladas se ven en rojo y no suman; \"anulada después del cierre\": el sobre de ese turno "
             "se armó con ella adentro."
         )
-        nota.setWordWrap(True)
-        nota.setStyleSheet("color: #7A869A;")
 
         encabezado = QHBoxLayout()
         encabezado.addWidget(self.titulo, 1)
         encabezado.addWidget(self.boton_imprimir)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 6, 0, 0)
+        layout.setSpacing(8)
         layout.addLayout(encabezado)
         layout.addWidget(self.pestañas, 1)
         layout.addWidget(nota)

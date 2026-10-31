@@ -282,13 +282,18 @@ def fila_guardar_cancelar(dialogo, al_guardar=None, texto_guardar: str = "Guarda
     es lo que hace el primero (por defecto, aceptar el diálogo tal cual) y
     `texto_guardar` cómo se llama ("Ingresar", "Cobrar y cargar saldo"...).
     Devuelve el layout, para agregarlo al del diálogo.
+
+    Con la maqueta B (2026-10-30) son teclas con relieve, a la derecha, como las
+    de las ventanas con cabecera oscura (ui/piezas_ventana.tecla).
     """
     boton_guardar = QPushButton(texto_guardar)
-    aplicar_clase(boton_guardar, "primario")
+    aplicar_clase(boton_guardar, "teclaAzul")
     boton_guardar.clicked.connect(al_guardar or dialogo.accept)
     boton_cancelar = QPushButton("Cancelar")
+    aplicar_clase(boton_cancelar, "teclaBlanca")
     boton_cancelar.clicked.connect(dialogo.reject)
     botones = QHBoxLayout()
+    botones.addStretch()
     botones.addWidget(boton_guardar)
     botones.addWidget(boton_cancelar)
     return botones
@@ -508,9 +513,12 @@ def armar_filtro_por_fechas(buscar, desde_inicial=None, extras=(), solo_hoy=Fals
             buscar()
 
         boton_hoy = QPushButton("Solo Hoy")
+        aplicar_clase(boton_hoy, "teclaBlanca")
         boton_hoy.clicked.connect(poner_solo_hoy)
         filtros.addWidget(boton_hoy)
+    # Teclas con relieve, como las de las ventanas con la maqueta B (2026-10-30).
     boton_buscar = QPushButton("Buscar")
+    aplicar_clase(boton_buscar, "teclaAzul")
     boton_buscar.clicked.connect(buscar)
     filtros.addWidget(boton_buscar)
     if estirar:

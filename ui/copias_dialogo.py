@@ -12,13 +12,16 @@ repositories/copias_repo.py.
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QTableWidgetItem, QVBoxLayout,
+    QApplication, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QTableWidgetItem,
+    QVBoxLayout,
 )
 
 from repositories import copias_repo
+from ui.piezas_ventana import (
+    agregar_indicador, cabecera_oscura, panel_blanco, panel_de_tabla, poner_indicador, tecla, titulo_de_seccion,
+)
 from ui.utils import (
-    aplicar_clase, confirmar, crear_tabla, encadenar_enter, fila_guardar_cancelar, formato_fecha_hora,
+    confirmar, crear_tabla, encadenar_enter, fila_guardar_cancelar, formato_fecha_hora,
     manejar_errores, mostrar_error, mostrar_info, sin_boton_por_defecto,
 )
 
@@ -43,15 +46,42 @@ class _Esperando:
 
 
 class DialogoCopiasDeSeguridad(QDialog):
+    """Con la maqueta B que eligió el dueño para el kiosko el 2026-10-30 y pidió
+    también acá (como Artículos): la cabecera oscura con cuántas copias hay y cuándo
+    fue la última, las teclas, lo de esta PC en un panel blanco y las otras carpetas
+    en su grilla."""
+
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Copias de Seguridad")
-        self.resize(720, 520)
+        self.resize(1000, 680)
         self._armar_interfaz()
         self._actualizar()
 
     def _armar_interfaz(self):
+        cabecera = cabecera_oscura(
+            "💾", "Copias de Seguridad",
+            f"Se hacen solas después de cada Cierre de Turno y cada {copias_repo.HORAS_ENTRE_COPIAS} horas")
+        self.indicador_copias = agregar_indicador(cabecera, "Copias en esta PC")
+        self.indicador_ultima = agregar_indicador(cabecera, "Última copia")
+        self.indicador_carpetas = agregar_indicador(cabecera, "Otras carpetas")
+
+        boton_ahora = tecla("⟳  HACER COPIA AHORA", self._copiar_ahora, "teclaAzul")
+        boton_pendrive = tecla("⤓  COPIA A UN PENDRIVE...", self._copiar_a_pendrive)
+        boton_pendrive.setToolTip(
+            "Una copia suelta en la carpeta que elijas, con fecha y hora en el nombre. "
+            "Esa no se borra nunca sola."
+        )
+        boton_cerrar = tecla("CERRAR", self.accept)
+        botones = QHBoxLayout()
+        botones.setSpacing(8)
+        botones.addWidget(boton_ahora)
+        botones.addWidget(boton_pendrive)
+        botones.addStretch()
+        botones.addWidget(boton_cerrar)
+
+        # En esta PC
         explicacion = QLabel(
             "El programa guarda solo una copia de la base, sin cerrarse: después de cada "
             f"<b>Cierre de Turno</b> y, si no hubo ninguno, cada <b>{copias_repo.HORAS_ENTRE_COPIAS} "
@@ -59,22 +89,27 @@ class DialogoCopiasDeSeguridad(QDialog):
             f"y, más atrás, una por día hasta {copias_repo.DIAS_CON_UNA_COPIA} días."
         )
         explicacion.setWordWrap(True)
-
-        # En esta PC
         self.etiqueta_local = QLabel()
         self.error_local = QLabel()
         self.error_local.setStyleSheet(_ESTILO_ERROR)
         self.error_local.setWordWrap(True)
-        boton_abrir_local = QPushButton("Abrir carpeta")
-        boton_abrir_local.clicked.connect(lambda: self._abrir(copias_repo.carpeta_local()))
+        boton_abrir_local = tecla("ABRIR CARPETA", lambda: self._abrir(copias_repo.carpeta_local()))
         fila_local = QHBoxLayout()
         fila_local.addWidget(self.etiqueta_local, 1)
         fila_local.addWidget(boton_abrir_local)
-        grupo_local = QGroupBox("En esta PC (carpeta del programa, data\\backups)")
-        layout_local = QVBoxLayout()
+        panel_local, layout_local = panel_blanco()
+        # El nombre de la carpeta, tal cual (no en la mayúscula del título): ahí se
+        # busca la copia para recuperarla.
+        donde_local = QLabel("Carpeta del programa, data\\backups")
+        donde_local.setStyleSheet(_ESTILO_AYUDA)
+        titulo_local = QHBoxLayout()
+        titulo_local.addWidget(titulo_de_seccion("En esta PC"))
+        titulo_local.addWidget(donde_local)
+        titulo_local.addStretch()
+        layout_local.addLayout(titulo_local)
+        layout_local.addWidget(explicacion)
         layout_local.addLayout(fila_local)
         layout_local.addWidget(self.error_local)
-        grupo_local.setLayout(layout_local)
 
         # Las otras carpetas
         self.tabla = crear_tabla(["Carpeta", "Última copia ahí", "Cómo anda"], estirar=2,
@@ -89,47 +124,28 @@ class DialogoCopiasDeSeguridad(QDialog):
         self.errores_extra = QLabel()
         self.errores_extra.setStyleSheet(_ESTILO_ERROR)
         self.errores_extra.setWordWrap(True)
-        boton_agregar = QPushButton("Agregar carpeta...")
-        boton_agregar.clicked.connect(self._agregar_carpeta)
-        self.boton_abrir_extra = QPushButton("Abrir carpeta")
-        self.boton_abrir_extra.clicked.connect(lambda: self._abrir(self._carpeta_elegida()))
-        self.boton_quitar = QPushButton("Quitar")
-        self.boton_quitar.clicked.connect(self._quitar_carpeta)
+        boton_agregar = tecla("＋  AGREGAR CARPETA...", self._agregar_carpeta)
+        self.boton_abrir_extra = tecla("ABRIR CARPETA", lambda: self._abrir(self._carpeta_elegida()))
+        self.boton_quitar = tecla("✕  QUITAR", self._quitar_carpeta, "teclaRoja")
         botones_extra = QHBoxLayout()
+        botones_extra.setSpacing(8)
+        botones_extra.addWidget(titulo_de_seccion("Otras carpetas (otro disco u otra PC de la red)"))
+        botones_extra.addStretch()
         botones_extra.addWidget(boton_agregar)
         botones_extra.addWidget(self.boton_abrir_extra)
         botones_extra.addWidget(self.boton_quitar)
-        botones_extra.addStretch()
-        grupo_extra = QGroupBox("Otras carpetas (otro disco u otra PC de la red)")
-        layout_extra = QVBoxLayout()
-        layout_extra.addWidget(ayuda)
-        layout_extra.addWidget(self.tabla)
-        layout_extra.addWidget(self.errores_extra)
-        layout_extra.addLayout(botones_extra)
-        grupo_extra.setLayout(layout_extra)
-
-        boton_ahora = QPushButton("Hacer copia de seguridad ahora")
-        aplicar_clase(boton_ahora, "primario")
-        boton_ahora.clicked.connect(self._copiar_ahora)
-        boton_pendrive = QPushButton("Guardar una copia en un pendrive...")
-        boton_pendrive.setToolTip(
-            "Una copia suelta en la carpeta que elijas, con fecha y hora en el nombre. "
-            "Esa no se borra nunca sola."
-        )
-        boton_pendrive.clicked.connect(self._copiar_a_pendrive)
-        boton_cerrar = QPushButton("Cerrar")
-        boton_cerrar.clicked.connect(self.accept)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_ahora)
-        botones.addWidget(boton_pendrive)
-        botones.addStretch()
-        botones.addWidget(boton_cerrar)
 
         layout = QVBoxLayout()
-        layout.addWidget(explicacion)
-        layout.addWidget(grupo_local)
-        layout.addWidget(grupo_extra, 1)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
         layout.addLayout(botones)
+        layout.addWidget(panel_local)
+        layout.addSpacing(4)
+        layout.addLayout(botones_extra)
+        layout.addWidget(ayuda)
+        layout.addWidget(panel_de_tabla(self.tabla), 1)
+        layout.addWidget(self.errores_extra)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
 
@@ -169,6 +185,11 @@ class DialogoCopiasDeSeguridad(QDialog):
         hay = self.tabla.rowCount() > 0
         self.boton_abrir_extra.setEnabled(hay)
         self.boton_quitar.setEnabled(hay)
+
+        # Los números de arriba, de lo mismo que se acaba de leer; en rojo lo que no anda.
+        poner_indicador(self.indicador_copias, str(estado["cantidad_local"]), alerta=bool(estado["error_local"]))
+        poner_indicador(self.indicador_ultima, _cuando(estado["ultima_local"]))
+        poner_indicador(self.indicador_carpetas, str(len(estado["extra"])), alerta=bool(errores))
 
     def _carpeta_elegida(self) -> str:
         fila = self.tabla.currentRow()
@@ -230,20 +251,22 @@ class DialogoCopiasDeSeguridad(QDialog):
 
 class DialogoAgregarCarpeta(QDialog):
     """Una carpeta más para las copias: de otro disco (D:\\BACKUPS) o de otra PC
-    de la red (\\\\192.168.1.111\\backups), con el usuario y la clave que pide."""
+    de la red (\\\\192.168.1.111\\backups), con el usuario y la clave que pide. Con
+    la cabecera oscura y los campos en un panel blanco (maqueta B del kiosko)."""
 
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Agregar carpeta para las copias")
-        self.resize(520, 260)
+        self.resize(600, 370)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
+        cabecera = cabecera_oscura("📁", "Agregar carpeta", "Otro disco u otra PC de la red para las copias")
+
         self.campo_carpeta = QLineEdit()
         self.campo_carpeta.setPlaceholderText("D:\\BACKUPS  o  \\\\192.168.1.111\\backups")
-        boton_buscar = QPushButton("Buscar...")
-        boton_buscar.clicked.connect(self._buscar)
+        boton_buscar = tecla("BUSCAR...", self._buscar)
         fila_carpeta = QHBoxLayout()
         fila_carpeta.addWidget(self.campo_carpeta, 1)
         fila_carpeta.addWidget(boton_buscar)
@@ -253,6 +276,7 @@ class DialogoAgregarCarpeta(QDialog):
         self.campo_clave.setEchoMode(QLineEdit.Password)
 
         formulario = QFormLayout()
+        formulario.setSpacing(10)
         formulario.addRow("Carpeta:", fila_carpeta)
         formulario.addRow("Usuario:", self.campo_usuario)
         formulario.addRow("Clave:", self.campo_clave)
@@ -265,9 +289,15 @@ class DialogoAgregarCarpeta(QDialog):
         ayuda.setWordWrap(True)
         ayuda.setStyleSheet(_ESTILO_AYUDA)
 
+        panel, capa = panel_blanco()
+        capa.addLayout(formulario)
+        capa.addWidget(ayuda)
+
         layout = QVBoxLayout()
-        layout.addLayout(formulario)
-        layout.addWidget(ayuda)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(12)
+        layout.addWidget(cabecera)
+        layout.addWidget(panel)
         layout.addStretch()
         layout.addLayout(fila_guardar_cancelar(self, self._guardar, "Agregar"))
         self.setLayout(layout)
