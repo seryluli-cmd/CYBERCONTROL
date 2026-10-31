@@ -35,7 +35,7 @@ TEXTO_SOLO_ADMIN = "Solo el Administrador"
 def cabecera_oscura(icono: str, titulo: str, detalle: str = "") -> QFrame:
     """La cabecera oscura de la ventana: dibujito, título y una línea de detalle a la
     izquierda; a la derecha, las pastillas que se le agreguen con `agregar_pastilla`.
-    `cabecera.detalle` es la etiqueta del detalle, por si cambia, y `cabecera.icono` la
+    `cabecera.titulo` y `cabecera.detalle` son sus etiquetas, por si cambian, y `cabecera.icono` la
     del dibujito (para ponerle uno dibujado: hay emojis que el mostrador no trae)."""
     cabecera = QFrame()
     cabecera.setObjectName("cabeceraOscura")
@@ -48,6 +48,7 @@ def cabecera_oscura(icono: str, titulo: str, detalle: str = "") -> QFrame:
     cabecera.icono = etiqueta_icono
     etiqueta_titulo = QLabel(titulo)
     etiqueta_titulo.setObjectName("tituloCabecera")
+    cabecera.titulo = etiqueta_titulo
     cabecera.detalle = QLabel(detalle)
     cabecera.detalle.setObjectName("detalleCabecera")
     textos = QVBoxLayout()
@@ -202,3 +203,37 @@ def linea_divisoria(vertical: bool = False) -> QFrame:
     else:
         linea.setFixedHeight(1)
     return linea
+
+
+def _repintar(widget):
+    """Que Qt vuelva a mirar la hoja de estilos después de cambiar una propiedad."""
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def agregar_indicador(cabecera: QFrame, titulo: str) -> QFrame:
+    """Un recuadro a la derecha de la cabecera con un número grande y, debajo, su
+    título chiquito en mayúscula ("73 / ARTÍCULOS"). El número se pone con
+    `poner_indicador`."""
+    indicador = QFrame()
+    indicador.setObjectName("indicadorCabecera")
+    capa = QVBoxLayout(indicador)
+    capa.setContentsMargins(14, 7, 18, 7)
+    capa.setSpacing(0)
+    indicador.valor = QLabel("—")
+    indicador.valor.setObjectName("valorIndicador")
+    etiqueta_titulo = QLabel(titulo.upper())
+    etiqueta_titulo.setObjectName("tituloIndicador")
+    capa.addWidget(indicador.valor)
+    capa.addWidget(etiqueta_titulo)
+    cabecera.fila.addWidget(indicador, 0, Qt.AlignVCenter)
+    return indicador
+
+
+def poner_indicador(indicador: QFrame, texto: str, alerta: bool = False):
+    """El número de un indicador; con `alerta`, en rojo (lo que pide atención, como
+    los artículos que quedaron bajo el mínimo)."""
+    indicador.valor.setText(texto)
+    for widget in (indicador, indicador.valor):
+        widget.setProperty("alerta", alerta)
+        _repintar(widget)

@@ -692,6 +692,7 @@ class TestSeCortaEsperandoLaRespuesta(unittest.TestCase):
 # (archivo, clases que se abren desde otra PC; None = el archivo entero)
 _PANTALLAS_DE_OTRA_PC = [
     ("ui/articulos_window.py", None),
+    ("ui/dialogo_articulo.py", None),
     ("ui/articulos_tabla.py", None),
     ("ui/ordenar_stock_window.py", None),
     ("ui/buscar_articulo.py", None),

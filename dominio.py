@@ -409,6 +409,58 @@ def texto_pesos(monto) -> str:
     return "$ " + texto.replace(",", "TEMP").replace(".", ",").replace("TEMP", ".")
 
 
+def texto_cantidad(cantidad) -> str:
+    """Unidades con el punto de los miles, como los pesos pero sin el "$":
+    -13055 -> "-13.055" (el stock de Modificar artículo)."""
+    return f"{int(cantidad):,}".replace(",", ".")
+
+
+# --------------------------------------------------------------------
+# La calculadora de precios de Modificar artículo (ui/dialogo_articulo.py)
+# --------------------------------------------------------------------
+# Acá y no en un repo: Artículos se abre también desde otra PC, y una función de
+# un repo que use tendría que entrar en la lista blanca, cambiando la huella.
+
+# La ganancia sobre el costo con que arranca la calculadora de precios de un
+# artículo (pedido del dueño, 2026-10-31: "el margen por defecto, del 80%").
+MARGEN_POR_DEFECTO = 80
+
+
+def precio_con_margen(costo: float, porcentaje: float) -> float:
+    """Precio de venta con `porcentaje` de margen sobre el costo. Va como
+    costo * (1 + %/100): costo + costo * %/100 da a veces otro centavo."""
+    return round(costo * (1 + porcentaje / 100), 2)
+
+
+def costo_sin_margen(precio_venta: float, porcentaje: float) -> float:
+    """La vuelta de precio_con_margen (estimar el costo si se perdió la
+    factura). La pantalla no deja un % negativo: nunca divide por cero."""
+    return round(precio_venta / (1 + porcentaje / 100), 2)
+
+
+def porcentaje_de_ganancia(costo: float, precio_venta: float):
+    """El % que se le gana sobre el costo vendiendo a `precio_venta`, el que usa
+    precio_con_margen: costo $ 20 y venta $ 200 da 900. Sin costo no hay % (None).
+    Con dos decimales: con ese % precio_con_margen vuelve a dar la misma venta."""
+    if costo <= 0:
+        return None
+    return round((precio_venta / costo - 1) * 100, 2)
+
+
+def ganancia_por_unidad(costo: float, precio_venta: float) -> float:
+    """Lo que dice la ayuda de la calculadora de precios: cuánto se gana por unidad
+    (venta $ 200 y costo $ 20: $ 180), negativo si se vende por debajo del costo.
+    Sin el % sobre la venta (90%): al lado del % sobre el costo confundía y el dueño
+    pidió sacarlo (2026-10-31, en el kiosko)."""
+    return round(precio_venta - costo, 2)
+
+
+def bajo_el_minimo(stock: int, stock_minimo: int) -> bool:
+    """Stock en rojo o aviso en Ventas. Justo en el mínimo no avisa; el stock
+    negativo (puede quedar a propósito) sí."""
+    return stock < stock_minimo
+
+
 def es_pcstream(nombre_estacion: str) -> bool:
     """
     Único lugar donde se decide si una estación es la PC de streaming. Compara

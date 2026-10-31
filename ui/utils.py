@@ -169,6 +169,22 @@ class CampoPesos(QDoubleSpinBox):
         return QValidator.Acceptable, texto, posicion
 
 
+class CampoPorcentaje(CampoPesos):
+    """
+    El campo de un %: se escribe y se lee como CampoPesos ("900", "1.000",
+    "233,33": los decimales solo si los tiene de verdad), con el "%" al final en
+    vez del "$ " adelante.
+    """
+
+    def __init__(self, maximo: float = 99_999, parent=None):
+        super().__init__(maximo, parent)
+        self.setPrefix("")
+        self.setSuffix("%")
+
+    def _sin_prefijo(self, texto: str) -> str:
+        return super()._sin_prefijo(texto.strip().removesuffix("%"))
+
+
 def pedir_pesos(parent, titulo: str, texto: str, valor: float):
     """Como QInputDialog.getDouble, con un `CampoPesos` ("$ 1.500" y no
     "1500,00"). Devuelve (monto, aceptado)."""

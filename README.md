@@ -424,7 +424,14 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
 2026-10-26, con el diseño de Configuración ADMIN; antes no aparecía).
 - **Artículos** (`articulos_window.py`, `ArticulosWindow`) — grilla con
   búsqueda en vivo, resalta en rojo filas con `stock < stock_minimo`.
-  `DialogoArticulo` para alta/edición (código no editable una vez creado;
+  `DialogoArticulo` (`ui/dialogo_articulo.py`) para alta/edición, con la
+  maqueta B que eligió el dueño el 2026-10-31: la cabecera con el nombre, código,
+  marca, rubro, stock actual (en rojo bajo el mínimo) y mínimo; los datos en una
+  ficha a la izquierda y a la derecha una tarjeta oscura con el precio de venta
+  en grande, lo que se gana por unidad y la calculadora COSTO, GANANCIA %, VENTA
+  (cada uno con su "＝ Calcular", el % arranca en 80; `dominio.precio_con_margen`,
+  `.costo_sin_margen`, `.porcentaje_de_ganancia`); los campos de números sin
+  flechitas (código no editable una vez creado;
   marca se puede tipear y crea al vuelo; **rubro es un combo cerrado**,
   incluye "(Sin rubro)", se elige por `rubro_id` con `findData`; el campo
   stock es solo lectura — "el stock se carga desde Compras"). Botón

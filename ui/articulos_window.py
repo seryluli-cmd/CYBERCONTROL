@@ -1,8 +1,8 @@
 """
 articulos_window.py
 =====================
-Pantalla de Artículos: la grilla con todos los productos, y el cuadro de
-alta/edición. La usa el Admin o una Empleada con `permiso_articulos`.
+Pantalla de Artículos: la grilla con todos los productos (el cuadro de
+alta/edición está en ui/dialogo_articulo.py). La usa el Admin o una Empleada con `permiso_articulos`.
 Importante: el alta/edición NUNCA toca el stock — el stock se carga desde
 Compras (ver compras_window.py) y solo se corrige a mano con ORDENAR Stock
 (ordenar_stock_window.py: solo Admin, con contraseña).
@@ -10,18 +10,18 @@ Compras (ver compras_window.py) y solo se corrige a mano con ORDENAR Stock
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QPushButton, QLineEdit, QLabel,
-    QComboBox, QSpinBox, QFormLayout, QInputDialog,
+    QInputDialog,
 )
 from PySide6.QtCore import Qt, QDate
 
 import dominio
 from repositories import articulos_repo
 from ui.articulos_tabla import COLUMNA_CODIGO, crear_tabla_de_articulos, llenar_tabla_de_articulos
+from ui.dialogo_articulo import DialogoArticulo
 from ui.ordenar_stock_window import OrdenarStockWindow
 from ui.utils import (
-    CampoPesos, mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase,
-    encadenar_enter, armar_filtro_por_fechas, sin_boton_por_defecto, fila_guardar_cancelar,
-    crear_tabla, rango_de_fechas,
+    mostrar_error, mostrar_aviso, confirmar, manejar_errores, aplicar_clase, encadenar_enter,
+    armar_filtro_por_fechas, sin_boton_por_defecto, crear_tabla, rango_de_fechas,
 )
 
 
@@ -152,177 +152,6 @@ class ArticulosWindow(QDialog):
         articulos_repo.comprobar_clave_para_ordenar_stock(self.usuario["id"], clave)
         OrdenarStockWindow(self, self.usuario["id"], clave).exec()
         self._cargar_grilla()
-
-
-class DialogoArticulo(QDialog):
-    """Cuadro de alta o edición de un artículo (según si se le pasa un
-    código existente o no)."""
-
-    def __init__(self, parent, codigo_existente: str = None):
-        super().__init__(parent)
-        self.codigo_existente = codigo_existente
-        self.setWindowTitle("Modificación de Artículos" if codigo_existente else "Nuevo Artículo")
-        self.resize(520, 380)
-        self._armar_interfaz()
-        if codigo_existente:
-            self._cargar_datos(codigo_existente)
-
-    def _armar_interfaz(self):
-        self.campo_codigo = QLineEdit()
-        if self.codigo_existente:
-            self.campo_codigo.setText(self.codigo_existente)
-            self.campo_codigo.setReadOnly(True)  # no se cambia el código de un artículo ya creado
-
-        self.campo_descripcion = QLineEdit()
-
-        self.combo_marca = QComboBox()
-        self.combo_marca.setEditable(True)
-        for marca in articulos_repo.listar_marcas():
-            self.combo_marca.addItem(marca["nombre"], marca["id"])
-
-        # A diferencia de Marca, Rubro NO es editable a mano: solo se puede
-        # elegir de la lista que administra el Admin (ver "Gestionar
-        # Rubros"), para que no queden rubros mal escritos o duplicados
-        # por typos ("Bebidas" vs "BEBIDAS" vs "Bebida").
-        self.combo_rubro = QComboBox()
-        self.combo_rubro.addItem("(Sin rubro)", None)
-        for rubro in articulos_repo.listar_rubros():
-            self.combo_rubro.addItem(rubro["nombre"], rubro["id"])
-
-        self.spin_precio_venta = CampoPesos()
-
-        self.spin_precio_compra = CampoPesos()
-
-        # Calculadora de margen: a veces se pierde la factura de compra y no
-        # se sabe el costo real, pero se puede averiguar el precio de venta
-        # de ese mismo artículo en otro local — con eso y un % de margen
-        # aproximado, se estima el costo (o al revés, con el costo conocido
-        # se estima la venta). El % es editable porque el margen no es
-        # siempre el mismo para todos los rubros. Es a botón, no en vivo:
-        # así no pisa un precio que ya se cargó a mano al tocar el otro campo.
-        self.spin_pct_desde_costo = QSpinBox()
-        self.spin_pct_desde_costo.setRange(0, 500)
-        self.spin_pct_desde_costo.setValue(80)
-        self.spin_pct_desde_costo.setSuffix("%")
-        boton_calc_venta = QPushButton("Calcular")
-        boton_calc_venta.clicked.connect(self._calcular_venta_desde_costo)
-
-        self.spin_pct_desde_venta = QSpinBox()
-        self.spin_pct_desde_venta.setRange(0, 500)
-        self.spin_pct_desde_venta.setValue(80)
-        self.spin_pct_desde_venta.setSuffix("%")
-        boton_calc_costo = QPushButton("Calcular")
-        boton_calc_costo.clicked.connect(self._calcular_costo_desde_venta)
-
-        self.spin_stock_minimo = QSpinBox()
-        self.spin_stock_minimo.setMaximum(999_999)
-
-        self.etiqueta_stock = QLabel("(el stock se carga desde Compras)")
-        self.etiqueta_stock.setStyleSheet("color: gray; font-style: italic;")
-
-        # La pistola lectora escribe el código y manda un Enter sola. Ese
-        # Enter pasa el foco al siguiente campo, como si se apretara Tab,
-        # para seguir cargando el artículo sin tocar el mouse — encadenado
-        # por todo el formulario, terminando en Guardar (ver encadenar_enter).
-        encadenar_enter(
-            self.campo_codigo, self.campo_descripcion, self.combo_marca, self.combo_rubro,
-            self.spin_precio_venta, self.spin_precio_compra, self.spin_stock_minimo,
-            accion_final=self._guardar,
-        )
-
-        fila_precio_venta = QHBoxLayout()
-        fila_precio_venta.addWidget(self.spin_precio_venta)
-        fila_precio_venta.addWidget(QLabel("→ Costo al"))
-        fila_precio_venta.addWidget(self.spin_pct_desde_venta)
-        fila_precio_venta.addWidget(boton_calc_costo)
-
-        fila_precio_compra = QHBoxLayout()
-        fila_precio_compra.addWidget(self.spin_precio_compra)
-        fila_precio_compra.addWidget(QLabel("→ Venta al"))
-        fila_precio_compra.addWidget(self.spin_pct_desde_costo)
-        fila_precio_compra.addWidget(boton_calc_venta)
-
-        formulario = QFormLayout()
-        formulario.addRow("Código (de barras):", self.campo_codigo)
-        formulario.addRow("Descripción:", self.campo_descripcion)
-        formulario.addRow("Marca:", self.combo_marca)
-        formulario.addRow("Rubro:", self.combo_rubro)
-        formulario.addRow("Precio Venta:", fila_precio_venta)
-        formulario.addRow("Precio Compra (costo):", fila_precio_compra)
-        formulario.addRow("Stock Mínimo:", self.spin_stock_minimo)
-        formulario.addRow("Stock actual:", self.etiqueta_stock)
-
-        botones = fila_guardar_cancelar(self, self._guardar)
-
-        layout = QVBoxLayout()
-        layout.addLayout(formulario)
-        layout.addLayout(botones)
-        self.setLayout(layout)
-        sin_boton_por_defecto(self)
-
-    @manejar_errores
-    def _cargar_datos(self, codigo):
-        articulo = articulos_repo.buscar_por_codigo(codigo)
-        if articulo is None:
-            return
-        self.campo_descripcion.setText(articulo["descripcion"])
-        if articulo["marca"]:
-            self.combo_marca.setCurrentText(articulo["marca"])
-        indice_rubro = self.combo_rubro.findData(articulo["rubro_id"])
-        self.combo_rubro.setCurrentIndex(indice_rubro if indice_rubro >= 0 else 0)
-        self.spin_precio_venta.setValue(articulo["precio_venta"])
-        self.spin_precio_compra.setValue(articulo["precio_compra"])
-        self.spin_stock_minimo.setValue(articulo["stock_minimo"])
-        self.etiqueta_stock.setText(str(articulo["stock"]))
-        self.etiqueta_stock.setStyleSheet("color: red;" if articulo["stock"] < articulo["stock_minimo"] else "")
-
-    def _calcular_venta_desde_costo(self):
-        costo = self.spin_precio_compra.value()
-        porcentaje = self.spin_pct_desde_costo.value()
-        self.spin_precio_venta.setValue(round(costo * (1 + porcentaje / 100), 2))
-
-    def _calcular_costo_desde_venta(self):
-        venta = self.spin_precio_venta.value()
-        porcentaje = self.spin_pct_desde_venta.value()
-        self.spin_precio_compra.setValue(round(venta / (1 + porcentaje / 100), 2))
-
-    def _resolver_marca(self):
-        texto = self.combo_marca.currentText().strip()
-        if not texto:
-            return None, None
-        indice = self.combo_marca.findText(texto)
-        if indice >= 0:
-            return self.combo_marca.itemData(indice), None
-        return None, texto  # el repo la crea junto con el artículo
-
-    @manejar_errores
-    def _guardar(self):
-        codigo = self.campo_codigo.text().strip()
-        descripcion = self.campo_descripcion.text().strip()
-
-        if not codigo or not descripcion:
-            mostrar_error(self, "Faltan datos", "El código y la descripción son obligatorios.")
-            return
-
-        marca_id, nombre_marca_nueva = self._resolver_marca()
-        rubro_id = self.combo_rubro.currentData()  # ya viene resuelto: no es editable
-
-        if self.codigo_existente:
-            articulos_repo.modificar_articulo(
-                codigo, descripcion, marca_id, rubro_id,
-                self.spin_precio_venta.value(), self.spin_precio_compra.value(),
-                self.spin_stock_minimo.value(), nombre_marca_nueva=nombre_marca_nueva,
-            )
-        else:
-            if articulos_repo.buscar_por_codigo(codigo):
-                mostrar_error(self, "Código repetido", "Ya existe un artículo con ese código.")
-                return
-            articulos_repo.crear_articulo(
-                codigo, descripcion, marca_id, rubro_id,
-                self.spin_precio_venta.value(), self.spin_precio_compra.value(),
-                self.spin_stock_minimo.value(), nombre_marca_nueva=nombre_marca_nueva,
-            )
-        self.accept()
 
 
 class DialogoMovimientos(QDialog):
