@@ -403,6 +403,42 @@ class TestAlcanceYReporte(_ConClaveDePrueba):
         fila = self.estacion(self.pc1)
         self.assertEqual((fila["version_cliente"], fila["carpeta_cliente"], fila["estado_actualizacion"]), (None, "C:\\c", ""))
 
+    def test_una_pc_que_deja_de_mandar_el_reporte_arranca_sin_el_lanzador(self):
+        # La PC1 de la casa del dueño (2026-11-01): había contado su carpeta y su Lanzador, y
+        # después abrió la V2.1 sin pasar por Lanzador.exe (solo manda `v`). La pantalla seguía
+        # con lo viejo y decía "Esperando" para siempre.
+        con_lanzador = {"estacion": "PC1", "v": "2", "version": "5", "carpeta": "C:\\c", "act": "",
+                        "act_detalle": "", "lanzador": "3", "formato": "2"}
+        repo.registrar_reporte(self.pc1, con_lanzador)
+        self.assertTrue(repo.sabe_poner_carpetas(self.pc1))
+
+        repo.registrar_reporte(self.pc1, {"estacion": "PC1", "v": "2.1"})
+
+        fila = self.estacion(self.pc1)
+        self.assertEqual((fila["version_cliente"], fila["carpeta_cliente"], fila["estado_actualizacion"],
+                          fila["version_bajada"], fila["numero_lanzador"], fila["numero_version_cliente"]),
+                         (None, None, None, None, None, "2.1"))
+        self.assertFalse(repo.sabe_poner_carpetas(self.pc1))
+        repo.publicar(exe_de_cliente(v="1.9"))
+        repo.guardar_seleccion([self.pc1])
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE estaciones SET ultima_conexion = ? WHERE id = ?",
+                             (datetime.now().isoformat(timespec="seconds"), self.pc1))
+        pc1 = next(pc for pc in repo.estado_de_las_pcs() if pc["id"] == self.pc1)
+        self.assertEqual(repo.situacion(pc1), repo.ARRANCA_SIN_LANZADOR)
+
+        # Reinstalada con preparar_pc.bat: vuelve a contar todo.
+        repo.registrar_reporte(self.pc1, {**con_lanzador, "version": ""})
+        self.assertEqual((self.estacion(self.pc1)["carpeta_cliente"], self.estacion(self.pc1)["numero_lanzador"]),
+                         ("C:\\c", 3))
+
+    def test_sin_el_reporte_escribe_una_sola_vez(self):
+        repo.registrar_reporte(self.pc1, {"v": "2.1"})
+        with database.conexion_db() as conexion:     # alguien lo cambia por fuera
+            conexion.execute("UPDATE estaciones SET carpeta_cliente = 'tocada' WHERE id = ?", (self.pc1,))
+        repo.registrar_reporte(self.pc1, {"v": "2.1"})
+        self.assertEqual(self.estacion(self.pc1)["carpeta_cliente"], "tocada")
+
     def test_un_estado_desconocido_cuenta_como_nada_pendiente_y_los_textos_tienen_tope(self):
         repo.registrar_reporte(self.pc1, {"version": "x", "carpeta": "C" * 1000, "act": "hackeado",
                                           "act_detalle": "d" * 1000})
@@ -704,7 +740,11 @@ class TestSituacion(unittest.TestCase):
         self.assertEqual(self.situacion(conectada=False), repo.APAGADA)
         self.assertEqual(self.situacion(le_toca=None, seleccionada=False), repo.NO_SELECCIONADA)
         self.assertEqual(self.situacion(carpeta=""), repo.INSTALACION_VIEJA)
+        self.assertEqual(self.situacion(carpeta="", v="2.1"), repo.ARRANCA_SIN_LANZADOR)
+        self.assertEqual(self.situacion(carpeta="", v="2.1", le_toca=None, seleccionada=False),
+                         repo.ARRANCA_SIN_LANZADOR)
         self.assertEqual(self.situacion(carpeta="", ultima_conexion=None, conectada=False), repo.NUNCA_CONECTADA)
+        self.assertNotIn(repo.ARRANCA_SIN_LANZADOR, repo.SITUACIONES_LISTAS)
 
     def test_copiada_que_no_se_puso_al_reiniciar(self):
         lista = {"estado": "descargada", "version_bajada": 5}
@@ -1090,6 +1130,25 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
         self.assertIn("anterior a la V1.4", d.tarjetas[self.pc2].lanzador.toolTip())
         self.assertEqual(pcs_actualizacion_dialogo.texto_del_lanzador({"lanzador": None, "carpeta": ""}), "")
 
+    def test_la_que_arranca_sin_el_lanzador_va_con_problema_y_dice_que_hay_que_reinstalarla(self):
+        repo.publicar(exe_de_cliente(v="1.9"))
+        repo.guardar_seleccion([self.pc1])
+        repo.registrar_reporte(self.pc1, {"v": "2", "version": "5", "carpeta": "C:\\c", "act": "", "act_detalle": "",
+                                          "lanzador": "3"})
+        repo.registrar_reporte(self.pc1, {"v": "2.1"})          # abrió sin pasar por Lanzador.exe
+        with database.conexion_db() as conexion:
+            conexion.execute("UPDATE estaciones SET ultima_conexion = ? WHERE id = ?",
+                             (datetime.now().isoformat(timespec="seconds"), self.pc1))
+        d = self.dialogo()
+
+        tarjeta = d.tarjetas[self.pc1]
+        self.assertEqual(self.columna_de(d, self.pc1), "Con problema")
+        self.assertIn("Arranca sin el Lanzador", tarjeta.estado.text())
+        self.assertIn("preparar_pc.bat", tarjeta.estado.text())
+        self.assertEqual((tarjeta.version.text(), tarjeta.lanzador.text()), ("V2.1", ""))
+        self.assertNotIn("Instalado en", tarjeta.toolTip())
+        self.assertIn("PC1 (arranca sin el Lanzador)", d.etiqueta_resumen.text())
+
     def test_el_resumen_dice_cuantas_estan_listas_y_que_les_falta(self):
         resumen = pcs_actualizacion_dialogo.texto_del_resumen
         base = {"estado": "", "detalle": "", "carpeta": "C:\\c", "le_toca": 5, "version": 4, "version_bajada": None,
@@ -1126,7 +1185,7 @@ class TestDialogoActualizarCliente(_ConClaveDePrueba):
     def test_cada_situacion_cae_en_una_sola_columna_del_tablero(self):
         situaciones = [repo.NUNCA_CONECTADA, repo.INSTALACION_VIEJA, repo.NO_SELECCIONADA, repo.FUNCIONANDO,
                        repo.LISTA, repo.FALLO, repo.APAGADA, repo.COPIANDO, repo.ERROR, repo.ESPERANDO,
-                       repo.SE_BORRA, repo.SIN_LANZADOR, repo.FALTA_PUENTE]
+                       repo.SE_BORRA, repo.SIN_LANZADOR, repo.ARRANCA_SIN_LANZADOR, repo.FALTA_PUENTE]
         en_columnas = [s for _clave, _titulo, _tono, propias in pcs_actualizacion_dialogo.COLUMNAS_DEL_TABLERO
                        for s in propias]
         self.assertCountEqual(en_columnas, situaciones)

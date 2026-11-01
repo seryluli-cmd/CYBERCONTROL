@@ -21,6 +21,9 @@ una columna por cómo va la actualización (Copiando, Falta reiniciar, Al día, 
 conexión y, si hay alguna, Sin marcar) y una tarjeta por PC con su casilla. Qué le pasa a cada PC lo
 decide `repo.situacion`; acá solo se la pone en su columna. Las que están al día van chiquitas, solo
 con la casilla y el nombre, para que entren muchas. Los colores están en ui/hoja_de_estilos.py.
+
+Desde el 2026-11-01 una PC cuyo Cliente PC no arranca con Lanzador.exe va a "Con problema" y dice
+que hay que reinstalarla (antes quedaba "Esperando" para siempre, con el Lanzador de otra época).
 """
 
 import re
@@ -51,7 +54,7 @@ COLUMNAS_DEL_TABLERO = (
     ("falta_reiniciar", "Falta reiniciar", "turquesa", (repo.LISTA,)),
     ("al_dia", "Al día", "verde", (repo.FUNCIONANDO,)),
     ("con_problema", "Con problema", "rojo",
-     (repo.ERROR, repo.FALLO, repo.SE_BORRA, repo.SIN_LANZADOR, repo.FALTA_PUENTE)),
+     (repo.ERROR, repo.FALLO, repo.SE_BORRA, repo.SIN_LANZADOR, repo.ARRANCA_SIN_LANZADOR, repo.FALTA_PUENTE)),
     ("sin_conexion", "Sin conexión", "gris", (repo.APAGADA, repo.NUNCA_CONECTADA, repo.INSTALACION_VIEJA)),
 )
 # Cuánto ancho se lleva cada columna (la de las que están al día, con sus casillas en fila, más).
@@ -62,7 +65,7 @@ CASILLAS_POR_FILA = 3
 TONO_DE_LA_SITUACION = {
     repo.FUNCIONANDO: TONO_VERDE, repo.LISTA: TONO_VERDE, repo.COPIANDO: TONO_AZUL, repo.ESPERANDO: TONO_AMARILLO,
     repo.ERROR: TONO_ROJO, repo.FALLO: TONO_ROJO, repo.SE_BORRA: TONO_ROJO, repo.SIN_LANZADOR: TONO_ROJO,
-    repo.FALTA_PUENTE: TONO_AMARILLO, repo.APAGADA: TONO_GRIS, repo.NO_SELECCIONADA: TONO_GRIS,
+    repo.ARRANCA_SIN_LANZADOR: TONO_ROJO, repo.FALTA_PUENTE: TONO_AMARILLO, repo.APAGADA: TONO_GRIS, repo.NO_SELECCIONADA: TONO_GRIS,
     repo.NUNCA_CONECTADA: TONO_GRIS, repo.INSTALACION_VIEJA: TONO_GRIS,
 }
 PASOS = ("Marcás la PC", "Copia la versión sola", "Se reinicia para ponerla", "Queda al día")
@@ -74,7 +77,7 @@ _POR_QUE_FALTA = {
     repo.ESPERANDO: "esperando", repo.NUNCA_CONECTADA: "nunca se conectó",
     repo.INSTALACION_VIEJA: "instalación vieja",
     repo.SE_BORRA: "se borra al reiniciar", repo.SIN_LANZADOR: "no arranca con el Lanzador",
-    repo.FALTA_PUENTE: "le falta la V1.9",
+    repo.ARRANCA_SIN_LANZADOR: "arranca sin el Lanzador", repo.FALTA_PUENTE: "le falta la V1.9",
 }
 
 # Un número de versión (AAAAMMDDhhmmss) dentro de un texto que manda la PC.
@@ -124,6 +127,8 @@ def texto_del_estado(pc: dict) -> str:
     return {
         repo.NUNCA_CONECTADA: "Nunca se conectó a este CYBERCONTROL (¿apagada o con otro nombre?)",
         repo.INSTALACION_VIEJA: "Instalación vieja: hay que reinstalarla con el pendrive (preparar_pc.bat)",
+        repo.ARRANCA_SIN_LANZADOR: ("Arranca sin el Lanzador y así no se actualiza. Reinstalala con el pendrive "
+                                    "(preparar_pc.bat, como Administrador)"),
         repo.NO_SELECCIONADA: "No seleccionada",
         repo.FUNCIONANDO: funcionando,
         repo.LISTA: "Actualizada con éxito · se aplica al reiniciarse (sola, si está libre)",

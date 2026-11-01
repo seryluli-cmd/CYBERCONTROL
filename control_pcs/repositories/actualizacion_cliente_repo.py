@@ -114,6 +114,9 @@ _ultimo = {"clave": None, "paquete": None, "exe": None}
 # Lo último que contó cada PC (estacion_id -> tupla), para escribir en la base solo si cambió:
 # cada PC consulta cada 5 s.
 _reportes = {}
+# Lo que queda de una PC que no manda el reporte: ni versión, ni carpeta, ni lanzador (ver
+# `registrar_reporte`).
+_SIN_REPORTE = (None, None, None, None, None, None)
 # Lo mismo para el número de versión que manda cada PC (estacion_id -> "1.2" o None).
 _numeros_de_version = {}
 # Y para el seguimiento de la copia que espera el reinicio (estacion_id -> dict o None).
@@ -454,26 +457,34 @@ def registrar_reporte(estacion_id: int, parametros: dict, ahora: datetime = None
     """Guarda lo que contó la PC en su GET /estado (`parametros`: los de la consulta, ya de a uno):
     `version`, `carpeta`, `act`, `act_detalle` y `act_version` (la que está copiando o ya copió;
     un Cliente PC de antes del 2026-10-19 no la manda) y `lanzador`, el número de su Lanzador.exe
-    (desde la V1.4). Un Cliente PC sin actualización automática no manda nada de eso y no se toca
-    nada. Aparte, `v`: su número de versión (lo manda desde la V1, con lanzador o sin él; ver
-    `_registrar_numero_de_version`), y `encendida`, los segundos que lleva prendida la PC, para
+    (desde la V1.4). Un Cliente PC que no arranca con Lanzador.exe (o uno de antes del 2026-10-18)
+    no manda nada de eso: no se puede actualizar, y se borra lo que contó la última vez que sí lo
+    mandó (`situacion` lo dice). Aparte, `v`: su número de versión (lo manda desde la V1, con
+    lanzador o sin él; ver `_registrar_numero_de_version`), y `encendida`, los segundos que lleva
+    prendida la PC, para
     seguir la copia a través de un reinicio (`_seguir_la_copia_de`). Solo escribe en la base si
     cambió algo. Y `formato`: 2 si sabe poner una versión en carpeta (desde la V1.9, con el Lanzador
     3); queda solo en memoria (`version_para_estacion`)."""
     _registrar_numero_de_version(estacion_id, parametros.get("v"))
     if "version" not in parametros:
-        return
-    with _candado_reportes:
-        _formatos[estacion_id] = _numero(parametros.get("formato")) or 1
-    version = _numero(parametros.get("version"))
-    carpeta = str(parametros.get("carpeta") or "")[:_TOPE_CARPETA]
-    estado = str(parametros.get("act") or "")
-    if estado not in dominio.ESTADOS_ACTUALIZACION_CLIENTE:
-        estado = ""
-    detalle = str(parametros.get("act_detalle") or "")[:_TOPE_DETALLE] if estado else ""
-    bajada = _numero(parametros.get("act_version")) if estado else None
-    nuevo = (version, carpeta, estado, detalle, bajada, _numero(parametros.get("lanzador")))
-    _seguir_la_copia_de(estacion_id, estado, bajada, version, _numero(parametros.get("encendida")), ahora)
+        # Hasta el 2026-11-01 no se tocaba nada, y la pantalla seguía mostrando la carpeta y el
+        # Lanzador de la última vez que la PC sí había arrancado con él: la PC1 de la casa del
+        # dueño abría la V2.1 sin el Lanzador, se veía "Esperando" y nunca iba a copiar nada.
+        nuevo = _SIN_REPORTE
+        with _candado_reportes:
+            _formatos[estacion_id] = 1
+    else:
+        with _candado_reportes:
+            _formatos[estacion_id] = _numero(parametros.get("formato")) or 1
+        version = _numero(parametros.get("version"))
+        carpeta = str(parametros.get("carpeta") or "")[:_TOPE_CARPETA]
+        estado = str(parametros.get("act") or "")
+        if estado not in dominio.ESTADOS_ACTUALIZACION_CLIENTE:
+            estado = ""
+        detalle = str(parametros.get("act_detalle") or "")[:_TOPE_DETALLE] if estado else ""
+        bajada = _numero(parametros.get("act_version")) if estado else None
+        nuevo = (version, carpeta, estado, detalle, bajada, _numero(parametros.get("lanzador")))
+        _seguir_la_copia_de(estacion_id, estado, bajada, version, _numero(parametros.get("encendida")), ahora)
     with _candado_reportes:
         if _reportes.get(estacion_id) == nuevo:
             return
@@ -644,6 +655,7 @@ def _conectada(ultima_conexion, ahora: datetime, umbral: int) -> bool:
 # Cómo está cada PC con la actualización, para la pantalla (`situacion`).
 NUNCA_CONECTADA = "nunca_conectada"
 INSTALACION_VIEJA = "instalacion_vieja"
+ARRANCA_SIN_LANZADOR = "arranca_sin_lanzador"   # su Cliente PC (V1 o más) no arranca con Lanzador.exe: no se actualiza
 NO_SELECCIONADA = "no_seleccionada"
 FUNCIONANDO = "funcionando"          # ya arrancó con la versión que le toca
 LISTA = "lista"                      # la copió y la comprobó: se pone en el próximo reinicio
@@ -665,7 +677,11 @@ def situacion(pc: dict) -> str:
     va antes que "apagada"; lo que cuenta mientras pasa (copiando, error) solo vale si está
     conectada, porque es lo último que dijo."""
     if not pc["carpeta"]:
-        return NUNCA_CONECTADA if not pc["ultima_conexion"] else INSTALACION_VIEJA
+        if not pc["ultima_conexion"]:
+            return NUNCA_CONECTADA
+        # Con número (V1 o más) sabe actualizarse: si no manda el reporte es que no arrancó con
+        # Lanzador.exe (la tarea apunta a otro lado). Sin número, es de antes de todo eso.
+        return ARRANCA_SIN_LANZADOR if pc.get("v") else INSTALACION_VIEJA
     if pc["le_toca"] is None:
         return NO_SELECCIONADA
     if pc["version"] == pc["le_toca"]:
