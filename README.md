@@ -462,6 +462,19 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   o escribir, Enter y confirmar): `articulos_repo.cambiar_codigo` lleva sus
   ventas, compras y ajustes al código nuevo y lo anota en `cambios_codigo` y en
   Movimientos. Es el único lugar donde se cambia un código.
+- **ORDENAR SALDOS** (`control_pcs/ui/ordenar_saldos_window.py`, `OrdenarSaldosWindow`;
+  pedido del dueño 2026-11-01: una empleada le cargó horas a un socio que no era)
+  — botón de abajo de Miembros que solo ve el Admin y que pide la contraseña de
+  ORDENAR Stock (`ajustes_saldo_repo.CLAVE_ORDENAR_SALDOS`, hoy la misma). A la
+  izquierda los socios activos con su saldo; a la derecha el elegido, el tiempo
+  (horas y minutos) y SUMAR, RESTAR o PASAR A OTRO SOCIO (le saca el tiempo a este
+  y se lo da al que se elija, de una vez), cada una con su pregunta. Abajo, las
+  últimas correcciones de todos. `ajustes_saldo_repo` vuelve a exigir Admin activo
+  y contraseña en cada una, no deja un saldo en negativo y anota cada punta en
+  `ajustes_saldo_miembro` (antes, después, quién, cuándo y el otro socio de un
+  pase). No crea ventas ni toca la caja (anular la carga y volver a cargarla sí la
+  movía). Lo que se le suma a un socio que está usando una PC pasa a esa sesión,
+  como una carga; lo que ya corre en una PC no se resta desde acá.
 - **CONTROL DE STOCK** (`control_stock_window.py`, `BotonControlStock` y
   `VentanaControlStock`; pedido del dueño 2026-10-24) — botón de debajo del
   mosaico de Control de PCs, a la derecha de APAGAR. Lo ven todos, pero solo el

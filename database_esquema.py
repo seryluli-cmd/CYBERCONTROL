@@ -791,6 +791,26 @@ def inicializar_base_de_datos():
     # que existiera el tipo ANULACION sigue con el CHECK viejo.
     _migrar_check_tipo_en_movimientos_saldo_miembro(conexion)
 
+    # Las correcciones a mano del saldo de un socio (ORDENAR SALDOS, botón de
+    # Miembros que solo ve el Admin; pedido del dueño 2026-11-01: una empleada le
+    # cargó horas a la cuenta equivocada). El saldo de antes y el de después, quién
+    # y cuándo; en un pase de un socio a otro, cada punta tiene su fila y
+    # `otro_miembro_id` dice el otro socio. Sin plata: no es una venta ni una
+    # anulación, y la caja no se entera. Tabla aparte y no un tipo más del ledger
+    # de arriba: ahí cada tipo dice de qué venta o sesión salió el tiempo y no hay
+    # "quién". Ver control_pcs/repositories/ajustes_saldo_repo.py.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ajustes_saldo_miembro (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            miembro_id       INTEGER NOT NULL REFERENCES miembros(id),
+            fecha            TEXT NOT NULL,
+            usuario_id       INTEGER NOT NULL REFERENCES usuarios(id),
+            saldo_anterior   INTEGER NOT NULL,
+            saldo_nuevo      INTEGER NOT NULL,
+            otro_miembro_id  INTEGER REFERENCES miembros(id)
+        )
+    """)
+
     # Esta migración necesita leer "sesion_bonos" y "movimientos_saldo_miembro"
     # para el backfill (ver database_migraciones._migrar_columna_origen_en_ventas),
     # así que va acá -- recién

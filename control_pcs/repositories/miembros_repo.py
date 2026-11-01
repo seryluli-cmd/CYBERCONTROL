@@ -182,7 +182,8 @@ def modificar_miembro(miembro_id: int, usuario: str, nombre: str, dni: str, tele
     """Actualiza los datos de un socio (mismas reglas que crear_miembro). Si
     `clave` viene vacía se conserva la anterior. No toca el saldo: eso solo se
     mueve con cargas, consumos y reintegros (ver el ledger
-    movimientos_saldo_miembro)."""
+    movimientos_saldo_miembro) y, a mano, con ORDENAR SALDOS
+    (ajustes_saldo_repo)."""
     datos = _datos_de_miembro(usuario, nombre, dni, telefono, email, whatsapp)
     if clave:
         datos["clave_hash"] = hash_clave(clave)

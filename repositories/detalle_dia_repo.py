@@ -36,14 +36,6 @@ from repositories import reportes_repo, turnos_repo
 from turnos import etiqueta_turno
 
 
-def _texto_minutos(minutos: int) -> str:
-    """180 -> "3 h", 90 -> "1 h 30 min", 45 -> "45 min"."""
-    horas, resto = divmod(int(minutos), 60)
-    if horas and resto:
-        return f"{horas} h {resto} min"
-    return f"{horas} h" if horas else f"{resto} min"
-
-
 def _texto_cantidad(cantidad) -> str:
     return str(int(cantidad)) if float(cantidad).is_integer() else str(cantidad)
 
@@ -170,7 +162,8 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
         """, rango,
     ):
         resultado[fila["venta_id"]] = _sin_articulo(
-            reportes_repo.CATEGORIA_BONO_PC, f"{fila['pc']} · {fila['bono']} ({_texto_minutos(fila['minutos'])})",
+            reportes_repo.CATEGORIA_BONO_PC,
+            f"{fila['pc']} · {fila['bono']} ({dominio.texto_minutos(fila['minutos'])})",
             fila["bono"], fila["total"],
         )
 
@@ -188,7 +181,7 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
     ):
         resultado[fila["venta_id"]] = _sin_articulo(
             reportes_repo.CATEGORIA_BONO_PCSTREAM,
-            f"{fila['pc']} · {fila['bono']} ({_texto_minutos(fila['minutos'])})",
+            f"{fila['pc']} · {fila['bono']} ({dominio.texto_minutos(fila['minutos'])})",
             fila["bono"], fila["total"],
         )
 
@@ -204,7 +197,7 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
     ):
         resultado[fila["venta_id"]] = _sin_articulo(
             reportes_repo.CATEGORIA_BONO_PLAYSTATION,
-            f"{dominio.NOMBRE_PLAYSTATION} · {fila['bono']} ({_texto_minutos(fila['minutos'])})",
+            f"{dominio.NOMBRE_PLAYSTATION} · {fila['bono']} ({dominio.texto_minutos(fila['minutos'])})",
             fila["bono"], fila["total"],
         )
 
@@ -219,7 +212,7 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
         WHERE movimientos_saldo_miembro.tipo = ? AND ventas.fecha > ? AND ventas.fecha <= ?
         """, (dominio.MOVIMIENTO_CARGA, *rango),
     ):
-        minutos = _texto_minutos(fila["minutos"])
+        minutos = dominio.texto_minutos(fila["minutos"])
         if fila["bono"] is not None:
             resultado[fila["venta_id"]] = _sin_articulo(
                 reportes_repo.CATEGORIA_BONO_SOCIO, f"Socio {fila['socio']} · {fila['bono']} ({minutos})",

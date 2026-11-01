@@ -15,9 +15,10 @@ Desde el 2026-10-29 la ventana es la "ficha del socio" (maqueta B, que eligió e
 tres): la lista a la izquierda y, a la derecha, la ficha del elegido con sus botones (ver
 miembros_ficha.py). "Historial de este socio" y "Historial de Cargas" (el de todos, abajo; el
 historial nació el 2026-10-24) abren miembros_historial_cargas.py. "$ Para Reserva" (2026-10-26,
-solo el Admin) abre reservas_socio_dialogo.DialogoSaldoParaReserva. "Hace cuánto no viene" (y su
-filtro, con los días a elección, y su orden) salen de ultima_visita_repo: en naranja pasados
-dominio.DIAS_SIN_VENIR_AVISO días.
+solo el Admin) abre reservas_socio_dialogo.DialogoSaldoParaReserva. "ORDENAR SALDOS" (2026-11-01,
+solo lo ve el Admin y pide la contraseña, como ORDENAR Stock) abre ordenar_saldos_window. "Hace
+cuánto no viene" (y su filtro, con los días a elección, y su orden) salen de ultima_visita_repo: en
+naranja pasados dominio.DIAS_SIN_VENIR_AVISO días.
 
 La configuración de la tabla de tramos de tarifa $/hora (ver
 config_repo.obtener_tramos_tarifa_hora_miembro) y la gestión del
@@ -32,14 +33,14 @@ en ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QSpinBox, QStackedWidget, QTableWidget, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
+    QListWidget, QListWidgetItem, QSpinBox, QStackedWidget, QTableWidget, QVBoxLayout, QWidget,
 )
 
 import dominio
 from repositories import config_repo
 from control_pcs.repositories import (
-    bonos_miembro_repo, historial_cargas_repo, miembros_repo, ultima_visita_repo,
+    ajustes_saldo_repo, bonos_miembro_repo, historial_cargas_repo, miembros_repo, ultima_visita_repo,
 )
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from control_pcs.ui.dibujos_de_ventana import icono_de, pixmap_de, poner_icono
@@ -49,10 +50,11 @@ from control_pcs.ui.miembros_ficha import (  # noqa: F401
     ROL_DATOS, DelegadoDeSocios, FichaDelSocio, Segmentos, detalle_de_la_visita, texto_no_viene,
 )
 from control_pcs.ui.miembros_historial_cargas import VentanaHistorialCargas
+from control_pcs.ui.ordenar_saldos_window import OrdenarSaldosWindow
 from control_pcs.ui.reservas_socio_dialogo import DialogoSaldoParaReserva
 from ui.dialogo_pago import cobrar
 from ui.piezas_ventana import TONO_AZUL, TONO_GRIS, TONO_NARANJA, TONO_VERDE, agregar_pastilla, cabecera_oscura, \
-    panel_blanco, tecla
+    marcar_solo_admin, panel_blanco, tecla
 from ui.utils import (
     CampoPesos, formato_pesos, formato_tiempo, mostrar_error, mostrar_info, confirmar, manejar_errores,
     encadenar_enter, sin_boton_por_defecto, fila_guardar_cancelar, fila_agregar_quitar, fecha_iso, hoy_del_local,
@@ -200,11 +202,18 @@ class MiembrosWindow(QDialog):
         # con "Historial de este socio", en su ficha.
         self.boton_historial_todos = tecla("Historial de Cargas", self._ver_historial_de_todos)
         poner_icono(self.boton_historial_todos, "reloj")
+        # Corregir a mano el saldo de un socio sin cobrar ni tocar la caja (pedido del dueño,
+        # 2026-11-01: una empleada le cargó horas a la cuenta equivocada). Como ORDENAR Stock:
+        # solo lo ve el Admin y pide la contraseña; ajustes_saldo_repo lo vuelve a exigir.
+        self.boton_ordenar_saldos = tecla("⚙  ORDENAR SALDOS", self._ordenar_saldos)
+        self.boton_ordenar_saldos.setVisible(es_admin)
+        marcar_solo_admin(self.boton_ordenar_saldos)
         boton_salir = tecla("Salir", self.close)
         pie = QHBoxLayout()
         pie.setSpacing(8)
         pie.addWidget(self.boton_saldo_para_reserva)
         pie.addWidget(self.boton_historial_todos)
+        pie.addWidget(self.boton_ordenar_saldos)
         pie.addStretch()
         pie.addWidget(boton_salir)
         raiz.addLayout(pie)
@@ -332,6 +341,19 @@ class MiembrosWindow(QDialog):
 
     def _ver_historial_de_todos(self):
         VentanaHistorialCargas(self, None).exec()
+
+    @manejar_errores
+    def _ordenar_saldos(self):
+        clave, aceptado = QInputDialog.getText(
+            self, "ORDENAR SALDOS", "Contraseña de ORDENAR SALDOS (la misma de ORDENAR Stock):", QLineEdit.Password
+        )
+        if not aceptado:
+            return
+        # Una contraseña equivocada (o un usuario que dejó de ser Admin) levanta
+        # PermissionError y @manejar_errores lo muestra: la ventana no se abre.
+        ajustes_saldo_repo.comprobar_clave_para_ordenar_saldos(self.usuario_operador["id"], clave)
+        OrdenarSaldosWindow(self, self.usuario_operador["id"], clave).exec()
+        self._cargar_grilla()   # los saldos de la lista y de la ficha
 
     @manejar_errores
     def _desactivar_miembro(self):

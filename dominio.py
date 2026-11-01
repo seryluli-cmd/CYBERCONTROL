@@ -415,6 +415,15 @@ def texto_cantidad(cantidad) -> str:
     return f"{int(cantidad):,}".replace(",", ".")
 
 
+def texto_minutos(minutos: int) -> str:
+    """Un tiempo en minutos, como se dice: 180 -> "3 h", 90 -> "1 h 30 min",
+    45 -> "45 min" (el Detalle del Día y los avisos de ORDENAR SALDOS)."""
+    horas, resto = divmod(int(minutos), 60)
+    if horas and resto:
+        return f"{horas} h {resto} min"
+    return f"{horas} h" if horas else f"{resto} min"
+
+
 # --------------------------------------------------------------------
 # La calculadora de precios de Modificar artículo (ui/dialogo_articulo.py)
 # --------------------------------------------------------------------
