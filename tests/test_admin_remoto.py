@@ -719,6 +719,9 @@ _PANTALLAS_DE_OTRA_PC = [
     ("control_pcs/ui/cuenta_pc_reglas_dialogo.py", None),
     ("control_pcs/ui/miembros_window.py", {"DialogoTramosTarifaMiembro", "DialogoBonoMiembro",
                                            "DialogoGestionBonosMiembro"}),
+    # ORDENAR SALDOS: el botón Miembros de la otra PC se lo ofrece al Administrador.
+    ("control_pcs/ui/ordenar_saldos_window.py", None),
+    ("control_pcs/ui/miembros_ficha.py", {"DelegadoDeSocios"}),
 ]
 
 # Lo que las pantallas usan de un repo sin ir a la base (se queda en esta PC), y
@@ -727,6 +730,7 @@ _SE_USAN_SIN_IR_AL_MOSTRADOR = {
     ("usuarios_repo", "tiene_permiso"),
     ("playstation_repo", "AdministradorDeBonos"),
     ("usuarios_repo", "autenticar_por_nombre"),
+    ("ultima_visita_repo", "dias_sin_venir"),
 }
 
 
@@ -837,6 +841,9 @@ class TestLasPantallasSoloPidenLoQueEstaEnLaLista(unittest.TestCase):
             ("tramites_repo", "registrar_tramite"),
             ("cuentas_pc_repo", "anotar_articulos"), ("cuentas_pc_repo", "anotar_bono"),
             ("cuentas_pc_repo", "cobrar"), ("cuentas_pc_repo", "dar_por_perdida"),
+            # De Miembros, desde otra PC solo ORDENAR SALDOS (2026-11-01).
+            ("miembros_repo", "cargar_saldo_por_bono"), ("miembros_repo", "crear_miembro"),
+            ("miembros_repo", "modificar_miembro"), ("miembros_repo", "desactivar_miembro"),
         ]:
             self.assertFalse(lista_blanca.permitida(repo, nombre), (repo, nombre))
 
@@ -957,6 +964,67 @@ class TestCopiaRemota(unittest.TestCase):
         self.assertEqual(stock["stock"], 50)
         self.assertEqual((ajuste["usuario_id"], ajuste["stock_nuevo"]), (self.usuario["id"], 50))
 
+    def _saldo_en_el_mostrador(self, usuario):
+        return self._base_del_mostrador().execute(
+            "SELECT saldo_minutos FROM miembros WHERE usuario = ?", (usuario,)
+        ).fetchone()["saldo_minutos"]
+
+    def test_ordenar_saldos_desde_aca_queda_en_el_mostrador_a_nombre_del_que_entro(self):
+        from control_pcs.repositories import ajustes_saldo_repo, miembros_repo
+        socios = {socio["usuario"]: socio["id"] for socio in miembros_repo.listar_miembros()}
+        juan, pedro = mostrador_de_prueba.SOCIO_CON_SALDO, mostrador_de_prueba.SOCIO_SIN_SALDO
+        antes = {socio: self._saldo_en_el_mostrador(socio) for socio in (juan, pedro)}
+        ventas_antes = self._base_del_mostrador().execute("SELECT COUNT(*) FROM ventas").fetchone()[0]
+        with self.assertRaises(PermissionError):
+            ajustes_saldo_repo.pasar(99999, socios[juan], socios[pedro], 60, "otra")
+
+        resultado = ajustes_saldo_repo.pasar(
+            99999, socios[juan], socios[pedro], 60, mostrador_de_prueba.CLAVE_ORDENAR_STOCK)
+        self.assertEqual(resultado["hacia"]["saldo_nuevo"], antes[pedro] + 60)
+        self.assertEqual(self._saldo_en_el_mostrador(juan), antes[juan] - 60)
+        self.assertEqual(self._saldo_en_el_mostrador(pedro), antes[pedro] + 60)
+        base = self._base_del_mostrador()
+        puntas = base.execute("SELECT usuario_id FROM ajustes_saldo_miembro ORDER BY id DESC LIMIT 2").fetchall()
+        self.assertEqual([punta["usuario_id"] for punta in puntas], [self.usuario["id"]] * 2)
+        self.assertEqual(base.execute("SELECT COUNT(*) FROM ventas").fetchone()[0], ventas_antes)
+        self.assertEqual(ajustes_saldo_repo.listar_ajustes()[0]["operador"], "Administrador")
+
+    def test_miembros_desde_aca_ofrece_ordenar_saldos(self):
+        from PySide6.QtWidgets import QInputDialog
+        from control_pcs.ui import ordenar_saldos_window
+        from ui import main_window
+        socio = mostrador_de_prueba.SOCIO_SIN_SALDO
+        antes = self._saldo_en_el_mostrador(socio)
+        ventana = self._ventana_principal()
+        miembros = next(boton for boton in ventana.findChildren(QPushButton) if "MIEMBROS" in boton.text())
+
+        abiertas, errores, avisos = [], [], []
+        clave = (mostrador_de_prueba.CLAVE_ORDENAR_STOCK, True)
+        with self._juntando(errores, avisos), \
+                mock.patch.object(ordenar_saldos_window.OrdenarSaldosWindow, "exec", lambda p: abiertas.append(p)), \
+                mock.patch.object(QInputDialog, "getText", return_value=clave):
+            # Si dice que no, no se abre nada.
+            with mock.patch.object(main_window, "confirmar", return_value=False):
+                miembros.click()
+            self.assertEqual(abiertas, [])
+
+            with mock.patch.object(main_window, "confirmar", return_value=True):
+                miembros.click()
+            self.assertEqual(len(abiertas), 1, errores + avisos)
+            pantalla = abiertas[0]
+            self.addCleanup(pantalla.deleteLater)
+            # La lista (con hace cuánto vino cada uno) y las correcciones llegan del mostrador.
+            fila = next(i for i, s in enumerate(pantalla.socios) if s["usuario"] == socio)
+            self.assertGreater(pantalla.tabla.rowCount(), 0)
+            pantalla.lista.setCurrentRow(fila)
+            pantalla.campo_minutos.setValue(30)
+            with mock.patch.object(ordenar_saldos_window, "confirmar", return_value=True):
+                pantalla.boton_sumar.click()
+
+        self.assertEqual(errores, [])
+        self.assertEqual(avisos, [])
+        self.assertEqual(self._saldo_en_el_mostrador(socio), antes + 30)
+
     def test_anular_una_venta_y_cargar_el_sobre(self):
         from repositories import turnos_repo
         venta = ventas_repo.listar_ventas_recientes(1)[0]
@@ -1062,7 +1130,8 @@ class TestCopiaRemota(unittest.TestCase):
         with self._juntando(errores, avisos), \
                 mock.patch.object(pcs_window, "QMenu", MenuQueEligeLaPrimera), \
                 mock.patch.object(panel.mosaico, "fila_en", return_value=1):
-            for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "MIEMBROS", "RESERVAS", "CIERRE DE TURNO",
+            # MIEMBROS no: desde acá ofrece ORDENAR SALDOS (ver test_miembros_desde_aca_ofrece_ordenar_saldos).
+            for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "RESERVAS", "CIERRE DE TURNO",
                           "DESCONGELAR", "REINICIAR", "APAGAR"):
                 next(boton for boton in ventana.findChildren(QPushButton) if texto in boton.text()).click()
             panel.panel_detalle.mostrar(ocupada)
@@ -1078,7 +1147,7 @@ class TestCopiaRemota(unittest.TestCase):
 
         self.assertEqual(errores, [])
         self.assertEqual(abiertas, [])
-        self.assertEqual(avisos, ["Se hace en el mostrador"] * 17)
+        self.assertEqual(avisos, ["Se hace en el mostrador"] * 16)
         base = self._base_del_mostrador()
         activa = base.execute("SELECT estado FROM sesiones_pc WHERE id = ?", (sesion["id"],)).fetchone()
         self.assertEqual(activa["estado"], dominio.SESION_ACTIVA)

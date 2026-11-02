@@ -232,8 +232,8 @@ class TestBotonEnMiembros(BasePantallas):
 
     def apretar_con(self, respuesta):
         ventana = self.abrir(MiembrosWindow(usuarios_repo.obtener_usuario(self.admin)))
-        with mock.patch("control_pcs.ui.miembros_window.QInputDialog.getText", return_value=respuesta), \
-                mock.patch("control_pcs.ui.miembros_window.OrdenarSaldosWindow") as pantalla, \
+        with mock.patch("control_pcs.ui.ordenar_saldos_window.QInputDialog.getText", return_value=respuesta), \
+                mock.patch("control_pcs.ui.ordenar_saldos_window.OrdenarSaldosWindow") as pantalla, \
                 mock.patch("ui.utils.mostrar_error") as error:
             ventana.boton_ordenar_saldos.click()
         return pantalla, error

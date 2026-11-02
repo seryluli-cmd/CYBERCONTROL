@@ -33,10 +33,12 @@ Si lo querés revisar con ChatGPT, este archivo se puede adjuntar tal cual.
   todos los botones. Se actualiza cada 5 segundos, como en el mostrador. Hasta
   ese día iba un cartel en lugar de la grilla.
 - Los botones que venden, cobran o atienden una PC (Vender, Impresiones,
-  Trámites, Miembros, Reservas, Cierre de Turno, Cobrar, Abrir con Miembro,
+  Trámites, Reservas, Cierre de Turno, Cobrar, Abrir con Miembro,
   Finalizar Sesión, el clic derecho de una PC, Descongelar, Reiniciar y Apagar)
   están, pero al apretarlos avisan **"Esto se hace en el mostrador"** y no hacen
-  nada. CONTROL DE STOCK sí abre (solo mira).
+  nada. CONTROL DE STOCK sí abre (solo mira). **Miembros** pregunta si querés
+  abrir **ORDENAR SALDOS** (pedido tuyo del 01/11/2026): es lo único de Miembros
+  que se usa desde la otra PC, porque no mueve plata.
 - Si el mostrador deja de contestar (se cortó la red, se cerró el programa del
   mostrador o se reinició), arriba de la grilla aparece un aviso rojo: lo que se
   ve es lo último que llegó y puede no estar al día. Se vuelve a probar sola cada
@@ -58,12 +60,15 @@ Si lo querés revisar con ChatGPT, este archivo se puede adjuntar tal cual.
   socios, trámites, Accesos de Admin, fondo y filtro de palabras de las PCs.
 - **Caja** (solo mirar) y **Clave** (cambiar la propia).
 - **Mirar la grilla de PCs** como en el mostrador, y CONTROL DE STOCK.
+- **ORDENAR SALDOS** (desde el botón Miembros): sumar, restar o pasar tiempo de
+  un socio a otro, con la misma contraseña de ORDENAR Stock. Lo graba el
+  mostrador a tu nombre y no toca la caja.
 
 ### Qué sigue solo en el mostrador
 
 Vender, cobrar (bonos, trámites, carga de saldo), Cierre de Turno y las cajas,
 atender las PCs (finalizar, reiniciar, apagar, mensajes, mantenimiento,
-descongelar), Miembros, Actualizar el Cliente PC (se
+descongelar), el resto de Miembros (altas, cargas, historial), Actualizar el Cliente PC (se
 firma con la clave que vive en la PC del mostrador), Copia de Seguridad y prender
 o apagar la entrada desde otra PC. El cierre forzoso de la caja también lo hace
 solo el mostrador.

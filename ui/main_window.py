@@ -56,7 +56,8 @@ forzoso, ver _revisar_la_caja).
 Desde otra PC del local (la copia para administrar, ver admin_remoto/) se ve
 igual que en el mostrador, con la grilla de PCs en vivo (pedido del dueño,
 2026-10-24: "quiero que se vea tal cual"). Se usan Administrar Kiosko,
-Configuración ADMIN, Caja (para mirar) y Clave; Vender, cobrar, cerrar el turno
+Configuración ADMIN, Caja (para mirar), Clave y, de Miembros, solo ORDENAR SALDOS
+(2026-11-01, ver _ordenar_saldos_desde_otra_pc); Vender, cobrar, cerrar el turno
 y atender las PCs están, pero al apretarlos avisan que se hace en el mostrador
 (`ui.utils.solo_en_el_mostrador`). El cierre forzoso de la caja lo hace solo el
 mostrador (si lo hicieran las dos, la misma caja se intentaría cerrar dos veces).
@@ -85,12 +86,14 @@ from control_pcs.ui.pcs_window import PanelControlPcs
 from control_pcs.ui.cuenta_pc_dialogos import DialogoCobrarAntesDelCierre
 from control_pcs.repositories import cuentas_pc_repo
 from control_pcs.ui.miembros_window import MiembrosWindow
+from control_pcs.ui.ordenar_saldos_window import abrir_ordenar_saldos
 from control_pcs.ui.reservas_window import ReservasWindow
 from control_pcs.repositories import reservas_repo
 from ui.ingreso_caja import mensaje_del_sobre
 from ui.vuelta_del_admin import VueltaDelAdmin
 from ui.utils import (
-    aplicar_clase, icono_de_emoji, mostrar_error, mostrar_info, solo_en_el_mostrador,
+    aplicar_clase, confirmar, icono_de_emoji, manejar_errores, mostrar_error, mostrar_info,
+    solo_en_el_mostrador,
 )
 
 # Cada cuánto se mira cómo está la caja (si tiene que titilar el botón, o si ya
@@ -98,6 +101,12 @@ from ui.utils import (
 INTERVALO_REVISION_CAJA_MS = 10_000
 # Cada cuánto cambia de color el botón Cierre de Turno mientras titila.
 INTERVALO_PARPADEO_MS = 600
+# Lo que pregunta el botón Miembros desde otra PC (ver _ordenar_saldos_desde_otra_pc).
+MENSAJE_MIEMBROS_DESDE_OTRA_PC = (
+    "Miembros se usa en el mostrador: cargar saldo, dar de alta socios y lo demás lo hace "
+    "la operadora allá.\n\nDesde esta PC podés usar ORDENAR SALDOS para corregir el tiempo de "
+    "un socio (sumar, restar o pasarlo a otro socio) sin tocar la caja.\n\n¿Abrir ORDENAR SALDOS?"
+)
 # El dibujito del botón Operador (lo eligió el dueño entre cinco, 2026-10-24) y cuánto más grande
 # va que los de los otros botones de la barra.
 DIBUJITO_OPERADOR = "🔄"
@@ -467,9 +476,20 @@ class MainWindow(QMainWindow):
     def _abrir_administrar_kiosko(self):
         AdministrarKioskoWindow(self.usuario, self.es_admin, self).exec()
 
-    @solo_en_el_mostrador
     def _abrir_miembros(self):
+        if self._remota:
+            self._ordenar_saldos_desde_otra_pc()
+            return
         MiembrosWindow(self.usuario, self).exec()
+
+    @manejar_errores
+    def _ordenar_saldos_desde_otra_pc(self):
+        """Desde otra PC, de Miembros se usa solo ORDENAR SALDOS (pedido del dueño,
+        2026-11-01): corrige el tiempo de un socio sin tocar la caja. Cargar saldo, dar
+        de alta y lo demás de Miembros cobran o atienden al socio, y siguen siendo del
+        mostrador. A esta copia entra solo un Administrador (y el repo lo vuelve a exigir)."""
+        if confirmar(self, "Miembros", MENSAJE_MIEMBROS_DESDE_OTRA_PC):
+            abrir_ordenar_saldos(self, self.usuario["id"])
 
     @solo_en_el_mostrador
     def _abrir_reservas(self):

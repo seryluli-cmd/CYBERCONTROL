@@ -15,9 +15,12 @@ Y, para MIRAR, la pantalla principal igual que en el mostrador (pedido del
 dueño, 2026-10-24: "quiero que se vea tal cual"): la grilla de PCs en vivo,
 Actividad reciente, las reservas de hoy, CONTROL DE STOCK y lo que debe cada PC
 (la Cuenta de la PC, 2026-10-25: se mira, pero anotar y cobrar es del mostrador).
+De Miembros, solo ORDENAR SALDOS (2026-11-01): corrige el tiempo de un socio sin
+tocar la caja; el botón Miembros de la otra PC se lo ofrece al Administrador.
 
 Lo que NO está, a propósito, y sigue solo en el mostrador: vender y cobrar
-(Ventas, Trámites, bonos de PCs, carga de saldo), abrir/cerrar cajas y turnos,
+(Ventas, Trámites, bonos de PCs, carga de saldo), el resto de Miembros (altas,
+cargas, historial), abrir/cerrar cajas y turnos,
 atender las PCs (finalizar, reiniciar, mensajes...) y Actualizar el Cliente PC.
 En la otra PC esos botones están, pero avisan (ui.utils.solo_en_el_mostrador).
 
@@ -40,9 +43,9 @@ from repositories import (
     tramites_repo, turnos_repo, usuarios_repo, ventas_repo,
 )
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo, filtro_palabras_repo, fondo_repo,
-    miembros_repo, pcs_repo, pcstream_repo, playstation_repo, reservas_horario_repo, reservas_repo,
-    socios_bonos_repo,
+    accesos_admin_pc_repo, ajustes_saldo_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo,
+    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
+    reservas_horario_repo, reservas_repo, socios_bonos_repo, ultima_visita_repo,
 )
 
 # Sube si cambia CÓMO se hablan las dos copias (no la lista): las dos tienen que
@@ -62,6 +65,7 @@ _MODULOS = {
     "usuarios_repo": usuarios_repo,
     "ventas_repo": ventas_repo,
     "accesos_admin_pc_repo": accesos_admin_pc_repo,
+    "ajustes_saldo_repo": ajustes_saldo_repo,
     "bonos_miembro_repo": bonos_miembro_repo,
     "clientes_repo": clientes_repo,
     "cuentas_pc_repo": cuentas_pc_repo,
@@ -74,6 +78,7 @@ _MODULOS = {
     "reservas_horario_repo": reservas_horario_repo,
     "reservas_repo": reservas_repo,
     "socios_bonos_repo": socios_bonos_repo,
+    "ultima_visita_repo": ultima_visita_repo,
 }
 
 _CATALOGO_DE_BONOS = ("listar_bonos", "crear_bono", "modificar_bono", "desactivar_bono")
@@ -95,7 +100,8 @@ FUNCIONES = {
     "compras_repo": ("proximo_numero_compra", "registrar_compra"),
     # Consulta de Ventas / Anular (y el detalle de una venta)
     "ventas_repo": ("listar_ventas_recientes", "buscar_venta", "anular_venta"),
-    "miembros_repo": ("anular_carga",),
+    # anular_carga desde Consulta de Ventas; listar_miembros, la lista de ORDENAR SALDOS
+    "miembros_repo": ("anular_carga", "listar_miembros"),
     "tramites_repo": ("tramite_de_venta", "listar_tramites", "crear_tramite", "modificar_tramite", "desactivar_tramite"),
     # Reportes
     "reportes_repo": (
@@ -146,6 +152,10 @@ FUNCIONES = {
     # La Cuenta de la PC: mirar lo que debe una PC (anotar y cobrar, solo en el
     # mostrador) y Configuración ADMIN > Reglas de Cuenta de PC
     "cuentas_pc_repo": ("cuentas_de_la_estacion", "obtener_reglas", "guardar_reglas"),
+    # ORDENAR SALDOS (con miembros_repo.listar_miembros): corregir el tiempo de un
+    # socio sin tocar la caja. La lista muestra hace cuánto vino cada uno.
+    "ajustes_saldo_repo": ("comprobar_clave_para_ordenar_saldos", "sumar", "restar", "pasar", "listar_ajustes"),
+    "ultima_visita_repo": ("ultimas_visitas",),
 }
 
 # (repo, función) -> el parámetro que dice quién lo hace (ver el comentario del módulo).
@@ -169,6 +179,10 @@ ACTOR = {
     ("playstation_repo", "modificar_bono"): "usuario_id",
     ("playstation_repo", "desactivar_bono"): "usuario_id",
     ("cuentas_pc_repo", "guardar_reglas"): "usuario_id",
+    ("ajustes_saldo_repo", "comprobar_clave_para_ordenar_saldos"): "usuario_id",
+    ("ajustes_saldo_repo", "sumar"): "usuario_id",
+    ("ajustes_saldo_repo", "restar"): "usuario_id",
+    ("ajustes_saldo_repo", "pasar"): "usuario_id",
 }
 
 

@@ -474,7 +474,12 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   `ajustes_saldo_miembro` (antes, después, quién, cuándo y el otro socio de un
   pase). No crea ventas ni toca la caja (anular la carga y volver a cargarla sí la
   movía). Lo que se le suma a un socio que está usando una PC pasa a esa sesión,
-  como una carga; lo que ya corre en una PC no se resta desde acá.
+  como una carga; lo que ya corre en una PC no se resta desde acá. Se usa también
+  desde otra PC (mismo día): ahí el botón Miembros de la barra le ofrece al Admin
+  abrir ORDENAR SALDOS (`MainWindow._ordenar_saldos_desde_otra_pc`; lo demás de
+  Miembros sigue solo en el mostrador) y las correcciones las graba el mostrador
+  (`admin_remoto/lista_blanca.py`). Lo abren las dos con
+  `ordenar_saldos_window.abrir_ordenar_saldos`.
 - **CONTROL DE STOCK** (`control_stock_window.py`, `BotonControlStock` y
   `VentanaControlStock`; pedido del dueño 2026-10-24) — botón de debajo del
   mosaico de Control de PCs, a la derecha de APAGAR. Lo ven todos, pero solo el

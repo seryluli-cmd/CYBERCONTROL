@@ -33,15 +33,13 @@ en ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
+    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QSpinBox, QStackedWidget, QTableWidget, QVBoxLayout, QWidget,
 )
 
 import dominio
 from repositories import config_repo
-from control_pcs.repositories import (
-    ajustes_saldo_repo, bonos_miembro_repo, historial_cargas_repo, miembros_repo, ultima_visita_repo,
-)
+from control_pcs.repositories import bonos_miembro_repo, historial_cargas_repo, miembros_repo, ultima_visita_repo
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from control_pcs.ui.dibujos_de_ventana import icono_de, pixmap_de, poner_icono
 # texto_no_viene y detalle_de_la_visita viven en miembros_ficha: texto_no_viene se sigue
@@ -50,7 +48,7 @@ from control_pcs.ui.miembros_ficha import (  # noqa: F401
     ROL_DATOS, DelegadoDeSocios, FichaDelSocio, Segmentos, detalle_de_la_visita, texto_no_viene,
 )
 from control_pcs.ui.miembros_historial_cargas import VentanaHistorialCargas
-from control_pcs.ui.ordenar_saldos_window import OrdenarSaldosWindow
+from control_pcs.ui.ordenar_saldos_window import abrir_ordenar_saldos
 from control_pcs.ui.reservas_socio_dialogo import DialogoSaldoParaReserva
 from ui.dialogo_pago import cobrar
 from ui.piezas_ventana import TONO_AZUL, TONO_GRIS, TONO_NARANJA, TONO_VERDE, agregar_pastilla, cabecera_oscura, \
@@ -344,16 +342,8 @@ class MiembrosWindow(QDialog):
 
     @manejar_errores
     def _ordenar_saldos(self):
-        clave, aceptado = QInputDialog.getText(
-            self, "ORDENAR SALDOS", "Contraseña de ORDENAR SALDOS (la misma de ORDENAR Stock):", QLineEdit.Password
-        )
-        if not aceptado:
-            return
-        # Una contraseña equivocada (o un usuario que dejó de ser Admin) levanta
-        # PermissionError y @manejar_errores lo muestra: la ventana no se abre.
-        ajustes_saldo_repo.comprobar_clave_para_ordenar_saldos(self.usuario_operador["id"], clave)
-        OrdenarSaldosWindow(self, self.usuario_operador["id"], clave).exec()
-        self._cargar_grilla()   # los saldos de la lista y de la ficha
+        if abrir_ordenar_saldos(self, self.usuario_operador["id"]):
+            self._cargar_grilla()   # los saldos de la lista y de la ficha
 
     @manejar_errores
     def _desactivar_miembro(self):

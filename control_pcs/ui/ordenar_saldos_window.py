@@ -17,13 +17,19 @@ las vuelve a mirar en cada corrección.
 
 Con las piezas de la ventana de Miembros: la cabecera oscura, la lista de socios a
 la izquierda (miembros_ficha.DelegadoDeSocios) y el socio elegido a la derecha.
+
+Se abre también desde otra PC (el botón Miembros de la pantalla principal se lo
+ofrece al Administrador, mismo día): no mueve plata, así que no es de lo que se
+hace solo en el mostrador. Por eso todo lo que pide a los repos está en
+admin_remoto/lista_blanca.py, y las correcciones las graba el mostrador.
 """
 
 from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSpinBox, QTableWidgetItem, QVBoxLayout,
+    QDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QSpinBox,
+    QTableWidgetItem, QVBoxLayout,
 )
 
 from control_pcs.repositories import ajustes_saldo_repo, miembros_repo, ultima_visita_repo
@@ -56,6 +62,23 @@ def texto_del_cambio(ajuste) -> str:
     if ajuste["otro_socio"] is not None:
         texto += f", pasado de {ajuste['otro_socio']}" if minutos >= 0 else f", pasado a {ajuste['otro_socio']}"
     return texto
+
+
+def abrir_ordenar_saldos(padre, usuario_id: int) -> bool:
+    """
+    Pide la contraseña y, si es la buena, abre la ventana; devuelve si se abrió. Es la
+    entrada de Miembros en el mostrador y del botón Miembros desde otra PC (pedido del
+    dueño, 2026-11-01). Una contraseña equivocada (o un usuario que dejó de ser Admin)
+    levanta PermissionError sin abrir nada: lo muestra el @manejar_errores de quien llama.
+    """
+    clave, aceptado = QInputDialog.getText(
+        padre, "ORDENAR SALDOS", "Contraseña de ORDENAR SALDOS (la misma de ORDENAR Stock):", QLineEdit.Password
+    )
+    if not aceptado:
+        return False
+    ajustes_saldo_repo.comprobar_clave_para_ordenar_saldos(usuario_id, clave)
+    OrdenarSaldosWindow(padre, usuario_id, clave).exec()
+    return True
 
 
 def _campo_de_tiempo(maximo: int, sufijo: str) -> QSpinBox:

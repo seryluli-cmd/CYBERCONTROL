@@ -32,7 +32,11 @@ CODIGO_ALFAJOR = "7790001"
 PC_OCUPADA = "PC1"
 PC_LIBRE = "PC2"
 # Reemplaza a la contraseña real de ORDENAR Stock, que no se escribe en el repo.
+# ORDENAR SALDOS usa la misma.
 CLAVE_ORDENAR_STOCK = "clave-de-prueba"
+# Dos socios para ORDENAR SALDOS: el primero con 3 horas.
+SOCIO_CON_SALDO = "juan"
+SOCIO_SIN_SALDO = "pedro"
 
 
 def preparar_base(carpeta: str):
@@ -41,9 +45,10 @@ def preparar_base(carpeta: str):
     database.inicializar_base_de_datos()
 
     from repositories import admin_remoto_repo, articulos_repo, turnos_repo, usuarios_repo, ventas_repo
-    from control_pcs.repositories import pcs_repo
+    from control_pcs.repositories import ajustes_saldo_repo, miembros_repo, pcs_repo
 
     articulos_repo.CLAVE_ORDENAR_STOCK = database.hash_clave(CLAVE_ORDENAR_STOCK)
+    ajustes_saldo_repo.CLAVE_ORDENAR_SALDOS = articulos_repo.CLAVE_ORDENAR_STOCK
     admin = usuarios_repo.listar_usuarios()[0]
     admin_remoto_repo.activar(admin["id"], True)
     usuarios_repo.crear_usuario("LUCIA", CLAVE_EMPLEADA, dominio.ROL_EMPLEADA)
@@ -62,6 +67,11 @@ def preparar_base(carpeta: str):
     pcs_repo.asignar_bono(ocupada, bono_id, lucia["id"], [{"metodo": dominio.PAGO_EFECTIVO, "monto": 1500.0}])
     turnos_repo.cerrar_turno(lucia["id"])
     ventas_repo.confirmar_venta(lucia["id"], [linea], efectivo)
+    # El saldo del socio, puesto con ORDENAR SALDOS y no con una carga: una venta más
+    # cambiaría la que anulan las otras pruebas.
+    juan = miembros_repo.crear_miembro(SOCIO_CON_SALDO, "clave123")
+    miembros_repo.crear_miembro(SOCIO_SIN_SALDO, "clave123")
+    ajustes_saldo_repo.sumar(admin["id"], juan, 180, CLAVE_ORDENAR_STOCK)
 
 
 def _cerrar_cuando_se_cierre_la_entrada():
