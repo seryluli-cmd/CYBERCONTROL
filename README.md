@@ -870,7 +870,12 @@ cualquier operador logueado, igual que la grilla de PCs). También el
 "Historial de Cargas" de Miembros (al lado de Cargar Saldo, 2026-10-24:
 `control_pcs/ui/miembros_historial_cargas.py` + `historial_cargas_repo`),
 que lista cada carga de saldo con el socio, el tiempo, la plata y cómo se
-pagó, quién la cargó y cuándo, con filtros, totales e Imprimir. Y la
+pagó, quién la cargó y cuándo, con filtros, totales e Imprimir. Con **"Anular
+carga"** (solo si la abre un Admin, 2026-11-02: `control_pcs/ui/anular_carga.py`
++ `miembros_repo.anular_carga`) el Admin rectifica una carga repetida por error,
+la plata y el tiempo juntos: la venta queda ANULADA y el tiempo se le saca al
+socio (del saldo y, si está jugando, de su PC); lo mismo desde Consulta de
+Ventas con una venta que cargó saldo. Y la
 columna "No viene hace" de la lista de Miembros (`ultima_visita_repo`,
 mismo día): días desde su última sesión de PC con su usuario o su última
 carga, en naranja pasados 15 días, con el filtro "No vienen hace más de N

@@ -51,9 +51,10 @@ def listar_cargas(desde, hasta, buscar: str = "", miembro_id: int = None) -> lis
     de ese socio; si no, con `buscar`, las de los socios cuyo usuario o nombre
     lo contiene, sin mirar mayúsculas ni acentos ("ana" también trae a
     "mariana": por eso Miembros, con un socio marcado, pasa su id). Cada una es
-    un diccionario con fecha, socio, minutos, monto, medio (de pago), bono
-    (None si fue un monto libre), operador, anulada y, si lo está,
-    anulada_por, anulada_fecha y anulada_motivo.
+    un diccionario con venta_id (la venta que se anula para rectificarla),
+    fecha, socio, minutos, monto, medio (de pago), bono (None si fue un monto
+    libre), operador, anulada y, si lo está, anulada_por, anulada_fecha y
+    anulada_motivo.
     """
     inicio, fin = limites_de_los_dias(desde, hasta)
     del_socio, parametros = "", [dominio.MOVIMIENTO_CARGA, inicio, fin]
@@ -63,7 +64,7 @@ def listar_cargas(desde, hasta, buscar: str = "", miembro_id: int = None) -> lis
     with conexion_db() as conexion:
         filas = conexion.execute(
             """
-            SELECT m.id, m.fecha, m.minutos,
+            SELECT m.id, m.fecha, m.minutos, m.venta_id,
                    mi.usuario AS socio_usuario, mi.nombre AS socio_nombre,
                    b.nombre AS bono,
                    v.total, v.estado, v.anulada_fecha, v.anulada_motivo,
@@ -89,6 +90,7 @@ def listar_cargas(desde, hasta, buscar: str = "", miembro_id: int = None) -> lis
             continue
         anulada = fila["estado"] == dominio.VENTA_ANULADA
         cargas.append({
+            "venta_id": fila["venta_id"],
             "fecha": fila["fecha"],
             "socio": _nombre_del_socio(fila["socio_usuario"], fila["socio_nombre"]),
             "minutos": fila["minutos"],

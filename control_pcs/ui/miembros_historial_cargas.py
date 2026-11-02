@@ -14,6 +14,10 @@ por socio que filtra mientras se escribe. Abajo, los totales sin las
 anuladas, "Bajar a Excel" (ui/excel.py) e Imprimir (vista previa de
 ui/imprimir.py).
 
+"Anular carga" (pedido del dueño, 2026-11-02, solo si quien la abrió es Admin): con
+una carga elegida, la anula y le saca el tiempo al socio, en una sola vez (la
+empleada cargó dos bonos en vez de uno). Lo hace anular_carga.py.
+
 Qué entra y qué no lo decide historial_cargas_repo; acá solo se muestra.
 """
 
@@ -23,7 +27,9 @@ from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidgetItem, QVBoxLayout
 
+import dominio
 from control_pcs.repositories import historial_cargas_repo
+from control_pcs.ui.anular_carga import anular_carga_con_cartel
 from ui import excel, imprimir
 from ui.utils import (
     aplicar_clase, armar_filtro_por_fechas, crear_tabla, formato_fecha_hora, formato_pesos, formato_tiempo,
@@ -73,10 +79,12 @@ def _texto_totales(suma) -> str:
 
 
 class VentanaHistorialCargas(QDialog):
-    def __init__(self, parent=None, miembro=None):
-        """`miembro`: el socio marcado en Miembros (o None, para ver todos)."""
+    def __init__(self, parent=None, miembro=None, usuario=None):
+        """`miembro`: el socio marcado en Miembros (o None, para ver todos).
+        `usuario`: quien abrió la ventana; si es Admin, puede anular cargas."""
         super().__init__(parent)
         self._cargas = []
+        self._usuario = usuario
         # Con un socio marcado se filtra por SU id: buscando el texto, "ana"
         # traería también a "mariana". Si se cambia el buscador, pasa a buscar
         # por el texto.
@@ -117,8 +125,20 @@ class VentanaHistorialCargas(QDialog):
         self.boton_excel.clicked.connect(self._bajar_a_excel)
         boton_cerrar = QPushButton("Cerrar")
         boton_cerrar.clicked.connect(self.close)
+        # Anular una carga (por ejemplo, un bono cargado dos veces) es del Admin: a
+        # los demás ni se les muestra (el repo lo vuelve a exigir).
+        self.boton_anular = QPushButton("Anular carga")
+        self.boton_anular.setToolTip(
+            "Anula la carga elegida: saca la plata de la caja y el tiempo del socio, las dos cosas juntas."
+        )
+        aplicar_clase(self.boton_anular, "peligro")
+        self.boton_anular.clicked.connect(self._anular_carga)
+        self.boton_anular.setVisible(self._usuario is not None and dominio.es_admin(self._usuario))
+        self.boton_anular.setEnabled(False)
+        self.tabla.itemSelectionChanged.connect(self._al_elegir_una_carga)
         fila_abajo = QHBoxLayout()
         fila_abajo.addWidget(self.etiqueta_totales, 1)
+        fila_abajo.addWidget(self.boton_anular)
         fila_abajo.addWidget(self.boton_excel)
         fila_abajo.addWidget(self.boton_imprimir)
         fila_abajo.addWidget(boton_cerrar)
@@ -134,6 +154,25 @@ class VentanaHistorialCargas(QDialog):
         if self._miembro is not None and texto != self._miembro["usuario"]:
             self._miembro = None
         self._buscar()
+
+    def _carga_elegida(self):
+        """La carga de la fila elegida, o None si no hay ninguna."""
+        fila = self.tabla.currentRow()
+        if fila < 0 or fila >= len(self._cargas) or not self.tabla.selectionModel().hasSelection():
+            return None
+        return self._cargas[fila]
+
+    def _al_elegir_una_carga(self):
+        carga = self._carga_elegida()
+        self.boton_anular.setEnabled(carga is not None and not carga["anulada"] and carga["venta_id"] is not None)
+
+    @manejar_errores
+    def _anular_carga(self):
+        carga = self._carga_elegida()
+        if carga is None:
+            return
+        if anular_carga_con_cartel(self, self._usuario, carga["venta_id"]):
+            self._buscar()
 
     @manejar_errores
     def _buscar(self):
@@ -155,6 +194,8 @@ class VentanaHistorialCargas(QDialog):
         self.etiqueta_totales.setText(_texto_totales(historial_cargas_repo.totales(self._cargas)))
         self.boton_imprimir.setEnabled(bool(self._cargas))
         self.boton_excel.setEnabled(bool(self._cargas))
+        # La fila elegida puede seguir elegida con otros datos (la que se acaba de anular).
+        self._al_elegir_una_carga()
 
     def _subtitulo(self) -> str:
         desde, hasta = (fecha.date().toString("dd/MM/yyyy") for fecha in (self.fecha_desde, self.fecha_hasta))

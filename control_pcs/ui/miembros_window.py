@@ -335,10 +335,13 @@ class MiembrosWindow(QDialog):
     def _ver_historial_del_socio(self):
         miembro = self._seleccionado()
         if miembro is not None:
-            VentanaHistorialCargas(self, miembro).exec()
+            VentanaHistorialCargas(self, miembro, self.usuario_operador).exec()
+            self._cargar_grilla()
 
     def _ver_historial_de_todos(self):
-        VentanaHistorialCargas(self, None).exec()
+        VentanaHistorialCargas(self, None, self.usuario_operador).exec()
+        # Si el Admin anuló una carga desde ahí, el saldo de la lista cambió.
+        self._cargar_grilla()
 
     @manejar_errores
     def _ordenar_saldos(self):

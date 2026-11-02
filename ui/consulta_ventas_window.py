@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 import dominio
 from repositories import ventas_repo
 from control_pcs.repositories import miembros_repo
+from control_pcs.ui.anular_carga import anular_carga_con_cartel
 from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta, etiqueta_de_estado
 from ui.dibujos_tabla import DelegadoEtiqueta
 from ui.piezas_ventana import (
@@ -186,6 +187,14 @@ class ConsultaVentasWindow(VentanaConDetalleDeVenta):
             return
         if venta["estado"] == dominio.VENTA_ANULADA:
             mostrar_error(self, "Ya anulada", "Esa venta ya estaba anulada.")
+            return
+
+        # La venta que cargó saldo a un socio se anula con su propio cartel, que dice
+        # qué pasa con la plata y con el tiempo del socio (y si está jugando, con su
+        # PC): el mismo que el botón "Anular carga" del Historial de Cargas.
+        if venta["origen"] == dominio.ORIGEN_ALQUILER_PCS and miembros_repo.resumen_de_carga(venta["id"]):
+            if anular_carga_con_cartel(self, self.usuario, venta["id"]):
+                self._cargar()
             return
 
         if not confirmar(self, "Anular venta",

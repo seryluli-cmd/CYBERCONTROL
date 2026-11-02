@@ -32,7 +32,7 @@ pedir (`tiene_dni`). Un DNI no puede estar en dos cuentas activas.
 import re
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 import dominio
 from database import conexion_db, hash_clave, verificar_clave
 from repositories import config_repo, ventas_repo
@@ -437,16 +437,63 @@ def cargar_saldo_por_bono(miembro_id: int, bono_id: int, pagos: list, usuario_op
                                  usuario_operador_id, bono_id=bono_id, a_la_sesion=a_la_sesion)
 
 
-def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):
+def resumen_de_carga(venta_id: int):
     """
-    Anula, desde Consulta de Ventas, una venta que había cargado saldo a
-    un socio (ver _registrar_carga) -- y revierte esa carga del saldo
+    Lo que hay que saber ANTES de anular la carga de saldo que hizo esa venta,
+    para armar el cartel de confirmación (Historial de Cargas y Consulta de
+    Ventas). None si la venta no cargó saldo a ningún socio (un bono de PC, por
+    ejemplo). Solo lee. Devuelve:
+
+    - socio (el usuario), minutos y monto de la carga, y `anulada` si ya lo estaba;
+    - saldo_actual: lo que el socio tiene en el saldo AHORA;
+    - estacion / minutos_en_la_pc: la PC que el socio está usando y cuánto
+      tiempo le queda, o None y 0 si no está jugando (misma cuenta que
+      _sesion_en_curso_del_socio: con dudas, ninguna).
+    """
+    ahora = datetime.now()
+    with conexion_db() as conexion:
+        fila = conexion.execute(
+            """
+            SELECT m.miembro_id, m.minutos, mi.usuario, mi.saldo_minutos AS saldo_actual,
+                   v.total, v.estado
+            FROM movimientos_saldo_miembro m
+            JOIN miembros mi ON mi.id = m.miembro_id
+            JOIN ventas v ON v.id = m.venta_id
+            WHERE m.venta_id = ? AND m.tipo = ?
+            ORDER BY m.id
+            """,
+            (venta_id, dominio.MOVIMIENTO_CARGA),
+        ).fetchone()
+        if fila is None:
+            return None
+        sesion = _sesion_en_curso_del_socio(conexion, fila["miembro_id"], ahora)
+    return {
+        "venta_id": venta_id,
+        "socio": fila["usuario"],
+        "minutos": fila["minutos"],
+        "monto": fila["total"],
+        "anulada": fila["estado"] == dominio.VENTA_ANULADA,
+        "saldo_actual": fila["saldo_actual"],
+        "estacion": sesion["estacion_nombre"] if sesion is not None else None,
+        "minutos_en_la_pc": (
+            dominio.segundos_restantes(datetime.fromisoformat(sesion["fecha_fin_prevista"]), ahora) // 60
+            if sesion is not None else 0
+        ),
+    }
+
+
+def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str, sacar_de_la_pc: bool = False):
+    """
+    Anula una venta que había cargado saldo a un socio (ver _registrar_carga) --
+    Historial de Cargas y Consulta de Ventas -- y revierte esa carga del saldo
     actual, todo en la MISMA transacción que la anulación en sí (ver
-    ventas_repo._anular_venta). Anular solo la venta (ventas_repo.anular_venta)
+    ventas_repo._anular_venta). Es la forma de rectificar una carga repetida
+    por error (pedido del dueño, 2026-11-02: dos bonos en vez de uno), en
+    tiempo Y en plata a la vez. Anular solo la venta (ventas_repo.anular_venta)
     le sacaría la plata del cierre/caja a una carga, pero le dejaría los
     minutos intactos al socio, como si el negocio le hubiera regalado ese
-    tiempo; por eso Consulta de Ventas usa esta función para las ventas de
-    origen ALQUILER_PCS.
+    tiempo; y sacarle los minutos solo (ORDENAR SALDOS) deja la plata de más en
+    la caja. Por eso las ventas de origen ALQUILER_PCS se anulan con esta función.
 
     La reversión queda topeada a lo que el socio TENGA en este momento:
     si ya gastó parte o todo el saldo cargado (abriendo una PC, ver
@@ -457,16 +504,34 @@ def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):
     ni un REINTEGRO disimulados: son conceptos distintos y mezclarlos
     rompería la trazabilidad que este ledger existe para dar.
 
-    Sirve para CUALQUIER venta, no solo una carga: si la venta no tiene
-    ninguna CARGA asociada (un bono de PC walk-in, por ejemplo), se
-    comporta exactamente igual que ventas_repo.anular_venta: también exige un
+    Un socio que está jugando se lleva el saldo a su sesión de PC al entrar (y
+    una carga hecha mientras juega pasa directo a la sesión: ver
+    _sumar_carga_a_la_sesion), así que ahí el saldo suele estar en cero y el
+    tiempo cargado corre en la PC. Con `sacar_de_la_pc=True`, lo que no se puede
+    sacar del saldo se le saca a esa sesión, acortándola sin cortarla ni dejarla
+    por debajo de ahora (como cuentas_pc_repo.quitar_renglon con un bono): sigue
+    jugando con el tiempo que le toca. También queda como 'ANULACION', con el
+    `sesion_id`. Es opt-in porque toca una PC en uso: la pantalla lo avisa antes.
+    Sin eso, o si no está jugando, la reversión queda topeada como se dijo arriba.
+
+    Devuelve {"minutos": los que había cargado la venta, "sacados": los que se
+    le sacaron en total, "del_saldo", "de_la_pc" (la parte de "sacados" que salió
+    del saldo y de la sesión), "estacion": la PC de la que se sacó, o None, y
+    "sin_sacar": los que ya no estaban (los usó)}. Si la venta no tiene ninguna
+    CARGA asociada (un bono de PC walk-in, por ejemplo), solo se anula como
+    ventas_repo.anular_venta y sale todo en cero: también exige un
     Administrador activo y un motivo (ventas_repo.exigir_admin_y_motivo_para_anular).
     """
     motivo = ventas_repo.exigir_admin_y_motivo_para_anular(usuario_admin_id, motivo)
+    resultado = {"minutos": 0, "sacados": 0, "del_saldo": 0, "de_la_pc": 0, "estacion": None, "sin_sacar": 0}
     with conexion_db() as conexion:
+        # El lock de escritura de entrada, como finalizar_sesion: el socio no puede
+        # cerrar su PC ni entrar a otra entre que se lee su sesión y se la acorta.
+        conexion.execute("BEGIN IMMEDIATE")
         ventas_repo._anular_venta(conexion, venta_id, usuario_admin_id, motivo)
 
-        ahora_iso = datetime.now().isoformat(timespec="seconds")
+        ahora = datetime.now()
+        ahora_iso = ahora.isoformat(timespec="seconds")
         cargas = conexion.execute(
             "SELECT * FROM movimientos_saldo_miembro WHERE venta_id = ? AND tipo = ?",
             (venta_id, dominio.MOVIMIENTO_CARGA),
@@ -475,20 +540,45 @@ def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str):
             saldo_actual = conexion.execute(
                 "SELECT saldo_minutos FROM miembros WHERE id = ?", (carga["miembro_id"],)
             ).fetchone()["saldo_minutos"]
-            a_revertir = min(carga["minutos"], saldo_actual)
-            if a_revertir <= 0:
-                continue
-            conexion.execute(
-                "UPDATE miembros SET saldo_minutos = saldo_minutos - ? WHERE id = ?",
-                (a_revertir, carga["miembro_id"]),
-            )
-            conexion.execute(
-                """
-                INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, venta_id)
-                VALUES (?, 'ANULACION', ?, ?, ?)
-                """,
-                (carga["miembro_id"], a_revertir, ahora_iso, venta_id),
-            )
+            del_saldo = min(carga["minutos"], saldo_actual)
+            if del_saldo > 0:
+                conexion.execute(
+                    "UPDATE miembros SET saldo_minutos = saldo_minutos - ? WHERE id = ?",
+                    (del_saldo, carga["miembro_id"]),
+                )
+                conexion.execute(
+                    """
+                    INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, venta_id)
+                    VALUES (?, 'ANULACION', ?, ?, ?)
+                    """,
+                    (carga["miembro_id"], del_saldo, ahora_iso, venta_id),
+                )
+            de_la_pc = 0
+            faltan = carga["minutos"] - del_saldo
+            sesion = _sesion_en_curso_del_socio(conexion, carga["miembro_id"], ahora) if sacar_de_la_pc and faltan else None
+            if sesion is not None:
+                fin = datetime.fromisoformat(sesion["fecha_fin_prevista"])
+                # En minutos enteros hacia abajo: el nuevo fin nunca queda antes de ahora.
+                de_la_pc = min(faltan, dominio.segundos_restantes(fin, ahora) // 60)
+            if de_la_pc > 0:
+                conexion.execute(
+                    "UPDATE sesiones_pc SET fecha_fin_prevista = ? WHERE id = ?",
+                    ((fin - timedelta(minutes=de_la_pc)).isoformat(timespec="seconds"), sesion["id"]),
+                )
+                conexion.execute(
+                    """
+                    INSERT INTO movimientos_saldo_miembro (miembro_id, tipo, minutos, fecha, venta_id, sesion_id)
+                    VALUES (?, 'ANULACION', ?, ?, ?, ?)
+                    """,
+                    (carga["miembro_id"], de_la_pc, ahora_iso, venta_id, sesion["id"]),
+                )
+                resultado["estacion"] = sesion["estacion_nombre"]
+            resultado["minutos"] += carga["minutos"]
+            resultado["del_saldo"] += del_saldo
+            resultado["de_la_pc"] += de_la_pc
+            resultado["sacados"] += del_saldo + de_la_pc
+            resultado["sin_sacar"] += faltan - de_la_pc
+    return resultado
 
 
 def _guardar_datos_del_primer_ingreso(conexion, miembro, datos_socio: dict):

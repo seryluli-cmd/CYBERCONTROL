@@ -100,8 +100,9 @@ FUNCIONES = {
     "compras_repo": ("proximo_numero_compra", "registrar_compra"),
     # Consulta de Ventas / Anular (y el detalle de una venta)
     "ventas_repo": ("listar_ventas_recientes", "buscar_venta", "anular_venta"),
-    # anular_carga desde Consulta de Ventas; listar_miembros, la lista de ORDENAR SALDOS
-    "miembros_repo": ("anular_carga", "listar_miembros"),
+    # anular_carga desde Consulta de Ventas (con resumen_de_carga para el cartel);
+    # listar_miembros, la lista de ORDENAR SALDOS
+    "miembros_repo": ("anular_carga", "resumen_de_carga", "listar_miembros"),
     "tramites_repo": ("tramite_de_venta", "listar_tramites", "crear_tramite", "modificar_tramite", "desactivar_tramite"),
     # Reportes
     "reportes_repo": (
