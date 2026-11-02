@@ -875,7 +875,12 @@ carga"** (solo si la abre un Admin, 2026-11-02: `control_pcs/ui/anular_carga.py`
 + `miembros_repo.anular_carga`) el Admin rectifica una carga repetida por error,
 la plata y el tiempo juntos: la venta queda ANULADA y el tiempo se le saca al
 socio (del saldo y, si está jugando, de su PC); lo mismo desde Consulta de
-Ventas con una venta que cargó saldo. Y la
+Ventas con una venta que cargó saldo. Y
+el bono de una PC (o de PCSTREAM o de la consola) vendido de más se quita con
+**"Quitar un bono"** en el panel de la PC elegida (solo el Admin, 2026-11-02:
+`control_pcs/ui/anular_bono.py` + `anular_bono_repo.anular_bono`) o anulando su
+venta en Consulta de Ventas: la venta queda ANULADA y se le acorta el tiempo a la
+sesión (sin cortarla; si el cliente ya usó parte, solo lo que le queda). Y la
 columna "No viene hace" de la lista de Miembros (`ultima_visita_repo`,
 mismo día): días desde su última sesión de PC con su usuario o su última
 carga, en naranja pasados 15 días, con el filtro "No vienen hace más de N

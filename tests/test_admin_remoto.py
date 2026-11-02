@@ -715,6 +715,7 @@ _PANTALLAS_DE_OTRA_PC = [
     ("control_pcs/ui/accesos_admin_pc_tab.py", None),
     # Anular una carga de saldo, desde Consulta de Ventas.
     ("control_pcs/ui/anular_carga.py", None),
+    ("control_pcs/ui/anular_bono.py", None),
     ("control_pcs/ui/pcs_gestion_dialogos.py", None),
     ("control_pcs/ui/pcs_filtro_dialogo.py", None),
     ("control_pcs/ui/pcs_fondo_dialogo.py", None),

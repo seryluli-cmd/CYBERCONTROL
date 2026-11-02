@@ -339,9 +339,10 @@ def eventos_recientes(limite: int = 30) -> list:
             JOIN ventas v ON v.id = spb.venta_id
             JOIN bonos_playstation b ON b.id = spb.bono_id
             WHERE NOT EXISTS (SELECT 1 FROM reservas_pagos rp WHERE rp.venta_id = spb.venta_id)
+              AND v.estado = ?
             ORDER BY spb.venta_id DESC LIMIT ?
             """,
-            (limite,),
+            (dominio.VENTA_CONFIRMADA, limite),
         ):
             eventos.append({"fecha": fila["fecha"], "tipo": "BONO", "estacion_nombre": nombre,
                             "bono_nombre": fila["bono_nombre"], "precio": fila["precio"]})

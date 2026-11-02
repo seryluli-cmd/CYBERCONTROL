@@ -19,12 +19,14 @@ from PySide6.QtCore import Qt, QTimer
 
 import dominio
 from control_pcs.repositories import (
-    avisos_fin_pc_repo, cuentas_pc_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
-    reservas_horario_repo,
+    anular_bono_repo, avisos_fin_pc_repo, cuentas_pc_repo, miembros_repo, pcs_repo, pcstream_repo,
+    playstation_repo, reservas_horario_repo,
 )
+from control_pcs.ui.anular_bono import anular_bono_con_cartel, elegir_bono_a_quitar
 from control_pcs.ui.cuenta_pc_dialogos import DialogoCuentaPc, DialogoTiempoSocio, anotar_en_la_cuenta
 from control_pcs.ui.pcs_cortes import texto_para_el_panel
 from ui.dialogo_pago import cobrar
+from ui.piezas_ventana import marcar_solo_admin
 from ui.utils import (
     aplicar_clase, confirmar, encadenar_enter, fila_guardar_cancelar, formato_pesos,
     formato_tiempo, formato_transcurrido, manejar_errores, mostrar_error, mostrar_info,
@@ -223,6 +225,13 @@ class PanelDetalleEstacion(QFrame):
         self.boton_miembro = QPushButton("Abrir con Miembro...")
         self.boton_miembro.clicked.connect(self._abrir_con_miembro)
 
+        # Quitar un bono vendido de más (pedido del dueño, 2026-11-02): solo lo ve el
+        # Administrador. Anula la venta y le saca el tiempo a la sesión.
+        self.boton_quitar_bono = QPushButton("Quitar un bono")
+        self.boton_quitar_bono.clicked.connect(self._quitar_bono)
+        marcar_solo_admin(self.boton_quitar_bono)
+        self.boton_quitar_bono.setVisible(dominio.es_admin(self.usuario))
+
         self.boton_finalizar = QPushButton("Finalizar Sesión")
         aplicar_clase(self.boton_finalizar, "peligro")
         self.boton_finalizar.clicked.connect(self._finalizar_sesion)
@@ -246,6 +255,7 @@ class PanelDetalleEstacion(QFrame):
         layout.addWidget(self.boton_bono_a_cuenta)
         layout.addWidget(self.boton_cobrar)
         layout.addWidget(self.boton_miembro)
+        layout.addWidget(self.boton_quitar_bono)
         layout.addWidget(self.boton_finalizar)
         self.setLayout(layout)
         # Enter con el foco en "Cobrar" lo aprieta (no hace nada si está
@@ -298,7 +308,8 @@ class PanelDetalleEstacion(QFrame):
         self._mostrar_cuenta(item if es_pc else None)
         if item is None:
             self.etiqueta_titulo.setText("Elegí una estación de la grilla")
-            for widget in (self.boton_cobrar, self.boton_miembro, self.boton_finalizar, self.boton_bono_a_cuenta):
+            for widget in (self.boton_cobrar, self.boton_miembro, self.boton_finalizar, self.boton_bono_a_cuenta,
+                           self.boton_quitar_bono):
                 widget.setEnabled(False)
             return
 
@@ -354,6 +365,25 @@ class PanelDetalleEstacion(QFrame):
         # Abrir con el saldo de un socio es cosa de las PCs: la consola y
         # PCSTREAM se venden solo con sus bonos (miembros_repo también lo rechaza).
         self.boton_miembro.setEnabled(es_pc and not es_pcstream)
+        # Un bono se quita de una sesión en curso; si ya se cerró, se anula la venta
+        # desde Consulta de Ventas.
+        self.boton_quitar_bono.setEnabled(sesion is not None)
+
+    @solo_en_el_mostrador
+    @manejar_errores
+    def _quitar_bono(self):
+        """Quita un bono vendido de más (solo el Administrador): elige cuál de los de la
+        sesión en curso y se anula la venta y se le saca el tiempo (anular_bono_repo)."""
+        item = self.item
+        if item is None or item["sesion"] is None:
+            return
+        consola = es_playstation(item)
+        equipo = item["nombre"] if consola else item["estacion"]["nombre"]
+        venta_id = elegir_bono_a_quitar(
+            self, equipo, anular_bono_repo.bonos_de_la_sesion(None if consola else item["estacion"]["id"])
+        )
+        if venta_id is not None and anular_bono_con_cartel(self, self.usuario, venta_id):
+            self._avisar_cambio()
 
     def _mostrar_cuenta(self, item):
         """El recuadro fucsia y "Cobrar cuenta" de una PC que debe algo (ver

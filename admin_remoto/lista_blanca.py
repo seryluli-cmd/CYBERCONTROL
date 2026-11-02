@@ -43,7 +43,7 @@ from repositories import (
     tramites_repo, turnos_repo, usuarios_repo, ventas_repo,
 )
 from control_pcs.repositories import (
-    accesos_admin_pc_repo, ajustes_saldo_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo,
+    accesos_admin_pc_repo, ajustes_saldo_repo, anular_bono_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo,
     filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
     reservas_horario_repo, reservas_repo, socios_bonos_repo, ultima_visita_repo,
 )
@@ -66,6 +66,7 @@ _MODULOS = {
     "ventas_repo": ventas_repo,
     "accesos_admin_pc_repo": accesos_admin_pc_repo,
     "ajustes_saldo_repo": ajustes_saldo_repo,
+    "anular_bono_repo": anular_bono_repo,
     "bonos_miembro_repo": bonos_miembro_repo,
     "clientes_repo": clientes_repo,
     "cuentas_pc_repo": cuentas_pc_repo,
@@ -103,6 +104,9 @@ FUNCIONES = {
     # anular_carga desde Consulta de Ventas (con resumen_de_carga para el cartel);
     # listar_miembros, la lista de ORDENAR SALDOS
     "miembros_repo": ("anular_carga", "resumen_de_carga", "listar_miembros"),
+    # y lo mismo con la venta de un bono de PC o de la consola (anular_bono acorta la sesión);
+    # bonos_de_la_sesion, el panel de la PC, no está: ese botón es del mostrador
+    "anular_bono_repo": ("anular_bono", "resumen_de_bono"),
     "tramites_repo": ("tramite_de_venta", "listar_tramites", "crear_tramite", "modificar_tramite", "desactivar_tramite"),
     # Reportes
     "reportes_repo": (
@@ -172,6 +176,7 @@ ACTOR = {
     ("compras_repo", "registrar_compra"): "usuario_id",
     ("ventas_repo", "anular_venta"): "usuario_admin_id",
     ("miembros_repo", "anular_carga"): "usuario_admin_id",
+    ("anular_bono_repo", "anular_bono"): "usuario_admin_id",
     ("turnos_repo", "verificar_cierre"): "usuario_admin_id",
     ("envio_pwa_repo", "mandar_cierre"): "usuario_id",
     # Cambiar la clave PROPIA (a otra persona se la cambia modificar_usuario).

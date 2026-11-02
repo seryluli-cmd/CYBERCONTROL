@@ -14,7 +14,8 @@ from PySide6.QtCore import Qt
 
 import dominio
 from repositories import ventas_repo
-from control_pcs.repositories import miembros_repo
+from control_pcs.repositories import anular_bono_repo, miembros_repo
+from control_pcs.ui.anular_bono import anular_bono_con_cartel
 from control_pcs.ui.anular_carga import anular_carga_con_cartel
 from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta, etiqueta_de_estado
 from ui.dibujos_tabla import DelegadoEtiqueta
@@ -196,6 +197,17 @@ class ConsultaVentasWindow(VentanaConDetalleDeVenta):
             if anular_carga_con_cartel(self, self.usuario, venta["id"]):
                 self._cargar()
             return
+
+        # Lo mismo con la venta de un bono de PC, de PCSTREAM o de la consola (pedido del
+        # dueño, 2026-11-02: le cargó dos bonos de 5 h a un cliente por error): se anula la
+        # venta Y se le saca el tiempo a la sesión que lo recibió. Las de una reserva
+        # siguen por el camino de siempre.
+        if venta["origen"] in (dominio.ORIGEN_ALQUILER_PCS, dominio.ORIGEN_PLAYSTATION):
+            bono = anular_bono_repo.resumen_de_bono(venta["id"])
+            if bono is not None and not bono["de_reserva"]:
+                if anular_bono_con_cartel(self, self.usuario, venta["id"]):
+                    self._cargar()
+                return
 
         if not confirmar(self, "Anular venta",
                           f"¿Anular la venta Nº {venta['id']} por {formato_pesos(venta['total'])}?\n"

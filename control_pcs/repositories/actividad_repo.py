@@ -57,8 +57,9 @@ def actividad_reciente(limite: int = 30):
                 JOIN sesiones_pc s ON s.id = sb.sesion_id
                 JOIN estaciones e ON e.id = s.estacion_id
                 WHERE NOT EXISTS (SELECT 1 FROM reservas_pagos rp WHERE rp.venta_id = sb.venta_id)
+                  AND v.estado = ?
                 ORDER BY sb.venta_id DESC LIMIT ?
-            """, (limite,)).fetchall():
+            """, (dominio.VENTA_CONFIRMADA, limite)).fetchall():
                 eventos.append({"fecha": fila["fecha"], "tipo": "BONO",
                                  "estacion_nombre": fila["estacion_nombre"],
                                  "bono_nombre": fila["bono_nombre"], "precio": fila["precio"]})

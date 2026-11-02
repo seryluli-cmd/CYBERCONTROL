@@ -415,16 +415,18 @@ class TestConsultaDeVentas(BaseAnularCarga):
         cartel.assert_called_once()
         self.assertEqual(cartel.call_args.args[2], repetida)
 
-    def test_un_bono_de_pc_sigue_con_su_camino_de_siempre(self):
+    def test_un_bono_de_pc_no_usa_el_cartel_de_las_cargas_sino_el_de_los_bonos(self):
+        # Se anula con el cartel de los bonos, que también le saca el tiempo a la PC
+        # (tests/test_anular_bono.py).
         bono_pc = pcs_repo.crear_bono("1 hora", 60, 1500)
         venta_id = pcs_repo.asignar_bono(self.pc, bono_pc, self.toby, [{"metodo": "EFECTIVO", "monto": 1500}])
         ventana = self.ventana()
         self.elegir(ventana, venta_id)
-        with mock.patch("ui.consulta_ventas_window.anular_carga_con_cartel") as cartel, \
-                mock.patch("ui.consulta_ventas_window.confirmar", return_value=False) as confirmar:
+        with mock.patch("ui.consulta_ventas_window.anular_carga_con_cartel") as cartel_de_cargas, \
+                mock.patch("ui.consulta_ventas_window.anular_bono_con_cartel", return_value=False) as cartel_de_bonos:
             ventana._anular()
-        cartel.assert_not_called()
-        confirmar.assert_called_once()
+        cartel_de_cargas.assert_not_called()
+        cartel_de_bonos.assert_called_once()
         self.assertEqual(self.estado_de(venta_id), dominio.VENTA_CONFIRMADA)
 
 
