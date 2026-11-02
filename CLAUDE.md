@@ -634,9 +634,13 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   atrás es tarea del lanzador de cada PC (`CLIENTE PC/lanzador.py`), no de acá.
   El número que ve el dueño (V1, V1.1 ... V1.9, V2; pedido del 2026-10-19) es OTRO: viene grabado en
   el exe (Propiedades -> Detalles; `numero_de_version_del_exe` lo lee) y va en el manifiesto como
-  `v`, solo para mostrar; cada PC manda el suyo como `v` en cada `GET /estado`
-  (`estaciones.numero_version_cliente`). Las PCs comparan solo la fecha: cargar una V más vieja la
-  manda igual (la pantalla avisa antes). El número se sube en `CLIENTE PC/version_cliente.py`.
+  `v`; cada PC manda el suyo como `v` en cada `GET /estado`
+  (`estaciones.numero_version_cliente`). Las PCs comparan la fecha: cargar una V más vieja la
+  manda igual (la pantalla avisa antes). Salvo a una PC instalada a mano (`preparar_pc.bat` borra su
+  `version.json`, así que no sabe su fecha): desde el Cliente PC V2.3 esa mira el `v` del manifiesto y
+  no baja uno anterior al suyo; lo cuenta como error con el motivo y en la pantalla queda en "Con
+  problema" hasta que se cargue otra (2026-11-02: la PC11 con la V2.1 a mano iba a bajar la V1.9).
+  El número se sube en `CLIENTE PC/version_cliente.py`.
   Desde la V2 del Cliente PC (pedido del dueño 2026-10-28: la pantalla de bloqueo tardaba 21-30 s,
   casi todo desempaquetando el exe "todo en uno") la versión puede ser un **.zip con la carpeta**
   (`PCcliente_V2.zip`, de `CLIENTE PC/armar_paquete.py`): `publicar` firma un manifiesto

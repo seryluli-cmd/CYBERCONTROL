@@ -309,7 +309,7 @@ def publicar(datos_exe: bytes, ahora: datetime = None) -> dict:
         }
         if archivos is not None:
             datos_del_manifiesto["archivos"] = archivos
-        if numero:   # las PCs no lo miran: es para mostrar
+        if numero:   # para mostrar; una PC instalada a mano (sin fecha) no baja uno anterior al suyo
             datos_del_manifiesto["v"] = numero
         manifiesto = json.dumps(datos_del_manifiesto, sort_keys=True)
         firma = base64.b64encode(privada.sign(manifiesto.encode("utf-8"))).decode()
