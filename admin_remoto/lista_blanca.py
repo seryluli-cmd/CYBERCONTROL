@@ -13,7 +13,7 @@ ADMIN (estaciones, los cuatro catálogos de bonos, tarifa de socios, trámites,
 accesos de admin, fondo y filtro de palabras de las PCs) y Caja para mirar.
 Y, para MIRAR, la pantalla principal igual que en el mostrador (pedido del
 dueño, 2026-10-24: "quiero que se vea tal cual"): la grilla de PCs en vivo,
-Actividad reciente, las reservas de hoy, CONTROL DE STOCK y lo que debe cada PC
+Actividad reciente, las reservas de hoy, CONTROL DE STOCK, HISTORIAL DEL TURNO y lo que debe cada PC
 (la Cuenta de la PC, 2026-10-25: se mira, pero anotar y cobrar es del mostrador).
 De Miembros, solo ORDENAR SALDOS (2026-11-01): corrige el tiempo de un socio sin
 tocar la caja; el botón Miembros de la otra PC se lo ofrece al Administrador.
@@ -39,8 +39,8 @@ import hashlib
 import inspect
 
 from repositories import (
-    articulos_repo, compras_repo, config_repo, detalle_dia_repo, envio_pwa_repo, relevo_repo, reportes_repo,
-    tramites_repo, turnos_repo, usuarios_repo, ventas_repo,
+    articulos_repo, compras_repo, config_repo, detalle_dia_repo, envio_pwa_repo, historial_turno_repo, relevo_repo,
+    reportes_repo, tramites_repo, turnos_repo, usuarios_repo, ventas_repo,
 )
 from control_pcs.repositories import (
     accesos_admin_pc_repo, ajustes_saldo_repo, anular_bono_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo,
@@ -58,6 +58,7 @@ _MODULOS = {
     "config_repo": config_repo,
     "detalle_dia_repo": detalle_dia_repo,
     "envio_pwa_repo": envio_pwa_repo,
+    "historial_turno_repo": historial_turno_repo,
     "relevo_repo": relevo_repo,
     "reportes_repo": reportes_repo,
     "tramites_repo": tramites_repo,
@@ -97,6 +98,8 @@ FUNCIONES = {
         # CONTROL DE STOCK, el botón de debajo de la grilla (solo mira)
         "listar_para_control_de_stock",
     ),
+    # HISTORIAL DEL TURNO, el botón de al lado (solo mira)
+    "historial_turno_repo": ("historial_del_turno",),
     # Compras
     "compras_repo": ("proximo_numero_compra", "registrar_compra"),
     # Consulta de Ventas / Anular (y el detalle de una venta)
@@ -169,6 +172,7 @@ ACTOR = {
     ("articulos_repo", "ajustar_stock"): "usuario_id",
     ("articulos_repo", "cambiar_codigo"): "usuario_id",
     ("articulos_repo", "listar_para_control_de_stock"): "usuario_id",
+    ("historial_turno_repo", "historial_del_turno"): "usuario_id",
     ("articulos_repo", "crear_marca"): "usuario_id",
     ("articulos_repo", "renombrar_marca"): "usuario_id",
     ("articulos_repo", "juntar_marcas"): "usuario_id",

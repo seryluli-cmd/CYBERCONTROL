@@ -84,6 +84,7 @@ from control_pcs.ui.pcs_mosaico import (
     DIBUJO_NINGUNO, DIBUJO_RELOJ, DIBUJO_SOCIO, DIBUJO_ALERTA, DIBUJO_CANDADO_ABIERTO,
 )
 from ui.control_stock_window import BotonControlStock
+from ui.historial_turno_window import BotonHistorialTurno
 from ui.utils import (
     avisar_que_es_en_el_mostrador, formato_pesos, formato_tiempo, formato_transcurrido,
     mostrar_info, confirmar, manejar_errores, solo_en_el_mostrador,
@@ -308,10 +309,15 @@ class PanelControlPcs(QWidget):
         # lista del kiosko para que la supervisora cuente el estante. Lo ven todos y
         # solo el Admin lo abre (ver ui/control_stock_window.py).
         self.boton_control_stock = BotonControlStock(self.usuario, self)
+        # Y a su derecha HISTORIAL DEL TURNO (pedido del dueño, 2026-11-02): todo lo
+        # cobrado en el turno abierto. También lo abre solo el Admin (ver
+        # ui/historial_turno_window.py).
+        self.boton_historial_turno = BotonHistorialTurno(self.usuario, self)
         fila_botones = QHBoxLayout()
         fila_botones.setSpacing(10)
         fila_botones.addWidget(self.botones_libres)
         fila_botones.addWidget(self.boton_control_stock)
+        fila_botones.addWidget(self.boton_historial_turno)
         fila_botones.addStretch()
 
         self.panel_actividad = PanelActividad()

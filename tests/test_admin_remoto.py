@@ -744,6 +744,7 @@ _SE_USAN_SIN_IR_AL_MOSTRADOR = {
 _PANTALLA_PRINCIPAL = [
     ("ui/main_window.py", {"MainWindow"}),
     ("ui/control_stock_window.py", None),
+    ("ui/historial_turno_window.py", None),
     ("control_pcs/ui/pcs_window.py", None),
     ("control_pcs/ui/pcs_detalle.py", {"PanelDetalleEstacion", "_ListaDeBonos", "texto_de_la_reserva",
                                        "es_playstation"}),
@@ -1233,6 +1234,7 @@ class TestCopiaRemota(unittest.TestCase):
         from ui.compras_window import ComprasWindow
         from ui.consulta_ventas_window import ConsultaVentasWindow
         from ui.control_stock_window import VentanaControlStock
+        from ui.historial_turno_window import VentanaHistorialTurno
         from ui.login_window import LoginWindow
         from ui.main_window import AdministrarKioskoWindow, ConfiguracionAdminWindow
         from ui.ordenar_stock_window import OrdenarStockWindow
@@ -1264,6 +1266,7 @@ class TestCopiaRemota(unittest.TestCase):
                 ArticulosWindow(ventana, self.usuario),
                 OrdenarStockWindow(ventana, self.usuario["id"], mostrador_de_prueba.CLAVE_ORDENAR_STOCK),
                 VentanaControlStock(self.usuario["id"], ventana),
+                VentanaHistorialTurno(self.usuario["id"], ventana),
             ]
             for pantalla in pantallas:
                 self.addCleanup(pantalla.deleteLater)

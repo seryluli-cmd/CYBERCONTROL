@@ -490,6 +490,21 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   `ui/imprimir.py`) con una columna "Contado" vacía para que la supervisora
   anote a mano lo que hay en el estante. Solo muestra: corregir es de ORDENAR
   Stock.
+- **HISTORIAL DEL TURNO** (`historial_turno_window.py`, `BotonHistorialTurno` y
+  `VentanaHistorialTurno`; pedido del dueño 2026-11-02, maqueta A en
+  `PROPUESTA_HISTORIAL_DEL_TURNO`) — botón a la derecha de CONTROL DE STOCK, que
+  como ese lo ven todos y lo abre solo el Admin. Muestra todo lo cobrado en el
+  turno abierto, venta por venta y de la primera a la última: hora, rubro en
+  etiqueta de color (bono de PC, miembro, kiosko, impresiones, trámite, PS5,
+  PCSTREAM, reserva), qué se cobró, cómo se pagó y el total. Son las mismas
+  ventas que suma el Cierre de Turno (`historial_turno_repo.historial_del_turno`
+  usa `turnos_repo._ventana_en_curso` y el detalle de `detalle_dia_repo`), así
+  que el total da igual; con caja abierta es la caja de quien agarró el turno,
+  aunque cobre el Admin ("cobró Sergio"). Las anuladas salen en rojo, tachadas y
+  con quién, cuándo y por qué, y no suman. Arriba: ventas, anuladas y total;
+  buscador; pastillas por rubro y "Anuladas", con cuántas ventas y cuánto suman
+  las que se ven; IMPRIMIR saca la lista tal cual se ve. Se mira también desde
+  otra PC (`admin_remoto/lista_blanca.py`).
 - **Compras** (`compras_window.py`, `ComprasWindow`) — carga de mercadería
   por escaneo (mismos F5/F6/F7 que Ventas). Al escanear pide cantidad y
   costo (precargado con el `precio_compra` actual) por `QInputDialog`.
@@ -724,7 +739,7 @@ y decisiones en [docs/ADMIN_REMOTO.md](docs/ADMIN_REMOTO.md).
   el "quién lo hizo" (`lista_blanca.ACTOR`) lo pone el mostrador.
 - **Qué se ve:** la pantalla principal igual que en el mostrador (pedido del
   dueño, 2026-10-24), con la grilla de PCs en vivo, Actividad reciente, las
-  reservas de hoy, la caja y CONTROL DE STOCK. Si el mostrador no contesta queda
+  reservas de hoy, la caja, CONTROL DE STOCK e HISTORIAL DEL TURNO. Si el mostrador no contesta queda
   lo último que llegó, con un aviso rojo arriba del mosaico, y se vuelve a probar
   cada 30 s (`PanelControlPcs._refrescar_desde_otra_pc`; conectar espera 2 s como
   mucho, `cliente.ESPERA_CONECTAR_SEGUNDOS`, y nunca pasa por un proxy).

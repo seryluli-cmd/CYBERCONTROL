@@ -82,6 +82,7 @@ def _ventas_entre(conexion, desde: str, hasta: str):
     return conexion.execute(
         """
         SELECT ventas.id, ventas.fecha, ventas.origen, ventas.estado, ventas.total, ventas.anulada_fecha,
+               ventas.anulada_motivo, anuladores.nombre AS anulada_por,
                usuarios.nombre AS operador, cargadores.nombre AS cargada_por,
                COALESCE((SELECT SUM(monto) FROM venta_pagos
                          WHERE venta_id = ventas.id AND metodo = ?), 0) AS efectivo,
@@ -91,6 +92,7 @@ def _ventas_entre(conexion, desde: str, hasta: str):
         JOIN usuarios ON usuarios.id = ventas.usuario_id
         LEFT JOIN ventas_caja ON ventas_caja.venta_id = ventas.id
         LEFT JOIN usuarios AS cargadores ON cargadores.id = ventas_caja.cargada_por
+        LEFT JOIN usuarios AS anuladores ON anuladores.id = ventas.anulada_por
         WHERE ventas.fecha > ? AND ventas.fecha <= ?
         ORDER BY ventas.fecha, ventas.id
         """,
