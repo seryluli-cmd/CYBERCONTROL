@@ -90,6 +90,35 @@ def proxima(reservas: list, estacion=None):
     return next((reserva for reserva in reservas if es_del_equipo(reserva, estacion)), None)
 
 
+def reserva_que_corta(reservas: list, estacion, sesion):
+    """
+    La reserva que corta la sesión de un socio en esa PC, o None (pedido del dueño,
+    2026-11-07: "que se vea claro"). Es el único lugar que lo decide; lo usan el
+    mosaico (pcs_repo.estado_estaciones) y la ficha de Miembros (tiempo_del_socio_repo).
+
+    Un socio que entra a una PC reservada, o al que se le carga saldo mientras juega en
+    ella, recibe tiempo solo hasta la hora de la reserva y lo demás le queda guardado
+    (minutos_para_el_socio). Eso no queda anotado aparte: se reconoce porque la sesión
+    termina justo a la hora de una reserva de OTRO de esa misma PC (minutos_para_el_socio
+    cuenta minutos enteros y la sesión se guarda sin la fracción de segundo, así que
+    termina entre un minuto antes de la hora y la hora misma). En la PC15X de Eros (06/11) la PC marcaba 6h 33m y la ficha 32h 18m, y nada
+    decía que la PC se cortaba a las 22:00 por una reserva.
+
+    `reservas` son las de `pendientes`; `estacion`, una fila de `estaciones` (o un dict con
+    "id" y "nombre"); `sesion`, una fila de sesiones_pc ACTIVA o None. Una sesión que no es
+    de un socio no se corta nunca (los bonos solo avisan al vender: aviso_al_vender), y la
+    reserva del mismo socio tampoco lo corta.
+    """
+    if sesion is None or sesion["miembro_id"] is None:
+        return None
+    fin = datetime.fromisoformat(sesion["fecha_fin_prevista"])
+    return next((
+        reserva for reserva in reservas
+        if es_del_equipo(reserva, estacion) and reserva["miembro_id"] != sesion["miembro_id"]
+        and timedelta(0) <= reserva["inicio"] - fin <= timedelta(minutes=1)
+    ), None)
+
+
 def texto_de_la_hora(inicio: datetime, ahora: datetime) -> str:
     """"hoy 10:00", "mañana 00:30" o "23/10 10:00": cómo se nombra la hora de una
     reserva en los avisos."""

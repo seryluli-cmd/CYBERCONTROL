@@ -108,6 +108,48 @@ Si se corta la sesión antes de tiempo, se le devuelve al socio lo que le
 quedaba, en bloques de 30 minutos, como siempre. Si al volver la conexión se le
 bajó el tiempo, se le devuelve lo que le quedaba después de bajarlo.
 
+### Cuando la PC dice una cosa y Miembros otra (07/11/2026)
+
+> "Tengo problemas con los miembros y sus tiempos no concuerdan, a veces, lo
+> que dice el servidor y lo que dice el cliente."
+
+Al entrar a una PC, el socio **se lleva su saldo a la PC**. Lo que se ve en
+Miembros es lo que le queda **guardado aparte**, y no baja mientras juega. Lo
+que baja es el contador de la PC.
+
+Casi siempre se lleva todo y lo guardado queda en cero. Pero si esa PC está
+**reservada por otro cliente más tarde**, se lleva solo el tiempo hasta la
+hora de la reserva, y el resto queda guardado. Esa regla es del 20/10.
+
+Lo que pasó con Eros el 06/11: entró a la PC15X a las 10:39 con unas 43 h y
+media. La PC15X estaba reservada a las 22:00, así que se llevó 11 h 20 m y
+quedaron 32 h 18 m guardadas. A las 15:26 la PC decía **6 h 33 m** y Miembros
+**32 h 18 m**. Las dos cosas eran ciertas y no se perdió nada: tenía 38 h 51 m
+entre las dos. A las 22:00 la PC se bloquea y él sigue en otra PC con lo
+guardado.
+
+Desde el 07/11 se ve así:
+
+- **Miembros**, con el socio jugando, dice **SALDO TOTAL** (lo guardado más lo
+  que le queda en la PC) y abajo de dónde sale cada parte: "32h 18m guardado +
+  6h 33m en la PC15X". Un cartel celeste explica hasta cuándo juega en la PC y
+  por qué. La lista de socios dice "Jugando · PC15X". Se actualiza sola cada 30
+  segundos.
+- **El cuadro de la PC** en Control de PCs dice **"Hasta 22:00 · Eros"** desde
+  que entra (antes, la reserva recién se veía 2 horas antes).
+- **Al cargarle saldo** a un socio que juega, el cartel dice cuánto pasó a la PC
+  y, si una reserva no dejó pasar todo, cuánto quedó guardado y por qué. A Oscar
+  le cargaron 13 h el 07/11 y el cartel decía solo "8h 40m"; ahora diría también
+  "Las otras 4h 20m le quedaron guardadas en su cuenta: la PC13X está reservada…".
+  "Saldo actual", en la ventana de Cargar Saldo, cuenta lo de la PC.
+- **ORDENAR SALDOS** sigue mostrando solo lo guardado, que es lo que corrige.
+
+La regla no cambió: el socio sigue entrando solo hasta la hora de la reserva.
+
+**Ojo:** como le quedó saldo guardado, ese socio puede entrar a **otra PC al
+mismo tiempo** (o un amigo con su contraseña). El programa no lo frena. Miembros
+lo muestra como "Jugando en 2 PCs". Si querés que no se pueda, se cambia aparte.
+
 ## PCSTREAM
 
 Funciona igual que cualquier PC.

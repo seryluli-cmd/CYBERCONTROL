@@ -8,6 +8,11 @@ ficha del que está elegido (`FichaDelSocio`): saldo, última carga, última vis
 contacto, los botones que actúan sobre ESE socio y sus últimas cargas. Arriba de la lista, los
 filtros en una pista de botones (`Segmentos`).
 
+Con el socio jugando (pedido del dueño, 2026-11-07: la PC decía 6h 33m y la ficha 32h 18m), el
+saldo de la lista y de la ficha es el TOTAL: lo guardado más lo que le queda en la PC. La ficha
+dice de dónde sale cada parte y, en un cartel celeste, hasta cuándo juega en la PC y si una
+reserva la corta (tiempo_del_socio_repo).
+
 Acá solo se dibuja: de dónde salen los datos (socios, visitas, cargas) lo decide
 `miembros_window.MiembrosWindow`, que le pasa a la ficha lo que tiene que mostrar. Los colores
 de la ficha están en ui/hoja_de_estilos.py, por objectName.
@@ -24,17 +29,21 @@ from PySide6.QtWidgets import (
 )
 
 import dominio
-from control_pcs.repositories import miembros_repo
+from control_pcs.repositories import miembros_repo, reservas_horario_repo, tiempo_del_socio_repo
 from control_pcs.ui.dibujos_de_ventana import pixmap_de_avatar, poner_icono
 from ui.piezas_ventana import (
-    TONO_AZUL, TONO_GRIS, TONO_ROJO, TONO_VERDE, pastilla_clara, tecla, titulo_de_seccion,
+    TONO_AZUL, TONO_CELESTE, TONO_GRIS, TONO_ROJO, TONO_VERDE, pastilla_clara, tecla, titulo_de_seccion,
 )
 from ui.utils import aplicar_clase, crear_tabla, formato_fecha_hora, formato_pesos, formato_tiempo
 
-# El dato de cada renglón de la lista: {"miembro": socio, "dias": hace cuántos días no viene}.
+# El dato de cada renglón de la lista: {"miembro": socio, "dias": hace cuántos días no viene}, y
+# en Miembros también "jugando" (lo de tiempo_del_socio_repo.socios_jugando para él, o None) y
+# "segundos" (su tiempo total). ORDENAR SALDOS no los manda: ahí se ve solo lo guardado.
 ROL_DATOS = Qt.UserRole + 1
 # "Hace N días" en naranja pasados dominio.DIAS_SIN_VENIR_AVISO días.
 COLOR_NO_VIENE = QColor("#D35400")
+# "Jugando · PC15X" en la lista: el celeste del cartel de la ficha.
+COLOR_JUGANDO = QColor("#1185B5")
 CARGAS_EN_LA_FICHA = 4
 
 
@@ -94,6 +103,85 @@ def texto_de_la_fecha(fecha, hoy: date = None) -> str:
     return f"{momento:%d/%m} {momento:%H:%M}"
 
 
+def texto_de_la_lista_jugando(jugando) -> str:
+    """Lo chiquito de abajo del saldo en la lista con el socio jugando: "Jugando · PC15X"."""
+    pcs = jugando["pcs"]
+    return f"Jugando · {pcs[0]['estacion']}" if len(pcs) == 1 else f"Jugando · {len(pcs)} PCs"
+
+
+def _en_las_pcs(jugando) -> str:
+    """"en la PC15X" o "en 2 PCs"."""
+    pcs = jugando["pcs"]
+    return f"en la {pcs[0]['estacion']}" if len(pcs) == 1 else f"en {len(pcs)} PCs"
+
+
+def texto_de_las_partes(jugando, minutos_guardados: int) -> str:
+    """Lo de abajo del SALDO TOTAL con el socio jugando: de dónde sale cada parte
+    ("32h 18m guardado + 6h 33m en la PC15X")."""
+    en_pcs = f"{formato_tiempo(jugando['segundos_en_pcs'])} {_en_las_pcs(jugando)}"
+    if minutos_guardados <= 0:
+        return f"todo {_en_las_pcs(jugando)}"
+    return f"{formato_tiempo(minutos_guardados * 60)} guardado + {en_pcs}"
+
+
+def _hasta_la_reserva(pc, ahora: datetime) -> str:
+    reserva = pc["hasta_la_reserva"]
+    return f"hasta {reservas_horario_repo.texto_de_la_hora(reserva['inicio'], ahora)}"
+
+
+def texto_de_lo_que_juega(jugando, minutos_guardados: int, ahora: datetime = None) -> str:
+    """
+    El cartel celeste de la ficha con el socio jugando: cuánto le queda en la PC, hasta qué
+    hora si la PC está reservada para otro (la PC no le da más que eso: lo demás queda
+    guardado) y que lo guardado no se descuenta mientras juega. Es la explicación de por qué
+    la PC y la ficha muestran números distintos.
+    """
+    ahora = ahora or datetime.now()
+    pcs = jugando["pcs"]
+    if len(pcs) == 1:
+        pc = pcs[0]
+        texto = f"Está jugando en la {pc['estacion']}: le quedan {formato_tiempo(pc['segundos'])} en la PC"
+        if pc["hasta_la_reserva"] is not None:
+            texto += (f", {_hasta_la_reserva(pc, ahora)}, porque la {pc['estacion']} está reservada para "
+                      f"{pc['hasta_la_reserva']['cliente']}")
+        texto += "."
+    else:
+        partes = [
+            f"{pc['estacion']} ({formato_tiempo(pc['segundos'])}"
+            + (f", {_hasta_la_reserva(pc, ahora)} por una reserva" if pc["hasta_la_reserva"] is not None else "")
+            + ")"
+            for pc in pcs
+        ]
+        texto = f"Está jugando en {len(pcs)} PCs a la vez: {', '.join(partes[:-1])} y {partes[-1]}."
+    if minutos_guardados > 0:
+        texto += (f"\nLo guardado ({formato_tiempo(minutos_guardados * 60)}) no se descuenta mientras juega: "
+                  "sigue en su cuenta.")
+        if any(pc["hasta_la_reserva"] is not None for pc in pcs):
+            texto += " Cuando la PC se bloquee por la reserva, puede seguir en otra PC."
+    return texto
+
+
+def texto_de_lo_sumado(sumado, ahora: datetime = None) -> str:
+    """
+    El cartel de después de cargarle (o sumarle, en ORDENAR SALDOS) tiempo a un socio que
+    está jugando: cuánto pasó a su PC y, si una reserva no dejó pasar todo, cuánto le quedó
+    guardado y por qué. `sumado` es lo de miembros_repo._sumar_carga_a_la_sesion. Antes decía
+    solo lo que pasó a la PC: a Oscar le cargaron 13 h y el cartel dijo "8h 40m".
+    """
+    texto = (f"Se le sumaron {formato_tiempo(sumado['minutos'] * 60)} a su sesión en {sumado['estacion']}: "
+             "le aparecen en la PC en unos segundos.")
+    # Con .get: una copia abierta desde otra PC puede hablar con un mostrador sin actualizar.
+    guardado, hora = sumado.get("guardado") or 0, sumado.get("hasta_la_reserva")
+    if guardado > 0:
+        motivo = ""
+        if hora is not None:
+            cuando = reservas_horario_repo.texto_de_la_hora(hora, ahora or datetime.now())
+            motivo = f": la {sumado['estacion']} está reservada {cuando} y la PC le da tiempo solo hasta esa hora"
+        texto += (f"\n\nLas otras {formato_tiempo(guardado * 60)} le quedaron guardadas en su cuenta{motivo}. "
+                  "Las puede usar en otra PC o la próxima vez.")
+    return texto
+
+
 def color_del_saldo(minutos: int) -> str:
     """Apagado en cero, ámbar con menos de una hora y normal si no."""
     if minutos <= 0:
@@ -126,6 +214,8 @@ class DelegadoDeSocios(QStyledItemDelegate):
         if not datos:
             return super().paint(pintor, opcion, indice)
         miembro, dias = datos["miembro"], datos["dias"]
+        jugando = datos.get("jugando")
+        segundos = datos.get("segundos", miembro["saldo_minutos"] * 60)
         zona = opcion.rect
         pintor.save()
         pintor.setRenderHint(QPainter.Antialiasing)
@@ -164,15 +254,17 @@ class DelegadoDeSocios(QStyledItemDelegate):
         letra.setPixelSize(14)
         letra.setBold(True)
         pintor.setFont(letra)
-        pintor.setPen(QColor(color_del_saldo(miembro["saldo_minutos"]) if activo else "#A7ADB8"))
+        pintor.setPen(QColor(color_del_saldo(segundos // 60) if activo else "#A7ADB8"))
         pintor.drawText(QRectF(columna.left(), zona.top() + 9, columna.width(), 20), Qt.AlignRight | Qt.AlignVCenter,
-                        formato_tiempo(miembro["saldo_minutos"] * 60))
+                        formato_tiempo(segundos))
 
         letra.setPixelSize(11)
         letra.setBold(False)
         pintor.setFont(letra)
         if not activo:
             texto, color = "Inactivo", QColor("#8A94A6")
+        elif jugando:
+            texto, color = texto_de_la_lista_jugando(jugando), COLOR_JUGANDO
         else:
             texto = texto_de_la_lista(dias)
             color = COLOR_NO_VIENE if (dias is not None and dias > dominio.DIAS_SIN_VENIR_AVISO) else QColor("#8A94A6")
@@ -228,9 +320,33 @@ def _poner(etiqueta: QLabel, texto: str, **propiedades):
     etiqueta.style().polish(etiqueta)
 
 
+class _TextoQueSeParte(QLabel):
+    """Un texto que se parte en renglones y nunca queda cortado: Qt le da el alto que pide
+    para su ancho de ANTES (el cartel aparece al elegir un socio y la ficha ya estaba
+    armada), y el último renglón no se veía. Acá se pide de nuevo cada vez que cambia el
+    ancho o el texto."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWordWrap(True)
+
+    def poner_texto(self, texto: str):
+        self.setText(texto)
+        self._ajustar_alto()
+
+    def resizeEvent(self, evento):
+        super().resizeEvent(evento)
+        self._ajustar_alto()
+
+    def _ajustar_alto(self):
+        alto = self.heightForWidth(self.width())
+        if alto > 0 and alto != self.minimumHeight():
+            self.setMinimumHeight(alto)
+
+
 def _bloque(titulo: str, destacado: bool = False):
     """Un recuadro con un título chico, un valor grande y una línea que lo aclara:
-    (el recuadro, la etiqueta del valor, la de la aclaración)."""
+    (el recuadro, la etiqueta del título, la del valor, la de la aclaración)."""
     marco = QFrame()
     marco.setObjectName("fichaBloque")
     marco.setProperty("destacado", "true" if destacado else "false")
@@ -247,7 +363,7 @@ def _bloque(titulo: str, destacado: bool = False):
     capa.addWidget(etiqueta_titulo)
     capa.addWidget(valor)
     capa.addWidget(aclaracion)
-    return marco, valor, aclaracion
+    return marco, etiqueta_titulo, valor, aclaracion
 
 
 class FichaDelSocio(QFrame):
@@ -297,14 +413,27 @@ class FichaDelSocio(QFrame):
         # Saldo, última carga y última visita.
         tres = QHBoxLayout()
         tres.setSpacing(12)
-        bloque_saldo, self.valor_saldo, aclaracion_saldo = _bloque("SALDO", destacado=True)
-        aclaracion_saldo.setText("tiempo disponible para jugar")
-        bloque_carga, self.valor_carga, self.aclaracion_carga = _bloque("ÚLTIMA CARGA")
-        bloque_visita, self.valor_visita, self.aclaracion_visita = _bloque("ÚLTIMA VISITA")
+        bloque_saldo, self.titulo_saldo, self.valor_saldo, self.aclaracion_saldo = _bloque("SALDO", destacado=True)
+        bloque_carga, _, self.valor_carga, self.aclaracion_carga = _bloque("ÚLTIMA CARGA")
+        bloque_visita, _, self.valor_visita, self.aclaracion_visita = _bloque("ÚLTIMA VISITA")
         tres.addWidget(bloque_saldo, 5)
         tres.addWidget(bloque_carga, 4)
         tres.addWidget(bloque_visita, 4)
         capa.addLayout(tres)
+
+        # Con el socio jugando: hasta cuándo en la PC y por qué lo guardado no baja. El texto
+        # va adentro de un marco con márgenes de layout, no con "padding" en la hoja de
+        # estilos: Qt no cuenta ese padding al calcular el alto de un texto que se parte en
+        # renglones.
+        self.cartel_jugando = QFrame()
+        self.cartel_jugando.setObjectName("fichaJugando")
+        capa_cartel = QVBoxLayout(self.cartel_jugando)
+        capa_cartel.setContentsMargins(16, 10, 14, 10)
+        self.texto_jugando = _TextoQueSeParte()
+        self.texto_jugando.setObjectName("fichaJugandoTexto")
+        capa_cartel.addWidget(self.texto_jugando)
+        self.cartel_jugando.setVisible(False)
+        capa.addWidget(self.cartel_jugando)
 
         # Datos de contacto.
         capa.addWidget(titulo_de_seccion("Datos de contacto"))
@@ -366,19 +495,18 @@ class FichaDelSocio(QFrame):
     def vaciar(self):
         self._paginas.setCurrentIndex(0)
 
-    def mostrar(self, miembro, dias, visita, cargas):
+    def mostrar(self, miembro, dias, visita, cargas, jugando=None):
         """`miembro`: el socio; `dias`: hace cuántos días no viene (None = nunca vino);
         `visita`: lo de ultima_visita_repo.ultimas_visitas() para él; `cargas`: sus cargas de
-        historial_cargas_repo.listar_cargas, de la más nueva a la más vieja."""
+        historial_cargas_repo.listar_cargas, de la más nueva a la más vieja; `jugando`: lo de
+        tiempo_del_socio_repo.socios_jugando() para él, o None si no está jugando."""
         self._paginas.setCurrentIndex(1)
         usuario = miembro["usuario"]
         self.avatar.setPixmap(_avatar(usuario, 68))
         self.etiqueta_nombre.setText(miembro["nombre"] or usuario)
         self.etiqueta_usuario.setText(f"Usuario: {usuario}")
-        self._poner_las_pastillas(miembro)
-
-        minutos = miembro["saldo_minutos"]
-        self.valor_saldo.setText(formato_tiempo(minutos * 60))
+        self._poner_las_pastillas(miembro, jugando)
+        self.mostrar_el_saldo(miembro, jugando)
         vigentes = [carga for carga in cargas if not carga["anulada"]]
         if vigentes:
             ultima = vigentes[0]
@@ -398,7 +526,23 @@ class FichaDelSocio(QFrame):
             _poner(self.datos[clave], valor or "(sin cargar)", vacio=not valor, falta=False)
         self._llenar_las_cargas(cargas[:CARGAS_EN_LA_FICHA])
 
-    def _poner_las_pastillas(self, miembro):
+    def mostrar_el_saldo(self, miembro, jugando=None):
+        """El recuadro SALDO y el cartel celeste. Sin jugar, el saldo es lo que tiene. Jugando,
+        el TOTAL (lo guardado más lo que le queda en la PC), de dónde sale cada parte y el
+        cartel con hasta cuándo juega en la PC. MiembrosWindow lo vuelve a llamar cada tanto,
+        para que lo de la PC no quede viejo con la ventana abierta."""
+        minutos = miembro["saldo_minutos"]
+        self.valor_saldo.setText(formato_tiempo(tiempo_del_socio_repo.segundos_totales(miembro, jugando)))
+        if jugando:
+            self.titulo_saldo.setText("SALDO TOTAL")
+            self.aclaracion_saldo.setText(texto_de_las_partes(jugando, minutos))
+            self.texto_jugando.poner_texto(texto_de_lo_que_juega(jugando, minutos))
+        else:
+            self.titulo_saldo.setText("SALDO")
+            self.aclaracion_saldo.setText("tiempo disponible para jugar")
+        self.cartel_jugando.setVisible(bool(jugando))
+
+    def _poner_las_pastillas(self, miembro, jugando=None):
         while self.fila_pastillas.count():
             vieja = self.fila_pastillas.takeAt(0).widget()
             if vieja is not None:
@@ -408,9 +552,11 @@ class FichaDelSocio(QFrame):
         activo = bool(miembro["activo"])
         self.fila_pastillas.addWidget(pastilla_clara("ACTIVO" if activo else "INACTIVO",
                                                      TONO_VERDE if activo else TONO_GRIS))
-        con_saldo = miembro["saldo_minutos"] > 0
+        con_saldo = tiempo_del_socio_repo.segundos_totales(miembro, jugando) > 0
         self.fila_pastillas.addWidget(pastilla_clara("CON SALDO" if con_saldo else "SIN SALDO",
                                                      TONO_AZUL if con_saldo else TONO_GRIS))
+        if jugando:
+            self.fila_pastillas.addWidget(pastilla_clara(f"JUGANDO {_en_las_pcs(jugando).upper()}", TONO_CELESTE))
         if not miembros_repo.tiene_dni(miembro):
             self.fila_pastillas.addWidget(pastilla_clara("FALTA DNI", TONO_ROJO))
         self.fila_pastillas.addStretch()

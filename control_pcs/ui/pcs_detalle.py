@@ -110,7 +110,15 @@ class _ListaDeBonos:
 
 def texto_de_la_reserva(item) -> str:
     """El renglón del panel con la próxima reserva del equipo elegido ("" si no
-    tiene): la ve el operador antes de venderle un bono a otro cliente."""
+    tiene): la ve el operador antes de venderle un bono a otro cliente. Si esa reserva
+    corta la sesión del socio que juega ("hasta_la_reserva", ver
+    reservas_horario_repo.reserva_que_corta), lo dice: es por qué la PC muestra menos que
+    la ficha de Miembros."""
+    corte = item.get("hasta_la_reserva")
+    if corte is not None:
+        cuando = reservas_horario_repo.texto_de_la_hora(corte["inicio"], datetime.now())
+        return (f"📅 Juega hasta {cuando}: la PC está reservada para {corte['cliente']}. "
+                "El resto de su saldo le quedó guardado en su cuenta.")
     reserva = item.get("reserva")
     if reserva is None:
         return ""

@@ -168,7 +168,8 @@ class TestSocioJugando(BaseOrdenarSaldos):
     def test_lo_que_se_le_pasa_corre_en_su_pc(self):
         resultado = ajustes_saldo_repo.pasar(self.admin, self.juan, self.pedro, TRES_HORAS, CLAVE)
 
-        self.assertEqual(resultado["hacia"]["sumado_a_la_sesion"], {"estacion": "PC07", "minutos": TRES_HORAS})
+        self.assertEqual(resultado["hacia"]["sumado_a_la_sesion"], {"estacion": "PC07", "minutos": TRES_HORAS, "guardado": 0,
+                                                                    "hasta_la_reserva": None})
         self.assertEqual(self.saldo(self.pedro), 0)
         self.assertAlmostEqual(self.minutos_que_le_quedan(), 30 + TRES_HORAS, delta=1)
 

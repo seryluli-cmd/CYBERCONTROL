@@ -53,7 +53,8 @@ class TestCargaConSesion(BaseConBaseTemporal):
 
         resultado = self.cargar()
 
-        self.assertEqual(resultado["sumado_a_la_sesion"], {"estacion": "PC07", "minutos": TRECE_HORAS})
+        self.assertEqual(resultado["sumado_a_la_sesion"],
+                         {"estacion": "PC07", "minutos": TRECE_HORAS, "guardado": 0, "hasta_la_reserva": None})
         self.assertEqual(self.saldo(), 0)
         self.assertAlmostEqual(self.minutos_que_le_quedan(sesion_id), 30 + TRECE_HORAS, delta=1)
         # Queda como un consumo de esa sesión, igual que al entrar: así lo cuentan
@@ -103,6 +104,9 @@ class TestCargaConSesion(BaseConBaseTemporal):
             resultado = self.cargar()
 
         self.assertEqual(resultado["sumado_a_la_sesion"]["minutos"], 150)
+        # El cartel dice lo que quedó guardado y por qué (2026-11-07).
+        self.assertEqual(resultado["sumado_a_la_sesion"]["guardado"], TRECE_HORAS - 150)
+        self.assertEqual(resultado["sumado_a_la_sesion"]["hasta_la_reserva"], hora)
         self.assertEqual(self.saldo(), TRECE_HORAS - 150)
         self.assertAlmostEqual(self.minutos_que_le_quedan(sesion_id), 30 + 150, delta=1)
 
@@ -123,5 +127,6 @@ class TestCargaConSesion(BaseConBaseTemporal):
             self.socio, 2000, [{"metodo": "EFECTIVO", "monto": 2000}], self.operador
         )
 
-        self.assertEqual(resultado["sumado_a_la_sesion"], {"estacion": "PC07", "minutos": 120})
+        self.assertEqual(resultado["sumado_a_la_sesion"],
+                         {"estacion": "PC07", "minutos": 120, "guardado": 0, "hasta_la_reserva": None})
         self.assertAlmostEqual(self.minutos_que_le_quedan(sesion_id), 30 + 120, delta=1)

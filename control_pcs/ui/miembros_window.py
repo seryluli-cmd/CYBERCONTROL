@@ -20,6 +20,10 @@ solo lo ve el Admin y pide la contraseña, como ORDENAR Stock) abre ordenar_sald
 cuánto no viene" (y su filtro, con los días a elección, y su orden) salen de ultima_visita_repo: en
 naranja pasados dominio.DIAS_SIN_VENIR_AVISO días.
 
+Con el socio jugando (2026-11-07), la lista y la ficha muestran su tiempo TOTAL: lo guardado más
+lo que le queda en la PC (tiempo_del_socio_repo), y la ficha explica de dónde sale cada parte.
+Cada REFRESCO_JUGANDO_MS se vuelve a leer lo que queda en las PCs.
+
 La configuración de la tabla de tramos de tarifa $/hora (ver
 config_repo.obtener_tramos_tarifa_hora_miembro) y la gestión del
 catálogo de Bonos exclusivo de socios (bonos_miembro_repo, distinto del
@@ -32,6 +36,7 @@ en ui/main_window.ConfiguracionAdminWindow, no en esta ventana.
 
 from datetime import datetime
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QSpinBox, QStackedWidget, QTableWidget, QVBoxLayout, QWidget,
@@ -39,13 +44,16 @@ from PySide6.QtWidgets import (
 
 import dominio
 from repositories import config_repo
-from control_pcs.repositories import bonos_miembro_repo, historial_cargas_repo, miembros_repo, ultima_visita_repo
+from control_pcs.repositories import (
+    bonos_miembro_repo, historial_cargas_repo, miembros_repo, tiempo_del_socio_repo, ultima_visita_repo,
+)
 from control_pcs.ui.bonos_dialogos import DialogoBonoBase, DialogoGestionBonosBase
 from control_pcs.ui.dibujos_de_ventana import icono_de, pixmap_de, poner_icono
 # texto_no_viene y detalle_de_la_visita viven en miembros_ficha: texto_no_viene se sigue
 # pudiendo importar de acá (lo usan las pruebas).
 from control_pcs.ui.miembros_ficha import (  # noqa: F401
-    ROL_DATOS, DelegadoDeSocios, FichaDelSocio, Segmentos, detalle_de_la_visita, texto_no_viene,
+    ROL_DATOS, DelegadoDeSocios, FichaDelSocio, Segmentos, detalle_de_la_visita, texto_de_las_partes,
+    texto_de_lo_sumado, texto_no_viene,
 )
 from control_pcs.ui.miembros_historial_cargas import VentanaHistorialCargas
 from control_pcs.ui.ordenar_saldos_window import abrir_ordenar_saldos
@@ -68,6 +76,9 @@ ANCHO_DE_LA_VENTANA = 1240
 # elijan (ver MiembrosWindow._al_cambiar_los_dias).
 FILTROS = (("todos", "Todos"), ("con_saldo", "Con saldo"),
            ("no_vienen", f"No vienen +{dominio.DIAS_SIN_VENIR_AVISO} días"), ("sin_dni", "Sin DNI"))
+# Cada cuánto se vuelve a leer lo que les queda en la PC a los socios que juegan: con la ventana
+# abierta un rato, la ficha no puede mostrar un tiempo viejo distinto del de la PC.
+REFRESCO_JUGANDO_MS = 30_000
 # Cómo se ordena la lista (clave, texto). "usuario" es el de siempre.
 ORDENES = (("usuario", "Por usuario (A-Z)"), ("mas", "Más tiempo sin venir"), ("menos", "Menos tiempo sin venir"))
 
@@ -92,8 +103,12 @@ class MiembrosWindow(QDialog):
         self.miembros = []
         self._visitas = {}
         self._dias = {}
+        self._jugando = {}
         self._armar_interfaz()
         self._cargar_grilla()
+        self._reloj_jugando = QTimer(self)
+        self._reloj_jugando.timeout.connect(self._refrescar_lo_que_juegan)
+        self._reloj_jugando.start(REFRESCO_JUGANDO_MS)
 
     def _armar_interfaz(self):
         raiz = QVBoxLayout(self)
@@ -229,6 +244,7 @@ class MiembrosWindow(QDialog):
         )
         visitas = ultima_visita_repo.ultimas_visitas()
         ahora = datetime.now()
+        self._jugando = tiempo_del_socio_repo.socios_jugando(ahora)
         # Las cifras de la cabecera son de todos los socios activos, se filtre lo que se filtre.
         activos = miembros_repo.listar_miembros()
         dias = {m["id"]: ultima_visita_repo.dias_sin_venir(visitas.get(m["id"]), ahora) for m in (*activos, *miembros)}
@@ -245,7 +261,7 @@ class MiembrosWindow(QDialog):
         self.lista.clear()
         for miembro in miembros:
             renglon = QListWidgetItem()
-            renglon.setData(ROL_DATOS, {"miembro": miembro, "dias": dias[miembro["id"]]})
+            renglon.setData(ROL_DATOS, self._datos_del_renglon(miembro))
             renglon.setToolTip(detalle_de_la_visita(visitas.get(miembro["id"])))
             self.lista.addItem(renglon)
         # Sigue elegido el mismo socio (o el primero): la ficha nunca queda vacía habiendo socios.
@@ -256,10 +272,47 @@ class MiembrosWindow(QDialog):
             self.lista.scrollToItem(self.lista.item(fila))
         self._mostrar_la_ficha()
 
+    def _datos_del_renglon(self, miembro) -> dict:
+        """Lo que dibuja DelegadoDeSocios para un socio (ver miembros_ficha.ROL_DATOS)."""
+        jugando = self._jugando.get(miembro["id"])
+        return {"miembro": miembro, "dias": self._dias.get(miembro["id"]), "jugando": jugando,
+                "segundos": tiempo_del_socio_repo.segundos_totales(miembro, jugando)}
+
+    def _tiene_tiempo(self, miembro) -> bool:
+        """Con saldo: lo guardado o lo que le queda en la PC donde juega."""
+        return tiempo_del_socio_repo.segundos_totales(miembro, self._jugando.get(miembro["id"])) > 0
+
+    @manejar_errores
+    def _refrescar_lo_que_juegan(self):
+        """Cada REFRESCO_JUGANDO_MS: lo que les queda en la PC a los que juegan baja, y la lista y la
+        ficha lo tienen que mostrar igual que la PC. Si nadie empezó ni dejó de jugar, no rearma
+        la lista (no se pierde lo que se está mirando): solo cambia los números de los renglones
+        y el saldo de la ficha. Si alguien entró o salió, la rearma: al salir antes de tiempo se
+        le devuelve saldo, y lo guardado que muestra la lista ya no es el de antes."""
+        if not self.isVisible():
+            return
+        antes = self._jugando
+        self._jugando = tiempo_del_socio_repo.socios_jugando()
+
+        def _en_que_pcs(jugando):
+            return {socio: sorted(pc["estacion"] for pc in datos["pcs"]) for socio, datos in jugando.items()}
+
+        if _en_que_pcs(antes) != _en_que_pcs(self._jugando):
+            self._cargar_grilla()
+            return
+        if not self._jugando:
+            return
+        for fila in range(self.lista.count()):
+            renglon = self.lista.item(fila)
+            renglon.setData(ROL_DATOS, self._datos_del_renglon(renglon.data(ROL_DATOS)["miembro"]))
+        miembro = self._elegido()
+        if miembro is not None:
+            self.ficha.mostrar_el_saldo(miembro, self._jugando.get(miembro["id"]))
+
     def _filtrar(self, miembros, dias):
         filtro = self.segmentos.elegido()
         if filtro == "con_saldo":
-            return [m for m in miembros if m["saldo_minutos"] > 0]
+            return [m for m in miembros if self._tiene_tiempo(m)]
         if filtro == "sin_dni":
             return [m for m in miembros if not miembros_repo.tiene_dni(m)]
         if filtro == "no_vienen":
@@ -269,7 +322,7 @@ class MiembrosWindow(QDialog):
 
     def _actualizar_cifras(self, activos, dias):
         limite = dominio.DIAS_SIN_VENIR_AVISO
-        con_saldo = sum(1 for m in activos if m["saldo_minutos"] > 0)
+        con_saldo = sum(1 for m in activos if self._tiene_tiempo(m))
         sin_dni = sum(1 for m in activos if not miembros_repo.tiene_dni(m))
         sin_venir = sum(1 for m in activos if ultima_visita_repo.no_viene_hace_mas_de(dias[m["id"]], limite))
         self.pastilla_socios.setText("1 SOCIO" if len(activos) == 1 else f"{len(activos)} SOCIOS")
@@ -286,7 +339,8 @@ class MiembrosWindow(QDialog):
         hoy = hoy_del_local()
         cargas = historial_cargas_repo.listar_cargas(
             fecha_iso(hoy.addYears(-1)), fecha_iso(hoy), miembro_id=miembro["id"])
-        self.ficha.mostrar(miembro, self._dias[miembro["id"]], self._visitas.get(miembro["id"]), cargas)
+        self.ficha.mostrar(miembro, self._dias[miembro["id"]], self._visitas.get(miembro["id"]), cargas,
+                           self._jugando.get(miembro["id"]))
 
     def _al_cambiar_la_fila(self, _fila):
         self._mostrar_la_ficha()
@@ -329,7 +383,8 @@ class MiembrosWindow(QDialog):
         miembro = self._seleccionado()
         if miembro is None:
             return
-        if DialogoCargarSaldo(self.usuario_operador, miembro, self).exec():
+        if DialogoCargarSaldo(self.usuario_operador, miembro, self,
+                              jugando=self._jugando.get(miembro["id"])).exec():
             self._cargar_grilla()
 
     def _ver_historial_del_socio(self):
@@ -455,21 +510,28 @@ class DialogoCargarSaldo(QDialog):
     cobrar plata.
 
     `a_la_sesion=False` (lo usa Reserva de socio): lo cargado queda en el saldo
-    aunque el socio esté usando una PC, porque es para el día de la reserva."""
+    aunque el socio esté usando una PC, porque es para el día de la reserva.
 
-    def __init__(self, usuario_operador, miembro, parent=None, a_la_sesion: bool = True):
+    `jugando` (lo de tiempo_del_socio_repo.socios_jugando para él, o None): con el socio
+    jugando, "Saldo actual" dice también lo que le queda en la PC (2026-11-07: con todo
+    en la PC decía "0m 00s")."""
+
+    def __init__(self, usuario_operador, miembro, parent=None, a_la_sesion: bool = True, jugando=None):
         super().__init__(parent)
         self.usuario_operador = usuario_operador
         self.miembro = miembro
         self.a_la_sesion = a_la_sesion
+        self.jugando = jugando
         self.setWindowTitle(f"Cargar Saldo — {miembro['nombre']}")
         self.resize(380, 300)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
-        etiqueta_saldo = QLabel(
-            f"Saldo actual: {formato_tiempo(self.miembro['saldo_minutos'] * 60)}"
-        )
+        texto_saldo = f"Saldo actual: {formato_tiempo(self.miembro['saldo_minutos'] * 60)}"
+        if self.jugando:
+            total = formato_tiempo(tiempo_del_socio_repo.segundos_totales(self.miembro, self.jugando))
+            texto_saldo = f"Saldo actual: {total} ({texto_de_las_partes(self.jugando, self.miembro['saldo_minutos'])})"
+        etiqueta_saldo = QLabel(texto_saldo)
 
         self.combo_modo = QComboBox()
         self.combo_modo.addItem("Monto en $", "MONTO")
@@ -578,11 +640,7 @@ class DialogoCargarSaldo(QDialog):
         # (miembros_repo._sumar_carga_a_la_sesion): que el operador lo sepa.
         sumado = resultado["sumado_a_la_sesion"]
         if sumado is not None:
-            mostrar_info(
-                self, "Saldo cargado",
-                f"Se le sumaron {formato_tiempo(sumado['minutos'] * 60)} a su sesión en "
-                f"{sumado['estacion']}: le aparecen en la PC en unos segundos.",
-            )
+            mostrar_info(self, "Saldo cargado", texto_de_lo_sumado(sumado))
         self.accept()
 
 

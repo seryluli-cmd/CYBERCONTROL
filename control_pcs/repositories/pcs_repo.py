@@ -257,7 +257,8 @@ def estado_estaciones():
 
     Y "reserva": la próxima reserva Pendiente de esa PC (o de PCSTREAM), como la
     arma reservas_horario_repo.pendientes, o None. Con "marcada" en True la PC ya
-    se ve RESERVADA.
+    se ve RESERVADA. Y "hasta_la_reserva": la reserva que corta la sesión de un socio
+    (reservas_horario_repo.reserva_que_corta), o None.
 
     Y "fin_sin_aviso": si a una PC sin sesión se le terminó la última y no se enteró
     (su Cliente PC no volvió a preguntar), ver avisos_fin_pc_repo.fin_sin_aviso.
@@ -298,6 +299,7 @@ def estado_estaciones():
         estado = _estado_para_estacion(estacion, sesion, ahora, cortes_de_la_sesion,
                                        fines_pendientes.get(estacion["id"]))
         estado["reserva"] = reservas_horario_repo.proxima(reservas, estacion)
+        estado["hasta_la_reserva"] = reservas_horario_repo.reserva_que_corta(reservas, estacion, sesion)
         deuda = deudas.get(estacion["id"])
         if deuda is not None:
             deuda["de_la_sesion"] = next(
@@ -365,6 +367,9 @@ def _estado_para_estacion(estacion, sesion, ahora, cortes=(), fin_pendiente=None
         # Solo la completa estado_estaciones (la grilla): al Cliente PC le llega
         # aparte, en su propio try (servidor_red, "reserva"), para que nunca toque el bloqueo.
         "reserva": None,
+        # Solo la completa estado_estaciones: la reserva que corta la sesión de un socio
+        # (reservas_horario_repo.reserva_que_corta), para que el mosaico diga "Hasta 22:00".
+        "hasta_la_reserva": None,
         # Solo la completa estado_estaciones: la Cuenta de la PC es cosa del mostrador.
         "deuda": None,
         # Solo la completa estado_estaciones: es para el mosaico.

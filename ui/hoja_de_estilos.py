@@ -1363,6 +1363,7 @@ HOJA_DE_ESTILOS = """
     QLabel#pastillaClara[tono="naranja"] { background-color: #FFE8D1; color: #9A4A00; }
     QLabel#pastillaClara[tono="amarillo"] { background-color: #FFF3CD; color: #7A5300; }
     QLabel#pastillaClara[tono="gris"] { background-color: #ECEFF4; color: #5F6B7A; }
+    QLabel#pastillaClara[tono="celeste"] { background-color: #DDF3FB; color: #0B5D7A; }
 
     /* Miembros: la ficha del socio elegido (control_pcs/ui/miembros_ficha.py). */
     QFrame#fichaBloque {
@@ -1420,6 +1421,20 @@ HOJA_DE_ESTILOS = """
     QLabel#fichaVacia {
         color: #8A94A6;
         font-size: 15px;
+    }
+    /* El cartel celeste con el socio jugando: cuánto le queda en la PC, si una reserva la
+       corta y que lo guardado no se descuenta (pedido del dueño, 2026-11-07). */
+    QFrame#fichaJugando {
+        background-color: #E8F7FD;
+        border: 1px solid #BFE6F5;
+        border-left: 4px solid #1BA3D6;
+        border-radius: 10px;
+    }
+    QLabel#fichaJugandoTexto {
+        background: transparent;
+        border: none;
+        color: #0B4F6C;
+        font-size: 13px;
     }
 
     /* Actualizar el Cliente PC: el tablero por etapas

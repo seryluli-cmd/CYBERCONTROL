@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 
 from control_pcs.repositories import ajustes_saldo_repo, miembros_repo, ultima_visita_repo
 from control_pcs.ui.dibujos_de_ventana import pixmap_de_avatar
-from control_pcs.ui.miembros_ficha import ROL_DATOS, DelegadoDeSocios, texto_de_la_ultima_pc
+from control_pcs.ui.miembros_ficha import ROL_DATOS, DelegadoDeSocios, texto_de_la_ultima_pc, texto_de_lo_sumado
 from ui.piezas_ventana import (
     TONO_AZUL, buscador, cabecera_oscura, cifra_destacada, panel_blanco, panel_de_tabla, pie_de_ventana, tecla,
     titulo_de_seccion,
@@ -303,11 +303,7 @@ class OrdenarSaldosWindow(QDialog):
         self._cargar_correcciones()
         # Como Cargar Saldo: si el socio está usando una PC, que se sepa que el tiempo ya corre ahí.
         if sumado_a_la_sesion is not None:
-            mostrar_info(
-                self, "Saldo corregido",
-                f"Se le sumaron {texto_saldo(sumado_a_la_sesion['minutos'])} a su sesión en "
-                f"{sumado_a_la_sesion['estacion']}: le aparecen en la PC en unos segundos.",
-            )
+            mostrar_info(self, "Saldo corregido", texto_de_lo_sumado(sumado_a_la_sesion))
 
     # ------------------------------------------------------------ las tres correcciones
     @manejar_errores

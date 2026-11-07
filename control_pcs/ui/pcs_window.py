@@ -463,6 +463,14 @@ class PanelControlPcs(QWidget):
         else:
             icono, texto_estado, color = "🔌", "Sin conexión", COLOR_DESCONECTADA
 
+        corte = item.get("hasta_la_reserva")
+        if corte is not None and not aviso:
+            # El socio juega solo hasta la hora de una reserva de otro y lo demás le quedó
+            # guardado (reservas_horario_repo.reserva_que_corta). Se avisa desde que entra, no
+            # 2 h antes como "Res.": es el porqué de que la PC muestre menos que la ficha de
+            # Miembros (pedido del dueño, 2026-11-07). Va antes que el nombre: la hora importa más.
+            aviso = f"Hasta {corte['inicio']:%H:%M} · {quien_texto}"
+
         reserva = item.get("reserva")
         if reserva is not None and reserva["marcada"]:
             hora = f"{reserva['inicio']:%H:%M}"

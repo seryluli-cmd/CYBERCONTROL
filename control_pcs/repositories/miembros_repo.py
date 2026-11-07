@@ -292,14 +292,17 @@ def _sumar_carga_a_la_sesion(conexion, miembro_id: int, minutos: int, ahora: dat
     Si la PC tiene una reserva por delante, solo hasta su hora y lo demás queda
     en el saldo (reservas_horario_repo.minutos_para_el_socio); si hasta la
     reserva quedaría muy poco, todo queda en el saldo. Devuelve
-    {"estacion": nombre de la PC, "minutos": los que se sumaron}, o None si no
-    se sumó nada.
+    {"estacion": nombre de la PC, "minutos": los que se sumaron, "guardado": los
+    que quedaron en el saldo, "hasta_la_reserva": la hora de la reserva que la
+    cortó o None}, o None si no se sumó nada. Lo guardado y la hora son para que
+    el cartel lo diga (pedido del dueño, 2026-11-07: a Oscar le cargaron 13 h, el
+    cartel dijo "Se le sumaron 8h 40m" y nadie supo que 4h 20m le quedaron guardadas).
     """
     sesion = _sesion_en_curso_del_socio(conexion, miembro_id, ahora)
     if sesion is None:
         return None
     try:
-        minutos_a_usar, _corte = reservas_horario_repo.minutos_para_el_socio(
+        minutos_a_usar, corte = reservas_horario_repo.minutos_para_el_socio(
             conexion, sesion["estacion_id"], minutos, ahora, miembro_id=miembro_id
         )
     except ValueError:
@@ -319,7 +322,8 @@ def _sumar_carga_a_la_sesion(conexion, miembro_id: int, minutos: int, ahora: dat
     )
     # Con la carga, la sesión puede llegar ahora a la hora de una reserva suya.
     reservas_socios_repo.marcar_llegada(conexion, miembro_id, sesion["estacion_id"], sesion["id"], ahora)
-    return {"estacion": sesion["estacion_nombre"], "minutos": minutos_a_usar}
+    return {"estacion": sesion["estacion_nombre"], "minutos": minutos_a_usar, "guardado": minutos - minutos_a_usar,
+            "hasta_la_reserva": corte}
 
 
 def _registrar_carga(conexion, miembro_id: int, minutos: int, precio: float, pagos: list,
