@@ -146,9 +146,31 @@ Desde el 07/11 se ve así:
 
 La regla no cambió: el socio sigue entrando solo hasta la hora de la reserva.
 
-**Ojo:** como le quedó saldo guardado, ese socio puede entrar a **otra PC al
-mismo tiempo** (o un amigo con su contraseña). El programa no lo frena. Miembros
-lo muestra como "Jugando en 2 PCs". Si querés que no se pueda, se cambia aparte.
+### Un socio, una sola PC a la vez (07/11/2026)
+
+> "No quiero que haya multilogin, o sea que un usuario pueda loguearse una sola
+> vez."
+
+Como le quedaba saldo guardado, ese socio podía entrar a **otra PC al mismo
+tiempo** con su usuario (él o un amigo con su contraseña). Desde el 07/11 no se
+puede: si ya está jugando en una PC e intenta entrar en otra, la PC le dice:
+
+*"Eros ya está jugando en la PC15X: un socio entra a una sola PC a la vez. Para
+usar esta PC, primero cerrá la sesión en la PC15X o pedí en el mostrador que te
+cambien de PC."*
+
+- **En la misma PC** sí puede volver a entrar: le suma lo guardado a esa sesión.
+- **Para cambiarlo de PC sin que pierda nada:** en Control de PCs, clic derecho en
+  su PC y "Intercambiar de máquina...". Se lleva su sesión entera.
+- **Si cierra la sesión** para ir a otra PC, se le devuelve lo que le quedaba como
+  siempre, en bloques de media hora, y después entra en la otra.
+- **Si se le colgó la PC** y no puede cerrar, el operador le corta la sesión
+  desde Control de PCs, o lo cambia de PC con "Intercambiar de máquina...".
+- Una sesión a la que ya se le terminó el tiempo no lo traba.
+- Vale también para "Abrir PC con Miembro" en el mostrador.
+
+Para que lo vea el socio en la PC no hace falta un Cliente PC nuevo: el mensaje
+lo arma el mostrador.
 
 ## PCSTREAM
 

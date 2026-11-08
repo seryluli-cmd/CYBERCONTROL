@@ -183,12 +183,15 @@ class TestTiempoDelSocio(_ConUnSocioYUnaReserva):
         self.assertEqual(self._miembro()["saldo_minutos"], 0)
         self.assertAlmostEqual(tiempo_del_socio_repo.segundos_totales(self._miembro(), jugando), 300 * 60, delta=2)
 
-    def test_con_lo_que_le_quedo_guardado_puede_estar_en_dos_pcs_y_se_ven_las_dos(self):
+    def test_si_quedo_en_dos_pcs_de_antes_del_cambio_se_ven_las_dos(self):
+        # Desde el 07/11 un socio entra a una sola PC (TestUnaSolaPcALaVez); antes podía
+        # entrar a otra con lo que le quedó guardado, y la ficha lo tiene que seguir mostrando.
         self._poner_saldo(SALDO_DE_EROS)
         self._reservar(_en(HASTA_LA_RESERVA))
         self._entra()
 
-        self._entra(self.pc16)
+        with conexion_db() as conexion:
+            pcs_repo._abrir_o_extender_sesion(conexion, self.pc16, 12 * 60, datetime.now(), miembro_id=self.eros)
         jugando = tiempo_del_socio_repo.socios_jugando()[self.eros]
 
         # De la que termina antes a la que termina después.
@@ -203,6 +206,94 @@ class TestTiempoDelSocio(_ConUnSocioYUnaReserva):
                              ((datetime.now() - timedelta(minutes=1)).isoformat(timespec="seconds"), sesion_id))
 
         self.assertEqual(tiempo_del_socio_repo.socios_jugando(), {})
+
+
+class TestUnaSolaPcALaVez(_ConUnSocioYUnaReserva):
+    """Pedido del dueño, 2026-11-07: "no quiero que haya multilogin". Un socio entra a una
+    sola PC a la vez (miembros_repo._no_esta_jugando_en_otra_pc)."""
+
+    def _pcs_con_sesion(self):
+        with conexion_db() as conexion:
+            return sorted(fila["estacion_id"] for fila in conexion.execute(
+                "SELECT estacion_id FROM sesiones_pc WHERE estado = ?", (dominio.SESION_ACTIVA,)))
+
+    def test_con_saldo_guardado_por_una_reserva_no_entra_en_otra_pc(self):
+        # Lo de Eros: le quedaron 32 h guardadas y con eso podía abrir otra PC.
+        self._poner_saldo(SALDO_DE_EROS)
+        self._reservar(_en(HASTA_LA_RESERVA))
+        self._entra()
+        guardado = self._miembro()["saldo_minutos"]
+
+        with self.assertRaises(ValueError) as error:
+            self._entra(self.pc16)
+
+        self.assertEqual(
+            str(error.exception),
+            "Eros ya está jugando en la PC15X: un socio entra a una sola PC a la vez. Para usar esta PC, "
+            "primero cerrá la sesión en la PC15X o pedí en el mostrador que te cambien de PC.",
+        )
+        self.assertEqual(self._miembro()["saldo_minutos"], guardado)
+        self.assertEqual(self._pcs_con_sesion(), [self.pc15])
+
+    def test_con_todo_el_saldo_en_la_pc_le_dice_donde_juega_y_no_que_le_falta_saldo(self):
+        self._poner_saldo(300)
+        self._entra()
+
+        with self.assertRaisesRegex(ValueError, "ya está jugando en la PC15X"):
+            self._entra(self.pc16)
+
+    def test_en_la_misma_pc_entra_y_le_suma_a_su_sesion(self):
+        self._poner_saldo(60)
+        sesion_id = self._entra()["sesion_id"]
+        self._poner_saldo(60)
+
+        self.assertEqual(self._entra()["sesion_id"], sesion_id)
+        self.assertEqual(self._pcs_con_sesion(), [self.pc15])
+
+    def test_despues_de_cerrar_la_sesion_entra_en_otra_pc(self):
+        self._poner_saldo(300)
+        pcs_repo.finalizar_sesion(self._entra()["sesion_id"])
+
+        self._entra(self.pc16)
+
+        self.assertEqual(self._pcs_con_sesion(), [self.pc16])
+
+    def test_una_sesion_que_llego_a_cero_y_todavia_no_se_cerro_no_lo_traba(self):
+        self._poner_saldo(300)
+        sesion_id = self._entra()["sesion_id"]
+        with conexion_db() as conexion:
+            conexion.execute("UPDATE sesiones_pc SET fecha_fin_prevista = ? WHERE id = ?",
+                             ((datetime.now() - timedelta(minutes=1)).isoformat(timespec="seconds"), sesion_id))
+        self._poner_saldo(60)
+
+        self.assertEqual(self._entra(self.pc16)["minutos_usados"], 60)
+
+    def test_con_la_clave_mal_no_dice_donde_esta_jugando(self):
+        self._poner_saldo(300)
+        self._entra()
+
+        with self.assertRaisesRegex(ValueError, "^Usuario o contraseña incorrectos.$"):
+            miembros_repo.abrir_estacion_por_miembro(self.pc16, "Eritos", "otra")
+
+    def test_otro_socio_entra_en_otra_pc_como_siempre(self):
+        luis = miembros_repo.crear_miembro("luis", "clave123", "Luis")
+        self._poner_saldo(300)
+        self._poner_saldo(300, luis)
+        self._entra()
+
+        self._entra(self.pc16, usuario="luis")
+
+        self.assertEqual(self._pcs_con_sesion(), sorted([self.pc15, self.pc16]))
+
+    def test_si_el_mostrador_lo_cambia_de_pc_sigue_jugando_en_la_nueva(self):
+        self._poner_saldo(300)
+        self._entra()
+
+        pcs_repo.trasladar_sesion(self.pc15, self.pc16, self.ana)
+
+        self.assertEqual(self._pcs_con_sesion(), [self.pc16])
+        with self.assertRaisesRegex(ValueError, "ya está jugando en la PC16X"):
+            self._entra(self.pc15)
 
 
 class TestLosTextos(unittest.TestCase):

@@ -258,11 +258,11 @@ def autenticar_miembro(usuario: str, clave: str):
         return _buscar_miembro_autenticado(conexion, usuario, clave)
 
 
-def _sesion_en_curso_del_socio(conexion, miembro_id: int, ahora: datetime):
-    """La sesión de PC que el socio está usando ahora (abierta con su saldo y
-    con tiempo por delante), con el nombre de la PC en `estacion_nombre`; None
-    si no está usando ninguna. Si figura en más de una, también None: no se
-    adivina a cuál sumarle el tiempo."""
+def _sesiones_en_curso_del_socio(conexion, miembro_id: int, ahora: datetime) -> list:
+    """Las sesiones de PC que el socio está usando ahora (abiertas con su saldo
+    y con tiempo por delante), con el nombre de la PC en `estacion_nombre`. Una
+    que ya llegó a cero no cuenta aunque todavía figure activa: la da de baja el
+    refresco de la pantalla de PCs a los pocos segundos."""
     filas = conexion.execute(
         """
         SELECT s.*, e.nombre AS estacion_nombre
@@ -271,11 +271,45 @@ def _sesion_en_curso_del_socio(conexion, miembro_id: int, ahora: datetime):
         """,
         (miembro_id, dominio.SESION_ACTIVA),
     ).fetchall()
-    en_curso = [
+    return [
         fila for fila in filas
         if dominio.segundos_restantes(datetime.fromisoformat(fila["fecha_fin_prevista"]), ahora) > 0
     ]
+
+
+def _sesion_en_curso_del_socio(conexion, miembro_id: int, ahora: datetime):
+    """La sesión de PC que el socio está usando ahora, o None si no está usando
+    ninguna. Si figura en más de una (de antes del 07/11, ver
+    _no_esta_jugando_en_otra_pc), también None: no se adivina a cuál sumarle el
+    tiempo."""
+    en_curso = _sesiones_en_curso_del_socio(conexion, miembro_id, ahora)
     return en_curso[0] if len(en_curso) == 1 else None
+
+
+def _no_esta_jugando_en_otra_pc(conexion, miembro, estacion_id: int, ahora: datetime):
+    """
+    Un socio entra a una sola PC a la vez (pedido del dueño, 2026-11-07: "no
+    quiero que haya multilogin"). Hasta entonces, el que tenía saldo guardado
+    (por ejemplo, porque una reserva le cortó la PC, ver
+    reservas_horario_repo.minutos_para_el_socio) podía entrar a OTRA PC con el
+    mismo usuario, él o un amigo con su contraseña. Si ya está jugando en otra
+    PC, levanta ValueError con un mensaje que el Cliente PC le muestra tal cual.
+
+    En la MISMA PC sí puede: le suma su saldo a esa sesión, como siempre. Y una
+    sesión que ya llegó a cero no lo traba. Para cambiarse de PC sin perder
+    nada está "Intercambiar de máquina..." en el clic derecho de la PC en el
+    mostrador (pcs_repo.trasladar_sesion), que mueve la misma sesión; si cierra
+    la sesión, se le devuelve lo que le quedaba como siempre (en bloques de 30
+    minutos) y entra en otra.
+    """
+    otra = next((sesion for sesion in _sesiones_en_curso_del_socio(conexion, miembro["id"], ahora)
+                 if sesion["estacion_id"] != estacion_id), None)
+    if otra is not None:
+        raise ValueError(
+            f"{miembro['nombre']} ya está jugando en la {otra['estacion_nombre']}: un socio entra a una sola PC "
+            f"a la vez. Para usar esta PC, primero cerrá la sesión en la {otra['estacion_nombre']} "
+            "o pedí en el mostrador que te cambien de PC."
+        )
 
 
 def _sumar_carga_a_la_sesion(conexion, miembro_id: int, minutos: int, ahora: datetime):
@@ -615,8 +649,10 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
     El socio se loguea solo (usuario/clave) para abrir una estación con
     TODO su saldo disponible — no es el mostrador quien elige cuánto
     tiempo asignarle, es autoservicio puro. Levanta ValueError si las
-    credenciales no coinciden o si no le queda al menos un bloque de 30
-    minutos. Devuelve un resumen simple para mostrar en pantalla.
+    credenciales no coinciden, si ya está jugando en OTRA PC (una sola a la
+    vez desde el 2026-11-07, ver _no_esta_jugando_en_otra_pc) o si no le queda
+    al menos un bloque de 30 minutos. Devuelve un resumen simple para mostrar
+    en pantalla.
 
     Datos del primer ingreso: `pedir_datos=True` lo manda el Cliente PC que
     sabe pedírselos al socio. Si el socio todavía no tiene DNI (`tiene_dni`),
@@ -679,6 +715,9 @@ def abrir_estacion_por_miembro(estacion_id: int, usuario: str, clave: str,
         miembro = _buscar_miembro_autenticado(conexion, usuario, clave)
         if miembro is None:
             raise ValueError("Usuario o contraseña incorrectos.")
+        # Antes que el saldo: el que juega con todo su saldo en otra PC tiene que leer
+        # dónde está jugando, no que no tiene saldo.
+        _no_esta_jugando_en_otra_pc(conexion, miembro, estacion_id, ahora)
         if miembro["saldo_minutos"] < MINUTOS_POR_FRACCION:
             raise ValueError(
                 f"{miembro['nombre']} no tiene saldo suficiente (le quedan "
