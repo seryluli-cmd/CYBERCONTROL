@@ -29,7 +29,7 @@ en cualquier pantalla.
 from dataclasses import dataclass, replace
 
 from PySide6.QtCore import Qt, QSize, QRectF, QPointF
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QBrush, QLinearGradient, QFont
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QBrush, QLinearGradient, QFont, QFontMetricsF
 from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QListView, QStyledItemDelegate, QStyle, QAbstractItemView,
     QWidget, QHBoxLayout, QLabel,
@@ -47,17 +47,29 @@ DIBUJO_CANDADO_ABIERTO = "candado"       # Cliente PC cerrado por un admin: est�
 # Tamaño del dibujo del monitor: se dibuja siempre con las mismas medidas
 # (marco de 92x64, ver _DibujanteDeEquipo.paint) y se achica o agranda con esta
 # escala. El dueño lo pidió un 25% más chico (2026-10-16) para que entren más
-# PCs a la vista, y con 8 por fila (ver EQUIPOS_POR_FILA) un 15% más grande que
-# eso (2026-10-17): 0,75 × 1,15. Los textos de abajo NO se escalan, para que se
+# PCs a la vista, con 8 por fila (ver EQUIPOS_POR_FILA) un 15% más grande que
+# eso (2026-10-17) y un 10% más chico otra vez (2026-11-09, junto con el nombre
+# más grande): 0,75 × 1,15 × 0,9. Los textos de abajo NO se escalan, para que se
 # sigan leyendo.
-ESCALA_MONITOR = 0.75 * 1.15
+ESCALA_MONITOR = 0.75 * 1.15 * 0.9
 # Alto del monitor sin escalar: margen de arriba + marco + pie.
 _ALTO_MONITOR = 12 + 64 + 12
+
+# Letra y renglones de debajo del monitor, en píxeles. El nombre del equipo va
+# un 20% más grande que el tiempo (pedido del dueño, 2026-11-09), con su renglón
+# un 20% más alto. Un nombre que así no entra a lo ancho ("PLAYSTATION 5") se
+# achica lo justo para entrar, nunca por debajo del tamaño del tiempo: recién ahí
+# se corta con "…", como antes.
+_LETRA_TIEMPO = 12
+_LETRA_NOMBRE = _LETRA_TIEMPO * 1.2
+_RENGLON_TIEMPO = 16
+_RENGLON_NOMBRE = 19
+_RENGLON_AVISO = 14
 
 # Tamaño de cada casillero del mosaico (monitor + tiempo + nombre + aviso). El
 # ancho tiene que alcanzar para "PLAYSTATION 5" sin cortarse.
 ANCHO_CASILLERO = 108
-ALTO_CASILLERO = int(_ALTO_MONITOR * ESCALA_MONITOR) + 54
+ALTO_CASILLERO = int(_ALTO_MONITOR * ESCALA_MONITOR) + _RENGLON_TIEMPO + _RENGLON_NOMBRE + _RENGLON_AVISO + 8
 
 # Cuántos equipos van en cada fila del mosaico: siempre los mismos, repartidos a
 # lo ancho, en vez de "los que entren" (pedido del dueño, 2026-10-17: 8 arriba,
@@ -328,24 +340,25 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
         izquierda = caja.left() + 5
 
         fuente = QFont(pintor.font())
-        fuente.setPixelSize(12)
+        fuente.setPixelSize(_LETRA_TIEMPO)
         fuente.setBold(True)
         pintor.setFont(fuente)
         if ficha.restante and ficha.restante != "—":
             pintor.setPen(_COLOR_TEXTO)
-            pintor.drawText(QRectF(izquierda, arriba, ancho, 16), Qt.AlignCenter, ficha.restante)
+            pintor.drawText(QRectF(izquierda, arriba, ancho, _RENGLON_TIEMPO), Qt.AlignCenter, ficha.restante)
 
-        pintor.setPen(_COLOR_TEXTO)
-        nombre = pintor.fontMetrics().elidedText(ficha.nombre, Qt.ElideRight, int(ancho))
-        pintor.drawText(QRectF(izquierda, arriba + 16, ancho, 16), Qt.AlignCenter, nombre)
+        _pintar_nombre(pintor, QRectF(izquierda, arriba + _RENGLON_TIEMPO, ancho, _RENGLON_NOMBRE), ficha.nombre,
+                       fuente)
+        pintor.setFont(fuente)
 
+        arriba += _RENGLON_TIEMPO + _RENGLON_NOMBRE
         if ficha.caliente:
             # Pisa al aviso de siempre mientras dure: el cartelito lo sigue diciendo todo.
             if calor_visible:
                 fuente.setPixelSize(11)
                 pintor.setFont(fuente)
                 pintor.setPen(_COLOR_TEMPERATURA[dominio.TEMPERATURA_CALIENTE_NIVEL])
-                pintor.drawText(QRectF(izquierda, arriba + 32, ancho, 14), Qt.AlignCenter,
+                pintor.drawText(QRectF(izquierda, arriba, ancho, _RENGLON_AVISO), Qt.AlignCenter,
                                 f"CALIENTE {ficha.temperatura}°")
         elif ficha.debe:
             # Pisa al aviso de siempre hasta que se cobre (el cartelito lo sigue diciendo
@@ -355,19 +368,39 @@ class _DibujanteDeEquipo(QStyledItemDelegate):
                 pintor.setFont(fuente)
                 pintor.setPen(COLOR_DEBE)
                 debe = pintor.fontMetrics().elidedText(f"DEBE {ficha.debe}", Qt.ElideRight, int(ancho))
-                pintor.drawText(QRectF(izquierda, arriba + 32, ancho, 14), Qt.AlignCenter, debe)
+                pintor.drawText(QRectF(izquierda, arriba, ancho, _RENGLON_AVISO), Qt.AlignCenter, debe)
         elif ficha.aviso:
             fuente.setBold(False)
             fuente.setPixelSize(11)
             pintor.setFont(fuente)
             pintor.setPen(_COLOR_TEXTO_SUAVE)
             aviso = pintor.fontMetrics().elidedText(ficha.aviso, Qt.ElideRight, int(ancho))
-            pintor.drawText(QRectF(izquierda, arriba + 32, ancho, 14), Qt.AlignCenter, aviso)
+            pintor.drawText(QRectF(izquierda, arriba, ancho, _RENGLON_AVISO), Qt.AlignCenter, aviso)
 
 
 # ---------------------------------------------------------------------
 # Las piezas del dibujo
 # ---------------------------------------------------------------------
+
+def _pintar_nombre(pintor, renglon, nombre, fuente_del_tiempo):
+    """El nombre del equipo con la letra de _LETRA_NOMBRE, achicada lo justo si
+    así no entra en el renglón (nunca menos que la del tiempo)."""
+    fuente = QFont(fuente_del_tiempo)
+    # setPixelSize solo acepta enteros y 14,4 px se redondearía: se pide en
+    # puntos, según la pantalla donde se dibuja.
+    puntos_por_pixel = 72 / pintor.device().logicalDpiY()
+    fuente.setPointSizeF(_LETRA_NOMBRE * puntos_por_pixel)
+    pintor.setFont(fuente)
+    ancho_del_nombre = QFontMetricsF(fuente, pintor.device()).horizontalAdvance(nombre)
+    if ancho_del_nombre > renglon.width():
+        # Un píxel de margen: achicado al ras, el redondeo lo cortaba igual con "…".
+        pixeles = max(_LETRA_TIEMPO, _LETRA_NOMBRE * (renglon.width() - 1) / ancho_del_nombre)
+        fuente.setPointSizeF(pixeles * puntos_por_pixel)
+        pintor.setFont(fuente)
+    pintor.setPen(_COLOR_TEXTO)
+    texto = pintor.fontMetrics().elidedText(nombre, Qt.ElideRight, int(renglon.width()))
+    pintor.drawText(renglon, Qt.AlignCenter, texto)
+
 
 def _pintar_monitor(pintor, marco, pantalla, color):
     # Pie: cuello y base, detrás del marco.
