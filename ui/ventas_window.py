@@ -37,9 +37,10 @@ from ui.utils import (
     formato_pesos, mostrar_error, mostrar_info, confirmar, manejar_errores, aplicar_clase,
     sin_boton_por_defecto, crear_tabla, pedir_pesos,
 )
-from ui.buscar_articulo import armar_botones_de_busqueda, avisar_codigo_no_encontrado
+from ui.buscar_articulo import avisar_codigo_no_encontrado
 from ui.dialogo_pago import DialogoPago
-from ui.ventas_dibujos import ROL_DETALLE, DelegadoProducto, icono_codigo_de_barras, icono_de_tecla
+from ui.venta_buscador import BuscadorDeLaVenta
+from ui.ventas_dibujos import ROL_DETALLE, DelegadoProducto, icono_de_tecla
 
 
 class VentasWindow(QDialog):
@@ -79,11 +80,13 @@ class VentasWindow(QDialog):
         fila_encabezado.addStretch()
         fila_encabezado.addWidget(datos)
 
+        # Se escanea, o se escribe el nombre o la marca, en este mismo campo y sin
+        # elegir nada: el dibujo, la ayuda y la lista de lo encontrado los pone el
+        # buscador (ui/venta_buscador.py).
         self.campo_codigo = QLineEdit()
         self.campo_codigo.setObjectName("campoEscaneo")
-        self.campo_codigo.setPlaceholderText("Escaneá el código de barras y apretá Enter...")
-        self.campo_codigo.addAction(icono_codigo_de_barras(), QLineEdit.LeadingPosition)
         self.campo_codigo.returnPressed.connect(self._escanear)
+        self.buscador = BuscadorDeLaVenta(self, self.campo_codigo, self._agregar_al_carrito)
 
         # Solo se ve cuando avisa algo: vacío no tiene que dejar un hueco.
         self.etiqueta_aviso_stock = QLabel("")
@@ -102,7 +105,6 @@ class VentasWindow(QDialog):
         self.tabla.horizontalHeaderItem(2).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.tabla.cellDoubleClicked.connect(self._al_hacer_doble_clic)
 
-        botones_de_busqueda = armar_botones_de_busqueda(self, self._agregar_al_carrito, tecla_aparte=True)
         boton_cantidad = self._boton_con_tecla("*", "Cantidad")
         boton_cantidad.setToolTip("Cargar la cantidad antes de escanear (ej: 3 personas piden lo mismo)")
         boton_cantidad.clicked.connect(self._cambiar_cantidad_pendiente)
@@ -114,7 +116,7 @@ class VentasWindow(QDialog):
 
         fila_atajos = QHBoxLayout()
         fila_atajos.setSpacing(6)
-        for boton in botones_de_busqueda + [boton_cantidad, boton_borrar]:
+        for boton in (boton_cantidad, boton_borrar):
             aplicar_clase(boton, "tecla")
             fila_atajos.addWidget(boton)
         fila_atajos.addStretch()
@@ -186,7 +188,7 @@ class VentasWindow(QDialog):
 
     @staticmethod
     def _boton_con_tecla(tecla, nombre):
-        """Un botón con su tecla dibujada adelante, como F5/F6/F7."""
+        """Un botón con su tecla dibujada adelante, como "* Cantidad"."""
         boton = QPushButton(nombre)
         icono, tamano = icono_de_tecla(tecla)
         boton.setIcon(icono)
@@ -201,12 +203,19 @@ class VentasWindow(QDialog):
     # Escaneo / búsqueda de artículos
     # -----------------------------------------------------------------
 
+    @manejar_errores
     def _escanear(self):
-        codigo = self.campo_codigo.text().strip()
+        texto = self.campo_codigo.text().strip()
+        if texto:
+            # Lo escaneado, o lo marcado en la lista si se buscó por nombre o marca.
+            # None: no hay nada que agregar y lo escrito queda para corregirlo.
+            codigo = self.buscador.codigo_elegido(texto)
+            if codigo is not None:
+                self.campo_codigo.clear()
+                self._agregar_al_carrito(codigo)
+            return
         self.campo_codigo.clear()
-        if codigo:
-            self._agregar_al_carrito(codigo)
-        elif self.carrito:
+        if self.carrito:
             # Enter con el campo de código vacío, habiendo ya algo
             # cargado en el carrito: se interpreta como "ya terminé de
             # escanear". El foco pasa a Aceptar / Cobrar y se abre

@@ -753,6 +753,19 @@ HOJA_DE_ESTILOS = """
         margin-top: 2px;
         background-color: #F0F4FC;
     }
+    /* La lista de lo encontrado por nombre o marca, que flota debajo del campo de
+       escaneo encima del carrito (ui/venta_buscador.py). */
+    QTableWidget#resultadosVenta {
+        border: 1px solid #2F6FED;
+        border-radius: 9px;
+        background-color: #FFFFFF;
+        alternate-background-color: #F7F9FC;
+        selection-background-color: #DCE7FD;
+        selection-color: #1B2233;
+    }
+    QTableWidget#resultadosVenta::item {
+        padding: 0 10px;
+    }
     QLabel#avisoStockVenta {
         background-color: #FDECEC;
         border: 1px solid #F1B5BA;

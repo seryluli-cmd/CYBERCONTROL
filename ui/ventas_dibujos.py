@@ -3,9 +3,10 @@ ventas_dibujos.py
 ===================
 Los dibujos del diseño de Venta de Mercadería que eligió el dueño (2026-10-26,
 la maqueta "B": el total y COBRAR siempre grandes a la derecha): las teclas con
-la tecla marcada aparte ("F5" en un recuadro azul y "Código" al lado), el código
-de barras de adentro del campo de escaneo y el renglón del carrito con el código
-y el precio por unidad chiquitos debajo del producto.
+la tecla marcada aparte ("*" en un recuadro azul y "Cantidad" al lado), el dibujo
+de adentro del campo de escaneo (el código de barras con "Abc" al lado: se escanea o se
+escribe el nombre o la marca) y el renglón del carrito con el código y el precio por
+unidad chiquitos debajo del producto.
 
 Se dibujan con QPainter: un emoji puede salir como un rectángulo en el Windows
 del mostrador (pasó con el copo de nieve de DESCONGELAR).
@@ -37,7 +38,7 @@ def _fuente_de_tecla() -> QFont:
 
 
 def icono_de_tecla(tecla: str):
-    """La tecla en un recuadro azul clarito ("F5", "*", "Supr"), para ponerla
+    """La tecla en un recuadro azul clarito ("*", "Supr"), para ponerla
     adelante del nombre del botón. Devuelve el ícono y su tamaño: el recuadro es
     más ancho cuanto más largo es el texto, y Qt achicaría un ícono que no entra
     en el tamaño de siempre."""
@@ -58,22 +59,56 @@ def icono_de_tecla(tecla: str):
     return QIcon(dibujo), QSize(ancho, ALTO_TECLA)
 
 
-def icono_codigo_de_barras() -> QIcon:
-    """Un código de barras azul (rayas de distinto grueso), para adentro del campo
-    donde se escanea."""
-    lado = 24 * _ESCALA
-    dibujo = QPixmap(lado, lado)
-    dibujo.fill(Qt.transparent)
-    pincel = QPainter(dibujo)
-    pincel.setPen(Qt.NoPen)
-    pincel.setBrush(QColor(COLOR_BARRAS))
-    x = 2.5 * _ESCALA
-    for grueso, espacio in ((2, 1), (1, 1), (2, 1), (1, 2), (3, 1), (1, 1), (2, 0)):
-        pincel.drawRect(QRectF(x, 4 * _ESCALA, grueso * _ESCALA, 16 * _ESCALA))
-        x += (grueso + espacio) * _ESCALA
+# El dibujo de adentro del campo de escaneo. Va en una etiqueta propia y no como
+# ícono del campo (QLineEdit.addAction): ahí Qt lo achica a 16 px y las letras no se leían.
+ALTO_DIBUJO_CAMPO = 22
+
+
+def _terminado(pincel, dibujo) -> QPixmap:
     pincel.end()
     dibujo.setDevicePixelRatio(_ESCALA)
-    return QIcon(dibujo)
+    return dibujo
+
+
+def _pintar_barras(pincel):
+    """Las rayas azules de un código de barras (de distinto grueso), de x = 3 a x = 27
+    en píxeles de pantalla: el campo espera la pistola."""
+    pincel.setPen(Qt.NoPen)
+    pincel.setBrush(QColor(COLOR_BARRAS))
+    x = 3 * _ESCALA
+    for grueso, espacio in ((2, 1), (1, 1), (2, 1), (1, 2), (3, 1), (1, 1), (2, 1), (1, 1), (2, 0)):
+        pincel.drawRect(QRectF(x, 2 * _ESCALA, grueso * _ESCALA, 18 * _ESCALA))
+        x += (grueso + espacio) * _ESCALA
+
+
+def _pintar_letras(pincel, texto, x, ancho, alineado):
+    """`texto` en azul y en negrita, achicado hasta que entre en `ancho` con la letra
+    que tenga la PC."""
+    fuente = QFont()
+    fuente.setBold(True)
+    fuente.setPixelSize(15 * _ESCALA)
+    while QFontMetrics(fuente).horizontalAdvance(texto) > ancho * _ESCALA and fuente.pixelSize() > 8 * _ESCALA:
+        fuente.setPixelSize(fuente.pixelSize() - 1)
+    pincel.setRenderHint(QPainter.TextAntialiasing)
+    pincel.setFont(fuente)
+    pincel.setPen(QColor(COLOR_BARRAS))
+    pincel.drawText(QRectF(x * _ESCALA, 0, ancho * _ESCALA, ALTO_DIBUJO_CAMPO * _ESCALA),
+                    alineado | Qt.AlignVCenter, texto)
+
+
+# El código de barras con "Abc" al lado: el campo le deja ese lugar a la izquierda del texto.
+ANCHO_DIBUJO_CODIGO_O_ABC = 64
+
+
+def dibujo_codigo_o_abc() -> QPixmap:
+    """El código de barras y "Abc" al lado: en el campo da lo mismo escanear que
+    escribir el nombre o la marca del producto (pedido del dueño, 2026-11-09)."""
+    dibujo = QPixmap(ANCHO_DIBUJO_CODIGO_O_ABC * _ESCALA, ALTO_DIBUJO_CAMPO * _ESCALA)
+    dibujo.fill(Qt.transparent)
+    pincel = QPainter(dibujo)
+    _pintar_barras(pincel)
+    _pintar_letras(pincel, "Abc", 33, ANCHO_DIBUJO_CODIGO_O_ABC - 33, Qt.AlignLeft)
+    return _terminado(pincel, dibujo)
 
 
 class DelegadoProducto(QStyledItemDelegate):

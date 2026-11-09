@@ -20,7 +20,6 @@ from ui.utils import (
     manejar_errores, aplicar_clase, formato_pesos, sin_boton_por_defecto, crear_tabla,
     mostrar_columna_entera, mostrar_error,
 )
-from ui.ventas_dibujos import icono_de_tecla
 
 
 # Las tres formas de buscar un artículo, con las mismas teclas en Ventas y en
@@ -128,27 +127,18 @@ def avisar_codigo_no_encontrado(ventana, codigo, agregado=""):
     mostrar_error(ventana, "Artículo no encontrado", mensaje)
 
 
-def armar_botones_de_busqueda(ventana, al_elegir, tecla_aparte=False):
+def armar_botones_de_busqueda(ventana, al_elegir):
     """
-    Los botones F5 (por código), F6 (por descripción) y F7 (por marca) de
-    Ventas y Compras, con sus atajos de teclado en `ventana`. Cada uno abre
-    el cuadro de búsqueda y, si se elige un artículo, llama a
-    `al_elegir(codigo)`. Devuelve los tres botones, en ese orden, para que
-    la pantalla los acomode donde quiera.
-
-    Con `tecla_aparte` (Ventas) la tecla va dibujada en un recuadro adelante
-    del nombre; si no, dice "F5 Código" (Compras).
+    Los botones "F5 Código", "F6 Descripción" y "F7 Marca" de Compras, con
+    sus atajos de teclado en `ventana`. Cada uno abre el cuadro de búsqueda
+    y, si se elige un artículo, llama a `al_elegir(codigo)`. Devuelve los
+    tres botones, en ese orden, para que la pantalla los acomode donde
+    quiera. (Ventas no los usa: busca en su mismo campo, ui/venta_buscador.py.)
     """
     botones = []
     for modo, (tecla, nombre, _titulo) in _BUSQUEDAS.items():
         buscar = _buscador(ventana, modo, al_elegir)
-        if tecla_aparte:
-            boton = QPushButton(nombre)
-            icono, tamano = icono_de_tecla(tecla)
-            boton.setIcon(icono)
-            boton.setIconSize(tamano)
-        else:
-            boton = QPushButton(f"{tecla} {nombre}")
+        boton = QPushButton(f"{tecla} {nombre}")
         boton.clicked.connect(buscar)
         QShortcut(QKeySequence(tecla), ventana, activated=buscar)
         botones.append(boton)

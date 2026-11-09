@@ -294,9 +294,14 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
 - **Ventas** (`ventas_window.py`, `VentasWindow` + `DialogoPago`) —
   pantalla de facturación. Escaneo por código de barras (Enter en el campo
   código dispara `_escanear()`; Enter con el campo vacío y carrito no
-  vacío pasa directo a cobrar). Atajos F5/F6/F7 abren el buscador
-  (`buscar_articulo.py`, `DialogoBuscarArticulo`) por código/descripción/
-  marca. Botón `*` "Cant." fija la cantidad para el próximo escaneo.
+  vacío pasa directo a cobrar). El operador no elige qué busca ESE MISMO
+  campo (pedido del dueño, 2026-11-09; `ui/venta_buscador.py`): sin letras
+  es un código de barras; con alguna letra busca por nombre O marca, cada
+  palabra en cualquier orden (`articulos_repo.buscar_para_vender`), y lo
+  encontrado sale en una lista debajo del campo que se elige con las flechas
+  y Enter (o un clic). Un código con letras entra igual si la lista no trae
+  nada. Esc borra lo escrito. Ya no tiene los botones F5/F6/F7 (siguen en
+  Compras). Botón `*` "Cant." fija la cantidad para el próximo escaneo.
   Doble clic en la columna Cantidad la deja editar a cualquiera; doble
   clic en $ Unit. **solo si es Admin** (`self.es_admin`). Avisa (no
   bloquea) si el stock proyectado queda por debajo de `stock_minimo`.
@@ -506,7 +511,8 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   las que se ven; IMPRIMIR saca la lista tal cual se ve. Se mira también desde
   otra PC (`admin_remoto/lista_blanca.py`).
 - **Compras** (`compras_window.py`, `ComprasWindow`) — carga de mercadería
-  por escaneo (mismos F5/F6/F7 que Ventas). Al escanear pide cantidad y
+  por escaneo; F5/F6/F7 abren el buscador (`buscar_articulo.py`,
+  `DialogoBuscarArticulo`) por código/descripción/marca. Al escanear pide cantidad y
   costo (precargado con el `precio_compra` actual) por `QInputDialog`.
   Confirmar llama a `compras_repo.registrar_compra` con todo el lote junto.
 - **Consulta de Ventas** (`consulta_ventas_window.py`,
