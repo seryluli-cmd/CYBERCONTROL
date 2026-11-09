@@ -56,14 +56,15 @@ ESCALA_MONITOR = 0.75 * 1.15 * 0.9
 _ALTO_MONITOR = 12 + 64 + 12
 
 # Letra y renglones de debajo del monitor, en píxeles. El nombre del equipo va
-# un 20% más grande que el tiempo (pedido del dueño, 2026-11-09), con su renglón
-# un 20% más alto. Un nombre que así no entra a lo ancho ("PLAYSTATION 5") se
-# achica lo justo para entrar, nunca por debajo del tamaño del tiempo: recién ahí
-# se corta con "…", como antes.
+# un 20% más grande que el tiempo y después otro 15% más (los dos pedidos del
+# dueño, 2026-11-09): 12 × 1,2 × 1,15 = 16,56 px, con el renglón agrandado igual.
+# Un nombre que así no entra a lo ancho ("PLAYSTATION 5") se achica lo justo para
+# entrar, nunca por debajo del tamaño del tiempo: recién ahí se corta con "…",
+# como antes.
 _LETRA_TIEMPO = 12
-_LETRA_NOMBRE = _LETRA_TIEMPO * 1.2
+_LETRA_NOMBRE = _LETRA_TIEMPO * 1.2 * 1.15
 _RENGLON_TIEMPO = 16
-_RENGLON_NOMBRE = 19
+_RENGLON_NOMBRE = 22
 _RENGLON_AVISO = 14
 
 # Tamaño de cada casillero del mosaico (monitor + tiempo + nombre + aviso). El
@@ -386,7 +387,7 @@ def _pintar_nombre(pintor, renglon, nombre, fuente_del_tiempo):
     """El nombre del equipo con la letra de _LETRA_NOMBRE, achicada lo justo si
     así no entra en el renglón (nunca menos que la del tiempo)."""
     fuente = QFont(fuente_del_tiempo)
-    # setPixelSize solo acepta enteros y 14,4 px se redondearía: se pide en
+    # setPixelSize solo acepta enteros y 16,56 px se redondearía: se pide en
     # puntos, según la pantalla donde se dibuja.
     puntos_por_pixel = 72 / pintor.device().logicalDpiY()
     fuente.setPointSizeF(_LETRA_NOMBRE * puntos_por_pixel)
