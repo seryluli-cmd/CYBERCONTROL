@@ -66,8 +66,10 @@ from PySide6.QtCore import Qt, QTimer
 import dominio
 from admin_remoto import modo as modo_remoto
 from control_pcs.repositories import (
-    comandos_pc_repo, congelado_repo, mantenimiento_pc_repo, pcs_repo, playstation_repo, reservas_horario_repo,
+    comandos_pc_repo, congelado_repo, mantenimiento_pc_repo, pcs_repo, pcs_sin_respuesta_repo, playstation_repo,
+    reservas_horario_repo,
 )
+from control_pcs.ui import pcs_aviso_sin_respuesta
 from control_pcs.ui.pcs_comandos_dialogos import (
     DialogoCambiarRed, DialogoCaptura, DialogoTrasladarSesion, DialogoVolumen,
 )
@@ -852,7 +854,10 @@ class PanelControlPcs(QWidget):
             )
         else:
             aviso = f"¿Cerrar la sesión de '{estacion['nombre']}' y reiniciar la PC?"
-        if not confirmar(self, "Confirmar", aviso):
+        # Una PC que no responde avisa con lo que pierde el cliente (pcs_sin_respuesta_repo).
+        sin_respuesta = pcs_sin_respuesta_repo.aviso_antes_de_cerrar(estacion["id"])
+        if not (pcs_aviso_sin_respuesta.cerrar_igual(self, sin_respuesta) if sin_respuesta is not None
+                else confirmar(self, "Confirmar", aviso)):
             return
         pcs_repo.finalizar_sesion(sesion["id"], dominio.CIERRE_Y_REINICIAR, self.usuario["id"])
         comandos_pc_repo.encolar_comando(estacion["id"], comandos_pc_repo.TIPO_REINICIAR)

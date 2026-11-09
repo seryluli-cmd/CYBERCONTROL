@@ -1114,6 +1114,22 @@ HOJA_DE_ESTILOS = """
         padding: 10px 12px;
         font-size: 13px;
     }
+    /* El aviso antes de cerrar una PC que no responde (maqueta B que eligió el dueño el
+       2026-11-09, control_pcs/ui/pcs_aviso_sin_respuesta.py): el cartel rojo de "es la
+       red del mostrador" y el texto del panel blanco. */
+    QLabel#avisoRedDelMostrador {
+        background-color: #FDECEC;
+        border: 1px solid #F2A7A7;
+        border-left: 5px solid #D93025;
+        border-radius: 8px;
+        color: #7A1A14;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    QLabel#textoSinRespuesta {
+        color: #1F2937;
+        font-size: 14px;
+    }
     /* Sin ninguna PC marcada la tecla roja se apaga: el título también, en gris. */
     QPushButton[clase="tarjetaMenu"][tono="rojo"] QLabel#tituloTarjeta:disabled {
         color: #A7ADB8;

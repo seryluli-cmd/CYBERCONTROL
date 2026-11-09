@@ -19,9 +19,10 @@ from PySide6.QtCore import Qt, QTimer
 
 import dominio
 from control_pcs.repositories import (
-    anular_bono_repo, avisos_fin_pc_repo, cuentas_pc_repo, miembros_repo, pcs_repo, pcstream_repo,
-    playstation_repo, reservas_horario_repo,
+    anular_bono_repo, avisos_fin_pc_repo, cuentas_pc_repo, miembros_repo, pcs_repo, pcs_sin_respuesta_repo,
+    pcstream_repo, playstation_repo, reservas_horario_repo,
 )
+from control_pcs.ui import pcs_aviso_sin_respuesta
 from control_pcs.ui.anular_bono import anular_bono_con_cartel, elegir_bono_a_quitar
 from control_pcs.ui.cuenta_pc_dialogos import DialogoCuentaPc, DialogoTiempoSocio, anotar_en_la_cuenta
 from control_pcs.ui.pcs_cortes import texto_para_el_panel
@@ -624,7 +625,10 @@ class PanelDetalleEstacion(QFrame):
             )
         else:
             aviso = f"¿Finalizar la sesión de '{estacion_nombre}'?"
-        if confirmar(self, "Confirmar", aviso):
+        # Una PC que no responde avisa con lo que pierde el cliente (pcs_sin_respuesta_repo).
+        sin_respuesta = pcs_sin_respuesta_repo.aviso_antes_de_cerrar(item["estacion"]["id"])
+        if (pcs_aviso_sin_respuesta.cerrar_igual(self, sin_respuesta) if sin_respuesta is not None
+                else confirmar(self, "Confirmar", aviso)):
             pcs_repo.finalizar_sesion(item["sesion"]["id"], dominio.CIERRE_FINALIZAR, self.usuario["id"])
             self._avisar_cambio()
 
