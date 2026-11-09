@@ -41,6 +41,29 @@ def texto_del_reinicio(evento) -> str:
     return "el Cliente PC la reinició porque se terminó el tiempo de la sesión"
 
 
+def texto_del_cierre(evento) -> str:
+    """Cómo se cerró una sesión (ver pcs_repo._cerrar_sesion): "Ana la cerró con
+    "Finalizar Sesión" (le quedaban 1h 04m)". `evento` trae "motivo", "usuario_nombre",
+    "miembro_nombre" y "segundos_quedaban"; en las sesiones de antes vienen en None."""
+    motivo = evento.get("motivo")
+    quien = evento.get("usuario_nombre") or "alguien"
+    if motivo == dominio.CIERRE_TIEMPO_TERMINADO:
+        return "se terminó el tiempo"
+    if motivo == dominio.CIERRE_FINALIZAR:
+        texto = f"{quien} la cerró con \"Finalizar Sesión\""
+    elif motivo == dominio.CIERRE_Y_REINICIAR:
+        texto = f"{quien} la cerró con \"Cerrar sesión y reiniciar\""
+    elif motivo == dominio.CIERRE_SOCIO_DESDE_LA_PC:
+        texto = f"{evento.get('miembro_nombre') or 'el socio'} cerró su sesión desde la PC"
+    else:
+        return "sesión finalizada"
+    quedaban = evento.get("segundos_quedaban")
+    # Menos de un minuto no vale la pena decirlo: es una sesión que ya terminaba.
+    if quedaban is not None and quedaban >= 60:
+        texto += f" (le quedaban {formato_tiempo(quedaban)})"
+    return texto
+
+
 def _texto_evento(evento) -> str:
     """
     Convierte un evento de pcs_repo.actividad_reciente() en una línea de
@@ -53,7 +76,7 @@ def _texto_evento(evento) -> str:
     if tipo == "INICIO":
         return f"{hora} — {evento['estacion_nombre']}: sesión iniciada."
     if tipo == "FIN":
-        return f"{hora} — {evento['estacion_nombre']}: sesión finalizada."
+        return f"{hora} — {evento['estacion_nombre']}: {texto_del_cierre(evento)}."
     if tipo == "BONO":
         return (f"{hora} — {evento['estacion_nombre']}: bono '{evento['bono_nombre']}' "
                 f"cobrado ({formato_pesos(evento['precio'])}).")

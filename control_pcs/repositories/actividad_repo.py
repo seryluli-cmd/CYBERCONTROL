@@ -29,14 +29,24 @@ def actividad_reciente(limite: int = 30):
             eventos.append({"fecha": fila["fecha"], "tipo": "INICIO",
                              "estacion_nombre": fila["estacion_nombre"]})
 
+        # Con cómo se cerró (pcs_repo._cerrar_sesion): qué botón, quién y cuánto le
+        # quedaba. En las sesiones de antes del 2026-11-09 no se sabe (NULL).
         for fila in conexion.execute("""
-            SELECT s.fecha_fin_real AS fecha, e.nombre AS estacion_nombre
+            SELECT s.fecha_fin_real AS fecha, e.nombre AS estacion_nombre,
+                   s.motivo_cierre, s.segundos_quedaban_al_cerrar,
+                   u.nombre AS usuario_nombre, mi.nombre AS miembro_nombre
             FROM sesiones_pc s JOIN estaciones e ON e.id = s.estacion_id
+            LEFT JOIN usuarios u ON u.id = s.cerrada_por
+            LEFT JOIN miembros mi ON mi.id = s.miembro_id
             WHERE s.fecha_fin_real IS NOT NULL
             ORDER BY s.fecha_fin_real DESC LIMIT ?
         """, (limite,)).fetchall():
             eventos.append({"fecha": fila["fecha"], "tipo": "FIN",
-                             "estacion_nombre": fila["estacion_nombre"]})
+                             "estacion_nombre": fila["estacion_nombre"],
+                             "motivo": fila["motivo_cierre"],
+                             "segundos_quedaban": fila["segundos_quedaban_al_cerrar"],
+                             "usuario_nombre": fila["usuario_nombre"],
+                             "miembro_nombre": fila["miembro_nombre"]})
 
         # Los bonos comunes y los de PCSTREAM viven en tablas distintas (ver
         # pcstream_repo), pero en el panel son el mismo evento: "se vendió un bono".

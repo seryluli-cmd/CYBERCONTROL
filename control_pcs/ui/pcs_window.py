@@ -365,7 +365,7 @@ class PanelControlPcs(QWidget):
         alguna_vencio = False
         for item in estados:
             if item["sesion"] is not None and item["segundos_restantes"] == 0:
-                pcs_repo.finalizar_sesion(item["sesion"]["id"])
+                pcs_repo.finalizar_sesion(item["sesion"]["id"], dominio.CIERRE_TIEMPO_TERMINADO)
                 alguna_vencio = True
         return pcs_repo.estado_estaciones() if alguna_vencio else estados
 
@@ -854,7 +854,7 @@ class PanelControlPcs(QWidget):
             aviso = f"¿Cerrar la sesión de '{estacion['nombre']}' y reiniciar la PC?"
         if not confirmar(self, "Confirmar", aviso):
             return
-        pcs_repo.finalizar_sesion(sesion["id"])
+        pcs_repo.finalizar_sesion(sesion["id"], dominio.CIERRE_Y_REINICIAR, self.usuario["id"])
         comandos_pc_repo.encolar_comando(estacion["id"], comandos_pc_repo.TIPO_REINICIAR)
         mostrar_info(
             self, "Listo",

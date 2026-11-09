@@ -531,6 +531,16 @@ AVISO_FIN_PENDIENTE = "PENDIENTE"   # cerrada; la PC todavía no volvió a pregu
 AVISO_FIN_ENTERADA = "ENTERADA"     # la PC preguntó después del fin: ya se bloqueó
 AVISO_FIN_REVISADO = "REVISADO"     # no se enteró y el operador apretó "Ya revisé la PC"
 
+# Cómo se cerró una sesión de PC (sesiones_pc.motivo_cierre, con quién la cerró y
+# cuánto le quedaba; pedido del dueño 2026-11-09: dos PCs perdieron su tiempo y en
+# la base no quedaba quién las había cerrado ni con qué botón). NULL en las
+# sesiones cerradas antes de que existiera.
+CIERRE_FINALIZAR = "FINALIZAR"                  # botón "Finalizar Sesión" del panel de la PC
+CIERRE_Y_REINICIAR = "CERRAR_Y_REINICIAR"       # "Cerrar sesión y reiniciar" del clic derecho
+CIERRE_SOCIO_DESDE_LA_PC = "SOCIO_DESDE_LA_PC"  # el socio, con "Cerrar sesión" en su PC
+CIERRE_TIEMPO_TERMINADO = "TIEMPO_TERMINADO"    # llegó a cero y la cerró el programa
+MOTIVOS_CIERRE = (CIERRE_FINALIZAR, CIERRE_Y_REINICIAR, CIERRE_SOCIO_DESDE_LA_PC, CIERRE_TIEMPO_TERMINADO)
+
 # Tipos del historial de saldo de socios. Los usa también el CHECK del esquema.
 MOVIMIENTO_CARGA = "CARGA"
 MOVIMIENTO_CONSUMO = "CONSUMO"

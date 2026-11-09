@@ -625,7 +625,7 @@ class PanelDetalleEstacion(QFrame):
         else:
             aviso = f"¿Finalizar la sesión de '{estacion_nombre}'?"
         if confirmar(self, "Confirmar", aviso):
-            pcs_repo.finalizar_sesion(item["sesion"]["id"])
+            pcs_repo.finalizar_sesion(item["sesion"]["id"], dominio.CIERRE_FINALIZAR, self.usuario["id"])
             self._avisar_cambio()
 
 

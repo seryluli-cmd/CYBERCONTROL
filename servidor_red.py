@@ -661,7 +661,7 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             return
 
         try:
-            pcs_repo.finalizar_sesion(item["sesion"]["id"])
+            pcs_repo.finalizar_sesion(item["sesion"]["id"], dominio.CIERRE_SOCIO_DESDE_LA_PC)
         except Exception as error:
             registrar_error(error, "Servidor de red: logout de socio")
             self._responder_error(500, _ERROR_INTERNO)

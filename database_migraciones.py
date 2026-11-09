@@ -188,6 +188,22 @@ def _migrar_columnas_aviso_fin_en_sesiones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columnas_cierre_en_sesiones(conexion: sqlite3.Connection):
+    """
+    Agrega a sesiones_pc cómo se cerró cada sesión (pedido del dueño, 2026-11-09:
+    dos PCs se cerraron con "Finalizar Sesión" estando sin conexión, perdieron su
+    tiempo al volver la red, y en la base no quedaba quién lo había hecho; ver
+    pcs_repo._cerrar_sesion): `motivo_cierre` (uno de dominio.MOTIVOS_CIERRE),
+    `cerrada_por` (el operador; NULL si la cerró el programa o el socio desde su
+    PC) y `segundos_quedaban_al_cerrar`. Las tres quedan en NULL en las sesiones
+    de antes: no se sabe y no se inventa.
+    """
+    _agregar_columna_si_falta(conexion, "sesiones_pc", "motivo_cierre", "TEXT")
+    _agregar_columna_si_falta(conexion, "sesiones_pc", "cerrada_por", "INTEGER REFERENCES usuarios(id)")
+    _agregar_columna_si_falta(conexion, "sesiones_pc", "segundos_quedaban_al_cerrar", "INTEGER")
+    conexion.commit()
+
+
 def _migrar_columna_whatsapp_en_miembros(conexion: sqlite3.Connection):
     """
     Agrega miembros.whatsapp (pedido del dueño, 2026-10-17: el socio lo carga,

@@ -447,7 +447,7 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
     if sesion is not None and dominio.segundos_restantes(
         datetime.fromisoformat(sesion["fecha_fin_prevista"]), ahora
     ) == 0:
-        _cerrar_sesion(conexion, sesion, ahora)
+        _cerrar_sesion(conexion, sesion, ahora, dominio.CIERRE_TIEMPO_TERMINADO)
         sesion = None
 
     if sesion is None:
@@ -592,8 +592,10 @@ def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_
         ).fetchone()
         if sesion_destino is not None and datetime.fromisoformat(sesion_destino["fecha_fin_prevista"]) <= ahora:
             conexion.execute(
-                "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ? WHERE id = ?",
-                (dominio.SESION_FINALIZADA, ahora.isoformat(timespec="seconds"), sesion_destino["id"]),
+                "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ?, motivo_cierre = ?, "
+                "segundos_quedaban_al_cerrar = 0 WHERE id = ?",
+                (dominio.SESION_FINALIZADA, ahora.isoformat(timespec="seconds"),
+                 dominio.CIERRE_TIEMPO_TERMINADO, sesion_destino["id"]),
             )
             sesion_destino = None
 
@@ -621,11 +623,17 @@ def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_
     }
 
 
-def finalizar_sesion(sesion_id: int):
+def finalizar_sesion(sesion_id: int, motivo: str = None, usuario_id: int = None):
     """
     Cierra una sesión en curso: la usa tanto "Finalizar antes de tiempo"
     como el refresco automático de la pantalla cuando el tiempo restante
     llega a 0.
+
+    `motivo` (uno de dominio.MOTIVOS_CIERRE) y `usuario_id` (el operador que
+    apretó el botón; None si la cierra el programa o el socio desde su PC)
+    quedan en la sesión, con cuánto le quedaba (ver _cerrar_sesion). Cada
+    llamada del programa los pasa; sin ellos la sesión queda como las de antes,
+    "sin dato".
 
     Si a la sesión, en algún momento, la financió (total o parcialmente)
     el saldo de un socio y todavía quedaba tiempo sin usar, ESE tramo --
@@ -656,10 +664,10 @@ def finalizar_sesion(sesion_id: int):
         ).fetchone()
         if sesion is None:
             return
-        _cerrar_sesion(conexion, sesion, ahora)
+        _cerrar_sesion(conexion, sesion, ahora, motivo, usuario_id)
 
 
-def _cerrar_sesion(conexion, sesion, ahora: datetime):
+def _cerrar_sesion(conexion, sesion, ahora: datetime, motivo: str = None, usuario_id: int = None):
     """
     El núcleo de finalizar_sesion, dentro de una transacción ya abierta (la usa
     también _abrir_o_extender_sesion con una sesión que ya llegó a cero).
@@ -669,17 +677,30 @@ def _cerrar_sesion(conexion, sesion, ahora: datetime):
     logueado en el mostrador, nadie la cierra hasta que alguien entra). Si no,
     "Actividad reciente" y el uso real de PCSTREAM mostrarían la hora del
     ingreso al mostrador.
+
+    Queda también cómo se cerró: con qué botón (`motivo`), quién (`usuario_id`)
+    y cuántos segundos le quedaban. Pedido del dueño, 2026-11-09: dos PCs se
+    cerraron con "Finalizar Sesión" estando sin conexión, se reiniciaron al
+    volver la red, y en la base no quedaba quién lo había hecho. Solo se anota:
+    no cambia cómo se cierra ni lo que se reintegra.
     """
+    if motivo is not None and motivo not in dominio.MOTIVOS_CIERRE:
+        raise ValueError(f"Motivo de cierre desconocido: {motivo!r}")
     fin_previsto = datetime.fromisoformat(sesion["fecha_fin_prevista"])
+    segundos_quedaban = dominio.segundos_restantes(fin_previsto, ahora)
     # Queda PENDIENTE hasta que la PC vuelva a preguntar y reciba "sin sesión"
     # (ver avisos_fin_pc_repo): si no pregunta, la grilla avisa.
     conexion.execute(
-        "UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ?, aviso_fin = ? WHERE id = ?",
+        """
+        UPDATE sesiones_pc SET estado = ?, fecha_fin_real = ?, aviso_fin = ?,
+               motivo_cierre = ?, cerrada_por = ?, segundos_quedaban_al_cerrar = ?
+        WHERE id = ?
+        """,
         (dominio.SESION_FINALIZADA, min(ahora, fin_previsto).isoformat(timespec="seconds"),
-         dominio.AVISO_FIN_PENDIENTE, sesion["id"]),
+         dominio.AVISO_FIN_PENDIENTE, motivo, usuario_id, segundos_quedaban, sesion["id"]),
     )
 
-    minutos_restantes = dominio.segundos_restantes(fin_previsto, ahora) // 60
+    minutos_restantes = segundos_quedaban // 60
     if minutos_restantes <= 0:
         return
 

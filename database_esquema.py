@@ -21,7 +21,7 @@ def inicializar_base_de_datos():
         _migrar_columna_mantenimiento_estaciones,
         _migrar_check_tipo_en_comandos_pc, _migrar_check_tipo_en_eventos_admin_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_columnas_aviso_fin_en_sesiones,
-        _migrar_columna_whatsapp_en_miembros,
+        _migrar_columnas_cierre_en_sesiones, _migrar_columna_whatsapp_en_miembros,
         _migrar_columna_desde_ip_en_sesiones, _migrar_columna_miembro_en_reservas,
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
@@ -779,6 +779,7 @@ def inicializar_base_de_datos():
     ))
     _migrar_columna_miembro_en_sesiones(conexion)
     _migrar_columnas_aviso_fin_en_sesiones(conexion)
+    _migrar_columnas_cierre_en_sesiones(conexion)
 
     # Una base que ya tenía "movimientos_saldo_miembro" de antes de que
     # existiera "bonos_miembro" sigue con bono_id apuntando a bonos_tiempo
