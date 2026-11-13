@@ -22,6 +22,7 @@ def inicializar_base_de_datos():
         _migrar_check_tipo_en_comandos_pc, _migrar_check_tipo_en_eventos_admin_pc,
         _migrar_columna_miembro_en_sesiones, _migrar_columnas_aviso_fin_en_sesiones,
         _migrar_columnas_cierre_en_sesiones, _migrar_columna_whatsapp_en_miembros,
+        _migrar_columna_oferta_en_bonos_vendidos,
         _migrar_columna_desde_ip_en_sesiones, _migrar_columna_miembro_en_reservas,
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
@@ -852,6 +853,16 @@ def inicializar_base_de_datos():
     # En su propio archivo: ver database_esquema_envios.py.
     from database_esquema_envios import crear_tabla_envios_pwa
     crear_tabla_envios_pwa(cursor, _valores_sql)
+
+    # -------------------------------------------------------------------
+    # OFERTAS 2x1 / 50% EN LOS BONOS (pedido del dueño, 2026-11-13)
+    # -------------------------------------------------------------------
+    # En su propio archivo: ver database_esquema_ofertas.py. Después, cada bono
+    # vendido dice con qué oferta se vendió (las cuatro tablas ya existen acá).
+    from database_esquema_ofertas import crear_tabla_ofertas
+    crear_tabla_ofertas(cursor, _valores_sql)
+    conexion.commit()
+    _migrar_columna_oferta_en_bonos_vendidos(conexion)
 
     # -------------------------------------------------------------------
     # INDICES

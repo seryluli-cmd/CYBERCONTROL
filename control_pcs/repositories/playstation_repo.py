@@ -49,7 +49,7 @@ from datetime import datetime
 import dominio
 from database import conexion_db
 from repositories import usuarios_repo, ventas_repo
-from control_pcs.repositories import reservas_horario_repo
+from control_pcs.repositories import ofertas_repo, reservas_horario_repo
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 
 
@@ -183,7 +183,7 @@ def estado() -> dict:
     }
 
 
-def vender_bono(usuario_id: int, bono_id: int, pagos: list) -> int:
+def vender_bono(usuario_id: int, bono_id: int, pagos: list, momento_del_precio=None, bono_mostrado=None) -> int:
     """
     Vende un bono de la PlayStation 5 y devuelve el id de la venta. Si la
     consola no tiene sesión, arranca una; si ya tiene una en curso (los clientes
@@ -202,19 +202,25 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list) -> int:
     misma transacción (regla 8 de CLAUDE.md); la venta se registra con origen
     PLAYSTATION, así Caja, Cierre de Turno y Reportes la muestran aparte de
     Kiosko y de Alquiler de PCs.
+
+    Con una oferta 2x1 o 50% a la hora del cobro, se vende con ella (como
+    pcs_repo.asignar_bono, con los mismos `momento_del_precio` y `bono_mostrado`).
     """
     _exigir_operador(usuario_id)
     bono = obtener_bono(bono_id)
     if bono is None or not bono["activo"]:
         raise ValueError("Ese bono de la PlayStation 5 ya no está disponible.")
-    if sum(pago["monto"] for pago in pagos) < bono["precio"] - 0.01:
-        raise ValueError("Los pagos no cubren el precio del bono.")
 
     ahora = datetime.now()
+    momento = ofertas_repo.momento_del_cobro(momento_del_precio, ahora)
     with conexion_db() as conexion:
+        vendido = ofertas_repo.como_se_vende(conexion, dominio.EQUIPO_RESERVA_PLAYSTATION, bono, momento,
+                                             bono_mostrado)
+        if sum(pago["monto"] for pago in pagos) < vendido["precio"] - 0.01:
+            raise ValueError("Los pagos no cubren el precio del bono.")
         sesion = _sesion_activa(conexion)
         if sesion is None:
-            fin_previsto = dominio.fin_al_sumar_minutos(None, bono["minutos"], ahora)
+            fin_previsto = dominio.fin_al_sumar_minutos(None, vendido["minutos"], ahora)
             sesion_id = conexion.execute(
                 """
                 INSERT INTO sesiones_playstation (fecha_inicio, fecha_fin_prevista, estado)
@@ -226,7 +232,7 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list) -> int:
         else:
             sesion_id = sesion["id"]
             fin_previsto = dominio.fin_al_sumar_minutos(
-                datetime.fromisoformat(sesion["fecha_fin_prevista"]), bono["minutos"], ahora
+                datetime.fromisoformat(sesion["fecha_fin_prevista"]), vendido["minutos"], ahora
             )
             conexion.execute(
                 "UPDATE sesiones_playstation SET fecha_fin_prevista = ? WHERE id = ?",
@@ -234,14 +240,14 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list) -> int:
             )
 
         venta_id = ventas_repo.registrar_venta_sin_detalle(
-            conexion, usuario_id, bono["precio"], pagos, dominio.ORIGEN_PLAYSTATION, ahora
+            conexion, usuario_id, vendido["precio"], pagos, dominio.ORIGEN_PLAYSTATION, ahora
         )
         conexion.execute(
             """
-            INSERT INTO sesion_playstation_bonos (sesion_id, bono_id, minutos, precio, venta_id)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO sesion_playstation_bonos (sesion_id, bono_id, minutos, precio, venta_id, oferta_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (sesion_id, bono_id, bono["minutos"], round(bono["precio"], 2), venta_id),
+            (sesion_id, bono_id, vendido["minutos"], vendido["precio"], venta_id, vendido["oferta_id"]),
         )
         return venta_id
 

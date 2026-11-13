@@ -13,7 +13,7 @@ pixmap sale al triple de tamaño para verse nítido con la escala de Windows al 
 import hashlib
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import QAbstractButton
 
 _ESCALA = 3
@@ -74,12 +74,20 @@ def _flecha(p):
     p.drawPolyline([QPointF(12, 6), QPointF(17, 11), QPointF(12, 16)])
 
 
+def _etiqueta(p):
+    # La etiqueta de precio de las Ofertas (2026-11-13): la punta a la izquierda y el
+    # agujerito. El emoji 🏷️ no está en todos los Windows.
+    p.drawPolygon(QPolygonF([QPointF(3, 11), QPointF(8.5, 4.5), QPointF(19, 4.5), QPointF(19, 17.5),
+                             QPointF(8.5, 17.5)]))
+    p.drawEllipse(QPointF(9, 11), 1.7, 1.7)
+
+
 _DIBUJOS = {"usuario": _usuario, "mas": _mas, "lupa": _lupa, "lapiz": _lapiz, "moneda": _moneda,
-            "reloj": _reloj, "prohibido": _prohibido, "subir": _subir, "flecha": _flecha}
+            "reloj": _reloj, "prohibido": _prohibido, "subir": _subir, "flecha": _flecha, "etiqueta": _etiqueta}
 
 
 def pixmap_de(nombre: str, lado: int = 20, color: str = "#FFFFFF", grosor: float = 1.8) -> QPixmap:
-    """El ícono `nombre` (usuario, mas, lupa, lapiz, moneda, reloj, prohibido, subir o flecha)
+    """El ícono `nombre` (usuario, mas, lupa, lapiz, moneda, reloj, prohibido, subir, flecha o etiqueta)
     como un trazo de `color` de `lado` x `lado` píxeles."""
     pixmap = QPixmap(lado * _ESCALA, lado * _ESCALA)
     pixmap.fill(Qt.transparent)

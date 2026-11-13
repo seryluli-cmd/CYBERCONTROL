@@ -31,7 +31,9 @@ from datetime import datetime, timedelta
 import dominio
 from database import conexion_db
 from repositories import config_repo, turnos_repo, usuarios_repo, ventas_repo
-from control_pcs.repositories import bonos_miembro_repo, deudas_pc_repo, miembros_repo, pcs_repo, pcstream_repo
+from control_pcs.repositories import (
+    bonos_miembro_repo, deudas_pc_repo, miembros_repo, ofertas_repo, pcs_repo, pcstream_repo,
+)
 
 _CLAVE_REGLAS = "reglas_cuenta_pc"
 
@@ -130,17 +132,24 @@ def anotar_articulos(estacion_id: int, lineas: list, usuario_id: int, nombre: st
         return _como_quedo(conexion, estacion, cuenta_id)
 
 
-def anotar_bono(estacion_id: int, bono_id: int, usuario_id: int, nombre: str = None, autoriza: dict = None) -> dict:
+def anotar_bono(estacion_id: int, bono_id: int, usuario_id: int, nombre: str = None, autoriza: dict = None,
+                momento_del_precio=None, bono_mostrado=None) -> dict:
     """
     Le suma a la sesión de esa PC el tiempo de un bono de su catálogo (el de
     PCSTREAM si es PCSTREAM, el común si no; ver pcs_repo.asignar_bono) y lo
     anota en la cuenta, sin cobrar. Solo extiende una sesión en curso: a una PC
     sin tiempo se le vende como siempre. Mismos `nombre`, `autoriza` y
     devolución que anotar_articulos.
+
+    Con una oferta 2x1 o 50% a esa hora, se anota con ella y la conserva aunque
+    se cobre cuando ya terminó (decisión del dueño, 2026-11-13: el tiempo de más
+    ya se le dio al anotarlo). `momento_del_precio` y `bono_mostrado`, como en
+    pcs_repo.asignar_bono.
     """
     if not obtener_reglas()["tiempo_a_cuenta"]:
         raise ValueError("El Admin no deja anotar tiempo a cuenta (Configuración ADMIN > Reglas de Cuenta de PC).")
     ahora = datetime.now()
+    momento = ofertas_repo.momento_del_cobro(momento_del_precio, ahora)
     with conexion_db() as conexion:
         conexion.execute("BEGIN IMMEDIATE")
         estacion, sesion = _estacion_con_sesion(conexion, estacion_id, ahora)
@@ -148,19 +157,22 @@ def anotar_bono(estacion_id: int, bono_id: int, usuario_id: int, nombre: str = N
         bono = pcstream_repo.obtener_bono(bono_id) if es_pcstream else pcs_repo.obtener_bono(bono_id)
         if bono is None or not bono["activo"]:
             raise ValueError("Ese bono ya no está disponible.")
-        _revisar_tope(conexion, estacion, round(bono["precio"], 2), autoriza)
+        equipo = dominio.EQUIPO_RESERVA_PCSTREAM if es_pcstream else dominio.EQUIPO_RESERVA_PC
+        vendido = ofertas_repo.como_se_vende(conexion, equipo, bono, momento, bono_mostrado)
+        _revisar_tope(conexion, estacion, vendido["precio"], autoriza)
         cuenta_id = _cuenta_de_la_sesion(conexion, sesion, usuario_id, nombre, ahora)
         # La sesión está en curso (_estacion_con_sesion), así que esto la estira.
-        pcs_repo._abrir_o_extender_sesion(conexion, estacion_id, bono["minutos"], ahora)
+        pcs_repo._abrir_o_extender_sesion(conexion, estacion_id, vendido["minutos"], ahora)
+        descripcion = f"Bono {bono['nombre']}" + (f" ({vendido['tipo']})" if vendido["tipo"] else "")
         conexion.execute(
             f"""
             INSERT INTO cuenta_pc_items
                 (cuenta_id, tipo, fecha, usuario_id, descripcion, cantidad, precio_unitario, subtotal,
-                 {"bono_pcstream_id" if es_pcstream else "bono_tiempo_id"}, minutos)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                 {"bono_pcstream_id" if es_pcstream else "bono_tiempo_id"}, minutos, oferta_id)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
             """,
             (cuenta_id, dominio.ITEM_CUENTA_BONO, ahora.isoformat(timespec="microseconds"), usuario_id,
-             f"Bono {bono['nombre']}", round(bono["precio"], 2), round(bono["precio"], 2), bono_id, bono["minutos"]),
+             descripcion, vendido["precio"], vendido["precio"], bono_id, vendido["minutos"], vendido["oferta_id"]),
         )
         return _como_quedo(conexion, estacion, cuenta_id)
 
@@ -473,9 +485,10 @@ def _cobrar_bono(conexion, renglon, usuario_id: int, monto: float, pagos: list, 
         tabla, bono_id, columna = "sesion_pcstream_bonos", renglon["bono_pcstream_id"], "sesion_pcstream_bono_id"
     else:
         tabla, bono_id, columna = "sesion_bonos", renglon["bono_tiempo_id"], "sesion_bono_id"
+    # La oferta con que se anotó viaja a la venta (vale aunque ya haya terminado).
     cursor = conexion.execute(
-        f"INSERT INTO {tabla} (sesion_id, bono_id, minutos, precio, venta_id) VALUES (?, ?, ?, ?, ?)",
-        (sesion_id, bono_id, renglon["minutos"], round(monto, 2), venta_id),
+        f"INSERT INTO {tabla} (sesion_id, bono_id, minutos, precio, venta_id, oferta_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (sesion_id, bono_id, renglon["minutos"], round(monto, 2), venta_id, renglon["oferta_id"]),
     )
     conexion.execute(
         f"UPDATE cuenta_pc_items SET venta_id = ?, {columna} = ? WHERE id = ?",

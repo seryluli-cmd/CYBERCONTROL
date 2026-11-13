@@ -1735,5 +1735,220 @@ HOJA_DE_ESTILOS = """
         border: 1px dashed #C96870;
         border-bottom: 3px solid #C9727B;
     }
+
+    /* --- Ofertas 2x1 y 50% (2026-11-13, maquetas B y P1 de PROPUESTA_OFERTAS) ---
+       El naranja es el 2x1 y el violeta el 50%, en la ventana de Ofertas
+       (control_pcs/ui/ofertas_window.py y ofertas_piezas.py) y en el panel de la PC
+       (pcs_lista_de_bonos.py). */
+    QLabel#insigniaOferta {
+        color: #FFFFFF;
+        font-weight: 800;
+        border-radius: 6px;
+        padding: 2px 8px;
+        font-size: 13px;
+    }
+    QLabel#insigniaOferta[chica="true"] {
+        border-radius: 4px;
+        padding: 0px 5px;
+        font-size: 11px;
+    }
+    QLabel#insigniaOferta[tono="naranja"] { background-color: #F2600C; }
+    QLabel#insigniaOferta[tono="violeta"] { background-color: #7C3AED; }
+    QLabel#insigniaOferta[apagada="true"], QLabel#insigniaOferta:disabled {
+        background-color: #AEB5C1;
+        color: #F1F3F6;
+    }
+    /* El panel de la PC (P1): el cartel de arriba de los bonos y el bono con oferta,
+       con la etiqueta adentro a la izquierda (por eso el relleno). */
+    QFrame#panelDetalle > QLabel#cartelOferta {
+        color: #FFFFFF;
+        border-radius: 8px;
+        padding: 6px 9px;
+    }
+    QFrame#panelDetalle > QLabel#cartelOferta[tono="naranja"] { background-color: #F2600C; }
+    QFrame#panelDetalle > QLabel#cartelOferta[tono="violeta"] { background-color: #7C3AED; }
+    QWidget#contenedorBonos > QPushButton[oferta="naranja"],
+    QWidget#contenedorBonos > QPushButton[oferta="violeta"] {
+        padding-left: 30px;
+        font-weight: 700;
+        font-size: 12px;
+    }
+    QWidget#contenedorBonos > QPushButton[oferta="naranja"] {
+        background-color: #FFF1E8;
+        border: 2px solid #F2600C;
+    }
+    QWidget#contenedorBonos > QPushButton[oferta="violeta"] {
+        background-color: #F3ECFF;
+        border: 2px solid #7C3AED;
+    }
+    QWidget#contenedorBonos > QPushButton[oferta="naranja"]:hover { background-color: #FFE3D0; }
+    QWidget#contenedorBonos > QPushButton[oferta="violeta"]:hover { background-color: #E9DEFF; }
+    QWidget#contenedorBonos > QPushButton[oferta="naranja"]:checked,
+    QWidget#contenedorBonos > QPushButton[oferta="violeta"]:checked {
+        background-color: #2F6FED;
+        color: #FFFFFF;
+    }
+    QWidget#contenedorBonos > QPushButton[oferta="naranja"]:disabled,
+    QWidget#contenedorBonos > QPushButton[oferta="violeta"]:disabled {
+        background-color: #6B7078;
+        border: 1px solid #767B83;
+        color: #A9AEB6;
+    }
+    QWidget#contenedorBonos > QPushButton[oferta="naranja"]:checked:disabled,
+    QWidget#contenedorBonos > QPushButton[oferta="violeta"]:checked:disabled {
+        background-color: #5B72A3;
+        border: 1px solid #5B72A3;
+        color: #C9D3EA;
+    }
+    /* La ventana de Ofertas: las fichas de arriba. */
+    QScrollArea#tiraDeOfertas, QWidget#tiraDeOfertas {
+        background: transparent;
+    }
+    QPushButton#fichaOferta {
+        background-color: #FFFFFF;
+        border: 1px solid #DCE2EA;
+        border-radius: 10px;
+    }
+    QPushButton#fichaOferta:hover {
+        border-color: #4C8DFF;
+    }
+    QPushButton#fichaOferta:checked {
+        background-color: #F3F7FF;
+        border: 2px solid #2F6FED;
+    }
+    QLabel#nombreFicha {
+        color: #1B2233;
+        font-weight: 800;
+        font-size: 13px;
+    }
+    QLabel#resumenFicha, QLabel#notaOferta {
+        color: #6B7585;
+        font-size: 11px;
+    }
+    /* La semana. */
+    QLabel#diaSemanaOferta {
+        color: #1B2233;
+        font-weight: 800;
+        font-size: 13px;
+    }
+    QLabel#turnoSemanaOferta {
+        color: #1B2233;
+        font-size: 12px;
+    }
+    QPushButton#cuadritoSemana {
+        background-color: #F6F8FB;
+        border: 1px dashed #CDD5E1;
+        border-radius: 10px;
+    }
+    QPushButton#cuadritoSemana:hover {
+        background-color: #EEF4FF;
+        border: 1px solid #4C8DFF;
+    }
+    QPushButton#cuadritoSemana[tono="naranja"]:checked { background-color: #F2600C; border: none; }
+    QPushButton#cuadritoSemana[tono="violeta"]:checked { background-color: #7C3AED; border: none; }
+    QPushButton#cuadritoSemana[tono="naranja"]:checked:hover { background-color: #FF7426; }
+    QPushButton#cuadritoSemana[tono="violeta"]:checked:hover { background-color: #8D52F2; }
+    QLabel#rotuloCuadrito {
+        color: #5F6B7A;
+        font-size: 11px;
+        font-weight: 800;
+    }
+    QLabel#rotuloCuadrito[prendido="true"] { color: #FFFFFF; }
+    QLabel#tipoCuadrito {
+        color: #FFFFFF;
+        font-family: Bahnschrift;
+        font-size: 26px;
+        font-weight: 700;
+    }
+    QLabel#horarioCuadrito {
+        color: #FFFFFF;
+        font-size: 10px;
+        font-weight: 600;
+    }
+    QLabel#otraOfertaCuadrito {
+        border-radius: 6px;
+        padding: 3px 5px;
+        font-size: 10px;
+        font-weight: 800;
+    }
+    QLabel#otraOfertaCuadrito[tono="naranja"] { background-color: #FFF1E8; color: #F2600C; }
+    QLabel#otraOfertaCuadrito[tono="violeta"] { background-color: #F3ECFF; color: #7C3AED; }
+    QLabel#otraOfertaCuadrito[tono="gris"] { background-color: #ECEFF4; color: #8A93A3; }
+    QLabel#textoOferta {
+        color: #1B2233;
+        font-size: 12px;
+    }
+    QLabel#asiQuedaOferta {
+        background-color: #E8F4FD;
+        border: 1px solid #B9DDF5;
+        border-radius: 10px;
+        padding: 9px 12px;
+        color: #0B4A6F;
+        font-size: 13px;
+    }
+    /* Los datos de la derecha. */
+    QLabel#rotuloCampoOferta {
+        color: #5F6B7A;
+        font-weight: 800;
+        font-size: 11px;
+    }
+    QPushButton#tarjetaTipo {
+        background-color: #FFFFFF;
+        border: 1px solid #D5DCE8;
+        border-radius: 12px;
+    }
+    QPushButton#tarjetaTipo:hover { border-color: #4C8DFF; }
+    QPushButton#tarjetaTipo[tono="naranja"]:checked { background-color: #FFF1E8; border: 2px solid #F2600C; }
+    QPushButton#tarjetaTipo[tono="violeta"]:checked { background-color: #F3ECFF; border: 2px solid #7C3AED; }
+    QLabel#grandeTipo {
+        color: #A6AEBB;
+        font-family: Bahnschrift;
+        font-size: 24px;
+        font-weight: 700;
+    }
+    QLabel#grandeTipo[prendido="true"][tono="naranja"] { color: #F2600C; }
+    QLabel#grandeTipo[prendido="true"][tono="violeta"] { color: #7C3AED; }
+    QLabel#tituloTipo {
+        color: #6B7585;
+        font-weight: 800;
+        font-size: 13px;
+    }
+    QLabel#tituloTipo[prendido="true"] { color: #1B2233; }
+    QLabel#detalleTipo {
+        color: #6B7585;
+        font-size: 11px;
+    }
+    QScrollArea#bonosDeLaOferta, QWidget#bonosDeLaOferta {
+        background-color: #FFFFFF;
+    }
+    QLabel#nombreBonoOferta {
+        color: #4A5363;
+        font-weight: 600;
+        font-size: 12px;
+    }
+    QLabel#nombreBonoOferta[marcado="true"] {
+        color: #1B2233;
+        font-weight: 800;
+    }
+    QLabel#antesBonoOferta {
+        color: #6B7585;
+        font-size: 11px;
+    }
+    QLabel#despuesBonoOferta {
+        font-size: 11px;
+        font-weight: 800;
+    }
+    QLabel#despuesBonoOferta[tono="naranja"] { color: #F2600C; }
+    QLabel#despuesBonoOferta[tono="violeta"] { color: #7C3AED; }
+    /* El aviso de cuando dos ofertas chocan. */
+    QLabel#avisoChoqueOferta {
+        background-color: #FDECEC;
+        border: 1px solid #F3B7B7;
+        border-radius: 10px;
+        padding: 8px 12px;
+        color: #8E1B1B;
+        font-size: 13px;
+        font-weight: 700;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO).replace(
     "__RUTA_FLECHA_ABAJO_CLARA__", RUTA_FLECHA_ABAJO_CLARA)

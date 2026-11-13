@@ -341,6 +341,7 @@ from database_migraciones import (
     _migrar_columnas_aviso_fin_en_sesiones,
     _migrar_columnas_cierre_en_sesiones,
     _migrar_columna_whatsapp_en_miembros,
+    _migrar_columna_oferta_en_bonos_vendidos,
     _migrar_columna_desde_ip_en_sesiones,
     _migrar_columna_miembro_en_reservas,
     _sql_tabla_movimientos_saldo_miembro,

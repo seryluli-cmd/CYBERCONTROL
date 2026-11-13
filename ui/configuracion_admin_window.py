@@ -5,7 +5,8 @@ La ventana "Configuración ADMIN" (botón ⚙️ CONFIG ADMIN de la barra). Esta
 ui/main_window.py y se mudó acá el 2026-10-26, cuando el dueño eligió su diseño
 nuevo (maqueta "A": cabecera oscura y tarjetas en tres grupos, con una línea de para
 qué es cada una; las piezas están en ui/piezas_ventana.py). Los botones hacen lo
-mismo que antes.
+mismo que antes. El 2026-11-13 se sumó "Ofertas" al grupo de los bonos (los 2x1 y 50%
+por día y turno, control_pcs/ui/ofertas_window.py).
 """
 
 from PySide6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QVBoxLayout
@@ -13,7 +14,9 @@ from PySide6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QVBoxLayout
 import dominio
 from admin_remoto import modo as modo_remoto
 from control_pcs.ui.cuenta_pc_reglas_dialogo import DialogoReglasCuentaPc
+from control_pcs.ui.dibujos_de_ventana import pixmap_de
 from control_pcs.ui.miembros_window import DialogoGestionBonosMiembro, DialogoTramosTarifaMiembro
+from control_pcs.ui.ofertas_window import OfertasWindow
 from control_pcs.ui.pcs_gestion_dialogos import (
     DialogoGestionBonos, DialogoGestionBonosPcstream, DialogoGestionBonosPlaystation, DialogoGestionEstaciones,
 )
@@ -33,7 +36,7 @@ class ConfiguracionAdminWindow(QDialog):
     Agrupa las pantallas de EDICIÓN de catálogos -- Estaciones, Bonos de
     Tiempo (walk-in), Bonos de PlayStation 5, Bonos de PCSTREAM, Tarifa por Hora
     de Socios, las Reglas de Cuenta de PC (el tope de lo que puede deber una PC,
-    2026-10-25), Bonos de Socios y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
+    2026-10-25), Bonos de Socios, las Ofertas (2x1 y 50%, 2026-11-13) y Trámites -- más "Accesos de Admin" (quién entró con una cuenta
     de administrador, ver ui/accesos_admin_window.py) y, en el mostrador, "Entrar desde
     otra PC" (ui/admin_remoto_dialogo.py). La abre
     cualquiera, pero un Operador solo puede usar Gestionar Estaciones (pedido del
@@ -53,7 +56,7 @@ class ConfiguracionAdminWindow(QDialog):
         super().__init__(parent)
         self.usuario = usuario
         self.setWindowTitle("Configuración ADMIN")
-        self.resize(660, 730)
+        self.resize(660, 800)
         self._armar_interfaz()
 
     def _armar_interfaz(self):
@@ -82,6 +85,8 @@ class ConfiguracionAdminWindow(QDialog):
                 ("🎥", f"Bonos de {dominio.NOMBRE_PCSTREAM}", "Los de la PC de streaming",
                  self._abrir_bonos_pcstream),
                 ("🎁", "Bonos de Socios", "Exclusivos de los socios", self._abrir_bonos_miembro),
+                # La etiqueta se dibuja: el emoji 🏷️ no está en el Windows del mostrador.
+                ("", "Ofertas", "2x1 y 50% por día y turno, en los bonos que elijas", self._abrir_ofertas),
             ]),
             ("Socios, trámites y accesos", [
                 ("💲", "Tarifa por hora de Socios", "Lo que se descuenta del saldo", self._configurar_tarifa),
@@ -108,6 +113,8 @@ class ConfiguracionAdminWindow(QDialog):
             grilla.setSpacing(10)
             for numero, (icono, nombre, detalle, funcion) in enumerate(tarjetas):
                 tarjeta = tarjeta_de_menu(icono, nombre, detalle, funcion)
+                if funcion == self._abrir_ofertas:
+                    tarjeta.icono.setPixmap(pixmap_de("etiqueta", 24, "#F2600C", 1.9))
                 # Un Operador entra pero solo usa Gestionar Estaciones; lo demás lo ve
                 # en gris y con candado (pedido del dueño, 2026-10-19).
                 if not es_admin and funcion != self._abrir_estaciones:
@@ -146,6 +153,9 @@ class ConfiguracionAdminWindow(QDialog):
 
     def _abrir_bonos_miembro(self):
         DialogoGestionBonosMiembro(self).exec()
+
+    def _abrir_ofertas(self):
+        OfertasWindow(self.usuario, self).exec()
 
     def _abrir_tramites(self):
         DialogoGestionTramites(self).exec()

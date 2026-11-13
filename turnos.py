@@ -220,6 +220,22 @@ def dia_del_turno_que_arranca_tras_un_cierre(momento_del_cierre: datetime) -> da
     return dia_en_que_empezo_el_turno(momento_del_cierre + timedelta(minutes=TURNO_GRACIA_MIN))
 
 
+def inicio_del_turno(dia_base, turno: str) -> datetime:
+    """
+    A qué hora EMPIEZA el turno `turno` del día `dia_base` (acepta lo mismo que
+    es_domingo()): Mañana a las 06:00, Tarde a las 14:00 y Noche a las 22:00; el
+    domingo, la Noche ("Domingo T2") a las 18:00. Lo contrario de fin_del_turno;
+    lo usan las ofertas para decir "de 22:00 a 06:00" (ofertas_repo).
+    """
+    dia_base = _como_date(dia_base)
+    inicio_dia = datetime(dia_base.year, dia_base.month, dia_base.day)
+    if turno == dominio.TURNO_MANANA:
+        return inicio_dia.replace(hour=HORA_CAMBIO_DE_DIA)
+    if turno == dominio.TURNO_TARDE:
+        return inicio_dia.replace(hour=14)
+    return inicio_dia.replace(hour=18 if dia_base.weekday() == 6 else 22)
+
+
 def fin_del_turno(dia_base, turno: str) -> datetime:
     """
     A qué hora termina, según el horario del local, el turno `turno` del día

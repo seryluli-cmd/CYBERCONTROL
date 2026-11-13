@@ -9,8 +9,8 @@ Son las que usan las pantallas de administración (pedido del dueño,
 2026-10-18: "hago las modificaciones que quiera hacer, o miro reportes"):
 Administrar Kiosko entero (Artículos, Compras, Consulta de Ventas con anular,
 Reportes, Control de Cierres con la carga del sobre, Usuarios), Configuración
-ADMIN (estaciones, los cuatro catálogos de bonos, tarifa de socios, trámites,
-accesos de admin, fondo y filtro de palabras de las PCs) y Caja para mirar.
+ADMIN (estaciones, los cuatro catálogos de bonos, las ofertas, tarifa de socios,
+trámites, accesos de admin, fondo y filtro de palabras de las PCs) y Caja para mirar.
 Y, para MIRAR, la pantalla principal igual que en el mostrador (pedido del
 dueño, 2026-10-24: "quiero que se vea tal cual"): la grilla de PCs en vivo,
 Actividad reciente, las reservas de hoy, CONTROL DE STOCK, HISTORIAL DEL TURNO y lo que debe cada PC
@@ -44,7 +44,7 @@ from repositories import (
 )
 from control_pcs.repositories import (
     accesos_admin_pc_repo, ajustes_saldo_repo, anular_bono_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo,
-    filtro_palabras_repo, fondo_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
+    filtro_palabras_repo, fondo_repo, miembros_repo, ofertas_repo, pcs_repo, pcstream_repo, playstation_repo,
     reservas_horario_repo, reservas_repo, socios_bonos_repo, ultima_visita_repo,
 )
 
@@ -74,6 +74,7 @@ _MODULOS = {
     "filtro_palabras_repo": filtro_palabras_repo,
     "fondo_repo": fondo_repo,
     "miembros_repo": miembros_repo,
+    "ofertas_repo": ofertas_repo,
     "pcs_repo": pcs_repo,
     "pcstream_repo": pcstream_repo,
     "playstation_repo": playstation_repo,
@@ -154,6 +155,11 @@ FUNCIONES = {
     # La consola en la grilla (estado) y su catálogo
     "playstation_repo": ("estado",) + _CATALOGO_DE_BONOS,
     "bonos_miembro_repo": _CATALOGO_DE_BONOS,
+    # Configuración ADMIN > Ofertas (2x1 y 50%, 2026-11-13) y las que corren, para el
+    # panel de la PC. Vender con la oferta (como_se_vende) es del mostrador.
+    "ofertas_repo": (
+        "listar_ofertas", "activas", "guardar_oferta", "pausar_oferta", "reanudar_oferta", "terminar_oferta",
+    ),
     # Las reservas en la grilla y el número del botón Reservas (solo leen)
     "reservas_horario_repo": ("reservas_para_la_grilla",),
     "reservas_repo": ("reservas_de_hoy",),
@@ -189,6 +195,10 @@ ACTOR = {
     ("playstation_repo", "modificar_bono"): "usuario_id",
     ("playstation_repo", "desactivar_bono"): "usuario_id",
     ("cuentas_pc_repo", "guardar_reglas"): "usuario_id",
+    ("ofertas_repo", "guardar_oferta"): "usuario_id",
+    ("ofertas_repo", "pausar_oferta"): "usuario_id",
+    ("ofertas_repo", "reanudar_oferta"): "usuario_id",
+    ("ofertas_repo", "terminar_oferta"): "usuario_id",
     ("ajustes_saldo_repo", "comprobar_clave_para_ordenar_saldos"): "usuario_id",
     ("ajustes_saldo_repo", "sumar"): "usuario_id",
     ("ajustes_saldo_repo", "restar"): "usuario_id",

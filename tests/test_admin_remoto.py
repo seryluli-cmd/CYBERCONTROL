@@ -725,6 +725,9 @@ _PANTALLAS_DE_OTRA_PC = [
     # ORDENAR SALDOS: el botón Miembros de la otra PC se lo ofrece al Administrador.
     ("control_pcs/ui/ordenar_saldos_window.py", None),
     ("control_pcs/ui/miembros_ficha.py", {"DelegadoDeSocios"}),
+    # Configuración ADMIN > Ofertas (2x1 y 50%, 2026-11-13).
+    ("control_pcs/ui/ofertas_window.py", None),
+    ("control_pcs/ui/ofertas_piezas.py", None),
 ]
 
 # Lo que las pantallas usan de un repo sin ir a la base (se queda en esta PC), y
@@ -734,6 +737,11 @@ _SE_USAN_SIN_IR_AL_MOSTRADOR = {
     ("playstation_repo", "AdministradorDeBonos"),
     ("usuarios_repo", "autenticar_por_nombre"),
     ("ultima_visita_repo", "dias_sin_venir"),
+    # Las cuentas, la semana y las frases de las ofertas: sin base.
+    ("ofertas_repo", "franjas_de_la_semana"), ("ofertas_repo", "horario_de_la_franja"),
+    ("ofertas_repo", "nombre_de_la_franja"), ("ofertas_repo", "con_oferta"), ("ofertas_repo", "y_lista"),
+    ("ofertas_repo", "proximas_veces"), ("ofertas_repo", "frase"), ("ofertas_repo", "frase_de_la_vez"),
+    ("ofertas_repo", "ChocaConOtraOferta"),
 }
 
 
@@ -746,8 +754,8 @@ _PANTALLA_PRINCIPAL = [
     ("ui/control_stock_window.py", None),
     ("ui/historial_turno_window.py", None),
     ("control_pcs/ui/pcs_window.py", None),
-    ("control_pcs/ui/pcs_detalle.py", {"PanelDetalleEstacion", "_ListaDeBonos", "texto_de_la_reserva",
-                                       "es_playstation"}),
+    ("control_pcs/ui/pcs_detalle.py", {"PanelDetalleEstacion", "texto_de_la_reserva", "es_playstation"}),
+    ("control_pcs/ui/pcs_lista_de_bonos.py", None),
     ("control_pcs/ui/pcs_actividad.py", None),
     ("control_pcs/ui/pcs_aviso_reservas.py", None),
     ("control_pcs/ui/pcs_botones_libres.py", None),
@@ -763,6 +771,7 @@ _NO_VAN_A_LA_BASE = {
     ("reservas_horario_repo", "texto_de_la_hora"), ("reservas_horario_repo", "sin_pc_fija"),
     ("reservas_horario_repo", "pcs_libres"), ("mantenimiento_pc_repo", "minutos_vigentes"),
     ("congelado_repo", "esta_ocupada"), ("pcs_libres_repo", "prendidas_y_libres"),
+    ("ofertas_repo", "con_las_ofertas"),
 }
 # Las que miran `self._remota` antes de tocar la base (el cierre forzoso y dar de
 # baja las sesiones vencidas los hace solo el mostrador).

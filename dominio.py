@@ -853,3 +853,28 @@ NEGOCIOS_DEL_CIERRE = (
     ("playstation_solo", NOMBRE_ORIGEN_VENTA[ORIGEN_PLAYSTATION]),
     ("reservas", "Reservas"),
 )
+
+# --------------------------------------------------------------------
+# Ofertas: 2x1 y 50% en los bonos, por día y turno (pedido del dueño
+# 2026-11-13; ver control_pcs/repositories/ofertas_repo.py)
+# --------------------------------------------------------------------
+# 2x1: se cobra el precio de siempre y se da el doble de tiempo. 50%: el tiempo
+# de siempre a mitad de precio. Se llaman "ofertas" y no "promociones" porque
+# los bonos del local ya se llaman "Promo 3hs", "Promo 5hs"...
+OFERTA_2X1 = "2x1"
+OFERTA_MITAD = "50%"
+TIPOS_OFERTA = (OFERTA_2X1, OFERTA_MITAD)
+
+# Cómo está una oferta. No se guarda: sale de sus fechas, sus turnos y la hora
+# (ofertas_repo.estado).
+OFERTA_ACTIVA = "ACTIVA AHORA"
+OFERTA_PROGRAMADA = "PROGRAMADA"
+OFERTA_PAUSADA = "PAUSADA"
+OFERTA_TERMINADA = "TERMINADA"
+ESTADOS_OFERTA = (OFERTA_ACTIVA, OFERTA_PROGRAMADA, OFERTA_PAUSADA, OFERTA_TERMINADA)
+
+# Qué catálogos pueden llevar una oferta: los de las PCs, PCSTREAM y la
+# PlayStation 5 (los mismos tres equipos de una reserva). Los bonos de Socios
+# NUNCA (decisión del dueño, 2026-11-13: un 2x1 cargaría el doble de saldo y el
+# socio lo gastaría cualquier otro día), ni la carga de saldo por monto.
+EQUIPOS_CON_OFERTA = EQUIPOS_RESERVA

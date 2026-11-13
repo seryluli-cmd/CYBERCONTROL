@@ -38,8 +38,8 @@ import dominio
 from database import conexion_db
 from repositories import ventas_repo
 from control_pcs.repositories import (
-    avisos_fin_pc_repo, comandos_pc_repo, cortes_pc_repo, deudas_pc_repo, pcstream_repo, reservas_horario_repo,
-    temperatura_pc_repo,
+    avisos_fin_pc_repo, comandos_pc_repo, cortes_pc_repo, deudas_pc_repo, ofertas_repo, pcstream_repo,
+    reservas_horario_repo, temperatura_pc_repo,
 )
 from control_pcs.repositories.catalogo_bonos import CatalogoDeBonos
 from control_pcs.repositories.actividad_repo import actividad_reciente  # noqa: F401 (API de las pantallas y las pruebas)
@@ -471,7 +471,8 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
     return sesion["id"]
 
 
-def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -> int:
+def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list, momento_del_precio=None,
+                 bono_mostrado=None) -> int:
     """
     Vende un bono de tiempo para una estación: si no tiene sesión activa,
     arranca una nueva; si ya tiene una en curso (el cliente sigue
@@ -492,8 +493,16 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
 
     Lo cobrado entra como Alquiler de PCs, también el de PCSTREAM (es una PC);
     cuánto vendió PCSTREAM se ve en Reportes (pcstream_repo.uso_por_dia).
+
+    Si el bono tiene una oferta 2x1 o 50% a la hora del cobro, se vende con ella
+    (ofertas_repo.como_se_vende) y el vínculo dice cuál fue. `momento_del_precio`
+    es la hora con que la pantalla mostró el precio al apretar Cobrar (ver
+    ofertas_repo.momento_del_cobro); sin él, ahora. `bono_mostrado`, el bono como
+    lo vio el operador: si la oferta cambió mientras cobraba, ValueError y no se
+    graba nada (ofertas_repo.como_se_vende).
     """
     ahora = datetime.now()
+    momento = ofertas_repo.momento_del_cobro(momento_del_precio, ahora)
 
     with conexion_db() as conexion:
         estacion = conexion.execute(
@@ -506,22 +515,25 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list) -
         # database_esquema, "PCSTREAM"): sesion_bonos solo admite bonos comunes.
         if dominio.es_pcstream(estacion["nombre"]):
             bono, tabla_vinculo = pcstream_repo.obtener_bono(bono_id), "sesion_pcstream_bonos"
+            equipo = dominio.EQUIPO_RESERVA_PCSTREAM
         else:
             bono, tabla_vinculo = obtener_bono(bono_id), "sesion_bonos"
+            equipo = dominio.EQUIPO_RESERVA_PC
         if bono is None or not bono["activo"]:
             raise ValueError("Ese bono ya no está disponible.")
+        vendido = ofertas_repo.como_se_vende(conexion, equipo, bono, momento, bono_mostrado)
 
-        sesion_id = _abrir_o_extender_sesion(conexion, estacion_id, bono["minutos"], ahora)
+        sesion_id = _abrir_o_extender_sesion(conexion, estacion_id, vendido["minutos"], ahora)
 
         venta_id = ventas_repo.registrar_venta_sin_detalle(
-            conexion, usuario_id, bono["precio"], pagos, dominio.ORIGEN_ALQUILER_PCS, ahora
+            conexion, usuario_id, vendido["precio"], pagos, dominio.ORIGEN_ALQUILER_PCS, ahora
         )
         conexion.execute(
             f"""
-            INSERT INTO {tabla_vinculo} (sesion_id, bono_id, minutos, precio, venta_id)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO {tabla_vinculo} (sesion_id, bono_id, minutos, precio, venta_id, oferta_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (sesion_id, bono_id, bono["minutos"], round(bono["precio"], 2), venta_id),
+            (sesion_id, bono_id, vendido["minutos"], vendido["precio"], venta_id, vendido["oferta_id"]),
         )
         return venta_id
 

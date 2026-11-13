@@ -5,108 +5,33 @@ Panel lateral de "Control de PCs" (`PanelDetalleEstacion`): todas las
 acciones sobre lo que esté seleccionado en la grilla de pcs_window.py — una
 PC o la PlayStation 5 — vender/agregar un bono, abrir con Miembro (solo PCs),
 finalizar la sesión, la Cuenta de la PC (lo que debe, cobrarlo y anotarle un
-bono, ver cuenta_pc_dialogos.py) — y el diálogo con el que un socio se loguea
-solo (`DialogoLoginMiembro`).
+bono, ver cuenta_pc_dialogos.py). Las listas de bonos y cómo se ven las ofertas
+2x1 / 50% que corren están en pcs_lista_de_bonos.py; el diálogo con el que un socio
+se loguea solo (`DialogoLoginMiembro`), en pcs_login_miembro.py.
 """
 
 from datetime import datetime
 
-from PySide6.QtWidgets import (
-    QButtonGroup, QDialog, QFrame, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
-    QVBoxLayout, QWidget,
-)
+from PySide6.QtWidgets import QFrame, QLabel, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt, QTimer
 
 import dominio
 from control_pcs.repositories import (
-    anular_bono_repo, avisos_fin_pc_repo, cuentas_pc_repo, miembros_repo, pcs_repo, pcs_sin_respuesta_repo,
+    anular_bono_repo, avisos_fin_pc_repo, cuentas_pc_repo, ofertas_repo, pcs_repo, pcs_sin_respuesta_repo,
     pcstream_repo, playstation_repo, reservas_horario_repo,
 )
 from control_pcs.ui import pcs_aviso_sin_respuesta
 from control_pcs.ui.anular_bono import anular_bono_con_cartel, elegir_bono_a_quitar
 from control_pcs.ui.cuenta_pc_dialogos import DialogoCuentaPc, DialogoTiempoSocio, anotar_en_la_cuenta
 from control_pcs.ui.pcs_cortes import texto_para_el_panel
+from control_pcs.ui.pcs_lista_de_bonos import ListaDeBonos, poner_cartel_de_ofertas
+from control_pcs.ui.pcs_login_miembro import DialogoLoginMiembro
 from ui.dialogo_pago import cobrar
 from ui.piezas_ventana import marcar_solo_admin
 from ui.utils import (
-    aplicar_clase, confirmar, encadenar_enter, fila_guardar_cancelar, formato_pesos,
-    formato_tiempo, formato_transcurrido, manejar_errores, mostrar_error, mostrar_info,
-    sin_boton_por_defecto, solo_en_el_mostrador,
+    aplicar_clase, confirmar, encadenar_enter, formato_pesos, formato_tiempo, formato_transcurrido,
+    manejar_errores, mostrar_error, mostrar_info, sin_boton_por_defecto, solo_en_el_mostrador,
 )
-
-
-class _ListaDeBonos:
-    """
-    Una lista de bonos como botones (uno elegido a la vez) con su título. El
-    panel tiene TRES, separadas y una debajo de la otra: la de los bonos de PC,
-    la de la PlayStation 5 y la de PCSTREAM (catálogos distintos, ver
-    playstation_repo y pcstream_repo). Nunca comparten botones ni grupo, así que
-    lo que está tildado en una no puede terminar usándose para otra.
-    """
-
-    def __init__(self, titulo: str, aviso_sin_bonos: str, padre):
-        self.etiqueta = QLabel(titulo)
-        self.aviso_sin_bonos = QLabel(aviso_sin_bonos)
-        self.aviso_sin_bonos.setWordWrap(True)
-        self.aviso_sin_bonos.setObjectName("avisoSinBonos")  # color en ui/hoja_de_estilos.py
-        self.layout = QVBoxLayout()
-        self.layout.setSpacing(6)  # los bonos como botones separados, no pegados en un bloque
-        self.grupo = QButtonGroup(padre)
-        self.grupo.setExclusive(True)
-        self.grupo.idClicked.connect(self._recordar)
-        self.bonos = []
-        self._elegido_id = None
-        self._habilitada = False
-
-    def _recordar(self, bono_id: int):
-        self._elegido_id = bono_id
-
-    def cargar(self, bonos, habilitada: bool):
-        """Vuelve a armar los botones con `bonos` (filas de un catálogo). Si el
-        bono que estaba elegido sigue en la lista queda elegido -- la grilla se
-        refresca sola cada 5 segundos y esto se llama cada vez: sin esto, el
-        operador que tildó "3 horas" lo vería volver al primero justo antes de
-        cobrar."""
-        while self.layout.count():
-            hijo = self.layout.takeAt(0)
-            if hijo.widget():
-                hijo.widget().deleteLater()
-        for boton in self.grupo.buttons():
-            self.grupo.removeButton(boton)
-
-        self.bonos = list(bonos)
-        ids = [bono["id"] for bono in self.bonos]
-        elegido = self._elegido_id if self._elegido_id in ids else (ids[0] if ids else None)
-        for bono in self.bonos:
-            boton = QPushButton(f"{bono['nombre']} — {formato_pesos(bono['precio'])}")
-            boton.setCheckable(True)
-            boton.setChecked(bono["id"] == elegido)
-            # Se crean después de _armar_interfaz, así que no los alcanzó
-            # sin_boton_por_defecto: hay que hacerlo uno por uno.
-            boton.setAutoDefault(False)
-            boton.setDefault(False)
-            self.grupo.addButton(boton, bono["id"])
-            self.layout.addWidget(boton)
-        self._elegido_id = elegido
-        self.aviso_sin_bonos.setVisible(not self.bonos)
-        self.habilitar(habilitada)
-
-    def habilitar(self, habilitada: bool):
-        """Habilita o deshabilita TODA la lista (título incluido, que se ve
-        apagado): una lista deshabilitada no se puede tocar ni cobrar."""
-        self._habilitada = habilitada
-        self.etiqueta.setEnabled(habilitada)
-        for boton in self.grupo.buttons():
-            boton.setEnabled(habilitada)
-
-    @property
-    def habilitada(self) -> bool:
-        return self._habilitada
-
-    def bono_elegido(self):
-        """La fila del bono tildado, o None si la lista está vacía."""
-        bono_id = self.grupo.checkedId()
-        return next((bono for bono in self.bonos if bono["id"] == bono_id), None)
 
 
 def texto_de_la_reserva(item) -> str:
@@ -162,6 +87,12 @@ class PanelDetalleEstacion(QFrame):
     Desde otra PC el panel se ve igual, y los tres botones avisan que eso se
     hace en el mostrador (pedido del dueño, 2026-10-24).
 
+    Las ofertas 2x1 / 50% (pedido del dueño, 2026-11-13, maqueta P1): los bonos se
+    muestran y se cobran con la oferta que corre (ofertas_repo), con la etiqueta en
+    el botón y un cartel arriba de las listas. Al cobrar viaja la hora en que se
+    leyeron los precios (`momento_del_precio`): si la oferta termina con la ventana
+    de cobro abierta, se cobra lo que se mostró.
+
     La Cuenta de la PC (pedido del dueño, 2026-10-25): si la PC debe algo, un
     recuadro fucsia dice cuánto y de quién, y "Cobrar cuenta" abre lo que debe
     renglón por renglón (desde otra PC se mira; cobrar avisa). "Agregar tiempo a
@@ -174,6 +105,7 @@ class PanelDetalleEstacion(QFrame):
         self.usuario = usuario
         self._avisar_cambio = avisar_cambio  # sin argumentos: le pide a PanelControlPcs que se refresque
         self.item = None
+        self._momento_de_los_precios = None  # cuándo se leyeron las ofertas de los botones, ver mostrar()
         self._equipo_mostrado = None  # (dispositivo, id) de lo último que se mostró, ver mostrar()
         self.setObjectName("panelDetalle")  # el fondo gris, en ui/hoja_de_estilos.py
         self.setFixedWidth(260)
@@ -188,17 +120,17 @@ class PanelDetalleEstacion(QFrame):
         self.etiqueta_estado = QLabel("")
         self.etiqueta_estado.setWordWrap(True)
 
-        self.lista_pc = _ListaDeBonos(
+        self.lista_pc = ListaDeBonos(
             "Bonos de PC:",
             "Todavía no hay bonos de PC: el Admin los crea desde Configuración ADMIN.",
             self,
         )
-        self.lista_playstation = _ListaDeBonos(
+        self.lista_playstation = ListaDeBonos(
             f"Bonos de {dominio.NOMBRE_ORIGEN_VENTA[dominio.ORIGEN_PLAYSTATION]}:",
             "Todavía no hay bonos de PlayStation 5: el Admin los crea desde Configuración ADMIN.",
             self,
         )
-        self.lista_pcstream = _ListaDeBonos(
+        self.lista_pcstream = ListaDeBonos(
             f"Bonos de {dominio.NOMBRE_PCSTREAM}:",
             f"Todavía no hay bonos de {dominio.NOMBRE_PCSTREAM}: el Admin los crea desde Configuración ADMIN.",
             self,
@@ -249,6 +181,11 @@ class PanelDetalleEstacion(QFrame):
         self.etiqueta_cuenta = QLabel("")
         self.etiqueta_cuenta.setObjectName("cuentaPendiente")  # el recuadro, en ui/hoja_de_estilos.py
         self.etiqueta_cuenta.setWordWrap(True)
+        # El cartel de las ofertas que corren (naranja el 2x1, violeta el 50%).
+        self.cartel_oferta = QLabel("")
+        self.cartel_oferta.setObjectName("cartelOferta")
+        self.cartel_oferta.setWordWrap(True)
+        self.cartel_oferta.setVisible(False)
         self.boton_cuenta = QPushButton("Cobrar cuenta")
         aplicar_clase(self.boton_cuenta, "cuenta")
         self.boton_cuenta.clicked.connect(self._abrir_cuenta)
@@ -259,6 +196,7 @@ class PanelDetalleEstacion(QFrame):
         layout.addWidget(self.etiqueta_titulo)
         layout.addWidget(self.etiqueta_estado)
         layout.addWidget(self.etiqueta_cuenta)
+        layout.addWidget(self.cartel_oferta)
         layout.addWidget(self.area_bonos, 1)
         layout.addWidget(self.boton_cuenta)
         layout.addWidget(self.boton_bono_a_cuenta)
@@ -276,6 +214,15 @@ class PanelDetalleEstacion(QFrame):
     @staticmethod
     def _es_pcstream(item) -> bool:
         return item is not None and item["dispositivo"] == dominio.DISPOSITIVO_PC and item["es_pcstream"]
+
+    def _equipo(self, item):
+        """El catálogo de `item` como lo nombran las ofertas (dominio.EQUIPOS_CON_OFERTA),
+        o None si no hay nada elegido."""
+        if item is None:
+            return None
+        if es_playstation(item):
+            return dominio.EQUIPO_RESERVA_PLAYSTATION
+        return dominio.EQUIPO_RESERVA_PCSTREAM if self._es_pcstream(item) else dominio.EQUIPO_RESERVA_PC
 
     def _lista_del_equipo(self, item):
         """La lista de bonos que le corresponde a `item`: la única de la que se
@@ -298,9 +245,20 @@ class PanelDetalleEstacion(QFrame):
         puede_operar_consola = es_consola and playstation_repo.puede_operar(self.usuario)
 
         self.etiqueta_estado.setVisible(item is not None)
-        self.lista_pc.cargar(pcs_repo.listar_bonos(), habilitada=es_pc and not es_pcstream)
-        self.lista_playstation.cargar(playstation_repo.listar_bonos(), habilitada=puede_operar_consola)
-        self.lista_pcstream.cargar(pcstream_repo.listar_bonos(), habilitada=es_pcstream)
+        # Los bonos con las ofertas que corren AHORA; la hora queda anotada para cobrar
+        # con el precio que se mostró (ver _cobrar_bono).
+        self._momento_de_los_precios = datetime.now()
+        ofertas = ofertas_repo.activas(self._momento_de_los_precios)
+        a_la_venta = set()  # (equipo, bono_id) de los botones: el cartel cuenta solo esos
+        for lista, equipo, bonos, habilitada in (
+                (self.lista_pc, dominio.EQUIPO_RESERVA_PC, pcs_repo.listar_bonos(), es_pc and not es_pcstream),
+                (self.lista_playstation, dominio.EQUIPO_RESERVA_PLAYSTATION, playstation_repo.listar_bonos(),
+                 puede_operar_consola),
+                (self.lista_pcstream, dominio.EQUIPO_RESERVA_PCSTREAM, pcstream_repo.listar_bonos(), es_pcstream)):
+            lista.cargar(ofertas_repo.con_las_ofertas(equipo, bonos, ofertas), habilitada=habilitada)
+            a_la_venta.update((equipo, bono["id"]) for bono in lista.bonos)
+        poner_cartel_de_ofertas(self.cartel_oferta, ofertas, self._equipo(item), self._momento_de_los_precios,
+                                a_la_venta)
 
         # Cuando la lista de bonos no entra entera en el panel, que se vea la del
         # equipo recién elegido. Solo al CAMBIAR de equipo: este método corre de
@@ -431,6 +389,7 @@ class PanelDetalleEstacion(QFrame):
             self._agregar_tiempo_de_socio_a_cuenta(item)
             return
         bono = self._lista_del_equipo(item).bono_elegido()
+        momento = self._momento_de_los_precios  # el de la oferta que se ve en el botón
         if bono is None:
             mostrar_error(self, "Sin bonos", "Elegí un bono de la lista.")
             return
@@ -439,13 +398,20 @@ class PanelDetalleEstacion(QFrame):
         aviso = reservas_horario_repo.aviso_al_vender(item["estacion"]["id"], bono["minutos"])
         if aviso and not confirmar(self, "Equipo reservado", aviso):
             return
+        if bono.get("oferta"):
+            que = (f"'{bono['nombre']}' con {bono['oferta']['tipo']} ({dominio.texto_minutos(bono['minutos'])} por "
+                   f"{formato_pesos(bono['precio'])})")
+        else:
+            que = f"'{bono['nombre']}' ({formato_pesos(bono['precio'])})"
         if not confirmar(self, "Agregar bono a cuenta",
-                         f"¿Anotar '{bono['nombre']}' ({formato_pesos(bono['precio'])}) en la cuenta de "
-                         f"'{nombre_pc}'?\n\nEl tiempo se le suma ya y se cobra después."):
+                         f"¿Anotar {que} en la cuenta de '{nombre_pc}'?\n\nEl tiempo se le suma ya y se cobra "
+                         "después."):
             return
         resultado = anotar_en_la_cuenta(
             self, item,
-            lambda **datos: cuentas_pc_repo.anotar_bono(item["estacion"]["id"], bono["id"], self.usuario["id"], **datos),
+            lambda **datos: cuentas_pc_repo.anotar_bono(item["estacion"]["id"], bono["id"], self.usuario["id"],
+                                                        momento_del_precio=momento, bono_mostrado=bono,
+                                                        **datos),
         )
         if resultado is not None:
             a_nombre = f" ({resultado['nombre']})" if resultado["nombre"] else ""
@@ -531,6 +497,7 @@ class PanelDetalleEstacion(QFrame):
         # (la ventana queda abierta mientras la grilla se sigue refrescando
         # sola), así lo que se cobra y a quién se lo aplica nunca se separan.
         item = self.item
+        momento = self._momento_de_los_precios  # la hora de la oferta que se ve en el botón
         if item is None:
             return
         lista = self._lista_del_equipo(item)
@@ -565,10 +532,12 @@ class PanelDetalleEstacion(QFrame):
         if pagos is None:
             return
         if es_playstation(item):
-            playstation_repo.vender_bono(self.usuario["id"], bono["id"], pagos)
+            playstation_repo.vender_bono(self.usuario["id"], bono["id"], pagos, momento_del_precio=momento,
+                                         bono_mostrado=bono)
         else:
             # PCSTREAM también: pcs_repo.asignar_bono busca el bono en SU catálogo.
-            pcs_repo.asignar_bono(item["estacion"]["id"], bono["id"], self.usuario["id"], pagos)
+            pcs_repo.asignar_bono(item["estacion"]["id"], bono["id"], self.usuario["id"], pagos,
+                                  momento_del_precio=momento, bono_mostrado=bono)
         self._avisar_cambio()
 
     @solo_en_el_mostrador
@@ -631,59 +600,3 @@ class PanelDetalleEstacion(QFrame):
                 else confirmar(self, "Confirmar", aviso)):
             pcs_repo.finalizar_sesion(item["sesion"]["id"], dominio.CIERRE_FINALIZAR, self.usuario["id"])
             self._avisar_cambio()
-
-
-class DialogoLoginMiembro(QDialog):
-    """
-    A diferencia de vender un bono (lo maneja el Operador, que elige el
-    bono desde PanelDetalleEstacion), acá el Miembro se loguea SOLO con
-    su usuario y contraseña — pensado para que lo tipee el socio mismo en
-    el mostrador. No hay que elegir cuánto tiempo asignar: entrar con las
-    credenciales correctas alcanza, se usa todo el saldo disponible en
-    ese momento (ver miembros_repo.abrir_estacion_por_miembro).
-    """
-
-    def __init__(self, estacion, parent=None):
-        super().__init__(parent)
-        self.estacion = estacion
-        self.setWindowTitle(f"Abrir PC con Miembro — {estacion['nombre']}")
-        self.resize(340, 200)
-        self._armar_interfaz()
-
-    def _armar_interfaz(self):
-        etiqueta = QLabel(f"Ingresá tu usuario y contraseña de socio para abrir '{self.estacion['nombre']}':")
-        etiqueta.setWordWrap(True)
-
-        self.campo_usuario = QLineEdit()
-        self.campo_clave = QLineEdit()
-        self.campo_clave.setEchoMode(QLineEdit.Password)
-
-        botones = fila_guardar_cancelar(self, self._confirmar, texto_guardar="Ingresar")
-
-        layout = QVBoxLayout()
-        layout.addWidget(etiqueta)
-        layout.addWidget(QLabel("Usuario:"))
-        layout.addWidget(self.campo_usuario)
-        layout.addWidget(QLabel("Contraseña:"))
-        layout.addWidget(self.campo_clave)
-        layout.addLayout(botones)
-        self.setLayout(layout)
-        encadenar_enter(self.campo_usuario, self.campo_clave, accion_final=self._confirmar)
-        sin_boton_por_defecto(self)
-        self.campo_usuario.setFocus()
-
-    @manejar_errores
-    def _confirmar(self):
-        usuario = self.campo_usuario.text().strip()
-        clave = self.campo_clave.text()
-        if not usuario or not clave:
-            mostrar_error(self, "Faltan datos", "Ingresá tu usuario y tu contraseña.")
-            return
-        resultado = miembros_repo.abrir_estacion_por_miembro(self.estacion["id"], usuario, clave)
-        texto = (f"Hola {resultado['miembro']}, se activó '{self.estacion['nombre']}' con "
-                 f"{formato_tiempo(resultado['minutos_usados'] * 60)} de tu saldo.")
-        if resultado["hasta_la_reserva"]:
-            texto += (f"\n\nLa PC está reservada a las {resultado['hasta_la_reserva']}: se corta a esa hora "
-                      "y el resto te queda en el saldo.")
-        mostrar_info(self, "PC activada", texto)
-        self.accept()

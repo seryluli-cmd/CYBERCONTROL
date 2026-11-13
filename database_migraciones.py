@@ -204,6 +204,20 @@ def _migrar_columnas_cierre_en_sesiones(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+def _migrar_columna_oferta_en_bonos_vendidos(conexion: sqlite3.Connection):
+    """
+    Agrega `oferta_id` a cada lugar donde queda un bono vendido (pedido del dueño,
+    2026-11-13, las ofertas 2x1 y 50%; ver ofertas_repo): el vínculo de la sesión
+    de una PC, de PCSTREAM y de la consola, y el renglón de la Cuenta de la PC
+    (que pasa la oferta a su venta al cobrarse). Los minutos y el precio de esas
+    filas ya son los que se cobraron, con la oferta puesta; esto dice cuál fue.
+    Queda en NULL en lo vendido antes y en lo que se vende sin oferta.
+    """
+    for tabla in ("sesion_bonos", "sesion_pcstream_bonos", "sesion_playstation_bonos", "cuenta_pc_items"):
+        _agregar_columna_si_falta(conexion, tabla, "oferta_id", "INTEGER REFERENCES ofertas(id)")
+    conexion.commit()
+
+
 def _migrar_columna_whatsapp_en_miembros(conexion: sqlite3.Connection):
     """
     Agrega miembros.whatsapp (pedido del dueño, 2026-10-17: el socio lo carga,
