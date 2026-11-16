@@ -20,10 +20,12 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtGui import QPalette  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton  # noqa: E402
 
 import dominio  # noqa: E402
+import main as programa  # noqa: E402
 import turnos  # noqa: E402
 from control_pcs.repositories import ofertas_repo, pcs_repo, playstation_repo  # noqa: E402
 from control_pcs.ui.ofertas_window import OfertasWindow  # noqa: E402
@@ -33,6 +35,7 @@ from database import conexion_db  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from ui.configuracion_admin_window import ConfiguracionAdminWindow  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
+from test_estilo_ui import _regla  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
@@ -183,6 +186,20 @@ class TestLaVentanaDeOfertas(_ConOfertas):
         self.assertIsNone(ventana._borrador["id"])
         self.assertEqual(ventana.pastilla_estado.text(), "NUEVA")
         self.assertTrue(ventana.boton_terminar.isHidden())
+
+    def test_el_nombre_de_la_oferta_se_lee_sobre_su_ficha_blanca(self):
+        # La otra punta de la prueba de test_pcs_libres: la regla de las fichas de PCs
+        # (letra clara, para fondo oscuro) tampoco puede pisar esta.
+        self.addCleanup(_app.setStyleSheet, _app.styleSheet())
+        _app.setStyleSheet(programa.HOJA_DE_ESTILOS)
+        self.toda_la_semana()
+        (ficha,) = self.ventana().fichas
+        nombre = ficha.findChild(QLabel, "nombreFicha")
+        nombre.ensurePolished()
+
+        self.assertEqual(nombre.text(), "Toda la semana")
+        self.assertEqual(nombre.palette().color(QPalette.WindowText).name(),
+                         _regla("QPushButton#fichaOferta > QLabel#nombreFicha")["color"].lower())
 
     def test_se_arma_tocando_la_semana_y_los_bonos_y_se_guarda(self):
         ventana = self.ventana()

@@ -12,9 +12,11 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtGui import QPalette  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel  # noqa: E402
 
 import dominio  # noqa: E402
+import main as programa  # noqa: E402
 from control_pcs.repositories import comandos_pc_repo, pcs_libres_repo, pcs_repo  # noqa: E402
 from control_pcs.ui.pcs_botones_libres import BotonesParaLasLibres  # noqa: E402
 from control_pcs.ui.pcs_dibujos import COLOR_APAGAR  # noqa: E402
@@ -24,6 +26,7 @@ from control_pcs.ui.pcs_window import PanelControlPcs  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
 from test_congelado import ocupar  # noqa: E402
+from test_estilo_ui import _regla  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
@@ -245,6 +248,26 @@ class TestVentanaReiniciar(_TresPcs):
         self.assertEqual(ficha.property("estado"), "desmarcada")
         self.assertEqual(self.dialogo.pastilla_marcadas.text(), "1 MARCADA")
         self.assertEqual(self.dialogo.boton_mandar.accessibleName(), "Reiniciar la marcada")
+
+    def test_el_nombre_de_cada_pc_se_lee_sobre_su_ficha(self):
+        # Revisión general del 2026-11-16: las fichas de Ofertas también tienen un
+        # "nombreFicha", y su regla (letra oscura, para fondo blanco) estaba más abajo en
+        # la hoja de estilos y pisaba esta: el nombre de una PC libre salía #1B2233 sobre
+        # el fondo #232833 de la ficha, oscuro sobre oscuro.
+        self.addCleanup(_app.setStyleSheet, _app.styleSheet())
+        _app.setStyleSheet(programa.HOJA_DE_ESTILOS)
+        dialogo = DialogoReiniciar(pcs_repo.estado_estaciones())
+        self.addCleanup(dialogo.deleteLater)
+        marcada, desmarcada = dialogo.fichas
+        desmarcada.click()
+        (en_uso,) = dialogo.fichas_en_uso
+        libre = _regla("QPushButton#fichaPc > QLabel#nombreFicha")["color"].lower()
+        ocupada = _regla('QPushButton#fichaPc[estado="enUso"] > QLabel#nombreFicha')["color"].lower()
+
+        for ficha, color in ((marcada, libre), (desmarcada, libre), (en_uso, ocupada)):
+            nombre = ficha.findChild(QLabel, "nombreFicha")
+            nombre.ensurePolished()
+            self.assertEqual(nombre.palette().color(QPalette.WindowText).name(), color, ficha.nombre)
 
     def test_reinicia_las_marcadas(self):
         pregunta, aviso = self.reiniciar()

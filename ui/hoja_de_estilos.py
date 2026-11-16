@@ -1194,7 +1194,11 @@ HOJA_DE_ESTILOS = """
     QPushButton#fichaPc > QLabel {
         background: transparent;
     }
-    QLabel#nombreFicha {
+    /* Las fichas de Ofertas también tienen un "nombreFicha" (en blanco, con letra
+       oscura): cada regla va solo a las etiquetas de SU ficha, con ">". Sin eso la de
+       Ofertas, que está más abajo, pisaba esta y el nombre de una PC libre salía
+       oscuro sobre oscuro (revisión general del 2026-11-16). */
+    QPushButton#fichaPc > QLabel#nombreFicha {
         color: #F3F5F9;
         font-size: 13px;
         font-weight: 700;
@@ -1816,7 +1820,7 @@ HOJA_DE_ESTILOS = """
         background-color: #F3F7FF;
         border: 2px solid #2F6FED;
     }
-    QLabel#nombreFicha {
+    QPushButton#fichaOferta > QLabel#nombreFicha {
         color: #1B2233;
         font-weight: 800;
         font-size: 13px;
