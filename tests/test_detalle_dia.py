@@ -37,7 +37,7 @@ from ui import imprimir  # noqa: E402
 from ui.reportes_detalle_dia import _COLUMNAS_RENGLONES, _renglones  # noqa: E402
 from ui.reportes_resumen_dia import PestañaResumenDelDia  # noqa: E402
 from ui.utils import formato_pesos  # noqa: E402
-from base import BaseConBaseTemporal  # noqa: E402
+from base import BaseConBaseTemporal, esperar_que_avance_el_reloj  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
@@ -99,6 +99,10 @@ class _UnDiaConDeTodo(BaseConBaseTemporal):
         ventas_repo.anular_venta(self.v_anulada_antes, self.admin_id, "mal cobrada")
 
         turnos_repo.cerrar_turno(self.lucia_id)
+        # La venta de Gaby va después del cierre: sin esto podía quedar con la
+        # MISMA hora (el reloj de Windows avanza a saltos) y sumar en el turno
+        # cerrado (revisión del 2026-11-16).
+        esperar_que_avance_el_reloj()
         self.dia = turnos_repo.listar_cierres()[0]["fecha"]
         ventas_repo.anular_venta(self.v_admin, self.admin_id, "devolución")
         with conexion_db() as conexion:

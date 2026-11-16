@@ -32,7 +32,7 @@ from repositories import (  # noqa: E402
 from ui.historial_turno_window import (  # noqa: E402
     COLUMNA_PAGO, COLUMNA_RUBRO, COLUMNA_TOTAL, FILTRO_ANULADAS, BotonHistorialTurno, VentanaHistorialTurno,
 )
-from base import BaseConBaseTemporal  # noqa: E402
+from base import BaseConBaseTemporal, esperar_que_avance_el_reloj  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
@@ -76,6 +76,10 @@ class BaseHistorial(BaseConBaseTemporal):
         relevo_repo.abrir_caja(self.lucia_id, cambio_contado=20000.0)
         self.v_de_antes = self.vender_coca(self.lucia_id, 5)
         turnos_repo.cerrar_turno(self.lucia_id)
+        # Lo que sigue va después del cierre, como en el mostrador: sin esto, en
+        # Windows una venta podía quedar con la MISMA hora del cierre y no entrar
+        # al turno nuevo (fallaba 1 de cada 10 corridas, revisión del 2026-11-16).
+        esperar_que_avance_el_reloj()
         relevo_repo.abrir_caja(self.lucia_id, cambio_contado=20000.0)
 
         self.v_kiosko = self.vender_coca(self.lucia_id, 2)
