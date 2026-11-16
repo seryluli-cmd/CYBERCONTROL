@@ -102,6 +102,8 @@ def anotar_articulos(estacion_id: int, lineas: list, usuario_id: int, nombre: st
     quién, si la cuenta es nueva (un socio va con el suyo). `autoriza`:
     {"nombre", "clave"} de un Admin, si la regla deja pasarse del tope con su
     clave. Devuelve {"estacion", "nombre", "debe"}: lo que debe ahora esa PC.
+    Un precio distinto al de la lista, solo si anota un Administrador (como al
+    vender: ventas_repo._exigir_precio_de_lista).
     """
     if not lineas:
         raise ValueError("Todavía no escaneaste ningún producto.")
@@ -109,6 +111,7 @@ def anotar_articulos(estacion_id: int, lineas: list, usuario_id: int, nombre: st
     ahora = datetime.now()
     with conexion_db() as conexion:
         conexion.execute("BEGIN IMMEDIATE")
+        ventas_repo._exigir_precio_de_lista(conexion, usuario_id, lineas)
         estacion, sesion = _estacion_con_sesion(conexion, estacion_id, ahora)
         _revisar_tope(conexion, estacion, total, autoriza)
         cuenta_id = _cuenta_de_la_sesion(conexion, sesion, usuario_id, nombre, ahora)

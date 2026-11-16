@@ -215,8 +215,7 @@ def crear_reserva(usuario_id: int, cliente: str, celular: str, equipo: str, esta
     if not cliente:
         raise ValueError("Escribí el nombre del cliente.")
     monto = round(monto, 2)
-    if sum(pago["monto"] for pago in pagos) < monto - 0.01:
-        raise ValueError("Los pagos no cubren lo que paga ahora.")
+    # Que los pagos sumen justo `monto` lo revisa registrar_venta_sin_detalle (en _cobrar).
     if equipo != dominio.EQUIPO_RESERVA_PC:
         estacion_id = None
     inicio = inicio.replace(second=0, microsecond=0)

@@ -164,8 +164,7 @@ def habilitar(reserva_id: int, usuario_id: int, estacion_id, pagos: list) -> dic
         _no_es_de_socio(reserva)
         falta = _falta(conexion, reserva)
         if falta:
-            if sum(pago["monto"] for pago in pagos) < falta - 0.01:
-                raise ValueError("Los pagos no cubren lo que falta de la reserva.")
+            # Que los pagos sumen justo lo que falta lo revisa registrar_venta_sin_detalle.
             reservas_repo._cobrar(conexion, reserva_id, dominio.PAGO_RESERVA_RESTO, usuario_id, falta, pagos,
                                   reserva["equipo"], ahora)
 

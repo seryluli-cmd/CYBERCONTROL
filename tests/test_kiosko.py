@@ -29,7 +29,7 @@ from repositories import (
     ventas_repo,
 )
 from control_pcs.repositories import bonos_miembro_repo, miembros_repo, pcs_repo
-from base import BaseConBaseTemporal
+from base import BaseConBaseTemporal, poner_precio_de_lista
 
 
 class TestCalcularTurno(unittest.TestCase):
@@ -943,6 +943,7 @@ class TestLosPagosSumanElTotal(BaseConBaseTemporal):
         articulos_repo.crear_articulo("COD1", "Alfajor", None, None, 1500.0, 900.0, 0)
 
     def _vender(self, pagos, cantidad=2, precio=1500.0):
+        poner_precio_de_lista("COD1", precio)
         return ventas_repo.confirmar_venta(
             self.usuario_id,
             [{"codigo": "COD1", "descripcion": "Alfajor", "cantidad": cantidad, "precio_unitario": precio}],
@@ -1353,6 +1354,7 @@ class TestResumenDelDia(BaseConBaseTemporal):
         compras_repo.registrar_compra(self.admin_id, [{"codigo": "COD9", "cantidad": 50, "costo_unitario": 5.0}])
 
     def _vender(self, momento, total, metodo="EFECTIVO", usuario_id=None):
+        poner_precio_de_lista("COD9", total)
         with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = momento
             return ventas_repo.confirmar_venta(

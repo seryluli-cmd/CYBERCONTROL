@@ -549,6 +549,50 @@ def _migrar_borrar_clave_vieja_de_clientes_pc(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+INDICE_UNA_SESION_ACTIVA_POR_PC = "idx_sesion_pc_activa"
+
+
+def _crear_indice_una_sesion_activa_por_pc(conexion: sqlite3.Connection) -> bool:
+    """
+    Que la base no deje dos sesiones ACTIVAS en una misma PC (revisión general
+    del 2026-11-16, mejora 2b): un índice único parcial, como el de la consola
+    (idx_sesion_playstation_activa). Vender un bono y que un socio entre ya toman
+    el candado (BEGIN IMMEDIATE); esto lo asegura la base aunque algún día un
+    error de código intentara abrir una segunda. Antes, un socio que entraba a
+    una PC libre justo cuando el mostrador le vendía un bono podía dejarla con
+    dos (8 de 300 intentos forzados).
+
+    Una base que ya tiene una PC con dos activas no admite el índice. Entonces
+    no se crea, el programa arranca igual, se anota en errores.log qué PCs son y
+    se vuelve a intentar en el próximo arranque (para entonces una de las dos ya
+    se cerró sola, al acabarse su tiempo). No se toca ninguna sesión. Segura de
+    correr en cada arranque. Devuelve True si el índice quedó.
+    """
+    duplicadas = conexion.execute(
+        """
+        SELECT estaciones.nombre, COUNT(*) AS cantidad
+        FROM sesiones_pc LEFT JOIN estaciones ON estaciones.id = sesiones_pc.estacion_id
+        WHERE sesiones_pc.estado = ?
+        GROUP BY sesiones_pc.estacion_id HAVING COUNT(*) > 1
+        """,
+        (dominio.SESION_ACTIVA,),
+    ).fetchall()
+    if duplicadas:
+        from errores import registrar_error  # acá adentro: errores importa database
+        pcs = ", ".join(f"{fila['nombre']} ({fila['cantidad']})" for fila in duplicadas)
+        registrar_error(
+            RuntimeError(f"PCs con más de una sesión activa: {pcs}"),
+            "No se creó el índice de una sola sesión activa por PC; se vuelve a intentar en el próximo arranque.",
+        )
+        return False
+    conexion.execute(
+        f"CREATE UNIQUE INDEX IF NOT EXISTS {INDICE_UNA_SESION_ACTIVA_POR_PC} "
+        f"ON sesiones_pc(estacion_id) WHERE estado = '{dominio.SESION_ACTIVA}'"
+    )
+    conexion.commit()
+    return True
+
+
 def _migrar_columna_origen_en_ventas(conexion: sqlite3.Connection):
     """
     Para una base creada antes de que "ventas" distinguiera de dónde vino

@@ -464,10 +464,15 @@ def _abrir_o_extender_sesion(conexion, estacion_id: int, minutos: int, ahora: da
 
     fin_previo = datetime.fromisoformat(sesion["fecha_fin_prevista"])
     fin_previsto = dominio.fin_al_sumar_minutos(fin_previo, minutos, ahora)
-    conexion.execute(
-        "UPDATE sesiones_pc SET fecha_fin_prevista = ? WHERE id = ?",
-        (fin_previsto.isoformat(timespec="seconds"), sesion["id"]),
+    # "AND estado": quien llama tiene el candado (BEGIN IMMEDIATE), así que la
+    # sesión no pudo cambiar desde que se leyó; si igual cambió, no se le suma
+    # tiempo a una sesión cerrada (revisión general del 2026-11-16).
+    cursor = conexion.execute(
+        "UPDATE sesiones_pc SET fecha_fin_prevista = ? WHERE id = ? AND estado = ?",
+        (fin_previsto.isoformat(timespec="seconds"), sesion["id"], dominio.SESION_ACTIVA),
     )
+    if cursor.rowcount != 1:
+        raise ValueError("La sesión de esa PC cambió mientras se cobraba. No se grabó nada: volvé a intentar.")
     return sesion["id"]
 
 
@@ -500,11 +505,19 @@ def asignar_bono(estacion_id: int, bono_id: int, usuario_id: int, pagos: list, m
     ofertas_repo.momento_del_cobro); sin él, ahora. `bono_mostrado`, el bono como
     lo vio el operador: si la oferta cambió mientras cobraba, ValueError y no se
     graba nada (ofertas_repo.como_se_vende).
-    """
-    ahora = datetime.now()
-    momento = ofertas_repo.momento_del_cobro(momento_del_precio, ahora)
 
+    Corre con "BEGIN IMMEDIATE", como finalizar_sesion: el socio que cierra
+    desde su PC, el que entra con su saldo y la corrección de una PC que vuelve
+    de un corte (reconexion_repo.tomar_el_menor) cambian la misma sesión desde
+    otro hilo. Sin el candado, la venta leía la sesión vieja y el bono se cobraba
+    sobre una sesión ya cerrada, pisaba la corrección o abría una segunda sesión
+    en la PC (revisión general del 2026-11-16, mejora 2).
+    """
     with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+        # La hora, ya con el candado: si tuvo que esperar, cuenta desde cuando graba.
+        ahora = datetime.now()
+        momento = ofertas_repo.momento_del_cobro(momento_del_precio, ahora)
         estacion = conexion.execute(
             "SELECT nombre FROM estaciones WHERE id = ? AND activa = 1", (estacion_id,)
         ).fetchone()
@@ -614,6 +627,14 @@ def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_
         movimientos = [(sesion_origen["id"], estacion_origen_id, estacion_destino_id)]
         if sesion_destino is not None:
             movimientos.append((sesion_destino["id"], estacion_destino_id, estacion_origen_id))
+            # La base no deja dos sesiones ACTIVAS en una PC
+            # (database.INDICE_UNA_SESION_ACTIVA_POR_PC), y en un intercambio, entre
+            # un UPDATE y el otro, las dos estarían en la misma. La del destino deja
+            # de contar como activa mientras se mueven y vuelve abajo; con el candado
+            # tomado nadie ve ese paso.
+            conexion.execute(
+                "UPDATE sesiones_pc SET estado = ? WHERE id = ?", (dominio.SESION_FINALIZADA, sesion_destino["id"])
+            )
 
         for sesion_id, desde_id, hacia_id in movimientos:
             conexion.execute(
@@ -626,6 +647,10 @@ def trasladar_sesion(estacion_origen_id: int, estacion_destino_id: int, usuario_
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (sesion_id, desde_id, hacia_id, ahora_iso, usuario_id),
+            )
+        if sesion_destino is not None:
+            conexion.execute(
+                "UPDATE sesiones_pc SET estado = ? WHERE id = ?", (dominio.SESION_ACTIVA, sesion_destino["id"])
             )
 
     return {

@@ -205,19 +205,23 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list, momento_del_precio=N
 
     Con una oferta 2x1 o 50% a la hora del cobro, se vende con ella (como
     pcs_repo.asignar_bono, con los mismos `momento_del_precio` y `bono_mostrado`).
+
+    Corre con "BEGIN IMMEDIATE", como pcs_repo.asignar_bono: si en ese instante
+    alguien libera la consola, la venta espera y abre una sesión nueva en vez de
+    sumarle el bono a la que se acaba de cerrar (revisión general del 2026-11-16).
     """
     _exigir_operador(usuario_id)
     bono = obtener_bono(bono_id)
     if bono is None or not bono["activo"]:
         raise ValueError("Ese bono de la PlayStation 5 ya no está disponible.")
 
-    ahora = datetime.now()
-    momento = ofertas_repo.momento_del_cobro(momento_del_precio, ahora)
     with conexion_db() as conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+        ahora = datetime.now()
+        momento = ofertas_repo.momento_del_cobro(momento_del_precio, ahora)
         vendido = ofertas_repo.como_se_vende(conexion, dominio.EQUIPO_RESERVA_PLAYSTATION, bono, momento,
                                              bono_mostrado)
-        if sum(pago["monto"] for pago in pagos) < vendido["precio"] - 0.01:
-            raise ValueError("Los pagos no cubren el precio del bono.")
+        # Que los pagos sumen justo el precio lo revisa registrar_venta_sin_detalle.
         sesion = _sesion_activa(conexion)
         if sesion is None:
             fin_previsto = dominio.fin_al_sumar_minutos(None, vendido["minutos"], ahora)
@@ -234,10 +238,13 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list, momento_del_precio=N
             fin_previsto = dominio.fin_al_sumar_minutos(
                 datetime.fromisoformat(sesion["fecha_fin_prevista"]), vendido["minutos"], ahora
             )
-            conexion.execute(
-                "UPDATE sesiones_playstation SET fecha_fin_prevista = ? WHERE id = ?",
-                (fin_previsto.isoformat(timespec="seconds"), sesion_id),
+            cursor = conexion.execute(
+                "UPDATE sesiones_playstation SET fecha_fin_prevista = ? WHERE id = ? AND estado = ?",
+                (fin_previsto.isoformat(timespec="seconds"), sesion_id, dominio.SESION_ACTIVA),
             )
+            if cursor.rowcount != 1:
+                raise ValueError("La sesión de la consola cambió mientras se cobraba. No se grabó nada: "
+                                 "volvé a intentar.")
 
         venta_id = ventas_repo.registrar_venta_sin_detalle(
             conexion, usuario_id, vendido["precio"], pagos, dominio.ORIGEN_PLAYSTATION, ahora

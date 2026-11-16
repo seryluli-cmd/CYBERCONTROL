@@ -43,7 +43,7 @@ from ui.envio_pwa_progreso import (  # noqa: E402
     ENVIADO, ERROR, PENDIENTE, SEGUNDOS_MAXIMOS, TOPE_SIN_CONFIRMAR, DialogoEnviandoCierre,
 )
 from ui.utils import formato_pesos  # noqa: E402
-from base import BaseConBaseTemporal  # noqa: E402
+from base import BaseConBaseTemporal, poner_precio_de_lista  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
@@ -121,6 +121,7 @@ class _BaseDeEnvios(BaseConBaseTemporal):
         self.app = _AppDeGastosDePrueba()
 
     def _vender(self, usuario_id, momento, monto=500.0, metodo=dominio.PAGO_EFECTIVO):
+        poner_precio_de_lista("COD1", monto)
         with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = momento
             return ventas_repo.confirmar_venta(

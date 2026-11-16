@@ -26,7 +26,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from repositories import articulos_repo, compras_repo, turnos_repo, usuarios_repo, ventas_repo  # noqa: E402
 from ui import utils  # noqa: E402
-from base import BaseConBaseTemporal  # noqa: E402
+from base import BaseConBaseTemporal, poner_precio_de_lista  # noqa: E402
 
 _app = QApplication.instance() or QApplication([])
 
@@ -41,6 +41,7 @@ class _ConTurnos(BaseConBaseTemporal):
         compras_repo.registrar_compra(self.admin_id, [{"codigo": "COD9", "cantidad": 50, "costo_unitario": 5.0}])
 
     def _vender(self, momento, total):
+        poner_precio_de_lista("COD9", total)
         with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = momento
             return ventas_repo.confirmar_venta(

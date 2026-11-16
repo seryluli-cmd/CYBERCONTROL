@@ -556,9 +556,12 @@ def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str, sacar_de_la_
     le sacaron en total, "del_saldo", "de_la_pc" (la parte de "sacados" que salió
     del saldo y de la sesión), "estacion": la PC de la que se sacó, o None, y
     "sin_sacar": los que ya no estaban (los usó)}. Si la venta no tiene ninguna
-    CARGA asociada (un bono de PC walk-in, por ejemplo), solo se anula como
+    CARGA asociada (el pago de una reserva, por ejemplo), solo se anula como
     ventas_repo.anular_venta y sale todo en cero: también exige un
     Administrador activo y un motivo (ventas_repo.exigir_admin_y_motivo_para_anular).
+    La venta de un bono que no salió de una reserva no se anula acá (ValueError):
+    va por anular_bono_repo.anular_bono, que también le saca el tiempo a la sesión
+    (revisión general del 2026-11-16).
     """
     motivo = ventas_repo.exigir_admin_y_motivo_para_anular(usuario_admin_id, motivo)
     resultado = {"minutos": 0, "sacados": 0, "del_saldo": 0, "de_la_pc": 0, "estacion": None, "sin_sacar": 0}
@@ -566,6 +569,7 @@ def anular_carga(venta_id: int, usuario_admin_id: int, motivo: str, sacar_de_la_
         # El lock de escritura de entrada, como finalizar_sesion: el socio no puede
         # cerrar su PC ni entrar a otra entre que se lee su sesión y se la acorta.
         conexion.execute("BEGIN IMMEDIATE")
+        ventas_repo._exigir_que_no_sea_carga_ni_bono(conexion, venta_id, tambien_cargas=False)
         ventas_repo._anular_venta(conexion, venta_id, usuario_admin_id, motivo)
 
         ahora = datetime.now()

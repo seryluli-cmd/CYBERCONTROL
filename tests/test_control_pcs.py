@@ -916,14 +916,16 @@ class TestMiembrosRepo(BaseConBaseTemporal):
         self.assertEqual(venta["estado"], dominio.VENTA_ANULADA)
 
     def test_anular_carga_de_una_venta_sin_carga_asociada_funciona_igual_que_anular_venta(self):
-        # Una venta de "Alquiler de PCs" también puede ser un bono de PC
-        # walk-in (sin ninguna CARGA de socio asociada) -- Consulta de
-        # Ventas no distingue esto de antemano, así que anular_carga tiene
-        # que poder manejarla igual que un anular_venta común.
+        # Una venta de "Alquiler de PCs" sin ninguna CARGA de socio (el pago de
+        # una reserva, por ejemplo): anular_carga la anula igual que un
+        # anular_venta común. La de un bono, en cambio, va por "Quitar bono"
+        # (ver test_candados_de_plata, revisión general del 2026-11-16).
         operador_id = usuarios_repo.crear_usuario("Test", "1234", "ADMIN")
-        estacion_id = pcs_repo.crear_estacion("PC 1")
-        bono_id = pcs_repo.crear_bono("1 hora", 60, 3000)
-        venta_id = pcs_repo.asignar_bono(estacion_id, bono_id, operador_id, [{"metodo": "EFECTIVO", "monto": 3000}])
+        with database.conexion_db() as conexion:
+            venta_id = ventas_repo.registrar_venta_sin_detalle(
+                conexion, operador_id, 3000, [{"metodo": "EFECTIVO", "monto": 3000}],
+                dominio.ORIGEN_ALQUILER_PCS, datetime.now(),
+            )
 
         miembros_repo.anular_carga(venta_id, operador_id, "Test")
 

@@ -101,6 +101,15 @@ def esperar_que_avance_el_reloj():
         pass
 
 
+def poner_precio_de_lista(codigo: str, precio: float):
+    """Deja `precio` como precio de lista del artículo `codigo`. Una empleada solo
+    vende (o anota en la Cuenta de la PC) al precio de lista
+    (ventas_repo._exigir_precio_de_lista), y algunas pruebas arman cada venta con
+    el monto que necesitan."""
+    with database.conexion_db() as conexion:
+        conexion.execute("UPDATE articulos SET precio_venta = ? WHERE codigo = ?", (round(precio, 2), codigo))
+
+
 class BaseConBaseTemporal(unittest.TestCase):
     """Apunta database.DATA_DIR/DB_PATH a una carpeta temporal propia de la
     prueba, con la base ya creada, y al terminar los devuelve a la carpeta

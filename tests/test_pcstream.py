@@ -28,7 +28,7 @@ import database  # noqa: E402
 import dominio  # noqa: E402
 from repositories import reportes_repo, usuarios_repo, ventas_repo  # noqa: E402
 from control_pcs.repositories import (  # noqa: E402
-    actividad_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
+    actividad_repo, anular_bono_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
 )
 from control_pcs.ui.pcs_detalle import PanelDetalleEstacion  # noqa: E402
 from control_pcs.ui.pcs_gestion_dialogos import DialogoGestionBonosPcstream  # noqa: E402
@@ -80,8 +80,15 @@ class _ConPcstream(BaseConBaseTemporal):
         self.assertEqual(self.bono_pc_id, self.bono_stream_id)
 
     def _vender(self, estacion_id, bono_id, momento, monto=None):
+        if monto is None:
+            # Pagado justo (los pagos tienen que sumar el precio): lo que vale ese bono
+            # en el catálogo de la PC según su nombre de ahora. Si ahí no existe, la
+            # venta se rechaza antes de mirar los pagos.
+            nombre = pcs_repo.obtener_estacion(estacion_id)["nombre"]
+            bono = (pcstream_repo if dominio.es_pcstream(nombre) else pcs_repo).obtener_bono(bono_id)
+            monto = bono["precio"] if bono is not None else 0
         with _reloj(momento):
-            return pcs_repo.asignar_bono(estacion_id, bono_id, self.usuario_id, _efectivo(monto or 99999))
+            return pcs_repo.asignar_bono(estacion_id, bono_id, self.usuario_id, _efectivo(monto))
 
     def _finalizar(self, estacion_id, momento):
         with _reloj(momento):
@@ -246,7 +253,10 @@ class TestUsoDePcstream(_ConPcstream):
         self._vender(self.pc_id, self.bono_pc_id, datetime(2026, 1, 5, 15, 0))
         # Día 2: 1 hora que todavía está en curso, y cuya venta se anuló.
         venta_anulada = self._vender(self.pcstream_id, self.bono_stream_corto_id, datetime(2026, 1, 6, 9, 0))
-        ventas_repo.anular_venta(venta_anulada, self.usuario_id, "cobrada dos veces")
+        # Con "Quitar bono", como Consulta de Ventas (ventas_repo.anular_venta no deja
+        # anular un bono). Fuera del reloj de la prueba, para la sesión ya pasó: no se
+        # le saca tiempo, solo se anula la plata.
+        anular_bono_repo.anular_bono(venta_anulada, self.usuario_id, "cobrada dos veces")
         self.dia1, self.dia2 = dia1.isoformat(), dia2.isoformat()
 
     def _uso(self, desde, hasta, ahora=datetime(2026, 1, 6, 9, 20)):

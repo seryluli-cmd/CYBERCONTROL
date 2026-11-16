@@ -28,8 +28,10 @@ class TestCargaConSesion(BaseConBaseTemporal):
         self.bono_13h = bonos_miembro_repo.crear_bono("13 horas", TRECE_HORAS, 13000)
 
     def cargar(self, bono_id=None):
+        bono_id = bono_id or self.bono_13h
+        precio = bonos_miembro_repo.obtener_bono(bono_id)["precio"]  # pagado justo
         return miembros_repo.cargar_saldo_por_bono(
-            self.socio, bono_id or self.bono_13h, [{"metodo": "EFECTIVO", "monto": 13000}], self.operador
+            self.socio, bono_id, [{"metodo": "EFECTIVO", "monto": precio}], self.operador
         )
 
     def entrar_con_media_hora(self):

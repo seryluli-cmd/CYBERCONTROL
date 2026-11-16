@@ -87,14 +87,12 @@ def registrar_tramite(usuario_id: int, tramite_id: int, monto: float, pagos: lis
 
     Venta, pagos y vínculo con el trámite se graban en la misma transacción:
     o queda todo o no queda nada (CLAUDE.md, regla 8). El `monto` se graba
-    tal cual en `ventas.total` (mismo criterio que
-    ventas_repo.registrar_venta_sin_detalle); los pagos tienen que cubrirlo.
+    tal cual en `ventas.total`, y los pagos tienen que sumarlo justo (lo
+    revisa ventas_repo.registrar_venta_sin_detalle).
     """
     monto = round(monto, 2)
     if monto <= 0:
         raise ValueError("Ingresá un monto mayor a cero.")
-    if sum(pago["monto"] for pago in pagos) < monto - 0.01:
-        raise ValueError("Los pagos no cubren el monto del trámite.")
 
     with conexion_db() as conexion:
         tramite = conexion.execute(

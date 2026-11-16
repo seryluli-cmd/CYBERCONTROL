@@ -110,9 +110,48 @@ def confirmar_venta(usuario_id: int, lineas: list, pagos: list) -> int:
     Los montos se redondean a 2 decimales antes de guardarse, para que
     pequeños errores de redondeo de punto flotante no se vayan
     acumulando venta tras venta a lo largo de los años.
+
+    Un precio distinto al de la lista solo lo puede cobrar un Administrador
+    (_exigir_precio_de_lista).
     """
     with conexion_db() as conexion:
+        _exigir_precio_de_lista(conexion, usuario_id, lineas)
         return _grabar_venta_kiosko(conexion, usuario_id, lineas, pagos)
+
+
+def _exigir_precio_de_lista(conexion, usuario_id: int, lineas: list):
+    """
+    PermissionError si algún renglón tiene un precio distinto al de la lista
+    (articulos.precio_venta) y quien vende no es un Administrador activo.
+    Cambiar el precio al vender es solo del Administrador (decisión del dueño:
+    es una de las dos formas de "arreglar" una caja, la otra es anular). La
+    pantalla de Ventas solo se lo deja a él; esto lo hace cumplir el repo, para
+    cualquier pantalla que venda (revisión general del 2026-11-16, mejora 2c).
+
+    Si el precio cambió en Artículos con el renglón ya en el carrito, también
+    salta: el mensaje dice el precio nuevo y cómo seguir. La usan confirmar_venta
+    y cuentas_pc_repo.anotar_articulos, los dos caminos donde el precio viene de
+    la pantalla (Impresiones lee el suyo de la base y la Cuenta de la PC cobra
+    lo que se anotó).
+    """
+    distintos = []
+    for linea in lineas:
+        articulo = conexion.execute(
+            "SELECT precio_venta FROM articulos WHERE codigo = ?", (linea["codigo"],)
+        ).fetchone()
+        if articulo is not None and round(linea["precio_unitario"], 2) != round(articulo["precio_venta"], 2):
+            distintos.append((linea, articulo["precio_venta"]))
+    if not distintos:
+        return
+    usuario = conexion.execute("SELECT * FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
+    if usuario is not None and usuario["activo"] and dominio.es_admin(usuario):
+        return
+    linea, de_lista = distintos[0]
+    raise PermissionError(
+        f"{linea['descripcion']} está a {dominio.texto_pesos(linea['precio_unitario'])} y en la lista sale "
+        f"{dominio.texto_pesos(de_lista)}. Cambiar el precio al vender es solo del Administrador: "
+        "borrá ese renglón y volvé a cargarlo. No se grabó nada."
+    )
 
 
 def _revisar_que_los_pagos_sumen_el_total(total: float, pagos: list):
@@ -130,10 +169,14 @@ def _revisar_que_los_pagos_sumen_el_total(total: float, pagos: list):
 
     Un pago negativo se rechaza aunque la suma dé: $ 5.000 en efectivo y
     -$ 2.000 digital "suman" una venta de $ 3.000, pero la Caja esperaría
-    $ 5.000 en el cajón. La ventana de cobro nunca arma uno así.
+    $ 5.000 en el cajón. La ventana de cobro nunca arma uno así. La única
+    venta en negativo es la devolución de una reserva (reservas_repo.devolver):
+    ahí es al revés, ningún pago puede ser positivo.
     """
-    if any(round(pago["monto"], 2) < 0 for pago in pagos):
+    if total >= 0 and any(round(pago["monto"], 2) < 0 for pago in pagos):
         raise ValueError("Un pago no puede ser negativo. No se grabó nada: volvé a cobrar.")
+    if total < 0 and any(round(pago["monto"], 2) > 0 for pago in pagos):
+        raise ValueError("En una devolución ningún pago puede ser positivo. No se grabó nada.")
     cobrado = round(sum(round(pago["monto"], 2) for pago in pagos), 2)
     if abs(round(cobrado - round(total, 2), 2)) > DIFERENCIA_MAXIMA_DE_PAGOS:
         raise ValueError(
@@ -156,8 +199,8 @@ def _grabar_venta_kiosko(conexion, usuario_id: int, lineas: list, pagos: list, d
     lugar por donde pasan todas las ventas de kiosko (Vender, Impresiones y
     el kiosko de la Cuenta de la PC), así que ninguna pantalla (ni una nueva
     que cobre distinto) puede dejar una venta descuadrada. Las ventas sin
-    detalle (bonos, cargas, PlayStation, trámites, reservas) no pasan por
-    acá: registrar_venta_sin_detalle no lo revisa.
+    detalle (bonos, cargas, PlayStation, trámites, reservas) hacen la misma
+    revisión en registrar_venta_sin_detalle.
     """
     total = total_carrito(lineas)
     _revisar_que_los_pagos_sumen_el_total(total, pagos)
@@ -246,15 +289,43 @@ def anular_venta(venta_id: int, usuario_admin_id: int, motivo: str):
     para no perder el rastro. Solo un Administrador activo y con motivo
     (ver exigir_admin_y_motivo_para_anular).
 
-    Si la venta había cargado saldo a un socio (control_pcs, "Cargar
-    Saldo"), usar control_pcs.repositories.miembros_repo.anular_carga en
-    su lugar -- esta función solo sabe de ventas/stock, y anular una
-    carga sin revertir el saldo le dejaría al socio minutos que ya nadie
-    cobró (ver ese repo).
+    Una carga de saldo o un bono de tiempo no se anulan acá: ValueError
+    (_exigir_que_no_sea_carga_ni_bono). Esta función solo sabe de ventas y
+    stock, y le sacaría la plata a la caja dejándole al socio (o a la PC) el
+    tiempo que nadie cobró. Esos van por miembros_repo.anular_carga y
+    anular_bono_repo.anular_bono, que hacen las dos cosas juntas.
     """
     motivo = exigir_admin_y_motivo_para_anular(usuario_admin_id, motivo)
     with conexion_db() as conexion:
+        _exigir_que_no_sea_carga_ni_bono(conexion, venta_id)
         _anular_venta(conexion, venta_id, usuario_admin_id, motivo)
+
+
+def _exigir_que_no_sea_carga_ni_bono(conexion, venta_id: int, tambien_cargas: bool = True):
+    """
+    ValueError si la venta cargó saldo a un socio (con `tambien_cargas`) o vendió
+    un bono de PC, de PCSTREAM o de la consola que no salió de una reserva. Es la
+    misma elección que hace Consulta de Ventas al anular (ui/consulta_ventas_window),
+    hecha cumplir en el repo para cualquier pantalla y para la otra PC (revisión
+    general del 2026-11-16, mejora 2d). La usan anular_venta y, sin las cargas,
+    miembros_repo.anular_carga. Un bono de una reserva sí se anula como venta común.
+    """
+    # Acá adentro: anular_bono_repo importa este módulo.
+    from control_pcs.repositories import anular_bono_repo
+    if tambien_cargas and conexion.execute(
+        "SELECT 1 FROM movimientos_saldo_miembro WHERE venta_id = ? AND tipo = ? LIMIT 1",
+        (venta_id, dominio.MOVIMIENTO_CARGA),
+    ).fetchone():
+        raise ValueError(
+            "Esa venta cargó saldo a un socio: se anula con \"Anular carga\", que también le saca "
+            "los minutos. No se anuló nada."
+        )
+    bono = anular_bono_repo._buscar(conexion, venta_id)
+    if bono is not None and not bono["de_reserva"]:
+        raise ValueError(
+            "Esa venta vendió un bono de tiempo: se anula con \"Quitar bono\", que también le saca "
+            "el tiempo a la sesión. No se anuló nada."
+        )
 
 
 def buscar_venta(venta_id: int):
@@ -284,13 +355,16 @@ def registrar_venta_sin_detalle(
     de venta_detalle porque esa tabla exige un articulo_codigo real.
 
     `monto` es el total real de la operación (precio del bono, o el monto
-    cargado de saldo) y es lo que se graba en `ventas.total`, tal cual,
-    sin importar lo que haya circulado en `pagos` -- mismo criterio que
-    confirmar_venta(), donde el total sale del carrito y no de la suma de
-    los pagos (un pago en Efectivo puede superar el total si hay vuelto
-    de por medio). `pagos` es una lista de {"metodo", "monto"} -- puede
-    traer más de una fila para un cobro Mixto (Efectivo + Digital), ver
-    ui/dialogo_pago.DialogoPago, reutilizado tal cual para este caso.
+    cargado de saldo) y es lo que se graba en `ventas.total`. `pagos` es una
+    lista de {"metodo", "monto"} -- puede traer más de una fila para un cobro
+    Mixto (Efectivo + Digital), ver ui/dialogo_pago.DialogoPago -- y tienen que
+    sumar justo `monto`, como en confirmar_venta
+    (_revisar_que_los_pagos_sumen_el_total): llegan netos de vuelto. Antes
+    cada repo lo revisaba por su cuenta, y flojo: un trámite de $ 1.000 pagado
+    con $ 5.000 se grababa y la Caja esperaba $ 4.000 que no estaban en el
+    cajón (revisión general del 2026-11-16, mejora 2e). Ahora pasan todas por
+    acá: bonos de PC, de PCSTREAM y de la consola, cargas de saldo, trámites,
+    reservas y el cobro de la Cuenta de la PC.
 
     A diferencia de confirmar_venta(), recibe una conexión YA ABIERTA: el
     que llama a esta función ya está adentro de su propio `with
@@ -303,6 +377,7 @@ def registrar_venta_sin_detalle(
     sesión de PC, el movimiento de saldo) y tiene que ser exactamente el
     mismo instante en los dos lados, no uno un poco después del otro.
     """
+    _revisar_que_los_pagos_sumen_el_total(monto, pagos)
     venta_id = _insertar_cabecera_venta(conexion, ahora, usuario_id, monto, origen)
     _insertar_pagos(conexion, venta_id, pagos)
     return venta_id

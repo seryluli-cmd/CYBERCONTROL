@@ -27,6 +27,7 @@ def inicializar_base_de_datos():
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
         _migrar_check_origen_en_ventas, _migrar_borrar_clave_vieja_de_clientes_pc, _cargar_datos_iniciales,
+        _crear_indice_una_sesion_activa_por_pc,
         _valores_sql,
     )
     conexion = get_connection()
@@ -938,6 +939,11 @@ def inicializar_base_de_datos():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cierres_fiado_pc_cierre ON cierres_fiado_pc(cierre_id)")
 
     conexion.commit()
+
+    # Una sola sesión ACTIVA por PC, desde la base (revisión general del
+    # 2026-11-16). Con su propio arranque porque una base con una PC repetida
+    # no lo admite: ver database_migraciones.
+    _crear_indice_una_sesion_activa_por_pc(conexion)
 
     _cargar_datos_iniciales(conexion)
 

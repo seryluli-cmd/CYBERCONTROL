@@ -354,6 +354,8 @@ from database_migraciones import (
     _sql_tabla_eventos_admin_pc,
     _migrar_check_tipo_en_eventos_admin_pc,
     _migrar_borrar_clave_vieja_de_clientes_pc,
+    INDICE_UNA_SESION_ACTIVA_POR_PC,
+    _crear_indice_una_sesion_activa_por_pc,
     _migrar_columna_origen_en_ventas,
     _migrar_columnas_origen_en_cierres,
     _migrar_check_origen_en_ventas,

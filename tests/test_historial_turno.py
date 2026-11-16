@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 import dominio  # noqa: E402
 from admin_remoto import lista_blanca  # noqa: E402
 from control_pcs.repositories import (  # noqa: E402
-    bonos_miembro_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
+    anular_bono_repo, bonos_miembro_repo, miembros_repo, pcs_repo, pcstream_repo, playstation_repo,
 )
 from control_pcs.ui.pcs_window import PanelControlPcs  # noqa: E402
 from repositories import (  # noqa: E402
@@ -100,7 +100,7 @@ class BaseHistorial(BaseConBaseTemporal):
             [{"metodo": dominio.PAGO_EFECTIVO, "monto": 700.0}, {"metodo": dominio.PAGO_DIGITAL, "monto": 700.0}],
         )
         self.v_repetida = pcs_repo.asignar_bono(self.pc, self.bono_pc, self.lucia_id, _efectivo(8000.0))
-        ventas_repo.anular_venta(self.v_repetida, self.admin_id, "cargado 2 veces")
+        anular_bono_repo.anular_bono(self.v_repetida, self.admin_id, "cargado 2 veces")
         # El Admin cobra con la caja de Lucía abierta: queda a nombre de ella.
         self.v_admin = self.vender_coca(self.admin_id, 1)
 

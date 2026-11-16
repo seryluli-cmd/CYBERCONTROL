@@ -25,7 +25,7 @@ from unittest import mock
 import database
 import dominio
 from repositories import reportes_repo, turnos_repo, usuarios_repo, ventas_repo
-from control_pcs.repositories import bonos_miembro_repo, pcs_repo, playstation_repo
+from control_pcs.repositories import anular_bono_repo, bonos_miembro_repo, pcs_repo, playstation_repo
 from base import BaseConBaseTemporal
 
 
@@ -335,7 +335,8 @@ class TestVentasDeLaPlaystation(_ConPlaystation):
 
     def test_anular_la_venta_la_saca_de_la_caja_y_de_los_reportes(self):
         venta_id = self._vender(self.HORA)
-        ventas_repo.anular_venta(venta_id, self.admin_id, "Se cobró de más")
+        # Un bono se anula con "Quitar bono" (ventas_repo.anular_venta no lo deja).
+        anular_bono_repo.anular_bono(venta_id, self.admin_id, "Se cobró de más")
 
         self.assertEqual(turnos_repo.resumen_turno_actual()["playstation_efectivo"], 0.0)
         fila = reportes_repo.resumen_por_origen("2026-01-05", "2026-01-05")[0]
@@ -607,10 +608,11 @@ class TestCadaOrigenSumaEnLaCaja(BaseConBaseTemporal):
     def test_el_esquema_de_ventas_admite_todos_los_origenes(self):
         usuario_id = usuarios_repo.crear_usuario("Test", "1234", dominio.ROL_ADMIN)
         with database.conexion_db() as conexion:
+            pagos = [{"metodo": dominio.PAGO_EFECTIVO, "monto": 10.0}]
             for origen in dominio.ORIGENES_VENTA:
-                ventas_repo.registrar_venta_sin_detalle(conexion, usuario_id, 10.0, [], origen, datetime(2026, 1, 5, 10, 0))
+                ventas_repo.registrar_venta_sin_detalle(conexion, usuario_id, 10.0, pagos, origen, datetime(2026, 1, 5, 10, 0))
             with self.assertRaises(sqlite3.IntegrityError):
-                ventas_repo.registrar_venta_sin_detalle(conexion, usuario_id, 10.0, [], "INVENTADO", datetime(2026, 1, 5, 10, 0))
+                ventas_repo.registrar_venta_sin_detalle(conexion, usuario_id, 10.0, pagos, "INVENTADO", datetime(2026, 1, 5, 10, 0))
 
 
 class TestMigracionCheckOrigenEnVentas(BaseConBaseTemporal):
@@ -666,7 +668,8 @@ class TestMigracionCheckOrigenEnVentas(BaseConBaseTemporal):
     def _intentar_venta_playstation(self):
         with database.conexion_db() as conexion:
             return ventas_repo.registrar_venta_sin_detalle(
-                conexion, self.usuario_id, 3000.0, [], dominio.ORIGEN_PLAYSTATION, datetime(2026, 1, 5, 12, 0)
+                conexion, self.usuario_id, 3000.0, [{"metodo": dominio.PAGO_EFECTIVO, "monto": 3000.0}],
+                dominio.ORIGEN_PLAYSTATION, datetime(2026, 1, 5, 12, 0)
             )
 
     def test_la_base_vieja_no_admite_el_origen_nuevo(self):

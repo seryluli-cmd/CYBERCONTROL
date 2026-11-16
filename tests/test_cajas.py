@@ -22,7 +22,7 @@ from repositories import (
     articulos_repo, compras_repo, relevo_repo, tramites_repo, turnos_repo, usuarios_repo,
     ventas_repo,
 )
-from base import BaseConBaseTemporal
+from base import BaseConBaseTemporal, poner_precio_de_lista
 
 LUNES = date(2026, 1, 5)
 DOMINGO = date(2026, 1, 4)
@@ -42,6 +42,7 @@ class _BaseDeCajas(BaseConBaseTemporal):
         compras_repo.registrar_compra(self.admin_id, [{"codigo": "COD1", "cantidad": 100, "costo_unitario": 300.0}])
 
     def _vender(self, usuario_id, momento, monto=500.0, metodo=dominio.PAGO_EFECTIVO):
+        poner_precio_de_lista("COD1", monto)
         with mock.patch("repositories.ventas_repo.datetime") as datetime_mock:
             datetime_mock.now.return_value = momento
             return ventas_repo.confirmar_venta(

@@ -19,7 +19,7 @@ from control_pcs.repositories import (
 )
 from database import conexion_db
 from repositories import articulos_repo, config_repo, turnos_repo, usuarios_repo
-from base import BaseConBaseTemporal
+from base import BaseConBaseTemporal, poner_precio_de_lista
 
 EFECTIVO, DIGITAL = dominio.PAGO_EFECTIVO, dominio.PAGO_DIGITAL
 
@@ -171,6 +171,7 @@ class TestTope(BaseCuenta):
         self.assertEqual((self.stock(), self.deuda(self.pc1)["total"]), (-2, 2400.0))
 
     def test_justo_el_tope_se_puede(self):
+        poner_precio_de_lista("PANCHO", 600)
         cuentas_pc_repo.anotar_articulos(self.pc1, self.pancho(precio=600), self.operador)
         self.assertEqual(self.deuda(self.pc1)["total"], 3000.0)
 
@@ -269,6 +270,7 @@ class TestLaCuentaVaConElCliente(BaseCuenta):
         self.assertIsNone(deuda["de_la_sesion"])
 
         self.abrir(self.pc1)
+        poner_precio_de_lista("PANCHO", 900)
         cuentas_pc_repo.anotar_articulos(self.pc1, self.pancho(precio=900), self.operador, nombre="Juan")
         cuentas = cuentas_pc_repo.cuentas_de_la_estacion(self.pc1)
         self.assertEqual([(c["nombre"], c["total"], c["es_de_la_sesion_actual"]) for c in cuentas],
@@ -478,6 +480,7 @@ class TestLoFiadoEnElTurno(BaseCuenta):
     def test_en_el_cierre_solo_cuenta_lo_anotado_en_ese_turno(self):
         turnos_repo.cerrar_turno(self.operador)
         time.sleep(0.05)  # ver TestUnBonoAnotadoNoSeLeDevuelveAlSocio
+        poner_precio_de_lista("PANCHO", 500)
         cuentas_pc_repo.anotar_articulos(self.pc1, self.pancho(precio=500), self.operador)
         self.assertEqual([(c["monto_del_turno"], c["debe"]) for c in cuentas_pc_repo.fiado_del_turno_en_curso()],
                          [(500.0, 1700.0)])
