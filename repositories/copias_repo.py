@@ -35,6 +35,18 @@ Solo se tocan los archivos con el nombre de una copia automática
 (kiosko_AAAA-MM-DD_HHMMSS.db, o kiosko_AAAA-MM-DD.db de antes de este cambio): las
 copias "antes_de_..." de las migraciones (y las de Limpiar base, que existió hasta el
 2026-10-22) y las que se guardan a mano no se borran nunca.
+
+Revisadas (revisión general del 2026-11-16, mejora 3): cada copia se revisa con
+`database.revisar_copia` ANTES de ponerle su nombre. Una base con una página dañada
+se copiaba igual de dañada, sin aviso, y las copias buenas de antes se iban borrando
+por los días. Ahora una copia dañada no se guarda (no parece "la última", no viaja a
+las otras carpetas y no borra ninguna de antes) y la barra de arriba avisa en rojo
+(`aviso_de_copia_danada`) hasta que una copia vuelve a salir bien.
+
+Cómo volver a una copia: los pasos (`PASOS_PARA_VOLVER_A_UNA_COPIA`) quedan en un
+.txt al lado de las copias, en cada carpeta: si el disco del mostrador se rompe o el
+programa no abre, están donde está la copia. Los repite LEEME.txt y los muestra la
+pantalla de copias.
 """
 
 import json
@@ -84,8 +96,71 @@ _candado = threading.Lock()
 # Lo último que pasó, para la pantalla. Vive en memoria: al reabrir el programa
 # se vuelve a probar enseguida. "extra" es {carpeta: {"ultima", "error"}}: la
 # pantalla lo lee de acá y no de la carpeta, porque mirar una carpeta de red con
-# la otra PC apagada tarda varios segundos y congelaría la ventana.
-_estado = {"error_local": None, "reintentar_desde": None, "extra": {}}
+# la otra PC apagada tarda varios segundos y congelaría la ventana. "danada" es el
+# mensaje de la última copia que salió dañada, hasta que una sale bien (la barra
+# de arriba lo lee cada 10 s: por eso de memoria y no de la base).
+_estado = {"error_local": None, "reintentar_desde": None, "extra": {}, "danada": None}
+
+# Los pasos para volver a una copia, en un .txt al lado de las copias (ver el
+# comentario del módulo). LEEME.txt los repite tal cual (tests/test_copias.py lo vigila).
+ARCHIVO_DE_LOS_PASOS = "COMO_VOLVER_A_UNA_COPIA.txt"
+TITULO_DE_LOS_PASOS = (
+    "CÓMO VOLVER A UNA COPIA DE SEGURIDAD (RESTAURAR)\n"
+    "================================================\n"
+)
+PASOS_PARA_VOLVER_A_UNA_COPIA = """\
+Sirve si la base se dañó o se perdió (disco roto, un corte de luz, el
+programa avisa en rojo que la copia salió dañada). Todo lo que se hizo
+después de la copia que elijas se pierde: ventas, cargas y sesiones.
+
+1. Cerrá CyberBios en el mostrador, y en la otra PC si alguien lo tiene
+   abierto desde ahí. Si podés, hacelo con las PCs libres: las sesiones
+   que empezaron después de la copia no están en ella.
+2. Para ver los nombres completos de los archivos, en el Explorador de
+   Windows tildá Vista > Mostrar > Extensiones de nombre de archivo.
+3. Abrí la carpeta data, la que está al lado de CyberBios.exe. Creá
+   adentro una carpeta nueva, por ejemplo "base vieja", y MOVÉ ahí
+   kiosko.db y, si está, kiosko.db-journal. Moverlos LOS DOS es lo más
+   importante: si kiosko.db-journal queda al lado de la copia, al abrir
+   el programa se aplica sobre ella y la daña.
+   Si no hay carpeta data (un disco nuevo), creala al lado de
+   CyberBios.exe.
+4. Elegí la copia: la más nueva de data\\backups, de D:\\BACKUPS o de la
+   carpeta de la otra PC. El nombre dice el día y la hora:
+   kiosko_2026-11-17_140530.db es del 17/11/2026 a las 14:05:30.
+   El programa revisa cada copia antes de guardarla: una que salió
+   dañada no queda en la carpeta.
+5. COPIÁ esa copia (no la muevas) a la carpeta data y cambiale el
+   nombre a kiosko.db.
+6. Abrí CyberBios y entrá como Administrador. En Consulta de Ventas, lo
+   último tiene que ser de la hora de la copia.
+7. Si algo sale mal, cerrá el programa, borrá ese kiosko.db y probá con
+   la copia anterior.
+No borres la carpeta "base vieja" hasta estar seguro de que todo anda.
+"""
+
+
+class CopiaDanada(ValueError):
+    """La copia recién hecha no pasó `database.revisar_copia`. Es ValueError para
+    que la pantalla muestre el mensaje tal cual (ui.utils.manejar_errores). Lo que
+    encontró SQLite va aparte, en `problema`, solo para el log: no es siempre el
+    mismo texto con el mismo daño (a veces "malformed", a veces la lista de
+    quick_check), y el mensaje tiene que repetirse igual para ir una sola vez al log."""
+
+    def __init__(self, mensaje: str, problema: str):
+        super().__init__(mensaje)
+        self.problema = problema
+
+
+def _copia_danada(problema: str, donde: str = "") -> CopiaDanada:
+    """La CopiaDanada para levantar, y anota el aviso para la barra de arriba."""
+    _estado["danada"] = (
+        f"La copia de seguridad salió dañada y no se guardó{donde}. Puede ser que la base "
+        "del programa tenga un problema. Mientras tanto no se borra ninguna copia anterior. "
+        f"Se vuelve a probar en {MINUTOS_ANTES_DE_REINTENTAR} minutos; si sigue igual, mirá "
+        "\"CÓMO VOLVER A UNA COPIA\" en Usuarios > Copias de Seguridad."
+    )
+    return CopiaDanada(_estado["danada"], problema)
 
 
 # ---------------------------------------------------------------------------
@@ -347,14 +422,34 @@ def _borrar_las_que_sobran(carpeta: str):
         _borrar_si_existe(os.path.join(carpeta, nombre))  # si una no se puede borrar, la próxima vez
 
 
+def _dejar_los_pasos(carpeta: str):
+    """Deja (o actualiza) ARCHIVO_DE_LOS_PASOS en `carpeta`. Es una ayuda: si no
+    se puede escribir, la copia sigue igual. Con fin de línea de Windows, para el
+    Bloc de notas."""
+    ruta = os.path.join(carpeta, ARCHIVO_DE_LOS_PASOS)
+    texto = TITULO_DE_LOS_PASOS + "\n" + PASOS_PARA_VOLVER_A_UNA_COPIA
+    try:
+        with open(ruta, encoding="utf-8") as archivo:
+            if archivo.read() == texto:
+                return
+    except (OSError, ValueError):
+        pass  # no está, o no se lee: se escribe de nuevo
+    try:
+        with open(ruta, "w", encoding="utf-8", newline="\r\n") as archivo:
+            archivo.write(texto)
+    except OSError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Hacer las copias
 # ---------------------------------------------------------------------------
 
 def _copiar_en_esta_pc(ahora: datetime) -> str:
-    """Una copia nueva en data/backups. Se graba con otro nombre y se renombra
-    al final: si algo falla a mitad de camino, no queda un .db a medias que
-    parezca la última copia (y que se lleve a las otras carpetas)."""
+    """Una copia nueva en data/backups. Se graba con otro nombre, se revisa y
+    recién ahí se renombra: si algo falla a mitad de camino o la copia sale
+    dañada (CopiaDanada), no queda un .db que parezca la última copia (y que se
+    lleve a las otras carpetas), y las de antes no se borran."""
     carpeta = carpeta_local()
     os.makedirs(carpeta, exist_ok=True)
     destino = os.path.join(carpeta, nombre_de_copia(ahora))
@@ -362,11 +457,16 @@ def _copiar_en_esta_pc(ahora: datetime) -> str:
     _borrar_si_existe(a_medias)
     try:
         database._backup_consistente(a_medias)
+        problema = database.revisar_copia(a_medias)
+        if problema:
+            raise _copia_danada(problema)
         os.replace(a_medias, destino)
     except BaseException:
         _borrar_si_existe(a_medias)
         raise
+    _estado["danada"] = None
     _borrar_las_que_sobran(carpeta)
+    _dejar_los_pasos(carpeta)
     return destino
 
 
@@ -385,6 +485,7 @@ def _llevar_a(carpeta: str, origen: str) -> str:
         _borrar_si_existe(a_medias)
         raise
     _borrar_las_que_sobran(carpeta)
+    _dejar_los_pasos(carpeta)
     return destino
 
 
@@ -438,9 +539,14 @@ def copia_automatica_si_corresponde(ahora: datetime = None):
                     _estado["reintentar_desde"] = None
         except Exception as error:
             _estado["reintentar_desde"] = ahora + timedelta(minutes=MINUTOS_ANTES_DE_REINTENTAR)
-            mensaje = f"No se pudo hacer la copia en esta PC ({error})."
+            contexto = "Copia de seguridad automática"
+            if isinstance(error, CopiaDanada):
+                mensaje = str(error)
+                contexto += f" (lo que encontró SQLite: {error.problema})"
+            else:
+                mensaje = f"No se pudo hacer la copia en esta PC ({error})."
             if _estado["error_local"] != mensaje:
-                registrar_error(error, "Copia de seguridad automática")
+                registrar_error(error, contexto)
             _estado["error_local"] = mensaje
         try:
             _llevar_a_las_otras_carpetas(ahora)
@@ -453,11 +559,18 @@ def hacer_copia_ahora() -> dict:
     """
     El botón "Hacer copia de seguridad ahora": copia en esta PC y en las otras carpetas.
     {"local": ruta, "extra": lo de _llevar_a_las_otras_carpetas}. Si la copia de
-    esta PC falla, levanta el error (la pantalla lo muestra).
+    esta PC falla, levanta el error (la pantalla lo muestra); si salió dañada,
+    queda además como el error de esta PC, igual que en la copia automática.
     """
     with _candado:
         ahora = datetime.now()
-        local = _copiar_en_esta_pc(ahora)
+        try:
+            local = _copiar_en_esta_pc(ahora)
+        except CopiaDanada as error:
+            if _estado["error_local"] != str(error):
+                registrar_error(error, f"Copia de seguridad ahora (lo que encontró SQLite: {error.problema})")
+            _estado["error_local"] = str(error)
+            raise
         _estado["error_local"] = None
         _estado["reintentar_desde"] = None
         extra = _llevar_a_las_otras_carpetas(ahora)
@@ -465,8 +578,24 @@ def hacer_copia_ahora() -> dict:
 
 
 def guardar_copia_en(carpeta: str) -> str:
-    """Una copia suelta donde se elija (un pendrive), que no se borra nunca sola."""
-    return database.copiar_backup_a(carpeta)
+    """Una copia suelta donde se elija (un pendrive), que no se borra nunca sola.
+    Se revisa como las automáticas: si sale dañada, se borra y CopiaDanada (nadie
+    se lleva a su casa una copia que no sirve)."""
+    ruta = database.copiar_backup_a(carpeta)
+    problema = database.revisar_copia(ruta)
+    if problema:
+        _borrar_si_existe(ruta)
+        error = _copia_danada(problema, f" en {carpeta}")
+        registrar_error(error, f"Copia de seguridad a {carpeta} (lo que encontró SQLite: {problema})")
+        raise error
+    return ruta
+
+
+def aviso_de_copia_danada():
+    """El mensaje de la última copia que salió dañada, mientras ninguna vuelva a
+    salir bien; si no, None. Lo lee la barra de arriba cada 10 s (MainWindow):
+    sale de memoria, sin tocar la base ni las carpetas."""
+    return _estado["danada"]
 
 
 def estado() -> dict:

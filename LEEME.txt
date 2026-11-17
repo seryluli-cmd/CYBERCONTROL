@@ -23,6 +23,45 @@ otras carpetas donde se guarda cada copia (por ejemplo D:\BACKUPS o la
 carpeta compartida de otra PC, con su usuario y clave: se los pasa a
 Windows, no quedan en el programa), hace una copia en el momento o guarda
 una suelta en un pendrive.
+Cada copia se revisa antes de guardarla. Si sale dañada (la base del
+programa puede tener un problema), no se guarda, no se borra ninguna de
+antes y la barra de arriba avisa en rojo hasta que una vuelve a salir bien.
+
+VOLVER A UNA COPIA (RESTAURAR)
+------------------------------
+Estos mismos pasos están en COMO_VOLVER_A_UNA_COPIA.txt, que el programa
+deja al lado de las copias en cada carpeta (data\backups, D:\BACKUPS, la
+de la otra PC), y en Usuarios > Copias de Seguridad > CÓMO VOLVER A UNA
+COPIA.
+
+Sirve si la base se dañó o se perdió (disco roto, un corte de luz, el
+programa avisa en rojo que la copia salió dañada). Todo lo que se hizo
+después de la copia que elijas se pierde: ventas, cargas y sesiones.
+
+1. Cerrá CyberBios en el mostrador, y en la otra PC si alguien lo tiene
+   abierto desde ahí. Si podés, hacelo con las PCs libres: las sesiones
+   que empezaron después de la copia no están en ella.
+2. Para ver los nombres completos de los archivos, en el Explorador de
+   Windows tildá Vista > Mostrar > Extensiones de nombre de archivo.
+3. Abrí la carpeta data, la que está al lado de CyberBios.exe. Creá
+   adentro una carpeta nueva, por ejemplo "base vieja", y MOVÉ ahí
+   kiosko.db y, si está, kiosko.db-journal. Moverlos LOS DOS es lo más
+   importante: si kiosko.db-journal queda al lado de la copia, al abrir
+   el programa se aplica sobre ella y la daña.
+   Si no hay carpeta data (un disco nuevo), creala al lado de
+   CyberBios.exe.
+4. Elegí la copia: la más nueva de data\backups, de D:\BACKUPS o de la
+   carpeta de la otra PC. El nombre dice el día y la hora:
+   kiosko_2026-11-17_140530.db es del 17/11/2026 a las 14:05:30.
+   El programa revisa cada copia antes de guardarla: una que salió
+   dañada no queda en la carpeta.
+5. COPIÁ esa copia (no la muevas) a la carpeta data y cambiale el
+   nombre a kiosko.db.
+6. Abrí CyberBios y entrá como Administrador. En Consulta de Ventas, lo
+   último tiene que ser de la hora de la copia.
+7. Si algo sale mal, cerrá el programa, borrá ese kiosko.db y probá con
+   la copia anterior.
+No borres la carpeta "base vieja" hasta estar seguro de que todo anda.
 
 LA CAJA (cada persona con su caja)
 ----------------------------------

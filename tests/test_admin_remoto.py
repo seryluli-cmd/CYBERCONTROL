@@ -774,8 +774,9 @@ _NO_VAN_A_LA_BASE = {
     ("ofertas_repo", "con_las_ofertas"),
 }
 # Las que miran `self._remota` antes de tocar la base (el cierre forzoso y dar de
-# baja las sesiones vencidas los hace solo el mostrador).
-_SE_SALTEAN_DESDE_OTRA_PC = {"_revisar_la_caja", "_dar_de_baja_las_vencidas", "_revisar_cuentas_antes_del_cierre"}
+# baja las sesiones vencidas los hace solo el mostrador; las copias de seguridad también).
+_SE_SALTEAN_DESDE_OTRA_PC = {"_revisar_la_caja", "_dar_de_baja_las_vencidas", "_revisar_cuentas_antes_del_cierre",
+                             "_mostrar_aviso_de_las_copias"}
 
 
 class TestLasPantallasSoloPidenLoQueEstaEnLaLista(unittest.TestCase):

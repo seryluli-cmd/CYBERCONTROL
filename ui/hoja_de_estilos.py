@@ -351,6 +351,15 @@ HOJA_DE_ESTILOS = """
         font-size: 13px;
         color: #9AA4B5;
     }
+    /* La copia de seguridad salió dañada (MainWindow._mostrar_aviso_de_las_copias). */
+    QLabel#avisoCopiasEncabezado {
+        font-size: 13px;
+        font-weight: 700;
+        color: #FFFFFF;
+        background-color: #C62828;
+        border-radius: 4px;
+        padding: 2px 10px;
+    }
 
     /* Mosaico de PCs (control_pcs/ui/pcs_mosaico.py): fondo oscuro para que
        resalten los colores de las pantallas, como en los programas de cyber. */

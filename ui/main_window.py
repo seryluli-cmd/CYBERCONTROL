@@ -73,7 +73,7 @@ import time
 import dominio
 from admin_remoto import modo as modo_remoto
 from errores import registrar_error
-from repositories import impresiones_repo, relevo_repo, usuarios_repo
+from repositories import copias_repo, impresiones_repo, relevo_repo, usuarios_repo
 from turnos import MINUTOS_PARA_CIERRE_FORZOSO
 from ui.administrar_kiosko_window import AdministrarKioskoWindow
 from ui.configuracion_admin_window import ConfiguracionAdminWindow
@@ -157,6 +157,7 @@ class MainWindow(QMainWindow):
         else:
             self._actualizar_estado_de_la_caja()
         self._actualizar_boton_reservas()
+        self._mostrar_aviso_de_las_copias()
 
         self._timer_caja = QTimer(self)
         self._timer_caja.setInterval(INTERVALO_REVISION_CAJA_MS)
@@ -204,10 +205,16 @@ class MainWindow(QMainWindow):
         self.etiqueta_caja = QLabel()
         self.etiqueta_caja.setObjectName("cajaEncabezado")
         self.etiqueta_caja.hide()
+        # En rojo, solo si la última copia de seguridad salió dañada (ver
+        # _mostrar_aviso_de_las_copias). Escondido el resto del tiempo.
+        self.aviso_copias = QLabel()
+        self.aviso_copias.setObjectName("avisoCopiasEncabezado")
+        self.aviso_copias.hide()
         renglon_nombre = QHBoxLayout()
         renglon_nombre.setSpacing(10)
         renglon_nombre.addWidget(titulo)
         renglon_nombre.addWidget(self.etiqueta_caja)
+        renglon_nombre.addWidget(self.aviso_copias)
         renglon_nombre.addStretch()
         layout_barra.addLayout(renglon_nombre)
 
@@ -379,6 +386,7 @@ class MainWindow(QMainWindow):
         reservas de hoy: el cierre forzoso lo hace el mostrador.
         """
         self._actualizar_boton_reservas()
+        self._mostrar_aviso_de_las_copias()
         if self._remota:
             self._mostrar_la_caja_del_mostrador()
             return
@@ -413,6 +421,27 @@ class MainWindow(QMainWindow):
             "usuario y seguí vendiendo: no hace falta contar el Cambio Fijo.",
         )
         self._cerrar_sesion()
+
+    def _mostrar_aviso_de_las_copias(self):
+        """
+        Si la última copia de seguridad salió dañada (copias_repo.aviso_de_copia_danada,
+        revisión general del 2026-11-16, mejora 3), un cartel rojo al lado de la caja
+        hasta que una copia vuelve a salir bien; el mensaje entero, al pasar el mouse.
+        Antes una base dañada se copiaba dañada y nadie se enteraba hasta necesitar la
+        copia. Desde otra PC no: las copias las hace el mostrador.
+        """
+        if self._remota:
+            return
+        aviso = copias_repo.aviso_de_copia_danada()
+        if aviso and self.es_admin:
+            texto = "LA COPIA DE SEGURIDAD SALIÓ DAÑADA · VER USUARIOS > COPIAS DE SEGURIDAD"
+        elif aviso:
+            texto = "LA COPIA DE SEGURIDAD SALIÓ DAÑADA · AVISALE AL ADMINISTRADOR"
+        else:
+            texto = ""
+        self.aviso_copias.setText(texto)
+        self.aviso_copias.setToolTip(aviso or "")
+        self.aviso_copias.setVisible(bool(aviso))
 
     def _revisar_cuentas_antes_del_cierre(self):
         """

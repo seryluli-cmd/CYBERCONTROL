@@ -41,7 +41,11 @@ _CLAVE_DE_PRUEBA = "clave-de-prueba-que-no-se-guarda"
 
 
 def _copias(carpeta):
-    return sorted(n for n in os.listdir(carpeta) if copias_repo.momento_de_la_copia(n))
+    return _copias_de(os.listdir(carpeta))
+
+
+def _copias_de(nombres):
+    return sorted(n for n in nombres if copias_repo.momento_de_la_copia(n))
 
 
 def _windows_acepta(*_args, **_kwargs):
@@ -118,7 +122,7 @@ class TestReglas(unittest.TestCase):
 class _ConCopias(BaseConBaseTemporal):
     def setUp(self):
         super().setUp()
-        copias_repo._estado.update(error_local=None, reintentar_desde=None, extra={})
+        copias_repo._estado.update(error_local=None, reintentar_desde=None, extra={}, danada=None)
         self.admin_id = usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN)
         self.empleada_id = usuarios_repo.crear_usuario("Empleada", "1234", dominio.ROL_EMPLEADA)
         self._otras = tempfile.TemporaryDirectory()
@@ -129,7 +133,7 @@ class _ConCopias(BaseConBaseTemporal):
         os.makedirs(self.otra_pc)
 
     def tearDown(self):
-        copias_repo._estado.update(error_local=None, reintentar_desde=None, extra={})
+        copias_repo._estado.update(error_local=None, reintentar_desde=None, extra={}, danada=None)
         self._otras.cleanup()
         super().tearDown()
 
@@ -414,6 +418,166 @@ class TestPantallaDeCopias(_ConCopias):
             dialogo._quitar_carpeta()
         self.assertEqual(copias_repo.carpetas_extra(), [os.path.normpath(self.otra_pc)])
         self.assertEqual(dialogo.tabla.rowCount(), 1)
+
+
+def _danar_una_pagina(ruta):
+    """Daña a propósito una hoja de una tabla nueva de la base, como un disco que
+    falla: las demás tablas se siguen leyendo, pero quick_check la encuentra (y la
+    Online Backup API la copia tal cual, sin error). Devuelve con qué arreglarla."""
+    conexion = sqlite3.connect(ruta)
+    try:
+        conexion.execute("CREATE TABLE prueba_de_dano (id INTEGER PRIMARY KEY, texto TEXT)")
+        conexion.executemany("INSERT INTO prueba_de_dano (texto) VALUES (?)", [("x" * 200,)] * 500)
+        conexion.commit()
+        tamano = conexion.execute("PRAGMA page_size").fetchone()[0]
+        paginas = conexion.execute("PRAGMA page_count").fetchone()[0]
+    finally:
+        conexion.close()
+    posicion = tamano * (paginas - 3) + 8  # la anteúltima hoja de la tabla nueva
+    with open(ruta, "r+b") as archivo:
+        archivo.seek(posicion)
+        original = archivo.read(64)
+        archivo.seek(posicion)
+        archivo.write(b"\xff" * 64)
+    return posicion, original
+
+
+def _arreglar(ruta, arreglo):
+    posicion, original = arreglo
+    with open(ruta, "r+b") as archivo:
+        archivo.seek(posicion)
+        archivo.write(original)
+
+
+class TestLasCopiasSeRevisan(_ConCopias):
+    """Revisión general del 2026-11-16, mejora 3: una base dañada se copiaba igual de
+    dañada y sin aviso, y las copias buenas de antes se iban borrando por los días."""
+
+    def _viejas(self, carpeta, dias=40):
+        """Copias automáticas de antes (archivos vacíos con su nombre), una por día."""
+        os.makedirs(carpeta, exist_ok=True)
+        inicio = datetime.now() - timedelta(days=dias + 1)
+        for dia in range(dias):
+            open(os.path.join(carpeta, copias_repo.nombre_de_copia(inicio + timedelta(days=dia))), "wb").close()
+
+    def test_la_revision_ve_una_base_danada(self):
+        ruta = os.path.join(self._otras.name, "suelta.db")
+        conexion = sqlite3.connect(ruta)
+        conexion.execute("CREATE TABLE t (a)")
+        conexion.commit()
+        conexion.close()
+        self.assertIsNone(database.revisar_copia(ruta))
+        _danar_una_pagina(ruta)
+        self.assertTrue(database.revisar_copia(ruta))
+        no_es_una_base = os.path.join(self._otras.name, "texto.db")
+        with open(no_es_una_base, "w") as archivo:
+            archivo.write("esto no es una base de datos " * 100)
+        self.assertTrue(database.revisar_copia(no_es_una_base))
+
+    def test_una_copia_danada_no_se_guarda_ni_borra_las_de_antes_y_avisa(self):
+        copias_repo.agregar_carpeta_extra(self.admin_id, self.disco)
+        ahora = datetime.now()
+        buena = copias_repo.copia_automatica_si_corresponde(ahora)
+        self._viejas(copias_repo.carpeta_local())
+        self._viejas(self.disco)
+        antes_local, antes_disco = sorted(os.listdir(copias_repo.carpeta_local())), sorted(os.listdir(self.disco))
+
+        arreglo = _danar_una_pagina(database.DB_PATH)
+        self.assertIsNone(copias_repo.copia_automatica_si_corresponde(ahora + timedelta(hours=9)))
+        # Nada nuevo, nada a medias y ninguna de antes borrada, acá y en la otra carpeta.
+        self.assertEqual(sorted(os.listdir(copias_repo.carpeta_local())), antes_local)
+        self.assertEqual(sorted(os.listdir(self.disco)), antes_disco)
+        self.assertEqual(copias_repo.estado()["ultima_local"], copias_repo.momento_de_la_copia(os.path.basename(buena)))
+        self.assertIn("salió dañada", copias_repo.estado()["error_local"])
+        self.assertIn("salió dañada", copias_repo.aviso_de_copia_danada())
+        # Reintenta a los 10 minutos, y al log va una sola vez.
+        copias_repo.copia_automatica_si_corresponde(ahora + timedelta(hours=9, minutes=11))
+        with open(os.path.join(database.DATA_DIR, "errores.log"), encoding="utf-8") as log:
+            texto = log.read()
+        self.assertEqual(texto.count("Copia de seguridad automática"), 1)
+        self.assertIn("lo que encontró SQLite", texto)
+
+        # Arreglada la base, la próxima sale bien, se lleva a la otra carpeta y el aviso se va.
+        _arreglar(database.DB_PATH, arreglo)
+        nueva = copias_repo.copia_automatica_si_corresponde(ahora + timedelta(hours=9, minutes=22))
+        self.assertIsNotNone(nueva)
+        self.assertIsNone(database.revisar_copia(nueva))
+        self.assertIn(os.path.basename(nueva), os.listdir(self.disco))
+        self.assertIsNone(copias_repo.aviso_de_copia_danada())
+        self.assertIsNone(copias_repo.estado()["error_local"])
+        # Y recién ahí se borran las que sobran.
+        self.assertLess(len(_copias(copias_repo.carpeta_local())), len(_copias_de(antes_local)))
+
+    def test_hacer_copia_ahora_con_la_base_danada(self):
+        _danar_una_pagina(database.DB_PATH)
+        with self.assertRaises(copias_repo.CopiaDanada) as error:
+            copias_repo.hacer_copia_ahora()
+        self.assertIn("salió dañada", str(error.exception))
+        self.assertEqual(_copias(copias_repo.carpeta_local()), [])
+        self.assertEqual([n for n in os.listdir(copias_repo.carpeta_local()) if n.endswith(".parcial")], [])
+        self.assertEqual(copias_repo.estado()["error_local"], str(error.exception))
+        self.assertIsNotNone(copias_repo.aviso_de_copia_danada())
+
+    def test_la_copia_al_pendrive_danada_no_queda(self):
+        self.assertIsNone(database.revisar_copia(copias_repo.guardar_copia_en(self.disco)))
+        pendrive = os.path.join(self._otras.name, "pendrive")
+        os.makedirs(pendrive)
+        _danar_una_pagina(database.DB_PATH)
+        with self.assertRaises(copias_repo.CopiaDanada) as error:
+            copias_repo.guardar_copia_en(pendrive)
+        self.assertIn(f"no se guardó en {pendrive}", str(error.exception))
+        self.assertEqual(os.listdir(pendrive), [])  # nadie se lleva a su casa una copia que no sirve
+
+    def test_los_pasos_quedan_al_lado_de_cada_copia(self):
+        self._agregar_las_dos()
+        texto = copias_repo.TITULO_DE_LOS_PASOS + "\n" + copias_repo.PASOS_PARA_VOLVER_A_UNA_COPIA
+        with open(os.path.join(self.disco, copias_repo.ARCHIVO_DE_LOS_PASOS), "w", encoding="utf-8") as viejo:
+            viejo.write("pasos de antes")
+        copias_repo.hacer_copia_ahora()
+        for carpeta in (copias_repo.carpeta_local(), self.otra_pc, self.disco):
+            ruta = os.path.join(carpeta, copias_repo.ARCHIVO_DE_LOS_PASOS)
+            with open(ruta, encoding="utf-8") as archivo:
+                self.assertEqual(archivo.read(), texto, carpeta)
+            with open(ruta, "rb") as archivo:
+                self.assertIn(b"\r\n", archivo.read())  # para el Bloc de notas
+        self.assertIsNone(copias_repo.momento_de_la_copia(copias_repo.ARCHIVO_DE_LOS_PASOS))  # nunca se borra
+
+    def test_los_pasos_dicen_que_hay_que_mover_tambien_el_journal(self):
+        pasos = copias_repo.PASOS_PARA_VOLVER_A_UNA_COPIA
+        self.assertIn("kiosko.db-journal", pasos)
+        self.assertIn("data\\backups", pasos)
+        self.assertIn("D:\\BACKUPS", pasos)
+
+    def test_el_leeme_tiene_los_mismos_pasos(self):
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(raiz, "LEEME.txt"), encoding="utf-8") as leeme:
+            self.assertIn(copias_repo.PASOS_PARA_VOLVER_A_UNA_COPIA, leeme.read())
+
+    def test_la_pantalla_de_copias_muestra_los_pasos(self):
+        dialogo = DialogoCopiasDeSeguridad(usuarios_repo.obtener_usuario(self.admin_id))
+        with mock.patch("ui.copias_dialogo.mostrar_info") as aviso:
+            dialogo._mostrar_los_pasos()
+        self.assertIn(copias_repo.PASOS_PARA_VOLVER_A_UNA_COPIA, aviso.call_args[0][2])
+
+    def test_la_barra_de_arriba_avisa_en_rojo(self):
+        from ui.main_window import MainWindow
+        mensaje = "La copia de seguridad salió dañada y no se guardó."
+        copias_repo._estado["danada"] = mensaje
+        empleada = MainWindow(usuarios_repo.obtener_usuario(self.empleada_id), lambda: None)
+        self.assertFalse(empleada.aviso_copias.isHidden())
+        self.assertIn("AVISALE AL ADMINISTRADOR", empleada.aviso_copias.text())
+        self.assertEqual(empleada.aviso_copias.toolTip(), mensaje)
+        admin = MainWindow(usuarios_repo.obtener_usuario(self.admin_id), lambda: None)
+        self.assertIn("COPIAS DE SEGURIDAD", admin.aviso_copias.text())
+
+        copias_repo._estado["danada"] = None  # una copia volvió a salir bien
+        empleada._revisar_la_caja()
+        self.assertTrue(empleada.aviso_copias.isHidden())
+
+    def test_sin_problemas_la_barra_no_dice_nada(self):
+        from ui.main_window import MainWindow
+        ventana = MainWindow(usuarios_repo.obtener_usuario(self.empleada_id), lambda: None)
+        self.assertTrue(ventana.aviso_copias.isHidden())
 
 
 if __name__ == "__main__":

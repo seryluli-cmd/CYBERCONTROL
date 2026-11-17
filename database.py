@@ -156,6 +156,29 @@ def _backup_consistente(destino: str):
         origen.close()
 
 
+def revisar_copia(ruta: str):
+    """
+    None si la copia de `ruta` está sana; si no, lo que encontró SQLite
+    (`PRAGMA quick_check`), en una línea. La Online Backup API copia las páginas
+    tal cual: si la base tiene una página dañada, la copia sale igual de dañada y
+    sin ningún error (medido en la revisión general del 2026-11-16). Se revisa la
+    COPIA y no la base: así la revisión no frena las ventas, y una copia dañada
+    quiere decir que la base también lo está. Tarda unos 0,3 s con una base de
+    80 MB (medido).
+    """
+    try:
+        conexion = sqlite3.connect(ruta)
+        try:
+            filas = [str(fila[0]) for fila in conexion.execute("PRAGMA quick_check")]
+        finally:
+            conexion.close()
+    except sqlite3.DatabaseError as error:  # "file is not a database", "malformed"...
+        return str(error)
+    if filas == ["ok"]:
+        return None
+    return " ".join(" ".join(filas).split())[:200]
+
+
 def copiar_backup_a(carpeta_destino: str) -> str:
     """
     Copia la base de datos actual a la carpeta que elija la usuaria

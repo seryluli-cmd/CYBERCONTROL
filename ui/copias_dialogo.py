@@ -73,11 +73,15 @@ class DialogoCopiasDeSeguridad(QDialog):
             "Una copia suelta en la carpeta que elijas, con fecha y hora en el nombre. "
             "Esa no se borra nunca sola."
         )
+        # Los mismos pasos que quedan en un .txt al lado de cada copia (revisión
+        # general del 2026-11-16, mejora 3).
+        boton_pasos = tecla("?  CÓMO VOLVER A UNA COPIA", self._mostrar_los_pasos)
         boton_cerrar = tecla("CERRAR", self.accept)
         botones = QHBoxLayout()
         botones.setSpacing(8)
         botones.addWidget(boton_ahora)
         botones.addWidget(boton_pendrive)
+        botones.addWidget(boton_pasos)
         botones.addStretch()
         botones.addWidget(boton_cerrar)
 
@@ -86,7 +90,9 @@ class DialogoCopiasDeSeguridad(QDialog):
             "El programa guarda solo una copia de la base, sin cerrarse: después de cada "
             f"<b>Cierre de Turno</b> y, si no hubo ninguno, cada <b>{copias_repo.HORAS_ENTRE_COPIAS} "
             f"horas</b>. Quedan todas las de los últimos {copias_repo.DIAS_CON_TODAS_LAS_COPIAS} días "
-            f"y, más atrás, una por día hasta {copias_repo.DIAS_CON_UNA_COPIA} días."
+            f"y, más atrás, una por día hasta {copias_repo.DIAS_CON_UNA_COPIA} días. Cada copia se "
+            "revisa antes de guardarla: si sale dañada, no se guarda, no se borra ninguna de antes "
+            "y la barra de arriba avisa en rojo."
         )
         explicacion.setWordWrap(True)
         self.etiqueta_local = QLabel()
@@ -239,6 +245,14 @@ class DialogoCopiasDeSeguridad(QDialog):
             return
         donde = f"en esta PC y en las {anduvieron} carpeta(s) de la lista" if anduvieron else "en esta PC"
         mostrar_info(self, "Copia hecha", f"Listo: la copia quedó guardada {donde}.")
+
+    def _mostrar_los_pasos(self):
+        mostrar_info(
+            self, "Cómo volver a una copia",
+            copias_repo.PASOS_PARA_VOLVER_A_UNA_COPIA
+            + f"\nEstos pasos están también en {copias_repo.ARCHIVO_DE_LOS_PASOS}, al lado de las copias "
+            "de cada carpeta.",
+        )
 
     @manejar_errores
     def _copiar_a_pendrive(self):
