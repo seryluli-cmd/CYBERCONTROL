@@ -197,17 +197,42 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
 
     def _responder_json(self, status: int, cuerpo_dict: dict):
         cuerpo = json.dumps(cuerpo_dict).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(cuerpo)))
-        self.end_headers()
-        self.wfile.write(cuerpo)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(cuerpo)))
+            self.end_headers()
+            self.wfile.write(cuerpo)
+        except OSError as error:
+            self._anotar_respuesta_que_no_llego(error, status, cuerpo_dict)
 
     def _responder_vacio(self, status: int):
         """Responde solo con el código de estado, sin cuerpo: así se rechaza
         un pedido sin autorización y los errores de GET /estado."""
-        self.send_response(status)
-        self.end_headers()
+        try:
+            self.send_response(status)
+            self.end_headers()
+        except OSError as error:
+            self._anotar_respuesta_que_no_llego(error, status)
+
+    def _anotar_respuesta_que_no_llego(self, error, status: int, cuerpo_dict: dict = None):
+        """
+        La otra punta cortó antes de recibir la respuesta: un Cliente PC que se
+        cansó de esperar (3 s), una PC que se apagó, la red. Queda en
+        errores.log, porque el .exe no tiene consola y antes no quedaba ningún
+        rastro (revisión general del 2026-11-16, mejora 4c). Si viajaba un
+        comando, ya quedó ENTREGADO (`comandos_pc_repo.marcar_entregado`) y la
+        PC no lo recibió: hay que volver a mandarlo.
+        """
+        ruta = urlparse(self.path)
+        estacion = parse_qs(ruta.query).get("estacion", [""])[0][:40]
+        quien = f"la PC {estacion} ({self.client_address[0]})" if estacion else self.client_address[0]
+        contexto = f"Servidor de red: no le llegó la respuesta de {ruta.path} ({status}) a {quien}"
+        comando = cuerpo_dict.get("comando") if isinstance(cuerpo_dict, dict) else None
+        if isinstance(comando, dict):
+            contexto += (f". Iba el comando {comando.get('id')} ({comando.get('tipo')}): quedó como entregado"
+                         " pero la PC no lo recibió, hay que volver a mandarlo")
+        registrar_error(error, contexto)
 
     def _responder_error(self, status: int, mensaje: str):
         """Responde con {"ok": False, "error": mensaje}: el formato de error
@@ -304,13 +329,16 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             try:
                 # La temperatura del procesador y la placa de video, para el termómetro del
                 # mosaico. Si falla, el mosaico muestra la anterior: nada que decida el bloqueo.
-                temperatura_pc_repo.registrar(item["estacion"]["id"], temperatura_pc_repo.leer_temperatura(parametros))
+                # Si no cambió, ni abre la base (lo mismo el mantenimiento, abajo).
+                temperatura_pc_repo.registrar_si_cambio(
+                    item["estacion"], temperatura_pc_repo.leer_temperatura(parametros))
             except Exception as error:
                 registrar_error(error, "Servidor de red: registrar la temperatura de una PC")
             try:
                 # Cuánto le queda al mantenimiento de esa PC (desde la V1.6), para ofrecer
                 # "Terminar mantenimiento" en el clic derecho. Nada que decida el bloqueo.
-                mantenimiento_pc_repo.registrar(item["estacion"]["id"], mantenimiento_pc_repo.leer_minutos(parametros))
+                mantenimiento_pc_repo.registrar_si_cambio(
+                    item["estacion"], mantenimiento_pc_repo.leer_minutos(parametros))
             except Exception as error:
                 registrar_error(error, "Servidor de red: registrar el mantenimiento de una PC")
             reinicio = reinicios_pc_repo.leer_reinicio(parametros)
@@ -571,10 +599,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
         status, respuesta = admin_remoto_servidor.atender(
             urlparse(self.path).path, self.rfile.read(largo), self.client_address[0]
         )
-        try:
-            self._responder_json(status, respuesta)
-        except OSError:
-            pass  # la otra PC cortó antes de recibir la respuesta
+        # Si la otra PC cortó antes de recibir la respuesta, queda en errores.log (_responder_json).
+        self._responder_json(status, respuesta)
 
     def _manejar_login(self):
         try:

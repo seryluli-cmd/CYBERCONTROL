@@ -47,6 +47,15 @@ def registrar(estacion_id: int, minutos) -> bool:
         ).rowcount > 0
 
 
+def registrar_si_cambio(estacion, minutos) -> bool:
+    """Como `registrar`, pero mirando antes `estacion`, la fila que GET /estado acaba de leer en
+    esa misma consulta: si ya tiene esos minutos, no abre la base (lo mismo que
+    temperatura_pc_repo.registrar_si_cambio)."""
+    if estacion["mant_min"] == minutos:
+        return False
+    return registrar(estacion["id"], minutos)
+
+
 def minutos_vigentes(estacion, enlazada: bool):
     """Cuánto le queda al mantenimiento de esa estación, o None si no está en mantenimiento, no
     está enlazada (lo guardado es de cuando todavía preguntaba) o su Cliente PC no lo manda."""

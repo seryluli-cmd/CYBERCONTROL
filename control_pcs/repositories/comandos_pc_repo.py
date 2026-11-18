@@ -145,6 +145,21 @@ def encolar_comando(estacion_id: int, tipo: str, payload: str = None) -> int:
     return comando_id
 
 
+def _cambiar_si_hay(conexion, asignar: str, parametros_asignar, condicion: str, parametros_condicion):
+    """`UPDATE comandos_pc SET <asignar> WHERE <condicion>`, solo si alguna fila cumple la
+    condición. Lo mira antes con un SELECT, que no toma el permiso de escritura de la base: un
+    UPDATE que no cambia nada igual lo toma. `proximo_comando_pendiente` corre en cada consulta
+    de cada PC (40 PCs, cada 5 s) y casi nunca tiene nada que vencer, y mientras tanto una venta
+    esperaba (revisión general del 2026-11-16, mejora 4b). El UPDATE repite la condición, así que
+    da igual si algo cambió entre las dos."""
+    parametros_condicion = tuple(parametros_condicion)
+    hay = conexion.execute(f"SELECT 1 FROM comandos_pc WHERE {condicion} LIMIT 1", parametros_condicion).fetchone()
+    if hay is None:
+        return
+    conexion.execute(f"UPDATE comandos_pc SET {asignar} WHERE {condicion}",
+                     (*parametros_asignar, *parametros_condicion))
+
+
 def _vencer_con_clave(conexion, comando_ids=None, estacion_id=None, todos=False):
     """Da por terminados los comandos con clave todavía pendientes: los de
     `comando_ids`, todos (`todos`), o los que pasaron MINUTOS_VIGENCIA_CON_CLAVE
@@ -167,10 +182,9 @@ def _vencer_con_clave(conexion, comando_ids=None, estacion_id=None, todos=False)
     if estacion_id is not None:
         condiciones.append("estacion_id = ?")
         parametros.append(estacion_id)
-    conexion.execute(
-        "UPDATE comandos_pc SET estado = ?, payload = NULL, resultado = COALESCE(resultado, ?) "
-        f"WHERE {' AND '.join(condiciones)}",
-        (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_VENCIDO, *parametros),
+    _cambiar_si_hay(
+        conexion, "estado = ?, payload = NULL, resultado = COALESCE(resultado, ?)",
+        (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_VENCIDO), " AND ".join(condiciones), parametros,
     )
 
 
@@ -178,14 +192,12 @@ def _vencer_reinicios(conexion, estacion_id: int):
     """Da por no hechos los Reiniciar/Apagar de esta PC que esperaron más de
     MINUTOS_VIGENCIA_REINICIO (ver el docstring del módulo)."""
     limite = datetime.now() - timedelta(minutes=MINUTOS_VIGENCIA_REINICIO)
-    conexion.execute(
-        f"""
-        UPDATE comandos_pc SET estado = ?, resultado = COALESCE(resultado, ?)
-        WHERE estacion_id = ? AND estado = ? AND fecha_creacion < ?
-          AND tipo IN ({', '.join('?' * len(COMANDOS_QUE_VENCEN))})
-        """,
-        (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_REINICIO_VENCIDO, estacion_id,
-         dominio.ESTADO_COMANDO_PENDIENTE, limite.isoformat(timespec="seconds"), *COMANDOS_QUE_VENCEN),
+    _cambiar_si_hay(
+        conexion, "estado = ?, resultado = COALESCE(resultado, ?)",
+        (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_REINICIO_VENCIDO),
+        f"""estacion_id = ? AND estado = ? AND fecha_creacion < ?
+            AND tipo IN ({', '.join('?' * len(COMANDOS_QUE_VENCEN))})""",
+        (estacion_id, dominio.ESTADO_COMANDO_PENDIENTE, limite.isoformat(timespec="seconds"), *COMANDOS_QUE_VENCEN),
     )
 
 
@@ -215,22 +227,17 @@ def _dar_por_reiniciadas(conexion, estacion_id: int, encendida):
         return
     ahora = datetime.now()
     arranco = (ahora - timedelta(seconds=encendida)).isoformat(timespec="seconds")
-    conexion.execute(
-        """
-        UPDATE comandos_pc SET estado = ?, resultado = ?
-        WHERE estacion_id = ? AND tipo = ? AND payload LIKE ? AND resultado IS NULL AND fecha_creacion < ?
-        """,
-        (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_YA_REINICIADA, estacion_id, TIPO_REINICIAR,
-         PREFIJO_REINICIO_POR_ACTUALIZACION + "%", arranco),
+    _cambiar_si_hay(
+        conexion, "estado = ?, resultado = ?", (dominio.ESTADO_COMANDO_ENTREGADO, RESULTADO_YA_REINICIADA),
+        "estacion_id = ? AND tipo = ? AND payload LIKE ? AND resultado IS NULL AND fecha_creacion < ?",
+        (estacion_id, TIPO_REINICIAR, PREFIJO_REINICIO_POR_ACTUALIZACION + "%", arranco),
     )
     desde = (ahora - timedelta(minutes=MINUTOS_REINICIANDO)).isoformat(timespec="seconds")
-    conexion.execute(
-        """
-        UPDATE comandos_pc SET payload = ?
-        WHERE estacion_id = ? AND tipo = ? AND resultado LIKE 'OK:%' AND payload IS NULL
-          AND fecha_creacion < ? AND fecha_creacion >= ?
-        """,
-        (PAYLOAD_VOLVIO_REINICIADA, estacion_id, TIPO_DESCONGELAR, arranco, desde),
+    _cambiar_si_hay(
+        conexion, "payload = ?", (PAYLOAD_VOLVIO_REINICIADA,),
+        """estacion_id = ? AND tipo = ? AND resultado LIKE 'OK:%' AND payload IS NULL
+           AND fecha_creacion < ? AND fecha_creacion >= ?""",
+        (estacion_id, TIPO_DESCONGELAR, arranco, desde),
     )
 
 
@@ -277,7 +284,8 @@ def proximo_comando_pendiente(estacion_id: int, encendida=None):
     la PC ya se reinició (`encendida`, ver `_dar_por_reiniciadas`) y vence los
     comandos con clave y los Reiniciar/Apagar de esa PC que esperaron
     demasiado (ver el docstring del módulo): con el índice por estación
-    y estado, no recorre el historial."""
+    y estado, no recorre el historial. Si no hay nada de eso, solo lee: no
+    toma el permiso de escritura de la base (`_cambiar_si_hay`)."""
     with conexion_db() as conexion:
         _dar_por_reiniciadas(conexion, estacion_id, encendida)
         _vencer_con_clave(conexion, estacion_id=estacion_id)

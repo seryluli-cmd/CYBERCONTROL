@@ -48,6 +48,16 @@ def registrar(estacion_id: int, temperatura: dict) -> bool:
         ).rowcount > 0
 
 
+def registrar_si_cambio(estacion, temperatura: dict) -> bool:
+    """Como `registrar`, pero mirando antes `estacion`, la fila que GET /estado acaba de leer en
+    esa misma consulta: si ya tiene esa temperatura, no abre la base. Un UPDATE que no cambia nada
+    igual toma el permiso de escritura de la base, y con 40 PCs preguntando cada 5 s eso hacía
+    esperar a las ventas (revisión general del 2026-11-16, mejora 4b)."""
+    if (estacion["temp_cpu"], estacion["temp_gpu"]) == (temperatura["cpu"], temperatura["gpu"]):
+        return False
+    return registrar(estacion["id"], temperatura)
+
+
 def vigente(estacion, enlazada: bool) -> dict:
     """La temperatura que se muestra de una estación ({"cpu", "gpu"}): None en los dos si no está
     enlazada (lo guardado es de cuando todavía preguntaba) o si su Cliente PC nunca la mandó."""
