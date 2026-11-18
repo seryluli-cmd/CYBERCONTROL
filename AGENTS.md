@@ -1,8 +1,9 @@
 # Guía de trabajo para agentes — CYBERCONTROL
 
 La referencia vigente del proyecto es [CLAUDE.md](CLAUDE.md). Leela antes de
-modificar código: contiene las 15 reglas, los puntos únicos de verdad, las
-trampas del negocio y lo que el dueño pidió no cambiar sin hablarlo.
+modificar código: contiene las 15 reglas, lo que el dueño pidió no cambiar sin
+hablarlo y qué guía de [docs/guia/](docs/guia/) leer según el área que vas a
+tocar (ahí están los puntos únicos de verdad y las trampas del negocio).
 [README.md](README.md) describe los módulos actuales y
 [LEEME.txt](LEEME.txt) explica el uso para el mostrador.
 La cronología anterior se conserva en [docs/HISTORIAL.md](docs/HISTORIAL.md).
