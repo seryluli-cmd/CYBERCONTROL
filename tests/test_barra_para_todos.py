@@ -198,7 +198,8 @@ class TestAdministrarKiosko(_ConUsuarios):
         tarjetas = self._tarjetas(self._ventana(self._usuario("Admin", dominio.ROL_ADMIN)))
 
         self.assertEqual(sorted(tarjetas), ["Artículos", "Compras", "Consulta de Ventas / Anular",
-                                            "Control de Cierres de Turno", "Reportes", "Usuarios"])
+                                            "Control de Cierres de Turno", "Horarios del personal", "Reportes",
+                                            "Usuarios"])
         self.assertTrue(all(tarjeta.isEnabled() for tarjeta in tarjetas.values()))
 
     def test_una_encargada_usa_solo_lo_que_tiene_habilitado(self):
@@ -209,6 +210,7 @@ class TestAdministrarKiosko(_ConUsuarios):
         self.assertEqual([nombre for nombre, tarjeta in tarjetas.items() if tarjeta.isEnabled()], ["Reportes"])
         self.assertIn("Consulta de Ventas", tarjetas)  # sin "/ Anular": anular es del Admin
         self.assertEqual(tarjetas["Usuarios"].detalle.text(), TEXTO_SOLO_ADMIN)
+        self.assertEqual(tarjetas["Horarios del personal"].detalle.text(), TEXTO_SOLO_ADMIN)
         for nombre in ("Artículos", "Compras", "Consulta de Ventas", "Control de Cierres de Turno"):
             self.assertEqual((tarjetas[nombre].icono.text(), tarjetas[nombre].detalle.text()),
                              ("🔒", TEXTO_SIN_PERMISO), nombre)
@@ -220,7 +222,8 @@ class TestAdministrarKiosko(_ConUsuarios):
                                  ("Consulta de Ventas / Anular", "ConsultaVentasWindow"),
                                  ("Reportes", "ReportesWindow"),
                                  ("Control de Cierres de Turno", "ControlCierresWindow"),
-                                 ("Usuarios", "UsuariosWindow")):
+                                 ("Usuarios", "UsuariosWindow"),
+                                 ("Horarios del personal", "HorariosPersonalWindow")):
             with mock.patch(f"ui.administrar_kiosko_window.{pantalla}") as clase:
                 tarjetas[nombre].click()
             clase.assert_called_once()

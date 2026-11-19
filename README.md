@@ -424,7 +424,7 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
 
 **Administrar Kiosko:** Artículos, Compras, Consulta de Ventas, Reportes y
 Control de Cierres pueden delegarse por permiso individual a una empleada.
-Usuarios y las configuraciones de catálogos son exclusivos del Admin. Lo que una
+Usuarios, Horarios del personal y las configuraciones de catálogos son exclusivos del Admin. Lo que una
 encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
 2026-10-26, con el diseño de Configuración ADMIN; antes no aparecía).
 - **Artículos** (`articulos_window.py`, `ArticulosWindow`) — con la maqueta B
@@ -640,6 +640,16 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   También `DialogoCambiarClave` (accesible para cualquier rol desde el
   menú principal, no desde esta pantalla) — cambia la clave propia
   pidiendo la actual como confirmación (`usuarios_repo.cambiar_clave`).
+- **Horarios del personal** (`horarios_personal_window.py`, `HorariosPersonalWindow`;
+  pedido del dueño 2026-11-19, maqueta B en `PROPUESTA_HORARIOS`) — solo el Admin.
+  Una tarjeta por empleada con cuántos días llegó temprano, cuántos llegó tarde,
+  cuántos se fue antes y el saldo en grande ("LE DEBÉS 1 h 20 min" en verde, "TE
+  DEBE 35 min" en rojo); abajo, su detalle día por día (horario, a qué hora llegó y
+  se fue, minutos de más o de menos y qué pasó). Este mes, el anterior o
+  Desde/Hasta. Sale de las cajas (`repositories/horarios_repo.py`): llega cuando
+  abre o recibe su caja, se va cuando la cierra o la entrega; si la cerró el
+  programa u otra persona, la salida queda "sin dato". Hasta 2 minutos es "a
+  horario". Solo mira; se ve también desde otra PC.
 - **Fondos de las PCs** (`control_pcs/ui/pcs_fondo_dialogo.py`, `DialogoFondoPantalla`;
   tarjeta "Fondos de pantalla" de Gestionar Estaciones, en Configuración ADMIN; con la
   maqueta "B" que eligió el dueño el 2026-10-28) — lado a lado, las dos imágenes de cada

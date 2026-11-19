@@ -15,6 +15,7 @@ from ui.articulos_window import ArticulosWindow
 from ui.caja_window import ControlCierresWindow
 from ui.compras_window import ComprasWindow
 from ui.consulta_ventas_window import ConsultaVentasWindow
+from ui.horarios_personal_window import HorariosPersonalWindow
 from ui.piezas_ventana import (
     TONO_AZUL, TONO_GRIS, agregar_pastilla, bloquear_tarjeta, cabecera_oscura, tarjeta_de_menu, tecla,
     titulo_de_seccion,
@@ -72,6 +73,9 @@ class AdministrarKioskoWindow(QDialog):
                 ("permiso_control_cierres", "🗂️", "Control de Cierres de Turno", "Cada cierre de caja y su sobre",
                  self._abrir_control_cierres),
                 (None, "👤", "Usuarios", "Quién entra, claves, permisos y copias", self._abrir_usuarios),
+                # Pedido del dueño, 2026-11-19: llegadas y salidas de cada empleada.
+                (None, "🕒", "Horarios del personal", "Quién llegó tarde y quién debe tiempo",
+                 self._abrir_horarios),
             ]),
         ]
 
@@ -119,3 +123,6 @@ class AdministrarKioskoWindow(QDialog):
 
     def _abrir_usuarios(self):
         UsuariosWindow(self.usuario, self).exec()
+
+    def _abrir_horarios(self):
+        HorariosPersonalWindow(self.usuario, self).exec()

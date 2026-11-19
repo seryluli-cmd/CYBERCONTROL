@@ -710,6 +710,7 @@ _PANTALLAS_DE_OTRA_PC = [
     ("ui/tarjeta_cierre.py", None),
     ("ui/caja_window.py", {"CajaWindow"}),
     ("ui/usuarios_window.py", None),
+    ("ui/horarios_personal_window.py", None),
     ("ui/accesos_admin_window.py", None),
     ("ui/login_window.py", None),
     ("ui/tramites_window.py", {"DialogoTramite", "DialogoGestionTramites"}),

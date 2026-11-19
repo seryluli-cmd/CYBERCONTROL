@@ -8,7 +8,7 @@ Administrador: nada de "cualquier cosa por la red".
 Son las que usan las pantallas de administración (pedido del dueño,
 2026-10-18: "hago las modificaciones que quiera hacer, o miro reportes"):
 Administrar Kiosko entero (Artículos, Compras, Consulta de Ventas con anular,
-Reportes, Control de Cierres con la carga del sobre, Usuarios), Configuración
+Reportes, Control de Cierres con la carga del sobre, Usuarios, Horarios del personal), Configuración
 ADMIN (estaciones, los cuatro catálogos de bonos, las ofertas, tarifa de socios,
 trámites, accesos de admin, fondo y filtro de palabras de las PCs) y Caja para mirar.
 Y, para MIRAR, la pantalla principal igual que en el mostrador (pedido del
@@ -39,8 +39,8 @@ import hashlib
 import inspect
 
 from repositories import (
-    articulos_repo, compras_repo, config_repo, detalle_dia_repo, envio_pwa_repo, historial_turno_repo, relevo_repo,
-    reportes_repo, tramites_repo, turnos_repo, usuarios_repo, ventas_repo,
+    articulos_repo, compras_repo, config_repo, detalle_dia_repo, envio_pwa_repo, historial_turno_repo, horarios_repo,
+    relevo_repo, reportes_repo, tramites_repo, turnos_repo, usuarios_repo, ventas_repo,
 )
 from control_pcs.repositories import (
     accesos_admin_pc_repo, ajustes_saldo_repo, anular_bono_repo, bonos_miembro_repo, clientes_repo, cuentas_pc_repo,
@@ -59,6 +59,7 @@ _MODULOS = {
     "detalle_dia_repo": detalle_dia_repo,
     "envio_pwa_repo": envio_pwa_repo,
     "historial_turno_repo": historial_turno_repo,
+    "horarios_repo": horarios_repo,
     "relevo_repo": relevo_repo,
     "reportes_repo": reportes_repo,
     "tramites_repo": tramites_repo,
@@ -101,6 +102,8 @@ FUNCIONES = {
     ),
     # HISTORIAL DEL TURNO, el botón de al lado (solo mira)
     "historial_turno_repo": ("historial_del_turno",),
+    # HORARIOS DEL PERSONAL (Administrar Kiosko > Caja y personal; solo mira)
+    "horarios_repo": ("horarios_del_personal",),
     # Compras
     "compras_repo": ("proximo_numero_compra", "registrar_compra"),
     # Consulta de Ventas / Anular (y el detalle de una venta)
@@ -179,6 +182,7 @@ ACTOR = {
     ("articulos_repo", "cambiar_codigo"): "usuario_id",
     ("articulos_repo", "listar_para_control_de_stock"): "usuario_id",
     ("historial_turno_repo", "historial_del_turno"): "usuario_id",
+    ("horarios_repo", "horarios_del_personal"): "usuario_id",
     ("articulos_repo", "crear_marca"): "usuario_id",
     ("articulos_repo", "renombrar_marca"): "usuario_id",
     ("articulos_repo", "juntar_marcas"): "usuario_id",

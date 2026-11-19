@@ -573,3 +573,16 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   la ventana" (se medían antes de entrar: salían mordidos y el TOTAL DEL DÍA, cortado) y la
   grilla de turnos sumando la barra de abajo en pantallas angostas. Sin .exe. 1935
   pruebas.
+- **2026-11-19 — HORARIOS DEL PERSONAL** (pedido del dueño: "que sume los minutos que abre la
+  caja tarde o temprano cada usuario... quiero saber cuántos días llegó temprano, cuántos días
+  llegó tarde y si me debe tiempo o le debo tiempo"; de tres maquetas, `PROPUESTA_HORARIOS`,
+  eligió la B: "me encanta la B"). Tarjeta nueva en Administrar Kiosko > Caja y personal, solo
+  del Admin (no en Reportes: ahí entran empleadas con permiso). Una tarjeta por empleada con
+  los días que llegó temprano, tarde y que se fue antes, y el saldo grande en verde o rojo;
+  abajo el detalle día por día con "qué pasó" (recibió la caja de, cubrió hasta que llegó, la
+  cerró el programa). Todo sale de `cajas`, `relevos_caja` y `cierres_turno`
+  (`repositories/horarios_repo.py`), sin tablas nuevas ni migración: lee, no graba. Probado
+  sobre una copia de la base del local (18/10–03/11): las cajas las cierra casi siempre su
+  responsable; las que cerró el Admin quedan "sin dato". Se suma a la lista blanca de
+  administrar desde otra PC (cambia la firma: las dos copias necesitan el .exe nuevo). Sin
+  .exe. 1955 pruebas.

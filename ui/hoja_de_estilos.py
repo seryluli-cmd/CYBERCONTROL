@@ -2072,5 +2072,57 @@ HOJA_DE_ESTILOS = """
         font-size: 36px;
         font-weight: 800;
     }
+    /* HORARIOS DEL PERSONAL (ui/horarios_personal_window.py, maqueta B del 2026-11-19):
+       una tarjeta por empleada con tres números y el saldo grande; la elegida, con el
+       borde azul. Verde = a favor de ella (el local le debe), rojo = en contra. */
+    QFrame#tarjetaHorario {
+        background-color: #FFFFFF;
+        border: 1px solid #D9DEE7;
+        border-radius: 12px;
+    }
+    QFrame#tarjetaHorario[elegida="true"] {
+        border: 3px solid #2F6FED;
+    }
+    QFrame#tarjetaHorario > QLabel {
+        background: transparent;
+        border: none;
+    }
+    QFrame#tarjetaHorario > QLabel#nombreHorario {
+        color: #1E2330;
+        font-size: 20px;
+        font-weight: 700;
+    }
+    QFrame#tarjetaHorario > QLabel#detalleHorario,
+    QFrame#tarjetaHorario > QLabel#rotuloHorario {
+        color: #8A94A6;
+        font-size: 12px;
+    }
+    QFrame#tarjetaHorario > QLabel#numeroHorario {
+        color: #A3ACBA;
+        font-size: 26px;
+        font-weight: 700;
+    }
+    QFrame#tarjetaHorario > QLabel#numeroHorario[tono="verde"] { color: #1E9E50; }
+    QFrame#tarjetaHorario > QLabel#numeroHorario[tono="rojo"] { color: #D93A45; }
+    QFrame#tarjetaHorario > QLabel#saldoHorario {
+        background-color: #EEF2F7;
+        color: #6B7686;
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 17px;
+        font-weight: 800;
+    }
+    QFrame#tarjetaHorario > QLabel#saldoHorario[tono="verde"] { background-color: #DCF3E1; color: #1E9E50; }
+    QFrame#tarjetaHorario > QLabel#saldoHorario[tono="rojo"] { background-color: #FBE3E1; color: #D93A45; }
+    QLabel#saldoDelDetalle {
+        color: #6B7686;
+        font-size: 15px;
+        font-weight: 800;
+    }
+    QLabel#saldoDelDetalle[tono="verde"] { color: #1E9E50; }
+    QLabel#saldoDelDetalle[tono="rojo"] { color: #D93A45; }
+    QLabel#margenHorario {
+        color: #8A94A6;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO).replace(
     "__RUTA_FLECHA_ABAJO_CLARA__", RUTA_FLECHA_ABAJO_CLARA)
