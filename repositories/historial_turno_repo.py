@@ -43,6 +43,7 @@ RUBRO_OTRO = "OTRO"
 
 _RUBRO_DE_CATEGORIA = {
     reportes_repo.CATEGORIA_KIOSKO: RUBRO_KIOSKO,
+    reportes_repo.CATEGORIA_IMPRESIONES: RUBRO_IMPRESIONES,
     reportes_repo.CATEGORIA_BONO_PC: RUBRO_BONO_PC,
     reportes_repo.CATEGORIA_BONO_SOCIO: RUBRO_MIEMBRO,
     reportes_repo.CATEGORIA_CARGA_TARIFA_SOCIO: RUBRO_MIEMBRO,
@@ -64,17 +65,14 @@ def _hora(fecha: str) -> str:
 def _rubros(categoria: str, lineas: list) -> tuple:
     """(el rubro que se ve, todos los rubros por los que se la encuentra al
     filtrar). Las impresiones son un artículo del kiosko (el código 4): una
-    venta de solo impresiones es IMPRESIONES; una con impresiones y otra cosa
-    es KIOSKO, pero sale también al filtrar por impresiones."""
+    venta de solo impresiones ya viene como CATEGORIA_IMPRESIONES
+    (reportes_repo.categoria_de_la_venta, la misma regla del Detalle del Día y el
+    Ranking); una con impresiones y otra cosa es KIOSKO, pero sale también al
+    filtrar por impresiones."""
     rubro = _RUBRO_DE_CATEGORIA.get(categoria, RUBRO_OTRO)
-    if rubro != RUBRO_KIOSKO:
-        return rubro, (rubro,)
-    impresiones = [linea["codigo"] == dominio.CODIGO_ARTICULO_IMPRESIONES for linea in lineas]
-    if impresiones and all(impresiones):
-        return RUBRO_IMPRESIONES, (RUBRO_IMPRESIONES,)
-    if any(impresiones):
+    if rubro == RUBRO_KIOSKO and any(linea["codigo"] == dominio.CODIGO_ARTICULO_IMPRESIONES for linea in lineas):
         return RUBRO_KIOSKO, (RUBRO_KIOSKO, RUBRO_IMPRESIONES)
-    return RUBRO_KIOSKO, (RUBRO_KIOSKO,)
+    return rubro, (rubro,)
 
 
 def _pago(efectivo: float, digital: float) -> str:

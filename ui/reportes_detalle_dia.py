@@ -19,7 +19,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
 from ui import imprimir
-from ui.piezas_ventana import panel_de_tabla, pie_de_ventana, tecla
+from ui.piezas_ventana import pie_de_ventana, tecla
+from ui.reportes_piezas import como_plata, etiqueta_de_rubros, nombre_corto, panel_de_reporte, titulos_en_mayuscula
 from ui.utils import crear_tabla, formato_pesos
 
 _COLOR_ANULADA = QColor("#C62828")
@@ -57,6 +58,11 @@ def _texto_cantidad(cantidad) -> str:
 _COLUMNAS_RENGLONES = ["Hora", "Turno", "Operador", "Nº venta", "Código", "Descripción", "Cantidad", "Total", "Estado"]
 _COLUMNA_DESCRIPCION = 5
 _A_LA_DERECHA = (6, 7)
+_PLATA_RENGLONES = (7,)
+# Las de venta por venta y lo vendido (ver PanelDetalleDelDia).
+_RUBRO_VENTAS = 4
+_PLATA_VENTAS = (6, 7, 8)
+_RUBRO_PRODUCTOS = 0
 
 
 def _renglones(ventas, dia) -> list:
@@ -84,7 +90,7 @@ class PanelDetalleDelDia(QWidget):
     """Cuatro pestañas (renglón por renglón, venta por venta, lo vendido, por
     operador) sobre el detalle de detalle_dia_repo.detalle_del_dia, del día
     entero o de un turno, y el botón para imprimir el renglón por renglón. Con la
-    maqueta B (2026-10-30): cada tabla en su panel blanco (panel_de_tabla) e
+    maqueta B (2026-10-30): cada tabla en su panel blanco (panel_de_reporte) e
     IMPRIMIR como tecla."""
 
     _COLUMNAS_VENTAS = ["Nº", "Hora", "Turno", "Operador", "Rubro", "Qué se vendió",
@@ -107,14 +113,23 @@ class PanelDetalleDelDia(QWidget):
         self.tabla_ventas = crear_tabla(self._COLUMNAS_VENTAS, estirar=5)
         self.tabla_productos = crear_tabla(self._COLUMNAS_PRODUCTOS, estirar=1)
         self.tabla_operadores = crear_tabla(self._COLUMNAS_OPERADORES, estirar=0)
+        # Los títulos en mayúscula, como en todo Reportes (2026-11-19); las listas de
+        # arriba quedan como están, porque son también las del papel.
+        titulos_en_mayuscula(self.tabla_renglones, a_la_derecha=_A_LA_DERECHA)
+        titulos_en_mayuscula(self.tabla_ventas, a_la_derecha=_PLATA_VENTAS)
+        titulos_en_mayuscula(self.tabla_productos, a_la_derecha=(2, 3))
+        titulos_en_mayuscula(self.tabla_operadores, a_la_derecha=range(1, len(self._COLUMNAS_OPERADORES)))
+        # El rubro en una etiqueta del color de su rubro, como en el Ranking.
+        for tabla, columna in ((self.tabla_ventas, _RUBRO_VENTAS), (self.tabla_productos, _RUBRO_PRODUCTOS)):
+            tabla.setItemDelegateForColumn(columna, etiqueta_de_rubros(tabla))
         # Cada tabla en su panel blanco (diseño B); sin el recuadro de las pestañas,
         # que con el del panel se veía un cuadro adentro de otro.
         self.pestañas = QTabWidget()
         self.pestañas.setDocumentMode(True)
-        self.pestañas.addTab(panel_de_tabla(self.tabla_renglones), "Renglón por renglón")
-        self.pestañas.addTab(panel_de_tabla(self.tabla_ventas), "Venta por venta")
-        self.pestañas.addTab(panel_de_tabla(self.tabla_productos), "Lo vendido (cantidades)")
-        self.pestañas.addTab(panel_de_tabla(self.tabla_operadores), "Por operador")
+        self.pestañas.addTab(panel_de_reporte(self.tabla_renglones), "RENGLÓN POR RENGLÓN")
+        self.pestañas.addTab(panel_de_reporte(self.tabla_ventas), "VENTA POR VENTA")
+        self.pestañas.addTab(panel_de_reporte(self.tabla_productos), "LO VENDIDO (CANTIDADES)")
+        self.pestañas.addTab(panel_de_reporte(self.tabla_operadores), "POR OPERADOR")
 
         nota = pie_de_ventana(
             "Tocá un turno de arriba para ver solo ese turno (o TOTAL DEL DÍA para ver todo). Las ventas "
@@ -173,7 +188,8 @@ class PanelDetalleDelDia(QWidget):
         self._llenar_operadores(parte["por_operador"])
 
     @staticmethod
-    def _poner(tabla, fila, valores, derecha_desde, color=None, negrita=False):
+    def _poner(tabla, fila, valores, derecha_desde, color=None, negrita=False, plata=()):
+        """Una fila; las columnas de `plata`, en negrita a la derecha (como_plata)."""
         tabla.insertRow(fila)
         for columna, valor in enumerate(valores):
             item = QTableWidgetItem(valor)
@@ -185,6 +201,8 @@ class PanelDetalleDelDia(QWidget):
                 fuente = item.font()
                 fuente.setBold(True)
                 item.setFont(fuente)
+            if columna in plata and valor:
+                como_plata(item)
             tabla.setItem(fila, columna, item)
 
     def _llenar_renglones(self, parte, dia):
@@ -192,10 +210,12 @@ class PanelDetalleDelDia(QWidget):
         tabla.setRowCount(0)
         filas = _renglones(parte["ventas"], dia)
         for fila, (valores, anulada) in enumerate(filas):
-            self._poner(tabla, fila, valores, None, color=_COLOR_ANULADA if anulada else None)
+            self._poner(tabla, fila, valores, None, color=_COLOR_ANULADA if anulada else None,
+                        plata=_PLATA_RENGLONES)
             for columna in _A_LA_DERECHA:
                 tabla.item(fila, columna).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self._poner(tabla, len(filas), _pie_de_renglones(parte["totales"]), None, negrita=True)
+        self._poner(tabla, len(filas), _pie_de_renglones(parte["totales"]), None, negrita=True,
+                    plata=_PLATA_RENGLONES)
         for columna in _A_LA_DERECHA:
             tabla.item(len(filas), columna).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         tabla.resizeColumnsToContents()
@@ -217,14 +237,16 @@ class PanelDetalleDelDia(QWidget):
         tabla = self.tabla_ventas
         tabla.setRowCount(0)
         for fila, venta in enumerate(ventas):
+            # El rubro por su nombre corto (en la etiqueta de su color) y el completo al
+            # pasar el mouse.
             valores = [
                 str(venta["id"]), _texto_hora(venta, dia), venta["etiqueta_turno"], _texto_operador(venta),
-                venta["rubro"], venta["detalle"], formato_pesos(venta["efectivo"]),
+                nombre_corto(venta["rubro"]), venta["detalle"], formato_pesos(venta["efectivo"]),
                 formato_pesos(venta["digital"]), formato_pesos(venta["total"]), _texto_estado(venta),
             ]
-            self._poner(tabla, fila, valores, None, color=_COLOR_ANULADA if venta["anulada"] else None)
-            for columna in (6, 7, 8):
-                tabla.item(fila, columna).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self._poner(tabla, fila, valores, None, color=_COLOR_ANULADA if venta["anulada"] else None,
+                        plata=_PLATA_VENTAS)
+            tabla.item(fila, _RUBRO_VENTAS).setToolTip(venta["rubro"])
             tabla.item(fila, 5).setToolTip(venta["detalle"])
         tabla.resizeColumnsToContents()
 
@@ -233,12 +255,15 @@ class PanelDetalleDelDia(QWidget):
         tabla.setRowCount(0)
         for fila, producto in enumerate(productos):
             self._poner(tabla, fila, [
-                producto["rubro"], producto["producto"], _texto_cantidad(producto["cantidad"]),
+                nombre_corto(producto["rubro"]), producto["producto"], _texto_cantidad(producto["cantidad"]),
                 formato_pesos(producto["importe"]),
-            ], 2)
+            ], 2, plata=(3,))
+            tabla.item(fila, _RUBRO_PRODUCTOS).setToolTip(producto["rubro"])
+        # "TOTAL" va en la columna del producto: en la del rubro saldría en una etiqueta,
+        # como si fuera un rubro más.
         self._poner(tabla, len(productos), [
-            "TOTAL", "", "", formato_pesos(sum(producto["importe"] for producto in productos)),
-        ], 2, negrita=True)
+            "", "TOTAL", "", formato_pesos(sum(producto["importe"] for producto in productos)),
+        ], 2, negrita=True, plata=(3,))
         tabla.resizeColumnsToContents()
 
     def _llenar_operadores(self, operadores):
@@ -249,5 +274,5 @@ class PanelDetalleDelDia(QWidget):
                 operador["operador"], str(operador["ventas"]), str(operador["anuladas"]) if operador["anuladas"] else "",
                 formato_pesos(operador["efectivo"]), formato_pesos(operador["digital"]),
                 formato_pesos(operador["total"]),
-            ], 1, color=_COLOR_GRIS if not operador["ventas"] else None)
+            ], 1, color=_COLOR_GRIS if not operador["ventas"] else None, plata=(3, 4, 5))
         tabla.resizeColumnsToContents()

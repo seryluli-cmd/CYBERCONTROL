@@ -336,7 +336,7 @@ class TestRenglonPorRenglon(BaseConBaseTemporal):
         tabla = panel.tabla_renglones
         # 1 + 4 + 2 + 1 + la anulada (en rojo), y la fila del TOTAL.
         self.assertEqual(tabla.rowCount(), 10)
-        self.assertEqual(panel.pestañas.tabText(0), "Renglón por renglón")
+        self.assertEqual(panel.pestañas.tabText(0), "RENGLÓN POR RENGLÓN")
         ultima = [tabla.item(9, columna).text() for columna in range(tabla.columnCount())]
         self.assertEqual(ultima, ["TOTAL", "", "", "", "", "", "24", formato_pesos(9550.0), ""])
         anulada = next(fila for fila in range(9) if int(tabla.item(fila, 3).text()) == self.anulada)

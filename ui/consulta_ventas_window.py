@@ -18,7 +18,7 @@ from control_pcs.repositories import anular_bono_repo, miembros_repo
 from control_pcs.ui.anular_bono import anular_bono_con_cartel
 from control_pcs.ui.anular_carga import anular_carga_con_cartel
 from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta, etiqueta_de_estado
-from ui.dibujos_tabla import DelegadoEtiqueta
+from ui.dibujos_tabla import DelegadoEtiqueta, tonos_de_los_origenes
 from ui.piezas_ventana import (
     agregar_indicador, buscador, cabecera_oscura, fila_de_filtros, marcar_solo_admin, panel_de_tabla,
     pie_de_ventana, poner_indicador, tecla, titulo_de_seccion,
@@ -103,9 +103,10 @@ class ConsultaVentasWindow(VentanaConDetalleDeVenta):
         self.etiqueta_turno = DelegadoEtiqueta(self.tabla)
         self.etiqueta_turno.colores_en_orden(dominio.TURNOS)
         self.tabla.setItemDelegateForColumn(_COLUMNA_TURNO, self.etiqueta_turno)
-        # El negocio de la venta (Kiosko, Alquiler de PCs...) también en etiqueta.
+        # El negocio de la venta (Kiosko, Alquiler de PCs...) también en etiqueta, con
+        # el color de su rubro: el mismo que en Reportes y el Historial del Turno.
         self.etiqueta_origen = DelegadoEtiqueta(self.tabla)
-        self.etiqueta_origen.colores_en_orden(dominio.NOMBRE_ORIGEN_VENTA.values())
+        self.etiqueta_origen.colores_fijos(tonos_de_los_origenes())
         self.tabla.setItemDelegateForColumn(_COLUMNA_ORIGEN, self.etiqueta_origen)
         self.etiqueta_estado = etiqueta_de_estado(self.tabla, _COLUMNA_ESTADO)
         for columna, ancho in ((_COLUMNA_FACTURA, 100), (_COLUMNA_FECHA, 140), (_COLUMNA_TURNO, 100),

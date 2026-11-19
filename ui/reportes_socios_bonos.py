@@ -19,16 +19,22 @@ from PySide6.QtWidgets import (
 
 from control_pcs.repositories import socios_bonos_repo
 from ui import excel
-from ui.piezas_ventana import panel_de_tabla, pie_de_ventana, tecla
+from ui.dibujos_tabla import TONO_PCS, TONO_SOCIOS, color_fuerte
+from ui.piezas_ventana import pie_de_ventana, tecla
+from ui.reportes_piezas import como_plata, panel_de_reporte, tarjeta_de_filtros, titulos_en_mayuscula
 from ui.utils import (
     armar_filtro_por_fechas, crear_tabla, formato_pesos, formato_tiempo, hoy_del_local, manejar_errores,
     rango_de_fechas, sin_boton_por_defecto,
 )
 
-COLOR_SOCIOS = "#2F6FED"
-COLOR_BONOS = "#1E9E6A"
+# Los socios en violeta y los bonos en el azul de los bonos de PC: los mismos colores
+# que en el Ranking, el Historial del Turno y todo el programa (2026-11-19; antes
+# eran azul y verde, y el verde es el de Kiosko).
+COLOR_SOCIOS = color_fuerte(TONO_SOCIOS).name()
+COLOR_BONOS = color_fuerte(TONO_PCS).name()
 COLUMNAS = ["Período", "Socios", "Cargas", "Bonos", "Bonos vendidos", "Total PCs", "% Socios", "% Bonos"]
 _A_LA_DERECHA = (1, 2, 3, 4, 5, 6, 7)
+_PLATA = (1, 3, 5)
 
 
 def _porcentaje(valor: float) -> str:
@@ -170,6 +176,7 @@ class PestañaSociosYBonos(QWidget):
         self.etiqueta_diferencia.setStyleSheet("font-weight: 600;")
 
         self.tabla = crear_tabla(COLUMNAS, estirar=0)
+        titulos_en_mayuscula(self.tabla, a_la_derecha=_A_LA_DERECHA)
         for columna in _A_LA_DERECHA:
             self.tabla.horizontalHeader().setSectionResizeMode(columna, QHeaderView.ResizeToContents)
 
@@ -179,17 +186,17 @@ class PestañaSociosYBonos(QWidget):
             "PC: una reserva que no vino suma plata pero no tiempo."
         )
 
-        # Como las demás pestañas de Reportes (maqueta B): alineada con la cabecera y
-        # la grilla en su panel blanco.
+        # Como las demás secciones de Reportes: los filtros en su tarjeta y la grilla
+        # en su panel blanco.
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 12, 0, 0)
-        layout.addLayout(filtros)
+        layout.addWidget(tarjeta_de_filtros(filtros))
         layout.addSpacing(8)
         layout.addLayout(tarjetas)
         layout.addWidget(self.barra)
         layout.addWidget(self.etiqueta_diferencia)
         layout.addSpacing(6)
-        layout.addWidget(panel_de_tabla(self.tabla), 1)
+        layout.addWidget(panel_de_reporte(self.tabla), 1)
         layout.addWidget(nota)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
@@ -211,6 +218,8 @@ class PestañaSociosYBonos(QWidget):
                 fuente = item.font()
                 fuente.setBold(True)
                 item.setFont(fuente)
+            if columna in _PLATA:
+                como_plata(item)
             self.tabla.setItem(fila, columna, item)
 
     @manejar_errores

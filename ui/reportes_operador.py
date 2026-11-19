@@ -21,7 +21,10 @@ from PySide6.QtGui import QColor
 import dominio
 from repositories import reportes_repo
 from turnos import dia_en_que_empezo_el_turno, etiqueta_turno
-from ui.piezas_ventana import panel_de_tabla, pie_de_ventana
+from ui.piezas_ventana import pie_de_ventana
+from ui.reportes_piezas import (
+    como_plata, etiqueta_de_origenes, panel_de_reporte, tarjeta_de_filtros, titulos_en_mayuscula,
+)
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, formato_fecha_hora, manejar_errores,
     sin_boton_por_defecto, crear_tabla, rango_de_fechas,
@@ -29,23 +32,28 @@ from ui.utils import (
 
 _COLOR_ANULADA = QColor("#C62828")
 
-# Columnas de plata de cada tabla: se alinean a la derecha.
+# Columnas de plata de cada tabla: van a la derecha y en negrita (como_plata).
 _COLUMNAS_PLATA_OPERADORES = (3, 4, 5)
+# Cantidades (ventas y anuladas): a la derecha como la plata, pero sin negrita.
+_COLUMNAS_NUMERO_OPERADORES = (1, 2)
 _COLUMNAS_PLATA_VENTAS = (4, 5, 6)
+_COLUMNA_ORIGEN = 2
 
 
-def _celda(texto, derecha=False, color=None):
+def _celda(texto, derecha=False, color=None, plata=False):
     item = QTableWidgetItem(texto)
     if derecha:
         item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
     if color is not None:
         item.setForeground(color)
+    if plata:
+        como_plata(item)
     return item
 
 
 class PestañaPorOperador(QWidget):
     """Arriba, un resumen por operador; abajo, las ventas del elegido. Con la
-    maqueta B (2026-10-30): cada grilla en su panel blanco (panel_de_tabla) y la
+    maqueta B (2026-10-30): cada grilla en su panel blanco (panel_de_reporte) y la
     nota abajo como pie_de_ventana."""
 
     def __init__(self):
@@ -62,27 +70,34 @@ class PestañaPorOperador(QWidget):
             estirar=0, por_filas=True, una_sola=True,
         )
         self.tabla_operadores.itemSelectionChanged.connect(self._mostrar_ventas_del_elegido)
+        titulos_en_mayuscula(self.tabla_operadores, a_la_derecha=(*_COLUMNAS_NUMERO_OPERADORES, *_COLUMNAS_PLATA_OPERADORES))
+        for columna in range(1, self.tabla_operadores.columnCount()):
+            self.tabla_operadores.horizontalHeader().setSectionResizeMode(columna, QHeaderView.ResizeToContents)
 
         self.etiqueta_detalle = QLabel()
-        self.etiqueta_detalle.setStyleSheet("font-weight: bold; font-size: 13px;")
+        self.etiqueta_detalle.setObjectName("tituloDeTablaReporte")
 
         self.tabla_ventas = crear_tabla(
             ["Fecha y hora", "Turno", "Origen", "Concepto", "Efectivo", "Digital", "Total", "Estado"],
             estirar=3, por_filas=True,
         )
+        titulos_en_mayuscula(self.tabla_ventas, a_la_derecha=_COLUMNAS_PLATA_VENTAS)
         # Todas al ancho de su contenido menos "Concepto", que se estira: con el
         # ancho por defecto, "Fecha y hora" cortaba justo la hora.
         for columna in range(self.tabla_ventas.columnCount()):
             if columna != 3:
                 self.tabla_ventas.horizontalHeader().setSectionResizeMode(columna, QHeaderView.ResizeToContents)
+        # El origen en una etiqueta del color de su rubro, como en Consulta de Ventas.
+        self.etiqueta_origen = etiqueta_de_origenes(self.tabla_ventas)
+        self.tabla_ventas.setItemDelegateForColumn(_COLUMNA_ORIGEN, self.etiqueta_origen)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 12, 0, 0)   # alineada con la cabecera (ver reportes_window)
+        layout.setContentsMargins(0, 12, 0, 0)   # como las demás secciones (ver reportes_window)
         layout.setSpacing(12)
-        layout.addLayout(filtros)
-        layout.addWidget(panel_de_tabla(self.tabla_operadores), 2)
+        layout.addWidget(tarjeta_de_filtros(filtros))
+        layout.addWidget(panel_de_reporte(self.tabla_operadores), 2)
         layout.addWidget(self.etiqueta_detalle)
-        layout.addWidget(panel_de_tabla(self.tabla_ventas), 3)
+        layout.addWidget(panel_de_reporte(self.tabla_ventas), 3)
         layout.addWidget(pie_de_ventana(
             "Cada venta queda a nombre de quien tenía la sesión abierta. Las anuladas se "
             "muestran en rojo y no suman en los totales."
@@ -111,7 +126,8 @@ class PestañaPorOperador(QWidget):
             ]
             for columna, valor in enumerate(valores):
                 self.tabla_operadores.setItem(
-                    fila, columna, _celda(valor, derecha=columna in _COLUMNAS_PLATA_OPERADORES)
+                    fila, columna, _celda(valor, derecha=columna in _COLUMNAS_NUMERO_OPERADORES,
+                                         plata=columna in _COLUMNAS_PLATA_OPERADORES)
                 )
         # Queda elegido el mismo operador de antes si sigue en la lista; si no, el
         # primero. Con las señales todavía apagadas: las ventas se cargan una sola
@@ -161,7 +177,7 @@ class PestañaPorOperador(QWidget):
             fila = self.tabla_ventas.rowCount()
             self.tabla_ventas.insertRow(fila)
             for columna, valor in enumerate(valores):
-                celda = _celda(valor, derecha=columna in _COLUMNAS_PLATA_VENTAS, color=color)
+                celda = _celda(valor, color=color, plata=columna in _COLUMNAS_PLATA_VENTAS)
                 if columna == 3 and valor != "—":
                     celda.setToolTip(valor)  # un ticket largo se lee entero al pasar el mouse
                 self.tabla_ventas.setItem(fila, columna, celda)

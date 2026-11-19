@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QDialog, QTableWidget, QTableWidgetItem
 
 import dominio
 from repositories import tramites_repo, ventas_repo
-from ui.dibujos_tabla import DelegadoEtiqueta
+from ui.dibujos_tabla import TONO_ALERTA, DelegadoEtiqueta
 from ui.utils import formato_pesos, manejar_errores, crear_tabla, mostrar_columna_entera
 
 # Columnas de la tabla de artículos de una venta.
@@ -32,9 +32,10 @@ def crear_tabla_detalle_venta() -> QTableWidget:
 
 def etiqueta_de_estado(tabla: QTableWidget, columna: int) -> DelegadoEtiqueta:
     """El estado de cada venta en una etiqueta: CONFIRMADA en verde y ANULADA en
-    rosa (rojiza, como el rojo que tenía antes la letra)."""
+    rojo (como el rojo que tenía antes la letra; hasta el 2026-11-19 iba en rosa, que
+    ahora es el de la PlayStation 5: ver ui.dibujos_tabla.TONO_ALERTA)."""
     delegado = DelegadoEtiqueta(tabla)
-    delegado.colores_fijos({dominio.VENTA_CONFIRMADA: "verde", dominio.VENTA_ANULADA: "rosa"})
+    delegado.colores_fijos({dominio.VENTA_CONFIRMADA: "verde", dominio.VENTA_ANULADA: TONO_ALERTA})
     tabla.setItemDelegateForColumn(columna, delegado)
     tabla.setColumnWidth(columna, 130)
     return delegado

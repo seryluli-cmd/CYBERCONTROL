@@ -1963,5 +1963,114 @@ HOJA_DE_ESTILOS = """
         font-size: 13px;
         font-weight: 700;
     }
+    /* Las cifras grandes en celeste (lo de PCSTREAM) y en gris (un número que no es
+       plata), además de la verde y la azul de Caja. */
+    QFrame#cifraDestacada[tono="celeste"] {
+        background-color: #E5F7FB;
+        border: 1px solid #AEE2EE;
+    }
+    QFrame#cifraDestacada[tono="gris"] {
+        background-color: #FFFFFF;
+        border: 1px solid #DCE2EC;
+    }
+    QFrame#cifraDestacada[tono="celeste"] > QLabel#tituloCifra { color: #0E6F86; }
+    QFrame#cifraDestacada[tono="celeste"] > QLabel#valorCifra { color: #0E6F86; }
+    QFrame#cifraDestacada[tono="celeste"] > QLabel#aclaracionCifra { color: #4D8796; }
+    QFrame#cifraDestacada[tono="gris"] > QLabel#tituloCifra { color: #4B5B75; }
+    QFrame#cifraDestacada[tono="gris"] > QLabel#valorCifra { color: #1B2233; }
+    QFrame#cifraDestacada[tono="gris"] > QLabel#aclaracionCifra { color: #7A8699; }
+    /* Reportes con el diseño C que eligió el dueño el 2026-11-19 (ui/reportes_window.py):
+       el menú de las secciones a la izquierda, el nombre de la elegida en grande, los
+       filtros en una tarjeta blanca y los títulos y las cifras más grandes. Va por
+       objectName y, lo que se repite en otras ventanas, solo adentro de
+       QDialog#ventanaReportes: los avisos que se abren encima no heredan nada. */
+    QDialog#ventanaReportes QLabel#tituloCabecera {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 3px;
+    }
+    /* La letra va en la lista y no en ::item: Qt no toma font-weight de un renglón. */
+    QListWidget#menuReportes {
+        background-color: #FFFFFF;
+        border: 1px solid #DCE2EC;
+        border-radius: 12px;
+        padding: 10px 8px;
+        outline: 0;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.8px;
+    }
+    QListWidget#menuReportes::item {
+        color: #4B5568;
+        padding: 12px 10px;
+        margin: 2px 0;
+        border-radius: 8px;
+        border-left: 4px solid transparent;
+    }
+    QListWidget#menuReportes::item:hover {
+        background-color: #F1F4F9;
+    }
+    QListWidget#menuReportes::item:selected {
+        background-color: #EAF1FF;
+        color: #1D4FA8;
+        border-left: 4px solid #2F6FED;
+    }
+    QLabel#tituloReporte {
+        color: #1B2233;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 2px;
+    }
+    QLabel#subtituloReporte {
+        color: #7A8699;
+        font-size: 12px;
+    }
+    QFrame#tarjetaFiltrosReporte {
+        background-color: #FFFFFF;
+        border: 1px solid #DCE2EC;
+        border-radius: 12px;
+    }
+    QFrame#tarjetaFiltrosReporte > QLabel#rotuloFiltro {
+        background: transparent;
+        color: #7A8699;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 1px;
+    }
+    /* Los títulos de las grillas de Reportes van por la marca "deReporte" de la tabla
+       (reportes_piezas.panel_de_reporte) y no "adentro de QDialog#ventanaReportes":
+       las secciones se llenan y se miden antes de entrar a la ventana, y con esa
+       regla los títulos se medían más chicos de lo que se dibujaban. */
+    QFrame#panelTabla > QTableWidget[deReporte="true"] QHeaderView::section:horizontal {
+        background-color: #F5F7FB;
+        letter-spacing: 1.5px;
+        padding: 12px 10px;
+    }
+    /* Con las barras de color de cada rubro (dibujos_tabla.CabeceraConColores), la
+       línea de abajo de los títulos va gris y finita: la azul se peleaba con ellas. */
+    QFrame#panelTabla > QTableWidget#tablaConRubros[deReporte="true"] QHeaderView::section:horizontal {
+        border-bottom: 1px solid #D5DCE6;
+    }
+    QDialog#ventanaReportes QLabel#tituloDeSeccion {
+        color: #1E2330;
+        font-size: 12px;
+        letter-spacing: 1.5px;
+    }
+    QLabel#tituloDeTablaReporte {
+        color: #1E2330;
+        font-size: 13px;
+        font-weight: 800;
+    }
+    QDialog#ventanaReportes QFrame#cifraDestacada {
+        border-radius: 14px;
+    }
+    QDialog#ventanaReportes QLabel#tituloCifra {
+        font-size: 12px;
+        letter-spacing: 1.5px;
+    }
+    QDialog#ventanaReportes QLabel#valorCifra {
+        font-size: 36px;
+        font-weight: 800;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO).replace(
     "__RUTA_FLECHA_ABAJO_CLARA__", RUTA_FLECHA_ABAJO_CLARA)

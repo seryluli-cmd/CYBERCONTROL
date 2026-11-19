@@ -14,7 +14,8 @@ cerrar: el cierre guardó una foto con ella adentro; acá se la marca).
 
 Qué se vendió en cada venta sale de la tabla que corresponde a cada cosa (como
 en reportes_repo.ranking_ventas, con sus mismas categorías): venta_detalle
-(artículos de kiosko), tramites_venta, sesion_bonos (bono de PC, con la PC
+(artículos de kiosko; desde el 2026-11-19 las impresiones con su propia categoría,
+como en el Ranking: reportes_repo.categoria_de_la_venta), tramites_venta, sesion_bonos (bono de PC, con la PC
 donde estaba la sesión AL VENDERLO aunque después se haya cambiado de máquina),
 sesion_pcstream_bonos, sesion_playstation_bonos y movimientos_saldo_miembro
 (bono o carga de saldo de un socio). Las ventas de una reserva (seña, pago
@@ -121,11 +122,15 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
         """, rango,
     ):
         lineas.setdefault(fila["venta_id"], []).append(fila)
+    kiosko = reportes_repo.CATEGORIA_KIOSKO
     for venta_id, filas in lineas.items():
+        # Una venta de solo impresiones es de Impresiones; con otra cosa, de Kiosko
+        # (pero cada renglón de impresiones se suma a Impresiones en "Lo vendido").
         resultado[venta_id] = (
-            reportes_repo.CATEGORIA_KIOSKO,
+            reportes_repo.categoria_de_la_venta(kiosko, [f["codigo"] for f in filas]),
             ", ".join(f"{_texto_cantidad(f['cantidad'])} x {f['descripcion']}" for f in filas),
-            [(reportes_repo.CATEGORIA_KIOSKO, f["descripcion"], f["cantidad"], f["subtotal"]) for f in filas],
+            [(reportes_repo.categoria_a_la_vista(kiosko, f["codigo"]), f["descripcion"], f["cantidad"], f["subtotal"])
+             for f in filas],
             [{"codigo": f["codigo"], "descripcion": f["descripcion"], "cantidad": f["cantidad"],
               "importe": round(f["subtotal"], 2)} for f in filas],
         )

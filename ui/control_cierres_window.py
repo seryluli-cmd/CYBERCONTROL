@@ -29,7 +29,7 @@ from admin_remoto import modo as modo_remoto
 from turnos import MINUTOS_AVISO_ANTES_DEL_FIN, MINUTOS_PARA_CIERRE_FORZOSO, etiqueta_turno
 from repositories import envio_pwa_repo, turnos_repo
 from ui.detalle_venta import VentanaConDetalleDeVenta, crear_tabla_detalle_venta, etiqueta_de_estado
-from ui.dibujos_tabla import DelegadoEtiqueta
+from ui.dibujos_tabla import DelegadoEtiqueta, tonos_de_los_origenes
 from ui.envio_pwa_progreso import DialogoEnviandoCierre
 from ui.ingreso_caja import texto_de_la_diferencia
 from ui.piezas_ventana import (
@@ -495,9 +495,10 @@ class DialogoDetalleCierre(VentanaConDetalleDeVenta):
         )
         self.tabla.itemSelectionChanged.connect(self._mostrar_detalle)
         self.etiqueta_estado = etiqueta_de_estado(self.tabla, _DETALLE_ESTADO)
-        # El negocio de la venta en etiqueta, con los colores de Consulta de Ventas.
+        # El negocio de la venta en etiqueta, con el color de su rubro (el mismo que en
+        # Consulta de Ventas, Reportes y el Historial del Turno).
         self.etiqueta_origen = DelegadoEtiqueta(self.tabla)
-        self.etiqueta_origen.colores_en_orden(dominio.NOMBRE_ORIGEN_VENTA.values())
+        self.etiqueta_origen.colores_fijos(tonos_de_los_origenes())
         self.tabla.setItemDelegateForColumn(_DETALLE_ORIGEN, self.etiqueta_origen)
         self.tabla.setColumnWidth(_DETALLE_ORIGEN, 160)
         self.tabla.setColumnWidth(_DETALLE_HORA, 80)

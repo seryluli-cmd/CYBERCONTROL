@@ -13,12 +13,13 @@ pestaña muestra qué parte de eso fue PCSTREAM, no es plata aparte.
 
 from datetime import date
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTableWidgetItem, QHeaderView
 from PySide6.QtCore import Qt, QDate
 
 import dominio
 from control_pcs.repositories import pcstream_repo
-from ui.piezas_ventana import panel_de_tabla, pie_de_ventana
+from ui.piezas_ventana import TONO_CELESTE, TONO_GRIS, cifra_destacada, pie_de_ventana
+from ui.reportes_piezas import como_plata, panel_de_reporte, tarjeta_de_filtros, titulos_en_mayuscula
 from ui.utils import (
     armar_filtro_por_fechas, formato_pesos, formato_tiempo, hoy_del_local, manejar_errores,
     sin_boton_por_defecto, crear_tabla, rango_de_fechas,
@@ -26,6 +27,7 @@ from ui.utils import (
 
 # Columnas que van alineadas a la derecha (números, tiempos y plata).
 _COLUMNAS_A_LA_DERECHA = (1, 2, 3, 4, 5)
+_COLUMNA_RECAUDADO = 5
 
 
 def _tiempo(segundos: int) -> str:
@@ -47,30 +49,26 @@ class PestañaPcstream(QWidget):
             self._buscar, QDate(hoy.year(), hoy.month(), 1), solo_hoy=True, dias_del_local=True
         )
 
-        self.etiqueta_recaudado = QLabel()
-        self.etiqueta_vendido = QLabel()
-        self.etiqueta_uso = QLabel()
-        self.etiqueta_bonos = QLabel()
+        # Los totales en las cifras grandes de Resumen de Ventas (2026-11-19): la plata
+        # en el celeste de PCSTREAM (ui/dibujos_tabla.TONO_PCSTREAM), lo demás en gris.
+        recaudado = cifra_destacada("RECAUDADO", "Ya sumado en Alquiler de PCs", TONO_CELESTE)
+        vendido = cifra_destacada("TIEMPO VENDIDO", "Lo que suman los bonos", TONO_GRIS)
+        uso = cifra_destacada("TIEMPO DE USO", "Lo que estuvo habilitada", TONO_GRIS)
+        bonos = cifra_destacada("BONOS VENDIDOS", "En estas fechas", TONO_GRIS)
+        self.etiqueta_recaudado = recaudado.valor
+        self.etiqueta_vendido = vendido.valor
+        self.etiqueta_uso = uso.valor
+        self.etiqueta_bonos = bonos.valor
         totales = QHBoxLayout()
-        for titulo, etiqueta in (
-            ("RECAUDADO", self.etiqueta_recaudado),
-            ("TIEMPO VENDIDO", self.etiqueta_vendido),
-            ("TIEMPO DE USO", self.etiqueta_uso),
-            ("BONOS VENDIDOS", self.etiqueta_bonos),
-        ):
-            columna = QVBoxLayout()
-            rotulo = QLabel(titulo, alignment=Qt.AlignCenter)
-            rotulo.setStyleSheet("color: #6B7585; font-size: 12px; font-weight: 600;")
-            etiqueta.setAlignment(Qt.AlignCenter)
-            etiqueta.setStyleSheet("color: #2F6FED; font-size: 22px; font-weight: 700;")
-            columna.addWidget(rotulo)
-            columna.addWidget(etiqueta)
-            totales.addLayout(columna)
+        totales.setSpacing(12)
+        for cifra in (recaudado, vendido, uso, bonos):
+            totales.addWidget(cifra, 1)
 
         self.tabla = crear_tabla(
             ["Día", "Sesiones", "Bonos vendidos", "Tiempo vendido", "Tiempo de uso", "Recaudado"],
             estirar=0,
         )
+        titulos_en_mayuscula(self.tabla, a_la_derecha=_COLUMNAS_A_LA_DERECHA)
         # Los números al ancho de su título: con el ancho fijo de siempre,
         # "Bonos vendidos" y "Tiempo vendido" salían cortados.
         for columna in _COLUMNAS_A_LA_DERECHA:
@@ -83,14 +81,14 @@ class PestañaPcstream(QWidget):
             "en el día en que empezó."
         )
 
-        # Como las demás pestañas de Reportes (maqueta B): alineada con la cabecera y
-        # la grilla en su panel blanco.
+        # Como las demás secciones de Reportes: los filtros en su tarjeta y la grilla
+        # en su panel blanco.
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 12, 0, 0)
         layout.setSpacing(12)
-        layout.addLayout(filtros)
+        layout.addWidget(tarjeta_de_filtros(filtros))
         layout.addLayout(totales)
-        layout.addWidget(panel_de_tabla(self.tabla), 1)
+        layout.addWidget(panel_de_reporte(self.tabla), 1)
         layout.addWidget(nota)
         self.setLayout(layout)
         sin_boton_por_defecto(self)
@@ -114,6 +112,8 @@ class PestañaPcstream(QWidget):
                 fuente = item.font()
                 fuente.setBold(True)
                 item.setFont(fuente)
+            if columna == _COLUMNA_RECAUDADO:
+                como_plata(item)
             self.tabla.setItem(fila, columna, item)
 
     @manejar_errores

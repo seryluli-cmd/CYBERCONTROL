@@ -44,7 +44,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
 | [database.py](database.py) · [database_esquema.py](database_esquema.py) · [database_esquema_cajas.py](database_esquema_cajas.py) · [database_migraciones.py](database_migraciones.py) | Conexiones, claves y copias; creación de tablas e índices (las de las cajas con número, en su propio archivo); migraciones de bases existentes. Ver modelo de datos abajo. |
 | [turnos.py](turnos.py) · [dominio.py](dominio.py) | Calendario del local y constantes/reglas puras de negocio. |
 | [repositories/](repositories/) | Capa de datos, un archivo por tema: artículos, compras, configuración, reportes, turnos (con turnos faltantes y lo vendido en la ventana de un turno, `turnos_ventas_repo.py`), cajas con número (`cajas_repo.py` los datos, `relevo_repo.py` las reglas al entrar y el cierre forzoso, `control_cierres_repo.py` lo que se controla después), trámites, usuarios y ventas. |
-| [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo (`ui/ingreso_caja.py`: lo que pasa con la caja entre el login y la ventana principal). `ui/hoja_de_estilos.py` es la hoja de estilos de todo el programa. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). Configuración ADMIN (`ui/configuracion_admin_window.py`, antes en `main_window.py`), Administrar Kiosko (`ui/administrar_kiosko_window.py`, ídem), Gestionar Estaciones, Reservas, Caja, Cierre de Turno y Congelar / descongelar PCs (`control_pcs/ui/pcs_congelado_dialogo.py`, 2026-10-28: lista a la izquierda, acciones como tarjetas a la derecha y, solo para el Admin, ACTUALIZAR CLIENTES, que abre la ventana de Actualizar el Cliente PC) usan el diseño "clara con cabecera cyber" que eligió el dueño el 2026-10-26 (maqueta A de `PROPUESTA_VENTANAS_ADMIN`, en la carpeta de los proyectos): las piezas están en `ui/piezas_ventana.py` (cabecera oscura con la estela celeste del cometa y pastillas con números, paneles blancos, tarjetas de menú con dibujito, título y para qué es, teclas con relieve; lo peligroso en rojo y aparte, lo que es solo del Admin con candado; una tarjeta puede ir con `tono` rojo, lo peligroso, o verde) y los colores en `ui/hoja_de_estilos.py`, siempre por objectName o "clase" para que los avisos que se abren encima no hereden nada. El título de una tarjeta va en `accessibleName()`: su texto lo dibujan etiquetas de adentro. Las listas (Artículos, Compras, Control de Stock, ORDENAR Stock, Consulta de Ventas, Control de Cierres, Reportes, Usuarios, Accesos de Admin, Copias, Impresiones, Entrar desde otra PC) usan la maqueta B que eligió el dueño para el kiosko el 2026-10-30 y pidió también acá el 2026-10-31: le suma a esa cabecera indicadores con números grandes, un buscador grande, filtros en pastillas y la grilla en un panel blanco (piezas en `ui/piezas_ventana.py`; lo que se dibuja en las celdas, como el rubro en una etiqueta de color y el stock con su barrita, en `ui/dibujos_tabla.py`). |
+| [ui/](ui/) | Una ventana/diálogo por pantalla — ver detalle abajo (`ui/ingreso_caja.py`: lo que pasa con la caja entre el login y la ventana principal). `ui/hoja_de_estilos.py` es la hoja de estilos de todo el programa. `ui/utils.py` tiene los helpers compartidos (formato de pesos, decorador de manejo de errores, encadenar Enter entre campos). Configuración ADMIN (`ui/configuracion_admin_window.py`, antes en `main_window.py`), Administrar Kiosko (`ui/administrar_kiosko_window.py`, ídem), Gestionar Estaciones, Reservas, Caja, Cierre de Turno y Congelar / descongelar PCs (`control_pcs/ui/pcs_congelado_dialogo.py`, 2026-10-28: lista a la izquierda, acciones como tarjetas a la derecha y, solo para el Admin, ACTUALIZAR CLIENTES, que abre la ventana de Actualizar el Cliente PC) usan el diseño "clara con cabecera cyber" que eligió el dueño el 2026-10-26 (maqueta A de `PROPUESTA_VENTANAS_ADMIN`, en la carpeta de los proyectos): las piezas están en `ui/piezas_ventana.py` (cabecera oscura con la estela celeste del cometa y pastillas con números, paneles blancos, tarjetas de menú con dibujito, título y para qué es, teclas con relieve; lo peligroso en rojo y aparte, lo que es solo del Admin con candado; una tarjeta puede ir con `tono` rojo, lo peligroso, o verde) y los colores en `ui/hoja_de_estilos.py`, siempre por objectName o "clase" para que los avisos que se abren encima no hereden nada. El título de una tarjeta va en `accessibleName()`: su texto lo dibujan etiquetas de adentro. Las listas (Artículos, Compras, Control de Stock, ORDENAR Stock, Consulta de Ventas, Control de Cierres, Reportes (desde el 2026-11-19 con su propio diseño C, ver más abajo), Usuarios, Accesos de Admin, Copias, Impresiones, Entrar desde otra PC) usan la maqueta B que eligió el dueño para el kiosko el 2026-10-30 y pidió también acá el 2026-10-31: le suma a esa cabecera indicadores con números grandes, un buscador grande, filtros en pastillas y la grilla en un panel blanco (piezas en `ui/piezas_ventana.py`; lo que se dibuja en las celdas, como el rubro en una etiqueta de color y el stock con su barrita, en `ui/dibujos_tabla.py`). |
 | [control_pcs/](control_pcs/) | UI y repositorios de PCs, Miembros y PlayStation 5; el mosaico de monitores de la pantalla principal se dibuja en `control_pcs/ui/pcs_mosaico.py` (solo dibuja: qué estado/color le toca a cada equipo lo decide `pcs_window.py`); el feed de actividad está en `control_pcs/repositories/actividad_repo.py` y los fondos de las PCs (pantalla de bloqueo y wallpaper de Windows) en `control_pcs/repositories/fondo_repo.py` + `control_pcs/ui/pcs_fondo_dialogo.py` (vista previa en `pcs_fondo_vista.py`), y el filtro de palabras en `control_pcs/repositories/filtro_palabras_repo.py` + `control_pcs/ui/pcs_filtro_dialogo.py`. |
 | [admin_remoto/](admin_remoto/) · [repositories/admin_remoto_repo.py](repositories/admin_remoto_repo.py) · [ui/admin_remoto_dialogo.py](ui/admin_remoto_dialogo.py) | Administrar desde otra PC del local (ver la sección propia más abajo). |
 | [servidor_red.py](servidor_red.py) · [errores.py](errores.py) | API del Cliente PC (todo pedido exige la clave fija de los Clientes PC, ver `clientes_repo.py`; incluye `GET /fondo` y `GET /escritorio`, el fondo de la pantalla de bloqueo y el wallpaper de Windows, y `GET /filtro` + `POST /filtro_bloqueo`, el filtro de palabras) y registro de fallos compartido con la UI. |
@@ -502,7 +502,7 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   2026-11-19; antes, solo el Admin). Muestra todo lo cobrado en el
   turno abierto, venta por venta y de la primera a la última: hora, rubro en
   etiqueta de color (bono de PC, miembro, kiosko, impresiones, trámite, PS5,
-  PCSTREAM, reserva), qué se cobró, cómo se pagó y el total. Son las mismas
+  PCSTREAM, reserva; los mismos colores que Reportes), qué se cobró, cómo se pagó y el total. Son las mismas
   ventas que suma el Cierre de Turno (`historial_turno_repo.historial_del_turno`
   usa `turnos_repo._ventana_en_curso` y el detalle de `detalle_dia_repo`), así
   que el total da igual; con caja abierta es la caja de quien agarró el turno,
@@ -523,7 +523,17 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   venta" (solo si `self.es_admin`) pide motivo obligatorio y llama a
   `ventas_repo.anular_venta`, que **repone el stock** de cada línea y
   marca `estado='ANULADA'` con auditoría (quién/cuándo/por qué).
-- **Reportes** (`reportes_window.py`, `ReportesWindow`) — 6 tabs. Cuatro
+- **Reportes** (`reportes_window.py`, `ReportesWindow`) — ocho secciones, con el
+  diseño C que eligió el dueño el 2026-11-19 entre tres (maquetas en `PROPUESTA_REPORTES`,
+  en la carpeta de los proyectos): un menú a la izquierda en vez de pestañas (por dentro
+  sigue siendo un `QTabWidget`, con la barra escondida), el nombre de la sección grande
+  arriba con una línea de para qué sirve, los filtros en una tarjeta blanca, todos los
+  títulos en mayúscula, la plata en negrita a la derecha (un "$ 0" en gris claro) y un
+  color por rubro, el mismo en todo el programa (`ui/dibujos_tabla.py`, `TONO_*`: PCs
+  azul, PlayStation 5 rosa, PCSTREAM celeste, Kiosko verde, Impresiones gris, Trámites
+  ámbar, socios violeta, reservas naranja; también en el Historial del Turno, el Origen
+  de Consulta de Ventas y Control de Cierres y Socios y Bonos). Las piezas que comparten
+  las secciones están en `ui/reportes_piezas.py`. Cuatro
   con filtro Desde/Hasta y atajo "Solo Hoy": **Resumen de Ventas**
   (`reportes_repo.resumen_ventas`: total + desglose efectivo/digital),
   **Por Turno** (`reportes_repo.resumen_por_turno`: mismo desglose pero
@@ -535,11 +545,14 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   `tramites_repo`; las impresiones (el artículo código 4, el que más se vende) y los trámites (ganancia
   pura) salen en columna aparte y NO están sumados en Kiosko —, con un
   combo para agrupar por Turno/Día/Semana o el total del rango completo;
-  agrega una fila TOTAL al pie cuando hay más de un período listado) y
+  agrega una fila TOTAL al pie cuando hay más de un período listado; cada rubro lleva
+  una barra de su color abajo del título, `ui.dibujos_tabla.CabeceraConColores`) y
   **Ranking de Ventas** (`reportes_repo.ranking_ventas`: TODO lo que se
   vendió junto —artículos de kiosko, bonos de PC, bonos de socios, cargas
   de saldo por tarifa, trámites y bonos de PlayStation 5—, con columna Categoría para distinguir
-  de dónde vino cada fila, por cantidad o por monto). La quinta,
+  de dónde vino cada fila —en una etiqueta del color de su rubro, con el nombre corto
+  ("Carga de Socio") y el completo al pasar el mouse; las impresiones aparte de Kiosko,
+  como en Totales (`reportes_repo.categoria_a_la_vista`)—, por cantidad o por monto). La quinta,
   **Resumen del Día** (`turnos_repo.resumen_del_dia`), muestra UN día
   abierto por turno (Mañana/Tarde/Noche, o Domingo T1/T2) con estado
   (Cerrado / En curso / SIN CERRAR / Pendiente), quién cerró y a qué hora,

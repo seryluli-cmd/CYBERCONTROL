@@ -23,7 +23,10 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QTableW
 import dominio
 from repositories import historial_turno_repo
 from ui import imprimir
-from ui.dibujos_tabla import DelegadoEtiqueta
+from ui.dibujos_tabla import (
+    TONO_IMPRESIONES, TONO_KIOSKO, TONO_PCS, TONO_PCSTREAM, TONO_PLAYSTATION, TONO_RESERVAS, TONO_SOCIOS,
+    TONO_TRAMITES, DelegadoEtiqueta,
+)
 from ui.piezas_ventana import (
     agregar_indicador, buscador, cabecera_oscura, fila_de_filtros, panel_de_tabla, pie_de_ventana,
     poner_indicador, tecla,
@@ -50,16 +53,19 @@ FILTROS = [
     ("Reservas", historial_turno_repo.RUBRO_RESERVA),
     ("Anuladas", FILTRO_ANULADAS),
 ]
-# El color de la etiqueta de cada rubro (ui/dibujos_tabla.TONOS_DE_ETIQUETA).
+# El color de la etiqueta de cada rubro: el mismo en todo el programa (Reportes
+# también, ver ui/dibujos_tabla.TONO_PCS...). Desde el 2026-11-19 la PS5 va en rosa
+# (en celeste se confundía con el azul de los bonos de PC), PCSTREAM en celeste y
+# las reservas en naranja.
 TONOS = {
-    historial_turno_repo.RUBRO_BONO_PC: "azul",
-    historial_turno_repo.RUBRO_MIEMBRO: "violeta",
-    historial_turno_repo.RUBRO_KIOSKO: "verde",
-    historial_turno_repo.RUBRO_IMPRESIONES: "gris",
-    historial_turno_repo.RUBRO_TRAMITE: "ámbar",
-    historial_turno_repo.RUBRO_PS5: "celeste",
-    historial_turno_repo.RUBRO_PCSTREAM: "naranja",
-    historial_turno_repo.RUBRO_RESERVA: "rosa",
+    historial_turno_repo.RUBRO_BONO_PC: TONO_PCS,
+    historial_turno_repo.RUBRO_MIEMBRO: TONO_SOCIOS,
+    historial_turno_repo.RUBRO_KIOSKO: TONO_KIOSKO,
+    historial_turno_repo.RUBRO_IMPRESIONES: TONO_IMPRESIONES,
+    historial_turno_repo.RUBRO_TRAMITE: TONO_TRAMITES,
+    historial_turno_repo.RUBRO_PS5: TONO_PLAYSTATION,
+    historial_turno_repo.RUBRO_PCSTREAM: TONO_PCSTREAM,
+    historial_turno_repo.RUBRO_RESERVA: TONO_RESERVAS,
     historial_turno_repo.RUBRO_OTRO: "gris",
 }
 ROJO = QColor("#D93A45")

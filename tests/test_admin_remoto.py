@@ -705,6 +705,7 @@ _PANTALLAS_DE_OTRA_PC = [
     ("ui/reportes_operador.py", None),
     ("ui/reportes_pcstream.py", None),
     ("ui/reportes_socios_bonos.py", None),
+    ("ui/reportes_piezas.py", None),
     ("ui/control_cierres_window.py", None),
     ("ui/tarjeta_cierre.py", None),
     ("ui/caja_window.py", {"CajaWindow"}),
@@ -742,6 +743,8 @@ _SE_USAN_SIN_IR_AL_MOSTRADOR = {
     ("ofertas_repo", "nombre_de_la_franja"), ("ofertas_repo", "con_oferta"), ("ofertas_repo", "y_lista"),
     ("ofertas_repo", "proximas_veces"), ("ofertas_repo", "frase"), ("ofertas_repo", "frase_de_la_vez"),
     ("ofertas_repo", "ChocaConOtraOferta"),
+    # Con qué categoría muestra el Ranking un renglón (Impresiones aparte de Kiosko).
+    ("reportes_repo", "categoria_a_la_vista"),
 }
 
 

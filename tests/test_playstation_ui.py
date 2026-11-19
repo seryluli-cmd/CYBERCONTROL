@@ -487,9 +487,10 @@ class TestPantallasDeLaPlata(_ConPantalla):
         dia = self._abrir(PestañaResumenDelDia())
 
         titulos = [totales.tabla.horizontalHeaderItem(c).text() for c in range(totales.tabla.columnCount())]
-        self.assertEqual(titulos, ["Período", "Kiosko", "Impresiones", "Trámites", "Alquiler de PCs",
-                                   "PlayStation 5", "Total"])
-        self.assertEqual(totales.tabla.item(0, titulos.index("PlayStation 5")).text(), "$ 3.000")
+        # En mayúscula, como todos los títulos de Reportes (2026-11-19).
+        self.assertEqual(titulos, ["PERÍODO", "KIOSKO", "IMPRESIONES", "TRÁMITES", "ALQUILER DE PCS",
+                                   "PLAYSTATION 5", "TOTAL"])
+        self.assertEqual(totales.tabla.item(0, titulos.index("PLAYSTATION 5")).text(), "$ 3.000")
         self.assertIn("PlayStation 5", dia._COLUMNAS)
         # Cada fila del Resumen del Día tiene un valor por cada columna.
         self.assertEqual(dia.tabla.columnCount(), len(dia._COLUMNAS))

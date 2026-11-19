@@ -38,6 +38,37 @@ CATEGORIA_BONO_PLAYSTATION = "Bono de PlayStation 5"
 CATEGORIA_BONO_PCSTREAM = f"Bono de {dominio.NOMBRE_PCSTREAM}"
 # Lo que se cobra (o devuelve) de una reserva: lo usa el Detalle del Día.
 CATEGORIA_RESERVA = "Reserva"
+# Las impresiones son un artículo de Kiosko (dominio.CODIGO_ARTICULO_IMPRESIONES),
+# pero TOTALES y el Historial del Turno las muestran aparte: desde el 2026-11-19 el
+# Ranking y el Detalle del Día también (ver categoria_de_la_venta).
+CATEGORIA_IMPRESIONES = "Impresiones"
+
+
+def categoria_de_la_venta(categoria: str, codigos) -> str:
+    """
+    La categoría con que se muestra una venta (o un renglón) de `categoria` con
+    los artículos `codigos`: una de Kiosko de SOLO impresiones pasa a ser
+    CATEGORIA_IMPRESIONES, como en TOTALES; una con impresiones y otra cosa sigue
+    siendo de Kiosko, y las demás quedan igual. Es la única regla de esto: la usan
+    el Ranking (categoria_a_la_vista), el Detalle del Día y el Historial del Turno
+    (detalle_dia_repo). Las ventas no la guardan: para el stock y la caja las
+    impresiones siguen siendo un artículo de kiosko.
+    """
+    codigos = list(codigos)
+    if (categoria == CATEGORIA_KIOSKO and codigos
+            and all(codigo == dominio.CODIGO_ARTICULO_IMPRESIONES for codigo in codigos)):
+        return CATEGORIA_IMPRESIONES
+    return categoria
+
+
+def categoria_a_la_vista(categoria: str, codigo: str) -> str:
+    """
+    La categoría con que el Ranking de Ventas muestra un renglón de
+    ranking_ventas (categoria_de_la_venta de un solo artículo). ranking_ventas no
+    la aplica para que una pantalla de otra PC (admin_remoto) la vea igual aunque
+    el mostrador tenga un programa anterior.
+    """
+    return categoria_de_la_venta(categoria, (codigo,))
 
 
 def resumen_ventas(desde: str, hasta: str):

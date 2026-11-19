@@ -551,3 +551,25 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   lo cobrado en el turno abierto, con las anuladas y quién las anuló. No muestra nada nuevo: el
   botón Caja ya les daba lo cobrado, y el conteo del Cierre de Turno sigue a ciegas. La lista
   blanca de la otra PC no cambia (misma firma).
+- **2026-11-19 — REPORTES con el diseño C y un color por rubro** (pedido del dueño: "mejorá la
+  estética de REPORTES. Todos los títulos de arriba en MAYÚSCULA y hacelo profesional y bello";
+  de tres maquetas eligió la C y pidió "bono de PC y bono de PlayStation diferentes colores, lo
+  que sea de una misma categoría que mantengan color"; de tres formas eligió la 1, la etiqueta).
+  Un menú a la izquierda en vez de pestañas, el nombre de la sección grande con su para qué,
+  los filtros en una tarjeta blanca, todos los títulos en mayúscula, la plata en negrita a la
+  derecha con los "$ 0" en gris, renglones más altos y las cifras de PCSTREAM como las de
+  Resumen de Ventas. Un solo mapa de colores para todo el programa (`ui/dibujos_tabla.TONO_*`):
+  el Ranking muestra la categoría en una etiqueta de color con nombre corto y las impresiones
+  aparte de Kiosko; TOTALES y el Resumen del Día llevan una barra del color de cada rubro bajo
+  su título; el Detalle del Día y Por Operador, el rubro y el origen en etiqueta. Se alinearon
+  al mismo mapa el Historial del Turno (PS5 de celeste a rosa, PCSTREAM de naranja a celeste,
+  reservas de rosa a naranja), el Origen de Consulta de Ventas y Control de Cierres (Kiosko
+  verde, Alquiler de PCs azul, PS5 rosa) y Socios y Bonos (socios violeta, bonos azul). Dos
+  revisiones independientes dejaron además: las impresiones también aparte en el Detalle del Día
+  (Venta por venta y Lo vendido; una regla sola, `reportes_repo.categoria_de_la_venta`, que usa
+  también el Historial del Turno sin cambiar lo que muestra), ANULADA de rosa a rojo
+  (`TONO_ALERTA`: el rosa pasó a ser de la PS5 y una venta de la PS5 anulada llevaba dos
+  etiquetas rosas), los títulos de las grillas buscados por la marca `deReporte` y no "adentro de
+  la ventana" (se medían antes de entrar: salían mordidos y el TOTAL DEL DÍA, cortado) y la
+  grilla de turnos sumando la barra de abajo en pantallas angostas. Sin .exe. 1935
+  pruebas.

@@ -29,7 +29,8 @@ from PySide6.QtWidgets import (
 from ui.utils import aplicar_clase
 
 # Colores de las pastillas de la cabecera (QLabel#pastillaCabecera[tono=...]) y de las
-# cifras destacadas (QFrame#cifraDestacada[tono=...], solo azul y verde).
+# cifras destacadas (QFrame#cifraDestacada[tono=...]: azul y verde en Caja y Cierre de
+# Turno; en Reportes, también celeste para PCSTREAM y gris para lo que no es plata).
 TONO_AZUL = "azul"
 TONO_VERDE = "verde"
 TONO_CELESTE = "celeste"
@@ -104,7 +105,9 @@ def panel_blanco() -> tuple:
 def cifra_destacada(titulo: str, aclaracion: str, tono: str) -> QFrame:
     """Un recuadro de color con un monto grande: el título chiquito arriba, la cifra y
     una línea que aclara qué suma ("Sin el cambio: lo cobrado en efectivo"). Es lo primero
-    que se lee en Caja y en Cierre de Turno. `cifra.valor` es la etiqueta del monto."""
+    que se lee en Caja, en Cierre de Turno y en Reportes (Resumen de Ventas y PCSTREAM,
+    donde con TONO_GRIS muestra también un número que no es plata, como el tiempo
+    vendido). `cifra.valor` es la etiqueta del monto."""
     cifra = QFrame()
     cifra.setObjectName("cifraDestacada")
     cifra.setProperty("tono", tono)
@@ -289,8 +292,9 @@ def fila_de_filtros(opciones, al_elegir, todos: str = "Todos") -> QWidget:
 
 def panel_de_tabla(tabla: QTableWidget, alto_de_renglon: int = 36) -> QFrame:
     """La grilla de una lista dentro de un panel blanco redondeado, sin las rayas de
-    la cuadrícula y con renglones más altos (los títulos de las columnas, en
-    mayúscula y con la raya azul abajo, los pone la hoja de estilos)."""
+    la cuadrícula y con renglones más altos (la letra de los títulos de las
+    columnas y la raya azul de abajo las pone la hoja de estilos; el texto en
+    mayúscula no, porque una hoja de estilos de Qt no cambia textos)."""
     panel = QFrame()
     panel.setObjectName("panelTabla")
     capa = QVBoxLayout(panel)

@@ -20,11 +20,22 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor
 
 from repositories import detalle_dia_repo, turnos_repo
-from ui.piezas_ventana import panel_de_tabla, pie_de_ventana, tecla, titulo_de_seccion
+from ui.dibujos_tabla import poner_cabecera_con_colores
+from ui.piezas_ventana import pie_de_ventana, tecla, titulo_de_seccion
 from ui.reportes_detalle_dia import PanelDetalleDelDia
+from ui.reportes_piezas import (
+    TONO_DE_LA_COLUMNA, como_plata, panel_de_reporte, tarjeta_de_filtros, titulos_en_mayuscula,
+)
 from ui.utils import (
     formato_pesos, manejar_errores, sin_boton_por_defecto, fecha_iso, crear_selector_de_fecha, hoy_del_local,
 )
+
+# Las columnas de la grilla de los turnos (ver PestañaResumenDelDia._COLUMNAS): las
+# de un rubro, con la clave de su plata en turnos_repo.resumen_del_dia (para el
+# color de su título); las de plata, en negrita; y la del sobre.
+_RUBRO_DE_LA_COLUMNA = {4: "kiosko", 5: "impresiones", 6: "tramites", 7: "pcs", 8: "playstation"}
+_COLUMNAS_DE_PLATA = range(4, 12)
+_COLUMNA_SOBRE = 12
 
 
 class PestañaResumenDelDia(QWidget):
@@ -35,7 +46,7 @@ class PestañaResumenDelDia(QWidget):
     turnos_repo.resumen_del_dia.
 
     Con la maqueta B (2026-10-30): teclas para moverse de día, la grilla de los
-    turnos en su panel blanco (panel_de_tabla) y las notas como pie_de_ventana."""
+    turnos en su panel blanco (panel_de_reporte) y las notas como pie_de_ventana."""
 
     _DIAS = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
     _TEXTO_ESTADO = {
@@ -88,8 +99,20 @@ class PestañaResumenDelDia(QWidget):
         # Sin la numeración de filas (como en el resto de las tablas, ver ui.utils.crear_tabla):
         # acá además le quitaba lugar a la columna "Cerró".
         self.tabla.verticalHeader().setVisible(False)
+        # Los títulos a la izquierda, como el contenido (los de plata, a la derecha:
+        # ver titulos_en_mayuscula), igual que en las tablas de ui.utils.crear_tabla.
+        self.tabla.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        # Los títulos en mayúscula y cada rubro con la barra de su color (el mismo que
+        # en Totales, el Ranking y el Historial del Turno).
+        titulos_en_mayuscula(self.tabla, a_la_derecha=range(3, len(self._COLUMNAS)))
+        poner_cabecera_con_colores(self.tabla, {
+            columna: TONO_DE_LA_COLUMNA[clave] for columna, clave in _RUBRO_DE_LA_COLUMNA.items()
+        })
+        # En una pantalla angosta las columnas no entran y aparece la barra de abajo:
+        # la grilla se vuelve a medir para sumarla (ver _ajustar_alto).
+        self.tabla.horizontalScrollBar().rangeChanged.connect(self._ajustar_alto)
 
         nota = pie_de_ventana(
             "Cada turno cuenta lo que se vendió hasta que se lo cerró (la Noche incluye hasta las 06:00 "
@@ -123,7 +146,7 @@ class PestañaResumenDelDia(QWidget):
         layout_arriba = QVBoxLayout(arriba)
         layout_arriba.setContentsMargins(0, 0, 0, 6)
         layout_arriba.setSpacing(8)
-        layout_arriba.addWidget(panel_de_tabla(self.tabla))
+        layout_arriba.addWidget(panel_de_reporte(self.tabla))
         layout_arriba.addWidget(nota)
         layout_arriba.addStretch()
 
@@ -142,9 +165,9 @@ class PestañaResumenDelDia(QWidget):
         division.setChildrenCollapsible(False)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 12, 0, 0)   # alineada con la cabecera (ver reportes_window)
+        layout.setContentsMargins(0, 12, 0, 0)   # como las demás secciones (ver reportes_window)
         layout.setSpacing(12)
-        layout.addLayout(filtros)
+        layout.addWidget(tarjeta_de_filtros(filtros))
         layout.addWidget(self.aviso)
         layout.addWidget(division, 1)
         self.setLayout(layout)
@@ -160,6 +183,19 @@ class PestañaResumenDelDia(QWidget):
         if filas and filas[0].row() < len(self._turno_de_cada_fila):
             turno = self._turno_de_cada_fila[filas[0].row()]
         self.panel_detalle.mostrar(self._detalle, turno)
+
+    def _ajustar_alto(self, *_):
+        """Los turnos y el TOTAL DEL DÍA siempre a la vista, sin barra ni hueco abajo:
+        la grilla mide justo sus títulos y sus renglones. Con solo un mínimo, la nota
+        de abajo (que ocupa dos renglones) le robaba lugar y el TOTAL DEL DÍA quedaba
+        cortado. Si las columnas no entran a lo ancho (una pantalla de 1366 de otra PC:
+        en la de 1920 del mostrador entran), se suma la barra de abajo, que si no tapaba
+        el TOTAL DEL DÍA."""
+        barra = self.tabla.horizontalScrollBar()
+        alto_de_la_barra = barra.sizeHint().height() if barra.maximum() > 0 else 0
+        self.tabla.setFixedHeight(self.tabla.horizontalHeader().sizeHint().height()
+                                  + self.tabla.verticalHeader().length() + 2 * self.tabla.frameWidth()
+                                  + alto_de_la_barra)
 
     def _mover_dia(self, dias: int):
         self.fecha.setDate(self.fecha.date().addDays(dias))
@@ -215,14 +251,19 @@ class PestañaResumenDelDia(QWidget):
                 item.setToolTip(valor)
             if columna >= 3:
                 item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            if negrita or (columna == 1 and color_estado):
+            # La plata en negrita y un "$ 0", en gris (como_plata); el sobre, en negrita
+            # siempre que sea plata, aunque sea "$ 0": ahí el cero es que cuadró.
+            es_plata = valor.startswith(("$", "-"))
+            if negrita or (columna == 1 and color_estado) or (columna == _COLUMNA_SOBRE and es_plata):
                 fuente = item.font()
                 fuente.setBold(True)
                 item.setFont(fuente)
             if columna == 1 and color_estado:
                 item.setForeground(QColor(color_estado))
-            if columna == len(valores) - 1 and color_sobre:
+            if columna == _COLUMNA_SOBRE and color_sobre:
                 item.setForeground(QColor(color_sobre))
+            if columna in _COLUMNAS_DE_PLATA and es_plata:
+                como_plata(item)
             self.tabla.setItem(fila, columna, item)
 
     @staticmethod
@@ -298,11 +339,7 @@ class PestañaResumenDelDia(QWidget):
             negrita=True,
         )
 
-        # Los turnos y el TOTAL DEL DÍA siempre a la vista, sin barra ni hueco abajo:
-        # la grilla mide justo sus renglones. Con solo un mínimo, la nota de abajo (que
-        # ocupa dos renglones) le robaba lugar y el TOTAL DEL DÍA quedaba cortado.
-        self.tabla.setFixedHeight(self.tabla.horizontalHeader().sizeHint().height()
-                                  + self.tabla.verticalHeader().length() + 2 * self.tabla.frameWidth())
+        self._ajustar_alto()
 
         self._mostrar_aviso(resumen["cierres_de_otro_dia"], dia)
         self._detalle = detalle_dia_repo.detalle_del_dia(fecha_iso(dia))
