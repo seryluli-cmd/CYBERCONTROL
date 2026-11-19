@@ -497,8 +497,9 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   Stock.
 - **HISTORIAL DEL TURNO** (`historial_turno_window.py`, `BotonHistorialTurno` y
   `VentanaHistorialTurno`; pedido del dueño 2026-11-02, maqueta A en
-  `PROPUESTA_HISTORIAL_DEL_TURNO`) — botón a la derecha de CONTROL DE STOCK, que
-  como ese lo ven todos y lo abre solo el Admin. Muestra todo lo cobrado en el
+  `PROPUESTA_HISTORIAL_DEL_TURNO`) — botón a la derecha de CONTROL DE STOCK. Lo
+  abre cualquier operador, para revisar que no se equivocó al cobrar (desde el
+  2026-11-19; antes, solo el Admin). Muestra todo lo cobrado en el
   turno abierto, venta por venta y de la primera a la última: hora, rubro en
   etiqueta de color (bono de PC, miembro, kiosko, impresiones, trámite, PS5,
   PCSTREAM, reserva), qué se cobró, cómo se pagó y el total. Son las mismas

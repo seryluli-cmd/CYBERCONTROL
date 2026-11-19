@@ -545,3 +545,9 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   cual, a `docs/guia/`, una guía por área, y `CLAUDE.md` dice cuál leer según lo que se va a
   tocar. `tests/test_guia_del_proyecto.py` revisa que cada función de las tablas (300
   nombres) exista en el código y que `CLAUDE.md` no pase de 25 KB. 1905 pruebas.
+- **2026-11-19 — HISTORIAL DEL TURNO para los operadores** (pedido del dueño: "quiero que el
+  historial de turno lo puedan ver los operadores, para verificar que no cometieron errores").
+  El botón de debajo del mosaico ya no es solo del Admin: cualquier operador habilitado ve todo
+  lo cobrado en el turno abierto, con las anuladas y quién las anuló. No muestra nada nuevo: el
+  botón Caja ya les daba lo cobrado, y el conteo del Cierre de Turno sigue a ciegas. La lista
+  blanca de la otra PC no cambia (misma firma).

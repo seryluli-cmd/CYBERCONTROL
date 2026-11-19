@@ -9,9 +9,8 @@ turno, un buscador, pastillas para quedarse con un rubro, la lista y la ayuda
 abajo. Los datos salen de repositories/historial_turno_repo.py.
 
 El botón va debajo del mosaico de Control de PCs, a la derecha de CONTROL DE
-STOCK (ahí lo pidió el dueño). Como ese, lo ven todos pero solo el Admin lo
-abre: con otro operador se ve igual y no hace nada al apretarlo. El repo vuelve
-a exigir Admin.
+STOCK (ahí lo pidió el dueño). Lo abre cualquier operador, para revisar que no se
+equivocó al cobrar (pedido del dueño, 2026-11-19; antes, solo el Admin).
 
 Las anuladas salen en rojo y no suman. Solo muestra: anular sigue siendo cosa de
 Consulta de Ventas o de "Quitar un bono".
@@ -76,8 +75,7 @@ class BotonHistorialTurno(QPushButton):
         super().__init__("📋  HISTORIAL DEL TURNO", parent)
         self.usuario = usuario
         aplicar_clase(self, "barra")
-        if dominio.es_admin(usuario):
-            self.clicked.connect(self._abrir)
+        self.clicked.connect(self._abrir)
 
     @manejar_errores
     def _abrir(self):
@@ -106,7 +104,7 @@ class VentanaHistorialTurno(QDialog):
 
     def __init__(self, usuario_id: int, parent=None):
         super().__init__(parent)
-        # Si no es Admin, el repo no deja y la ventana no llega a abrirse.
+        # Si el usuario ya no está habilitado, el repo no deja y la ventana no llega a abrirse.
         self._historial = historial_turno_repo.historial_del_turno(usuario_id)
         self._filtro = None
         self.setWindowTitle(TITULO)

@@ -312,7 +312,7 @@ class PanelControlPcs(QWidget):
         # solo el Admin lo abre (ver ui/control_stock_window.py).
         self.boton_control_stock = BotonControlStock(self.usuario, self)
         # Y a su derecha HISTORIAL DEL TURNO (pedido del dueño, 2026-11-02): todo lo
-        # cobrado en el turno abierto. También lo abre solo el Admin (ver
+        # cobrado en el turno abierto. Este lo abre cualquier operador (ver
         # ui/historial_turno_window.py).
         self.boton_historial_turno = BotonHistorialTurno(self.usuario, self)
         fila_botones = QHBoxLayout()

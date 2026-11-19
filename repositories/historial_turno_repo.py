@@ -14,8 +14,11 @@ aunque cobre el Admin (quedan a nombre de ella, ver cajas_repo._quien_vende).
 Qué se vendió en cada una sale de detalle_dia_repo, el mismo detalle de
 Reportes > Resumen del Día.
 
-Solo un Admin: el botón lo ven todos, pero solo el Admin lo abre (como CONTROL
-DE STOCK).
+Lo abre cualquier operador habilitado (pedido del dueño, 2026-11-19: "quiero que
+el historial de turno lo puedan ver los operadores, para verificar que no
+cometieron errores"; hasta ahí era solo del Admin). No destapa nada que una
+empleada no vea ya: el botón Caja le muestra a todos lo cobrado en el turno, y el
+conteo del Cierre de Turno sigue a ciegas. Solo mira: anular sigue siendo del Admin.
 """
 
 from datetime import datetime
@@ -134,8 +137,9 @@ def historial_del_turno(usuario_id: int) -> dict:
     (por los que se la encuentra al filtrar), "detalle", "nota", "pago",
     "efectivo", "digital", "total", "anulada", "operador", "cargada_por"}.
     Las anuladas vienen en la lista, pero los números de abajo no las cuentan.
+    Un usuario dado de baja que quedó con la sesión abierta no lo ve (PermissionError).
     """
-    usuarios_repo.exigir_admin(usuario_id, "ver el Historial del Turno")
+    usuarios_repo.usuario_habilitado(usuario_id)
     with conexion_db() as conexion:
         ventana = turnos_repo._ventana_en_curso(conexion)
         vendido = detalle_dia_repo._que_se_vendio_entre(conexion, ventana["desde"], ventana["hasta"])

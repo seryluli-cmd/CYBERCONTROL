@@ -4,8 +4,9 @@ tests/test_historial_turno.py
 HISTORIAL DEL TURNO (botón de debajo del mosaico, a la derecha de CONTROL DE
 STOCK; pedido del dueño, 2026-11-02, maqueta A): todo lo cobrado en el turno
 abierto, venta por venta, con su rubro, qué se cobró, cómo se pagó y el total.
-Las mismas ventas que suma el Cierre de Turno. El botón lo ven todos, pero solo
-el Admin lo abre. Ver repositories/historial_turno_repo.py y
+Las mismas ventas que suma el Cierre de Turno. Lo abre cualquier operador, para
+revisar que no se equivocó al cobrar (2026-11-19; antes, solo el Admin). Ver
+repositories/historial_turno_repo.py y
 ui/historial_turno_window.py. Las pantallas se prueban sin abrir ninguna ventana
 (plataforma "offscreen" de Qt).
 """
@@ -182,12 +183,24 @@ class TestQueSeCobro(BaseHistorial):
         self.assertEqual(historial["turno_label"], caja["turno_label"])
 
 
-class TestSoloElAdmin(BaseHistorial):
-    def test_una_empleada_no_puede(self):
-        with self.assertRaisesRegex(PermissionError, "Solo un Administrador puede ver el Historial del Turno"):
-            repo.historial_del_turno(self.lucia_id)
+class TestQuienLoVe(BaseHistorial):
+    def test_la_empleada_ve_lo_mismo_que_el_admin(self):
+        # Pedido del dueño (2026-11-19): que los operadores revisen que no se equivocaron.
+        self.turno_con_de_todo()
+        de_ella = repo.historial_del_turno(self.lucia_id)
+        self.assertEqual(de_ella, self.historial())
+        self.assertEqual(de_ella["responsable"], "LUCIA")
+        # Ve también las anuladas, con quién y por qué: así se entera de lo que le corrigieron.
+        self.assertRegex(self.venta(de_ella, self.v_repetida)["nota"],
+                         r"^anulada por Duenio a las \d\d:\d\d: cargado 2 veces$")
 
-    def test_se_puede_mirar_desde_otra_pc_a_nombre_del_admin_que_entro(self):
+    def test_un_operador_dado_de_baja_no_lo_ve(self):
+        otro = usuarios_repo.crear_usuario("MARTA", "5555", dominio.ROL_EMPLEADA)
+        usuarios_repo.desactivar_usuario(otro)
+        with self.assertRaisesRegex(PermissionError, "ya no está habilitado"):
+            repo.historial_del_turno(otro)
+
+    def test_se_puede_mirar_desde_otra_pc_a_nombre_del_que_entro(self):
         self.assertTrue(lista_blanca.permitida("historial_turno_repo", "historial_del_turno"))
         self.assertEqual(lista_blanca.ACTOR[("historial_turno_repo", "historial_del_turno")], "usuario_id")
 
@@ -287,13 +300,18 @@ class TestBoton(BaseHistorial):
             self.assertEqual(boton.property("clase"), "barra")
             self.assertTrue(boton.isEnabled())
 
-    def test_solo_el_admin_lo_abre(self):
+    def test_lo_abren_todos_cada_uno_a_su_nombre(self):
         with mock.patch("ui.historial_turno_window.VentanaHistorialTurno") as ventana:
             self.boton(self.lucia_id).click()
-            ventana.assert_not_called()
             self.boton(self.admin_id).click()
-            ventana.assert_called_once()
-            self.assertEqual(ventana.call_args.args[0], self.admin_id)
+        self.assertEqual([llamada.args[0] for llamada in ventana.call_args_list], [self.lucia_id, self.admin_id])
+
+    def test_la_empleada_lo_abre_de_verdad(self):
+        self.turno_con_de_todo()
+        ventana = VentanaHistorialTurno(self.lucia_id)
+        self.addCleanup(ventana.deleteLater)
+        self.assertEqual(ventana.tabla.rowCount(), len(self.historial()["ventas"]))
+        self.assertIn("Caja Nº", ventana.etiqueta.text())
 
     def test_va_pegado_a_la_derecha_de_control_de_stock(self):
         panel = PanelControlPcs(usuarios_repo.obtener_usuario(self.lucia_id))
