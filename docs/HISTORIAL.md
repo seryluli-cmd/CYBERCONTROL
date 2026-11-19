@@ -586,3 +586,13 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   responsable; las que cerró el Admin quedan "sin dato". Se suma a la lista blanca de
   administrar desde otra PC (cambia la firma: las dos copias necesitan el .exe nuevo). Sin
   .exe. 1955 pruebas.
+- **2026-11-19 — TAREAS DEL TURNO, traídas de FR Kiosko** (pedido del dueño: "de fr kiosko
+  quiero que portes el gestor de tareas a cybercontrol"). Tal cual allá: el Admin carga cosas
+  para hacer a una hora (todos los días, algunos días o solo hoy) y a esa hora sale un aviso
+  encima de todo, con POSPONER 5/10 MIN y TAREA HECHA, hasta que alguien la marca. Lo único
+  distinto: en vez del sexto acceso del inicio (acá no hay inicio, está el mosaico) es el botón
+  ⏰ TAREAS de la barra, después de Reservas, que titila en rojo y dice cuántas hay atrasadas; y
+  las tareas NO viajan con el cierre a la app de gastos (la de CyberBIOS no las muestra). Con
+  ellas llegaron `piezas_ventana.restringir`/`solo_para_el_admin` ("Acceso Restringido") y
+  `tecla_de_renglon`, usadas solo por esta pantalla. Tres tablas nuevas, sin migración. Solo en
+  el mostrador: no cambia la lista blanca. Sin .exe.

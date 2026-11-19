@@ -21,12 +21,14 @@ ui/hoja_de_estilos.py. Ninguna regla de esas va por tipo de widget, así que las
 ventanas que se abren desde estas (avisos, confirmaciones) no heredan nada.
 """
 
+import warnings
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QVBoxLayout, QWidget,
 )
 
-from ui.utils import aplicar_clase
+from ui.utils import aplicar_clase, avisar_acceso_restringido
 
 # Colores de las pastillas de la cabecera (QLabel#pastillaCabecera[tono=...]) y de las
 # cifras destacadas (QFrame#cifraDestacada[tono=...]: azul y verde en Caja y Cierre de
@@ -196,6 +198,25 @@ def bloquear_tarjeta(tarjeta: QPushButton, motivo: str = TEXTO_SOLO_ADMIN):
     tarjeta.detalle.setText(motivo)
 
 
+def restringir(boton: QPushButton):
+    """Un botón que quien está adentro no puede usar. Pedido del dueño en FR Kiosko
+    (2026-11-04): "tienen que aparecer igual, solo que cuando se hace click, dirá
+    Acceso Restringido". Se ve igual que para quien sí puede: ni escondido, ni en
+    gris, ni con candado; al apretarlo, en vez de lo suyo, sale el cartel. Llegó
+    acá con Tareas del Turno (2026-11-19) y hoy lo usan solo sus teclas: el resto
+    del programa sigue con `bloquear_tarjeta` o escondiendo. El repo igual vuelve a
+    exigir el permiso en cada cambio: esto es solo lo que se ve."""
+    # Sin nada conectado, PySide avisa con un RuntimeWarning.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        try:
+            boton.clicked.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+    boton.clicked.connect(lambda: avisar_acceso_restringido(boton.window()))
+    boton.setProperty("restringido", True)
+
+
 def tecla(texto: str, al_apretar=None, clase: str = "teclaBlanca") -> QPushButton:
     """Un botón con relieve: "teclaBlanca", "teclaAzul" (la acción principal),
     "teclaVerde" o "teclaRoja" (lo peligroso y Cerrar)."""
@@ -221,6 +242,28 @@ def _repintar(widget):
     """Que Qt vuelva a mirar la hoja de estilos después de cambiar una propiedad."""
     widget.style().unpolish(widget)
     widget.style().polish(widget)
+
+
+def tecla_de_renglon(texto: str, al_apretar, clase: str, alto: int) -> QWidget:
+    """
+    Una tecla adentro de una celda de la grilla (HECHA de Tareas del Turno), con un
+    margen para que no toque el borde del renglón: el botón solo, estirado a toda la
+    celda, queda pegado a la raya. Va para `setCellWidget`; `caja.boton` es la
+    tecla. La letra, más grande que la de una tecla común, está en
+    QPushButton[teclaDeRenglon] de ui/hoja_de_estilos.py.
+    """
+    boton = tecla(texto, al_apretar, clase)
+    boton.setAutoDefault(False)
+    boton.setProperty("teclaDeRenglon", True)
+    # Que Qt vuelva a mirar la hoja de estilos con la propiedad nueva (tecla() ya lo pintó).
+    _repintar(boton)
+    boton.setFixedHeight(alto)
+    caja = QWidget()
+    capa = QHBoxLayout(caja)
+    capa.setContentsMargins(6, 0, 6, 0)
+    capa.addWidget(boton)
+    caja.boton = boton
+    return caja
 
 
 def agregar_indicador(cabecera: QFrame, titulo: str) -> QFrame:
@@ -320,3 +363,11 @@ def marcar_solo_admin(boton: QPushButton):
     boton.setProperty("soloAdmin", True)
     boton.setToolTip(TEXTO_SOLO_ADMIN)
     _repintar(boton)
+
+
+def solo_para_el_admin(boton: QPushButton, es_admin: bool):
+    """Una tecla que usa solo el Administrador: con el borde punteado para todos y,
+    para quien no es Admin, "Acceso Restringido" al apretarla (ver `restringir`)."""
+    marcar_solo_admin(boton)
+    if not es_admin:
+        restringir(boton)

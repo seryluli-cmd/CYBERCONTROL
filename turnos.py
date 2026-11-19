@@ -107,6 +107,27 @@ def _como_date(fecha) -> date:
     return fecha
 
 
+def momento_de_la_tarea(dia_del_local, hora: str) -> datetime:
+    """
+    Cuándo toca una TAREA DEL TURNO (pedido del dueño, 2026-11-03: "PRENDER LAS
+    LUCES DE AFUERA" a las 19:30) en el día del local `dia_del_local` (date o
+    "YYYY-MM-DD"), a la hora `hora` ("HH:MM", como la deja dominio.hora_de_tarea).
+
+    Como el día del local va de 06:00 a 06:00 (HORA_CAMBIO_DE_DIA), una hora de
+    antes de las 06:00 es de la madrugada del día SIGUIENTE: la tarea de las 02:00
+    del lunes es de la Noche del lunes y pasa el martes a las 02:00. Así, al revés,
+    dia_en_que_empezo_el_turno(momento) da siempre `dia_del_local`, y ordenar las
+    tareas de un día por su momento las deja en el orden del turno (las 02:00
+    después de las 23:00). Vale igual los domingos: el T2 (18 a 06) también
+    termina a las 06:00 del lunes.
+    """
+    horas, minutos = (int(parte) for parte in hora.split(":"))
+    momento = datetime.combine(_como_date(dia_del_local), time(horas, minutos))
+    if horas < HORA_CAMBIO_DE_DIA:
+        momento += timedelta(days=1)
+    return momento
+
+
 def limites_de_los_dias(desde, hasta) -> tuple:
     """
     Las dos puntas, como texto ISO, de los días `desde` a `hasta` (incluidos los

@@ -1748,6 +1748,114 @@ HOJA_DE_ESTILOS = """
         border: 1px dashed #C96870;
         border-bottom: 3px solid #C9727B;
     }
+    QPushButton[clase="teclaAzul"][soloAdmin="true"] {
+        border: 1px dashed #A9C6FF;
+        border-bottom: 3px solid #173A85;
+    }
+
+    /* TAREAS DEL TURNO (2026-11-03, traídas de FR Kiosko el 2026-11-19). En el
+       formulario de una tarea, el turno que sale de la hora escrita. */
+    QLabel#turnoDeLaTarea {
+        color: #1D48A0;
+        font-size: 15px;
+        font-weight: 700;
+        padding: 8px 0;
+    }
+    /* El aviso que sale a la hora encima de todo (ui/aviso_tarea.py, la maqueta que vio
+       el dueño): oscuro, con la cabecera de borde rojo, el círculo rojo con el reloj y
+       el texto de la tarea en grande; POSPONER en teclas oscuras como las de la barra y
+       TAREA HECHA verde y grande. Apagadas el primer segundo. Todo por objectName: el
+       cartel de error que pueda abrirse encima es hijo del aviso y no hereda nada. */
+    QDialog#avisoTarea {
+        background-color: #151A24;
+    }
+    QFrame#cabeceraAviso {
+        background-color: #1E2330;
+        border: 2px solid #E5484D;
+        border-radius: 14px;
+    }
+    QFrame#cabeceraAviso > QLabel {
+        background: transparent;
+    }
+    QFrame#cabeceraAviso > QLabel#circuloAviso {
+        background-color: #D92D3A;
+        border: 2px solid #FF8A93;
+        border-radius: 32px;
+        font-size: 30px;
+    }
+    QLabel#horaAviso {
+        color: #FF8A93;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 2px;
+    }
+    QLabel#textoAviso {
+        color: #FFFFFF;
+        font-size: 28px;
+        font-weight: 800;
+    }
+    QLabel#turnoAviso {
+        color: #9AA4B5;
+        font-size: 13px;
+    }
+    QLabel#pospuestaAviso {
+        color: #FCD34D;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    /* Cerca de las 06:00: pospuesta ya no vuelve a avisar. */
+    QLabel#finDelDiaAviso {
+        color: #FF8A93;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    QPushButton#teclaPosponer {
+        background-color: #2C3345;
+        border: 1px solid #3A4358;
+        border-top-color: #4B5570;
+        border-bottom: 3px solid #0B0D12;
+        border-radius: 10px;
+        color: #E6EAF2;
+        font-size: 16px;
+        font-weight: 700;
+        padding: 12px 18px;
+    }
+    QPushButton#teclaPosponer:hover {
+        background-color: #323B50;
+        border-color: #4C8DFF;
+        border-bottom-color: #1D48A0;
+    }
+    QPushButton#teclaTareaHecha {
+        background-color: #1F9D55;
+        border: 1px solid #34C374;
+        border-top-color: #6EE7A0;
+        border-bottom: 4px solid #0F5A30;
+        border-radius: 12px;
+        color: #FFFFFF;
+        font-size: 22px;
+        font-weight: 800;
+        padding: 16px 18px;
+    }
+    QPushButton#teclaTareaHecha:hover {
+        background-color: #23B062;
+    }
+    QPushButton#teclaPosponer:pressed, QPushButton#teclaTareaHecha:pressed {
+        border-bottom-width: 1px;
+        margin-top: 2px;
+    }
+    QPushButton#teclaPosponer:disabled, QPushButton#teclaTareaHecha:disabled {
+        background-color: #232836;
+        border-color: #2B3242;
+        border-bottom-color: #2B3242;
+        color: #5C6577;
+    }
+    /* HECHA en cada renglón de Tareas del Turno (piezas_ventana.tecla_de_renglon, de
+       FR Kiosko): más grande que una tecla común (el dueño, 2026-11-03: "queda chico,
+       agrandalo"), con la letra de GUARDAR. */
+    QPushButton[teclaDeRenglon="true"] {
+        font-size: 15px;
+        padding: 6px 18px;
+    }
 
     /* --- Ofertas 2x1 y 50% (2026-11-13, maquetas B y P1 de PROPUESTA_OFERTAS) ---
        El naranja es el 2x1 y el violeta el 50%, en la ventana de Ofertas

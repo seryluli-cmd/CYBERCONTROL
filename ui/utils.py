@@ -97,6 +97,16 @@ def avisar_que_es_en_el_mostrador(padre):
     )
 
 
+TEXTO_ACCESO_RESTRINGIDO = "Acceso Restringido"
+
+
+def avisar_acceso_restringido(padre):
+    """El cartel de un botón que quien está adentro no puede usar (ver
+    `ui.piezas_ventana.restringir`). Dice solo eso: lo pidió así el dueño en FR
+    Kiosko, y llegó con Tareas del Turno (2026-11-19)."""
+    mostrar_aviso(padre, TEXTO_ACCESO_RESTRINGIDO, f"{TEXTO_ACCESO_RESTRINGIDO}.")
+
+
 def _mostrar_error_seguro(padre, error):
     """Mismo cartel genérico de `manejar_errores`, pero sin dejar que un
     segundo "objeto ya borrado" (el propio `padre`) se escape sin

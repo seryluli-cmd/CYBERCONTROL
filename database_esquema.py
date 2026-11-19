@@ -866,6 +866,15 @@ def inicializar_base_de_datos():
     _migrar_columna_oferta_en_bonos_vendidos(conexion)
 
     # -------------------------------------------------------------------
+    # TAREAS DEL TURNO (traídas de FR Kiosko, 2026-11-19)
+    # -------------------------------------------------------------------
+    # En su propio archivo: ver database_esquema_tareas_turno.py. Tablas nuevas
+    # que no tocan ninguna otra: una base vieja las recibe vacías.
+    from database_esquema_tareas_turno import crear_tablas_tareas_turno
+    crear_tablas_tareas_turno(cursor, _valores_sql)
+    conexion.commit()
+
+    # -------------------------------------------------------------------
     # INDICES
     # -------------------------------------------------------------------
     # Estos índices son la razón por la que los reportes van a ser rápidos

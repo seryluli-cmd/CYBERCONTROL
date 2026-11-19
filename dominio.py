@@ -24,7 +24,7 @@ que ya existe necesita además una migración que reconstruya esa tabla (como
 
 import re
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 
 # --------------------------------------------------------------------
@@ -878,3 +878,198 @@ ESTADOS_OFERTA = (OFERTA_ACTIVA, OFERTA_PROGRAMADA, OFERTA_PAUSADA, OFERTA_TERMI
 # NUNCA (decisión del dueño, 2026-11-13: un 2x1 cargaría el doble de saldo y el
 # socio lo gastaría cualquier otro día), ni la carga de saldo por monto.
 EQUIPOS_CON_OFERTA = EQUIPOS_RESERVA
+
+
+# ---------------------------------------------------------------------
+# TAREAS DEL TURNO (pedido del dueño, 2026-11-03 en FR Kiosko; traída tal cual
+# el 2026-11-19)
+# ---------------------------------------------------------------------
+# Cosas para hacer a una hora ("PRENDER LAS LUCES DE AFUERA" a las 19:30). Las
+# carga el Admin; a la hora sale un aviso hasta que alguien pone TAREA HECHA.
+# Reglas en repositories/tareas_turno_repo.py; cuándo pasa cada una, con la Noche
+# que cruza la medianoche, en turnos.momento_de_la_tarea.
+
+# Una tarea cargada. Nada se borra (regla 7): la que el Admin saca queda BORRADA.
+TAREA_ACTIVA = "ACTIVA"
+TAREA_BORRADA = "BORRADA"
+ESTADOS_TAREA = (TAREA_ACTIVA, TAREA_BORRADA)
+
+# Cada cuánto se repite. Los días son del LOCAL (de 06:00 a 06:00): una tarea de
+# las 02:00 "los lunes" pasa el martes a las 02:00, en la Noche del lunes.
+TAREA_TODOS_LOS_DIAS = "TODOS LOS DÍAS"
+TAREA_ALGUNOS_DIAS = "ALGUNOS DÍAS"   # los días de la semana que eligió el Admin
+TAREA_UN_SOLO_DIA = "UN SOLO DÍA"     # solo el día en que se cargó
+REPETICIONES_TAREA = (TAREA_TODOS_LOS_DIAS, TAREA_ALGUNOS_DIAS, TAREA_UN_SOLO_DIA)
+# Cómo se llaman en las pastillas de SE REPITE (la maqueta que vio el dueño).
+NOMBRE_REPETICION_TAREA = {
+    TAREA_TODOS_LOS_DIAS: "TODOS LOS DÍAS",
+    TAREA_ALGUNOS_DIAS: "ELEGIR DÍAS",
+    TAREA_UN_SOLO_DIA: "SOLO HOY",
+}
+
+# Lo que se anota de cada vez que una tarea toca (una "aparición": la tarea y el
+# día del local). HECHA hay una sola por aparición (lo cuida un índice único);
+# POSPUESTA, una fila por cada vez, con quién, cuándo y los minutos.
+ACCION_TAREA_HECHA = "HECHA"
+ACCION_TAREA_POSPUESTA = "POSPUESTA"
+ACCIONES_TAREA = (ACCION_TAREA_HECHA, ACCION_TAREA_POSPUESTA)
+
+# Las dos teclas del aviso: POSPONER 5 MIN y POSPONER 10 MIN.
+MINUTOS_PARA_POSPONER = (5, 10)
+
+# Cómo está una aparición en la grilla. No se guarda: sale de la hora, de lo
+# anotado y del reloj (estado_de_la_tarea).
+TAREA_HECHA = "HECHA"
+TAREA_ATRASADA = "ATRASADA"     # ya es la hora (o pasó) y nadie la hizo: avisa
+TAREA_PRONTO = "PRONTO"         # falta menos de MINUTOS_TAREA_PRONTO
+TAREA_MAS_TARDE = "MÁS TARDE"
+TAREA_NO_SE_HIZO = "NO SE HIZO"  # de un día que ya terminó: queda en el historial
+ESTADOS_TAREA_DEL_DIA = (TAREA_HECHA, TAREA_ATRASADA, TAREA_PRONTO, TAREA_MAS_TARDE, TAREA_NO_SE_HIZO)
+
+# Desde cuántos minutos antes una tarea sale "EN 18 MIN" en ámbar.
+MINUTOS_TAREA_PRONTO = 30
+
+# El aviso la muestra en letra grande: más larga que esto no entra y es casi
+# seguro un texto pegado sin querer.
+LARGO_MAXIMO_TAREA = 80
+
+DIAS_DE_LA_SEMANA = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+DIAS_DE_LA_SEMANA_CORTOS = ("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+
+
+def _sin_invisibles(texto) -> str:
+    """Saca los caracteres invisibles de formato (categoría Cf de Unicode: el
+    espacio de ancho cero, las marcas de dirección, el BOM, el guion suave...).
+    Con el teclado no se escriben, pero vienen pegados en un texto copiado de
+    WhatsApp Web o de una página, y split() no los toma como espacios: una hora
+    "19:30" con uno de esos no se entendería aunque se vea bien. Sale también el U+200D que arma los emojis compuestos (quedan sus partes una
+    al lado de la otra): dejarlo sería dejar abierto ese mismo agujero."""
+    return "".join(letra for letra in str(texto or "") if unicodedata.category(letra) != "Cf")
+
+
+def revisar_tarea(texto) -> str:
+    """El texto de una tarea como se guarda: sin espacios de más ni caracteres
+    invisibles, con las mayúsculas como las escribieron (el dueño las carga en
+    mayúscula). ValueError si queda vacío o pasa de LARGO_MAXIMO_TAREA."""
+    tarea = " ".join(_sin_invisibles(texto).split())
+    if not tarea:
+        raise ValueError("Escribí qué hay que hacer (por ejemplo, PRENDER LAS LUCES DE AFUERA).")
+    if len(tarea) > LARGO_MAXIMO_TAREA:
+        raise ValueError(f"Es muy larga: escribí la tarea con hasta {LARGO_MAXIMO_TAREA} letras.")
+    return tarea
+
+
+def hora_de_tarea(texto) -> str:
+    """
+    La hora de una tarea como se guarda, "HH:MM", a partir de como la escriban:
+    "19:30", "19.30", "19,30" (el punto del teclado numérico), "1930", "730"
+    (07:30), "7:05", "19" (19:00) o con "hs" al final. ValueError si no se
+    entiende o no es una hora del reloj: "24:00", "19:60" o "7:5" (¿07:05 o
+    07:50?) no se adivinan.
+    """
+    escrito = " ".join(_sin_invisibles(texto).split()).lower()
+    for final in ("hs.", "hs", "h"):
+        if escrito.endswith(final):
+            escrito = escrito[:-len(final)].strip()
+            break
+    if not escrito:
+        raise ValueError("Escribí a qué hora hay que hacerla (por ejemplo, 19:30).")
+    for separador in (".", ",", " "):
+        escrito = escrito.replace(separador, ":")
+    while "::" in escrito:  # "19 : 30" o "19 .30": un solo separador
+        escrito = escrito.replace("::", ":")
+    if ":" in escrito:
+        horas, _, minutos = escrito.partition(":")
+        bien_escrita = 1 <= len(horas) <= 2 and len(minutos) == 2
+    elif len(escrito) in (3, 4):
+        horas, minutos = escrito[:-2], escrito[-2:]
+        bien_escrita = True
+    else:
+        horas, minutos = escrito, "00"
+        bien_escrita = len(escrito) in (1, 2)
+    # isascii: isdigit() también acepta otros números de Unicode ("١٩").
+    bien_escrita = bien_escrita and all(parte.isascii() and parte.isdigit() for parte in (horas, minutos))
+    if not bien_escrita or int(horas) > 23 or int(minutos) > 59:
+        raise ValueError(f'No entiendo la hora "{" ".join(str(texto or "").split())}": escribila como 19:30 (o 1930).')
+    return f"{int(horas):02d}:{int(minutos):02d}"
+
+
+def revisar_repeticion(repeticion, dias_semana=None) -> tuple:
+    """
+    (repeticion, días como se guardan) de lo que eligió el Admin en SE REPITE.
+    `dias_semana` son los números de los días de ELEGIR DÍAS (0 = lunes ... 6 =
+    domingo, como date.weekday()): se guardan en orden y sin repetir, "0,2,4". Solo
+    cuentan con TAREA_ALGUNOS_DIAS (con las otras se guardan como None), y ahí hace
+    falta al menos uno. Con los siete es lo mismo que todos los días.
+    """
+    if repeticion not in REPETICIONES_TAREA:
+        raise ValueError("Elegí cuándo se repite la tarea: todos los días, algunos días o solo hoy.")
+    if repeticion != TAREA_ALGUNOS_DIAS:
+        return repeticion, None
+    dias = set()
+    for dia in dias_semana or ():
+        if isinstance(dia, bool) or not isinstance(dia, int) or not 0 <= dia <= 6:
+            raise ValueError("Los días de la semana van del 0 (lunes) al 6 (domingo).")
+        dias.add(dia)
+    if not dias:
+        raise ValueError("Elegí al menos un día de la semana.")
+    if len(dias) == len(DIAS_DE_LA_SEMANA):
+        return TAREA_TODOS_LOS_DIAS, None
+    return repeticion, ",".join(str(dia) for dia in sorted(dias))
+
+
+def dias_de_la_tarea(dias_guardados) -> tuple:
+    """Los días de la semana de una tarea de ELEGIR DÍAS como números (0 = lunes),
+    a partir de como los guarda revisar_repeticion ("0,2,4"). Sin días, ()."""
+    return tuple(int(dia) for dia in (dias_guardados or "").split(",") if dia.strip())
+
+
+def _como_fecha(fecha) -> date:
+    return fecha if isinstance(fecha, date) else date.fromisoformat(str(fecha)[:10])
+
+
+def nombre_del_dia(fecha) -> str:
+    """Un día (date o "YYYY-MM-DD") como lo dice la cabecera: "lunes 03/11"."""
+    fecha = _como_fecha(fecha)
+    return f"{DIAS_DE_LA_SEMANA[fecha.weekday()]} {fecha:%d/%m}"
+
+
+def texto_se_repite(repeticion, dias_guardados=None, dia=None) -> str:
+    """La columna "Se repite" de TODAS LAS TAREAS: "Todos los días", "Lun · Mié ·
+    Vie" o "Solo el lunes 03/11" (`dia`, el de una tarea de un solo día)."""
+    if repeticion == TAREA_ALGUNOS_DIAS:
+        return " · ".join(DIAS_DE_LA_SEMANA_CORTOS[d] for d in dias_de_la_tarea(dias_guardados))
+    if repeticion == TAREA_UN_SOLO_DIA:
+        return f"Solo el {nombre_del_dia(dia)}"
+    return "Todos los días"
+
+
+def estado_de_la_tarea(hecha: bool, dia_ya_termino: bool, momento: datetime, ahora: datetime) -> str:
+    """
+    Cómo está una tarea en un día (ESTADOS_TAREA_DEL_DIA). HECHA gana siempre; si
+    el día del local ya terminó y nadie la hizo, NO SE HIZO (no vuelve a avisar).
+    Si no, desde su `momento` en punto está ATRASADA (es la que avisa), y antes,
+    PRONTO si falta menos de MINUTOS_TAREA_PRONTO o MÁS TARDE.
+    """
+    if hecha:
+        return TAREA_HECHA
+    if dia_ya_termino:
+        return TAREA_NO_SE_HIZO
+    if momento <= ahora:
+        return TAREA_ATRASADA
+    if momento - ahora < timedelta(minutes=MINUTOS_TAREA_PRONTO):
+        return TAREA_PRONTO
+    return TAREA_MAS_TARDE
+
+
+def numeros_de_las_tareas(tareas) -> dict:
+    """Los números de la cabecera de Tareas del Turno, de las tareas que se ven:
+    cuántas faltan y todavía no es la hora (PARA HACER), cuántas ya pasaron su
+    hora sin hacerse (ATRASADAS, también las pospuestas) y cuántas están HECHAS.
+    Cada tarea cuenta en uno solo."""
+    estados = [tarea["estado"] for tarea in tareas]
+    return {
+        "para_hacer": sum(estado in (TAREA_PRONTO, TAREA_MAS_TARDE) for estado in estados),
+        "atrasadas": estados.count(TAREA_ATRASADA),
+        "hechas": estados.count(TAREA_HECHA),
+    }

@@ -1106,7 +1106,7 @@ class TestCopiaRemota(unittest.TestCase):
         self.assertTrue(panel.aviso_sin_conexion.isHidden())
 
         botones = [boton.text() for boton in ventana.findChildren(QPushButton)]
-        for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "MIEMBROS", "RESERVAS", "ADMIN KIOSKO", "CONFIG ADMIN",
+        for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "MIEMBROS", "RESERVAS", "TAREAS", "ADMIN KIOSKO", "CONFIG ADMIN",
                       "CAJA", "CIERRE DE TURNO", "CLAVE", "OPERADOR", "DESCONGELAR", "REINICIAR", "APAGAR",
                       "CONTROL DE STOCK", "Cobrar", "Abrir con Miembro...", "Finalizar Sesión"):
             self.assertTrue(any(texto in boton for boton in botones), texto)
@@ -1149,7 +1149,8 @@ class TestCopiaRemota(unittest.TestCase):
                 mock.patch.object(pcs_window, "QMenu", MenuQueEligeLaPrimera), \
                 mock.patch.object(panel.mosaico, "fila_en", return_value=1):
             # MIEMBROS no: desde acá ofrece ORDENAR SALDOS (ver test_miembros_desde_aca_ofrece_ordenar_saldos).
-            for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "RESERVAS", "CIERRE DE TURNO",
+            # TAREAS: el aviso y las tareas son del mostrador (ui/aviso_tarea.py).
+            for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "RESERVAS", "TAREAS", "CIERRE DE TURNO",
                           "DESCONGELAR", "REINICIAR", "APAGAR"):
                 next(boton for boton in ventana.findChildren(QPushButton) if texto in boton.text()).click()
             panel.panel_detalle.mostrar(ocupada)
@@ -1165,7 +1166,7 @@ class TestCopiaRemota(unittest.TestCase):
 
         self.assertEqual(errores, [])
         self.assertEqual(abiertas, [])
-        self.assertEqual(avisos, ["Se hace en el mostrador"] * 16)
+        self.assertEqual(avisos, ["Se hace en el mostrador"] * 17)
         base = self._base_del_mostrador()
         activa = base.execute("SELECT estado FROM sesiones_pc WHERE id = ?", (sesion["id"],)).fetchone()
         self.assertEqual(activa["estado"], dominio.SESION_ACTIVA)

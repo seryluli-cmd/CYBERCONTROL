@@ -153,6 +153,15 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   conteo del sobre (el último sigue también en `cierres_turno`). La plata de un
   cierre sigue saliendo de la ventana entre cierres; la caja aporta el turno, el
   responsable y lo que se contó.
+- **`tareas_turno`** + **`tareas_turno_cambios`** + **`tareas_turno_marcas`**
+  (`database_esquema_tareas_turno.py`; reglas en
+  `repositories/tareas_turno_repo.py`; traídas de FR Kiosko el 2026-11-19) — TAREAS
+  DEL TURNO, cosas para hacer a una hora: cada tarea con su hora y cuándo se repite
+  (`ACTIVA`/`BORRADA`), cómo era antes de cada cambio, y lo que pasó cada día del
+  local con cada una (HECHA, una sola vez, con quién y cuándo; o cada POSPONER, con
+  sus minutos). Tablas nuevas: una base vieja las recibe vacías, sin migración. Se
+  ve con el botón ⏰ TAREAS de la barra (`ui/tareas_turno_window.py`), y a la hora
+  de cada una sale el aviso de `ui/aviso_tarea.py`.
 - **`configuracion`** — tabla genérica clave/valor. Incluye el fondo de
   cambio, el indicador de rubros iniciales, tarifas y la contraseña de admin de
   los Clientes PC. Las claves exactas están centralizadas en los repositorios
@@ -266,6 +275,41 @@ en curso): abre la misma ventana de cobro que Ventas (`dialogo_pago.cobrar` →
 `DialogoPago`), donde se elige el medio, se reparte y se ve el vuelto; si pagan
 justo, un Enter cobra. Pedido del dueño, 2026-10-18: antes el panel tenía un
 combo "Método de pago" e "Iniciar Sesión".
+
+**Tareas del Turno** (pedido del dueño en FR Kiosko el 2026-11-03, traído tal cual
+el 2026-11-19; reglas en `repositories/tareas_turno_repo.py`). Cosas para hacer a
+una hora, como "PRENDER LAS LUCES DE AFUERA" a las 19:30:
+- **El aviso** (`ui/aviso_tarea.py`). La ventana principal del mostrador mira
+  cada 15 s si llegó la hora de alguna (`RevisorDeTareas`) y saca un aviso
+  **encima de todas las ventanas** (también de Vender, de otro programa o con
+  el programa minimizado) con POSPONER 5 MIN, POSPONER 10 MIN y TAREA HECHA. No
+  tiene cruz, y ni Esc ni Enter ni ninguna tecla lo cierran (la pistola de códigos
+  no puede marcarla sin querer). Los botones responden recién un segundo después
+  de que sale. Pospuesta, vuelve a salir pasado ese rato, hasta que alguien pone
+  TAREA HECHA; si tocan dos a la vez, salen de a una ("1 de 2"). Cerca de las
+  06:00 avisa que, si la posponen, ya no vuelve (los avisos son solo del día del
+  local en curso). El cierre forzoso de la caja y la vuelta sola del Admin lo corren
+  sin grabar nada, y vuelve a salir al minuto; no lo corren si abajo queda otra
+  ventana que igual los hace esperar (Compras, un formulario). Al cerrar la sesión
+  se cierra. Desde otra PC no sale.
+- **El botón ⏰ TAREAS de la barra** (después de Reservas) titila en rojo mientras
+  haya alguna atrasada y dice cuántas son ("TAREAS · 2"). Desde otra PC avisa que
+  se hace en el mostrador.
+- **La ventana** (`ui/tareas_turno_window.py`). Arriba, el turno y el día del
+  local (los domingos, "Domingo T1"/"Domingo T2"), y cuántas hay PARA HACER,
+  ATRASADAS y HECHAS. Pastillas ESTE TURNO (con las atrasadas de un turno anterior
+  de hoy, que siguen avisando), TODO EL DÍA y TODAS LAS TAREAS (las cargadas, con
+  cuándo se repite). En la grilla, cada una con su estado (HECHA · quién y a qué
+  hora, tachada; ATRASADA · 1 h 12 min; EN 18 MIN; MÁS TARDE) y la tecla HECHA, que
+  pregunta antes. + NUEVA TAREA, MODIFICAR y BORRAR son solo del Administrador (con
+  el borde punteado): los demás las ven igual y les dicen "Acceso Restringido". El
+  formulario (`ui/tareas_turno_dialogos.py`) pide TAREA, HORA (como la escriban:
+  "1930", "19.30"), muestra el turno que le toca y SE REPITE: TODOS LOS DÍAS, ELEGIR
+  DÍAS o SOLO HOY. HISTORIAL muestra los días que ya terminaron, con quién hizo cada
+  tarea, NO SE HIZO y quiénes la pospusieron, como pasó ese día: borrarla o
+  cambiarla más tarde no lo saca. Lo que se contesta en el aviso con la ventana
+  abierta se ve ya en la lista. A diferencia de FR Kiosko, las tareas no viajan con
+  el cierre a la app de gastos (la de CyberBIOS no las muestra).
 
 **Ingreso con caja** (`ui/ingreso_caja.py`, entre el login y la ventana
 principal; reglas en `relevo_repo.situacion_al_entrar`; pedido del dueño

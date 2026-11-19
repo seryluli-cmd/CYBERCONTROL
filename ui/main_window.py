@@ -57,10 +57,11 @@ Desde otra PC del local (la copia para administrar, ver admin_remoto/) se ve
 igual que en el mostrador, con la grilla de PCs en vivo (pedido del dueño,
 2026-10-24: "quiero que se vea tal cual"). Se usan Administrar Kiosko,
 Configuración ADMIN, Caja (para mirar), Clave y, de Miembros, solo ORDENAR SALDOS
-(2026-11-01, ver _ordenar_saldos_desde_otra_pc); Vender, cobrar, cerrar el turno
-y atender las PCs están, pero al apretarlos avisan que se hace en el mostrador
-(`ui.utils.solo_en_el_mostrador`). El cierre forzoso de la caja lo hace solo el
-mostrador (si lo hicieran las dos, la misma caja se intentaría cerrar dos veces).
+(2026-11-01, ver _ordenar_saldos_desde_otra_pc); Vender, cobrar, cerrar el turno,
+atender las PCs y Tareas del Turno están, pero al apretarlos avisan que se hace en
+el mostrador (`ui.utils.solo_en_el_mostrador`). El cierre forzoso de la caja lo
+hace solo el mostrador (si lo hicieran las dos, la misma caja se intentaría cerrar
+dos veces).
 """
 
 from PySide6.QtWidgets import (
@@ -90,6 +91,8 @@ from control_pcs.ui.ordenar_saldos_window import abrir_ordenar_saldos
 from control_pcs.ui.reservas_window import ReservasWindow
 from control_pcs.repositories import reservas_repo
 from ui.ingreso_caja import mensaje_del_sobre
+from ui.aviso_tarea import RevisorDeTareas
+from ui.tareas_turno_window import VentanaTareasTurno
 from ui.vuelta_del_admin import VueltaDelAdmin
 from ui.utils import (
     aplicar_clase, confirmar, icono_de_emoji, manejar_errores, mostrar_error, mostrar_info,
@@ -111,6 +114,8 @@ MENSAJE_MIEMBROS_DESDE_OTRA_PC = (
 # va que los de los otros botones de la barra.
 DIBUJITO_OPERADOR = "🔄"
 AGRANDAR_DIBUJITO_OPERADOR = 1.25
+# El botón de Tareas del Turno; con atrasadas se le suma " · 2" (ver _poner_tareas_atrasadas).
+TEXTO_BOTON_TAREAS = "⏰  Tareas"
 
 
 class MainWindow(QMainWindow):
@@ -149,6 +154,10 @@ class MainWindow(QMainWindow):
         self._remota = modo_remoto.es_copia_remota()
         self._titilar = False
         self._encendido = False
+        # Las tareas del turno que llegaron a su hora sin hacerse: el botón TAREAS de la
+        # barra titila en rojo y dice cuántas son (ver _poner_tareas_atrasadas).
+        self._tareas_atrasadas = 0
+        self._encendido_tareas = False
         # Hasta cuándo no vuelve a salir el cartel de lo fiado en el turno (Posponer 5 min).
         self._cuentas_pospuestas_hasta = 0.0
         self._armar_interfaz()
@@ -171,6 +180,10 @@ class MainWindow(QMainWindow):
         self._vuelta = None
         if self.es_admin and not self._remota:
             self._vuelta = VueltaDelAdmin(self, volver_a, self._volver_sola, self._hay_un_cobro_a_medias)
+        # El aviso de las tareas del turno sale solo en el mostrador (ver ui/aviso_tarea.py).
+        self._tareas = None
+        if not self._remota:
+            self._tareas = RevisorDeTareas(self, usuario, self._poner_tareas_atrasadas)
 
     def _armar_interfaz(self):
         if self._remota:
@@ -263,6 +276,10 @@ class MainWindow(QMainWindow):
         # Reservas de PCs, PCSTREAM y PlayStation 5 (pedido del dueño, 2026-10-20): cobra,
         # así que se abre solo en el mostrador. Dice cuántas esperan hoy (ver _actualizar_boton_reservas).
         self.boton_reservas = self._agregar_boton_barra(layout_barra, "", self._abrir_reservas)
+        # Tareas del Turno (traídas de FR Kiosko a pedido del dueño, 2026-11-19): el Admin
+        # carga cosas para hacer a una hora y a esa hora sale un aviso encima de todo.
+        # Titila en rojo y dice cuántas hay atrasadas (ver _poner_tareas_atrasadas).
+        self.boton_tareas = self._agregar_boton_barra(layout_barra, TEXTO_BOTON_TAREAS, self._abrir_tareas_turno)
         # Nombres cortos en la barra (pedido del dueño, 2026-10-18); las ventanas
         # que abren siguen con su nombre entero.
         self._agregar_boton_barra(
@@ -313,6 +330,8 @@ class MainWindow(QMainWindow):
         self._timer_parpadeo.stop()
         if self._vuelta is not None:
             self._vuelta.detener()
+        if self._tareas is not None:
+            self._tareas.detener()
         super().closeEvent(evento)
 
     # -----------------------------------------------------------------
@@ -357,6 +376,18 @@ class MainWindow(QMainWindow):
         clase = "alerta" if self._encendido else "barra"
         if self.boton_cierre_turno.property("clase") != clase:
             aplicar_clase(self.boton_cierre_turno, clase)
+        # TAREAS, mientras haya atrasadas: el mismo rojo, con su propio compás.
+        self._encendido_tareas = bool(self._tareas_atrasadas) and not self._encendido_tareas
+        clase = "alerta" if self._encendido_tareas else "barra"
+        if self.boton_tareas.property("clase") != clase:
+            aplicar_clase(self.boton_tareas, clase)
+
+    def _poner_tareas_atrasadas(self, cuantas: int):
+        """Lo que cuenta ui/aviso_tarea.RevisorDeTareas: "TAREAS · 2" con las que
+        llegaron a su hora sin hacerse (y, con alguna, el titileo de _parpadear)."""
+        self._tareas_atrasadas = cuantas
+        texto = f"{TEXTO_BOTON_TAREAS} · {cuantas}" if cuantas else TEXTO_BOTON_TAREAS
+        self.boton_tareas.setText(texto.upper())
 
     def _hay_un_cobro_a_medias(self) -> bool:
         """
@@ -519,6 +550,20 @@ class MainWindow(QMainWindow):
         mostrador. A esta copia entra solo un Administrador (y el repo lo vuelve a exigir)."""
         if confirmar(self, "Miembros", MENSAJE_MIEMBROS_DESDE_OTRA_PC):
             abrir_ordenar_saldos(self, self.usuario["id"])
+
+    @solo_en_el_mostrador
+    def _abrir_tareas_turno(self):
+        ventana = VentanaTareasTurno(self.usuario, self)
+        # Lo que se contesta en el aviso con la ventana abierta se ve ya en la lista:
+        # esperando su repaso de los 30 s, seguía ATRASADA con su tecla HECHA.
+        al_contestar = ventana._repasar
+        self._tareas.contestaron.connect(al_contestar)
+        try:
+            ventana.exec()
+        finally:
+            self._tareas.contestaron.disconnect(al_contestar)
+        # Lo que se marcó o se cargó adentro se ve ya en el botón de la barra.
+        self._tareas.contar()
 
     @solo_en_el_mostrador
     def _abrir_reservas(self):
