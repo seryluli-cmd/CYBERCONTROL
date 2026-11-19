@@ -160,7 +160,7 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   (`ACTIVA`/`BORRADA`), cómo era antes de cada cambio, y lo que pasó cada día del
   local con cada una (HECHA, una sola vez, con quién y cuándo; o cada POSPONER, con
   sus minutos). Tablas nuevas: una base vieja las recibe vacías, sin migración. Se
-  ve con el botón ⏰ TAREAS de la barra (`ui/tareas_turno_window.py`), y a la hora
+  ve con el botón ⏰ TAREAS DEL TURNO de debajo del mosaico (`ui/tareas_turno_window.py`), y a la hora
   de cada una sale el aviso de `ui/aviso_tarea.py`.
 - **`configuracion`** — tabla genérica clave/valor. Incluye el fondo de
   cambio, el indicador de rubros iniciales, tarifas y la contraseña de admin de
@@ -292,9 +292,10 @@ una hora, como "PRENDER LAS LUCES DE AFUERA" a las 19:30:
   sin grabar nada, y vuelve a salir al minuto; no lo corren si abajo queda otra
   ventana que igual los hace esperar (Compras, un formulario). Al cerrar la sesión
   se cierra. Desde otra PC no sale.
-- **El botón ⏰ TAREAS de la barra** (después de Reservas) titila en rojo mientras
-  haya alguna atrasada y dice cuántas son ("TAREAS · 2"). Desde otra PC avisa que
-  se hace en el mostrador.
+- **El botón ⏰ TAREAS DEL TURNO**, debajo del mosaico a la derecha de HISTORIAL DEL
+  TURNO (pedido del dueño, 2026-11-19), titila en rojo mientras haya alguna atrasada
+  y dice cuántas son ("TAREAS DEL TURNO · 2"). Desde otra PC avisa que se hace en
+  el mostrador.
 - **La ventana** (`ui/tareas_turno_window.py`). Arriba, el turno y el día del
   local (los domingos, "Domingo T1"/"Domingo T2"), y cuántas hay PARA HACER,
   ATRASADAS y HECHAS. Pastillas ESTE TURNO (con las atrasadas de un turno anterior

@@ -2,7 +2,7 @@
 tests/test_tareas_turno_pantalla.py
 ====================================
 La ventana de TAREAS DEL TURNO (pedido del dueño, 2026-11-03, traída de FR Kiosko el
-2026-11-19): el botón ⏰ TAREAS de la barra (ui/tareas_turno_window.py) y lo que abre (ui/tareas_turno_dialogos.py: el
+2026-11-19): el botón ⏰ TAREAS DEL TURNO de debajo del mosaico (ui/tareas_turno_window.py) y lo que abre (ui/tareas_turno_dialogos.py: el
 formulario de la tarea y el historial). El aviso que sale encima de todo, en
 tests/test_tareas_turno_aviso.py; las reglas de adentro, en tests/test_tareas_turno.py
 y tests/test_tareas_turno_cuentas.py.

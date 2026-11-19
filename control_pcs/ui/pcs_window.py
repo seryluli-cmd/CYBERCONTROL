@@ -41,8 +41,9 @@ vive al lado:
   del mosaico, para todas las PCs prendidas y libres de una vez, para cualquier
   operador (REINICIAR y APAGAR abren `pcs_reiniciar_dialogo.py`, para desmarcar
   las que no).
-  A su derecha va CONTROL DE STOCK (`ui/control_stock_window.py`, del kiosko:
-  solo el Admin lo abre).
+  A su derecha van CONTROL DE STOCK (`ui/control_stock_window.py`, del kiosko:
+  solo el Admin lo abre), HISTORIAL DEL TURNO y TAREAS DEL TURNO (este lo arma
+  ui/main_window.py y lo suma con `agregar_boton_abajo`).
 - `pcs_cometa.py`: el cometa celeste que da vueltas por el borde del fondo negro
   (adorno, pedido del dueño 2026-10-23).
 - `pcs_gestion_dialogos.py`: administrar el catálogo de Estaciones y de
@@ -315,12 +316,15 @@ class PanelControlPcs(QWidget):
         # cobrado en el turno abierto. Este lo abre cualquier operador (ver
         # ui/historial_turno_window.py).
         self.boton_historial_turno = BotonHistorialTurno(self.usuario, self)
+        # Y después TAREAS DEL TURNO (pedido del dueño, 2026-11-19), que lo arma
+        # ui/main_window.py (titila con las atrasadas) y lo suma con agregar_boton_abajo.
         fila_botones = QHBoxLayout()
         fila_botones.setSpacing(10)
         fila_botones.addWidget(self.botones_libres)
         fila_botones.addWidget(self.boton_control_stock)
         fila_botones.addWidget(self.boton_historial_turno)
         fila_botones.addStretch()
+        self._fila_botones = fila_botones
 
         self.panel_actividad = PanelActividad()
 
@@ -332,6 +336,11 @@ class PanelControlPcs(QWidget):
         layout.addWidget(titulo_actividad)
         layout.addWidget(self.panel_actividad)
         self.setLayout(layout)
+
+    def agregar_boton_abajo(self, boton):
+        """Suma `boton` al final de la fila de debajo del mosaico, a la derecha
+        del último (antes del espacio que los deja pegados a la izquierda)."""
+        self._fila_botones.insertWidget(self._fila_botones.count() - 1, boton)
 
     @manejar_errores
     def _refrescar(self):

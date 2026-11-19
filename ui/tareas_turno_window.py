@@ -2,7 +2,8 @@
 tareas_turno_window.py
 =======================
 TAREAS DEL TURNO (pedido del dueño, 2026-11-03, con la maqueta que vio ese día;
-traída tal cual de FR Kiosko el 2026-11-19): el botón ⏰ TAREAS de la barra. Cosas
+traída tal cual de FR Kiosko el 2026-11-19): el botón ⏰ TAREAS DEL TURNO de debajo
+del mosaico, a la derecha de HISTORIAL DEL TURNO. Cosas
 para hacer a una hora, como "PRENDER LAS LUCES DE AFUERA" a las 19:30. A la hora
 sale el aviso de ui/aviso_tarea.py encima de todo; esta ventana es para verlas,
 marcarlas y cargarlas. Las reglas, en repositories/tareas_turno_repo.py.

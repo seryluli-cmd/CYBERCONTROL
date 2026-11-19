@@ -335,7 +335,7 @@ def minutos_que_no_vuelven(dia, ahora=None, margen_segundos: int = 0) -> tuple:
 
 def cuantas_atrasadas(ahora=None) -> int:
     """Cuántas tareas de hoy ya llegaron a su hora y nadie hizo, también las
-    pospuestas: el número del botón TAREAS de la barra, que titila mientras haya."""
+    pospuestas: el número del botón TAREAS DEL TURNO, que titila mientras haya."""
     return sum(tarea["estado"] == dominio.TAREA_ATRASADA for tarea in tareas_del_dia(None, ahora))
 
 

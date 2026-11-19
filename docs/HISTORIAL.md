@@ -596,3 +596,8 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   ellas llegaron `piezas_ventana.restringir`/`solo_para_el_admin` ("Acceso Restringido") y
   `tecla_de_renglon`, usadas solo por esta pantalla. Tres tablas nuevas, sin migración. Solo en
   el mostrador: no cambia la lista blanca. Sin .exe.
+- **2026-11-19 — TAREAS DEL TURNO baja al lado de HISTORIAL DEL TURNO** (pedido del dueño, al
+  verla en la barra: "quiero que lo muevas ... y se llame TAREAS DEL TURNO"). El botón deja la
+  barra de arriba (que vuelve a medir lo de antes) y va debajo del mosaico, a la derecha de
+  HISTORIAL DEL TURNO, con ese nombre; sigue titilando en rojo con las atrasadas ("TAREAS DEL
+  TURNO · 2"). Lo arma `MainWindow` y lo suma `PanelControlPcs.agregar_boton_abajo`. Sin .exe.

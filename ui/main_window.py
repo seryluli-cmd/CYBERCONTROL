@@ -114,8 +114,9 @@ MENSAJE_MIEMBROS_DESDE_OTRA_PC = (
 # va que los de los otros botones de la barra.
 DIBUJITO_OPERADOR = "🔄"
 AGRANDAR_DIBUJITO_OPERADOR = 1.25
-# El botón de Tareas del Turno; con atrasadas se le suma " · 2" (ver _poner_tareas_atrasadas).
-TEXTO_BOTON_TAREAS = "⏰  Tareas"
+# El botón de Tareas del Turno, debajo del mosaico; con atrasadas se le suma " · 2"
+# (ver _poner_tareas_atrasadas).
+TEXTO_BOTON_TAREAS = "⏰  TAREAS DEL TURNO"
 
 
 class MainWindow(QMainWindow):
@@ -154,8 +155,8 @@ class MainWindow(QMainWindow):
         self._remota = modo_remoto.es_copia_remota()
         self._titilar = False
         self._encendido = False
-        # Las tareas del turno que llegaron a su hora sin hacerse: el botón TAREAS de la
-        # barra titila en rojo y dice cuántas son (ver _poner_tareas_atrasadas).
+        # Las tareas del turno que llegaron a su hora sin hacerse: el botón TAREAS DEL
+        # TURNO titila en rojo y dice cuántas son (ver _poner_tareas_atrasadas).
         self._tareas_atrasadas = 0
         self._encendido_tareas = False
         # Hasta cuándo no vuelve a salir el cartel de lo fiado en el turno (Posponer 5 min).
@@ -240,6 +241,15 @@ class MainWindow(QMainWindow):
         # Desde otra PC también: la misma grilla, en vivo, con los datos del
         # mostrador (pedido del dueño, 2026-10-24; hasta ese día iba un cartel).
         self.panel_pcs = PanelControlPcs(self.usuario, self)
+        # Tareas del Turno (traídas de FR Kiosko a pedido del dueño, 2026-11-19): el Admin
+        # carga cosas para hacer a una hora y a esa hora sale un aviso encima de todo.
+        # Va debajo del mosaico, a la derecha de HISTORIAL DEL TURNO (pedido del dueño,
+        # mismo día; primero estuvo en la barra de arriba). Titila en rojo y dice
+        # cuántas hay atrasadas (ver _poner_tareas_atrasadas).
+        self.boton_tareas = QPushButton(TEXTO_BOTON_TAREAS)
+        aplicar_clase(self.boton_tareas, "barra")
+        self.boton_tareas.clicked.connect(self._abrir_tareas_turno)
+        self.panel_pcs.agregar_boton_abajo(self.boton_tareas)
 
         contenedor = QWidget()
         layout = QVBoxLayout()
@@ -276,10 +286,6 @@ class MainWindow(QMainWindow):
         # Reservas de PCs, PCSTREAM y PlayStation 5 (pedido del dueño, 2026-10-20): cobra,
         # así que se abre solo en el mostrador. Dice cuántas esperan hoy (ver _actualizar_boton_reservas).
         self.boton_reservas = self._agregar_boton_barra(layout_barra, "", self._abrir_reservas)
-        # Tareas del Turno (traídas de FR Kiosko a pedido del dueño, 2026-11-19): el Admin
-        # carga cosas para hacer a una hora y a esa hora sale un aviso encima de todo.
-        # Titila en rojo y dice cuántas hay atrasadas (ver _poner_tareas_atrasadas).
-        self.boton_tareas = self._agregar_boton_barra(layout_barra, TEXTO_BOTON_TAREAS, self._abrir_tareas_turno)
         # Nombres cortos en la barra (pedido del dueño, 2026-10-18); las ventanas
         # que abren siguen con su nombre entero.
         self._agregar_boton_barra(
@@ -376,18 +382,18 @@ class MainWindow(QMainWindow):
         clase = "alerta" if self._encendido else "barra"
         if self.boton_cierre_turno.property("clase") != clase:
             aplicar_clase(self.boton_cierre_turno, clase)
-        # TAREAS, mientras haya atrasadas: el mismo rojo, con su propio compás.
+        # TAREAS DEL TURNO, mientras haya atrasadas: el mismo rojo, con su propio compás.
         self._encendido_tareas = bool(self._tareas_atrasadas) and not self._encendido_tareas
         clase = "alerta" if self._encendido_tareas else "barra"
         if self.boton_tareas.property("clase") != clase:
             aplicar_clase(self.boton_tareas, clase)
 
     def _poner_tareas_atrasadas(self, cuantas: int):
-        """Lo que cuenta ui/aviso_tarea.RevisorDeTareas: "TAREAS · 2" con las que
-        llegaron a su hora sin hacerse (y, con alguna, el titileo de _parpadear)."""
+        """Lo que cuenta ui/aviso_tarea.RevisorDeTareas: "TAREAS DEL TURNO · 2" con
+        las que llegaron a su hora sin hacerse (y, con alguna, el titileo de _parpadear)."""
         self._tareas_atrasadas = cuantas
         texto = f"{TEXTO_BOTON_TAREAS} · {cuantas}" if cuantas else TEXTO_BOTON_TAREAS
-        self.boton_tareas.setText(texto.upper())
+        self.boton_tareas.setText(texto)
 
     def _hay_un_cobro_a_medias(self) -> bool:
         """

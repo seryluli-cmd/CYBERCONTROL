@@ -49,7 +49,7 @@ from ui.tareas_turno_dialogos import nombre_del_turno, texto_de_lo_pospuesto
 from ui.utils import manejar_errores, sin_boton_por_defecto
 
 # Cada cuánto se mira si llegó la hora de alguna tarea (y cuántas hay atrasadas, el
-# número del botón TAREAS de la barra). Un aviso que sale hasta 15 s tarde no le cambia nada a nadie.
+# número del botón TAREAS DEL TURNO). Un aviso que sale hasta 15 s tarde no le cambia nada a nadie.
 INTERVALO_REVISION_TAREAS_MS = 15_000
 # La primera revisión, un rato después de entrar: con la ventana principal ya en la
 # pantalla (el aviso que sale antes que ella queda raro).

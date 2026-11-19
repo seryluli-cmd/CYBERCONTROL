@@ -3,7 +3,7 @@ tests/test_tareas_turno_aviso.py
 =================================
 El aviso de TAREAS DEL TURNO (pedido del dueño, 2026-11-03; ui/aviso_tarea.py): sale
 encima de todo a la hora de una tarea, lo arranca la ventana principal del mostrador
-y vuelve hasta que alguien pone TAREA HECHA. La ventana del botón ⏰ TAREAS, en
+y vuelve hasta que alguien pone TAREA HECHA. La ventana del botón ⏰ TAREAS DEL TURNO, en
 tests/test_tareas_turno_pantalla.py; las reglas de adentro, en tests/test_tareas_turno.py.
 
 El reloj se inyecta: las pruebas dicen qué hora es y cuándo se revisa (los timers de
@@ -20,7 +20,7 @@ from unittest import mock
 
 from base_tareas_turno_pantalla import BASURA, CIGARRILLOS, LUCES, _ConTareas
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog
 
@@ -153,8 +153,8 @@ class TestElAviso(_ConElMostrador):
         self.assertIsNotNone(self._a_las(ventana, 19, 45, 20))
         tarea = self._la_de_las_luces()
         self.assertEqual([(p["nombre"], p["minutos"]) for p in tarea["posposiciones"]], [("Carla", 5), ("Carla", 10)])
-        # Pospuesta sigue atrasada: el botón de la barra la cuenta.
-        self.assertEqual(ventana.boton_tareas.text(), "⏰  TAREAS · 1")
+        # Pospuesta sigue atrasada: el botón TAREAS DEL TURNO la cuenta.
+        self.assertEqual(ventana.boton_tareas.text(), "⏰  TAREAS DEL TURNO · 1")
 
     def test_tarea_hecha_no_vuelve_a_salir(self):
         self._cargar(LUCES, "19:30")
@@ -169,7 +169,7 @@ class TestElAviso(_ConElMostrador):
             self.assertIsNone(self._a_las(ventana, hora, minuto))
         tarea = self._la_de_las_luces()
         self.assertEqual((tarea["estado"], tarea["hecha_por"]), (dominio.TAREA_HECHA, "Carla"))
-        self.assertEqual(ventana.boton_tareas.text(), "⏰  TAREAS")
+        self.assertEqual(ventana.boton_tareas.text(), "⏰  TAREAS DEL TURNO")
         self.assertEqual(ventana._tareas_atrasadas, 0)
 
     def test_si_tocan_dos_a_la_vez_salen_de_a_una(self):
@@ -229,7 +229,7 @@ class TestElAviso(_ConElMostrador):
         self.assertIsNone(self._a_las(ventana, 19, 30, 40))
         self.assertIsNone(self._a_las(ventana, 19, 31, 9))
         # Mientras tanto sigue contando como atrasada.
-        self.assertEqual(ventana.boton_tareas.text(), "⏰  TAREAS · 1")
+        self.assertEqual(ventana.boton_tareas.text(), "⏰  TAREAS DEL TURNO · 1")
         self.assertIsNotNone(self._a_las(ventana, 19, 31, 11))
 
     def test_al_cerrar_la_sesion_el_aviso_se_va_sin_grabar_nada(self):
@@ -264,35 +264,53 @@ class TestElAviso(_ConElMostrador):
         self.addCleanup(ventana.close)
         self.assertIsNone(ventana._tareas)
         self.assertEqual(ventana.findChildren(RevisorDeTareas), [])
-        self.assertEqual(ventana.boton_tareas.text(), "⏰  TAREAS")
+        self.assertEqual(ventana.boton_tareas.text(), "⏰  TAREAS DEL TURNO")
 
-    def test_el_boton_de_la_barra_dice_cuantas_hay_atrasadas_y_titila_en_rojo(self):
+    def test_el_boton_dice_cuantas_hay_atrasadas_y_titila_en_rojo(self):
         self._cargar(LUCES, "19:30")
         self._cargar(BASURA, "19:30")
         ventana = self._mostrador()
         boton = ventana.boton_tareas
 
         self.assertIsNone(self._a_las(ventana, 19, 0))
-        self.assertEqual(boton.text(), "⏰  TAREAS")
+        self.assertEqual(boton.text(), "⏰  TAREAS DEL TURNO")
         ventana._parpadear()
         self.assertEqual(boton.property("clase"), "barra")
 
         aviso = self._a_las(ventana, 19, 30, 10)
-        self.assertEqual(boton.text(), "⏰  TAREAS · 2")
+        self.assertEqual(boton.text(), "⏰  TAREAS DEL TURNO · 2")
         ventana._parpadear()
         self.assertEqual(boton.property("clase"), "alerta")
         ventana._parpadear()
         self.assertEqual(boton.property("clase"), "barra")
 
-        # Hechas las dos, vuelve a ser un botón más de la barra y deja de titilar.
+        # Hechas las dos, vuelve a ser un botón más y deja de titilar.
         for _ in range(2):
             aviso._prender_teclas()
             aviso.boton_hecha.click()
             aviso = ventana._tareas.aviso
-        self.assertEqual(boton.text(), "⏰  TAREAS")
+        self.assertEqual(boton.text(), "⏰  TAREAS DEL TURNO")
         for _ in range(3):
             ventana._parpadear()
             self.assertEqual(boton.property("clase"), "barra")
+
+    def test_va_debajo_del_mosaico_a_la_derecha_de_historial_del_turno(self):
+        # Pedido del dueño (2026-11-19): abajo, al lado de HISTORIAL DEL TURNO, no en la barra.
+        ventana = self._mostrador()
+        ventana.resize(1920, 1000)
+        QApplication.processEvents()
+        boton = ventana.boton_tareas
+        historial = ventana.panel_pcs.boton_historial_turno
+        self.assertTrue(ventana.panel_pcs.isAncestorOf(boton))
+        self.assertTrue(boton.isVisible())
+
+        borde_de_historial = historial.mapTo(ventana, QPoint(historial.width(), 0))
+        inicio_de_tareas = boton.mapTo(ventana, QPoint(0, 0))
+        self.assertTrue(0 <= inicio_de_tareas.x() - borde_de_historial.x() < 20,
+                        (borde_de_historial.x(), inicio_de_tareas.x()))
+        self.assertLessEqual(abs((inicio_de_tareas.y() + boton.height() / 2)
+                                 - (borde_de_historial.y() + historial.height() / 2)), 3)
+        self.assertEqual(boton.height(), historial.height())
 
     def test_se_pone_adelante_y_hace_titilar_la_barra_de_tareas(self):
         # Con el programa minimizado o WhatsApp Web adelante: que tome el teclado y, si
