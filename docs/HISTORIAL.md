@@ -614,3 +614,23 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   con migración (arranca en 0 para todos). `piezas_ventana.solo_para_el_admin` pasa a
   `solo_con_permiso`. La huella de la otra PC ahora incluye las casillas de permisos: las dos
   copias necesitan el mismo .exe. Sin .exe.
+- **2026-11-20 — HISTORIAL DEL TURNO con todos los movimientos y los turnos anteriores**
+  (pedidos del dueño: "absolutamente todos los movimientos de $ y de habilitación y ventas";
+  "que se guarden todos los historiales de todos los días de todos los turnos, y poder elegir el
+  día, el turno, pero que al ingresar por defecto solo muestre el turno actual"; eligió la maqueta A
+  de `PROPUESTA_HISTORIAL_DEL_TURNO/2_TODOS_LOS_MOVIMIENTOS` y el selector de
+  `3_ELEGIR_DIA_Y_TURNO`, con "el operador solo puede ver su turno actual, el admin puede navegar
+  entre todos los días y turnos"). Además de las ventas, el Historial junta lo que no es una venta
+  (`repositories/historial_turno_movimientos_repo.py`, nuevo): la PC que se abrió con una reserva,
+  el socio que entra con su saldo, el pase de PC, lo que vuelve al saldo, ORDENAR SALDOS, la caja
+  que se abre o pasa de mano, la Cuenta de la PC; cada venta que dio tiempo dice si prendió el
+  equipo o le sumó. Columnas nuevas (Qué fue, Tiempo, Plata) y pastillas por tipo. El Admin elige
+  día y turno con la barra nueva (`ui/historial_turno_barra.py`); un turno cerrado es solo para
+  mirar, termina con su CIERRE y su TOTAL da igual que su cierre (lo anulado después sigue
+  sumando, como en Control de Cierres). El operador ve solo el turno actual, y el repo se lo exige
+  (`exigir_admin`). Dos colores nuevos: fucsia para la Cuenta de la PC y pizarra para la caja.
+  Al sacar las fotos se vieron y arreglaron dos cosas: las pastillas del día anterior quedaban en
+  la barra (trampa nueva en `docs/guia/PANTALLA.md`) y lo anotado antes de pasar una PC a otra
+  decía la PC nueva (`_pc_en`, trampa en `docs/guia/TURNOS_Y_CAJA.md`). Las pruebas se partieron
+  en `tests/test_historial_turno.py` y `tests/test_historial_turno_anteriores.py`. Cambia la lista
+  blanca (`turnos_del_dia`): las dos copias necesitan el mismo .exe. Sin .exe.

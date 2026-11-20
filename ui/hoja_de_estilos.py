@@ -1649,6 +1649,66 @@ HOJA_DE_ESTILOS = """
         border-color: #2F6FED;
         color: #FFFFFF;
     }
+    /* HISTORIAL DEL TURNO: la barra del Admin para elegir el día y el turno
+       (ui/historial_turno_barra.py). Ahí las pastillas son lo principal: un poco
+       más grandes que las de filtrar. */
+    QFrame#barraDeTurnos {
+        background-color: #FFFFFF;
+        border: 1px solid #DCE2EC;
+        border-radius: 12px;
+    }
+    QFrame#barraDeTurnos QLabel {
+        background: transparent;
+        border: none;
+    }
+    QFrame#barraDeTurnos QPushButton[clase="filtro"] {
+        font-size: 12px;
+        padding: 7px 12px;
+        border-radius: 15px;
+    }
+    QPushButton#flechaDeTurno {
+        font-size: 15pt;
+        padding: 2px 0px;
+    }
+    QLabel#tituloBarraTurnos {
+        color: #7A8494;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1px;
+    }
+    QLabel#sinTurnos {
+        color: #7A8494;
+        font-style: italic;
+    }
+    QFrame#avisoTurnoCerrado {
+        background-color: #FFF3CD;
+        border: 1px solid #EED48A;
+        border-radius: 10px;
+    }
+    QFrame#avisoTurnoCerrado QLabel {
+        background: transparent;
+        border: none;
+        color: #6B4A00;
+        font-size: 10.5pt;
+    }
+    QFrame#historialVacio {
+        background-color: #FFFFFF;
+        border: 1px solid #DCE2EC;
+        border-radius: 12px;
+    }
+    QFrame#historialVacio QLabel {
+        background: transparent;
+        border: none;
+    }
+    QLabel#tituloHistorialVacio {
+        color: #1B2233;
+        font-size: 15pt;
+        font-weight: 800;
+    }
+    QLabel#detalleHistorialVacio {
+        color: #5B6472;
+        font-size: 10.5pt;
+    }
     QFrame#panelTabla {
         background-color: #FFFFFF;
         border: 1px solid #DCE2EC;

@@ -546,18 +546,26 @@ encargada no tiene habilitado lo ve en gris, con candado y el porqué (desde el
   `VentanaHistorialTurno`; pedido del dueño 2026-11-02, maqueta A en
   `PROPUESTA_HISTORIAL_DEL_TURNO`) — botón a la derecha de CONTROL DE STOCK. Lo
   abre cualquier operador, para revisar que no se equivocó al cobrar (desde el
-  2026-11-19; antes, solo el Admin). Muestra todo lo cobrado en el
-  turno abierto, venta por venta y de la primera a la última: hora, rubro en
-  etiqueta de color (bono de PC, miembro, kiosko, impresiones, trámite, PS5,
-  PCSTREAM, reserva; los mismos colores que Reportes), qué se cobró, cómo se pagó y el total. Son las mismas
-  ventas que suma el Cierre de Turno (`historial_turno_repo.historial_del_turno`
-  usa `turnos_repo._ventana_en_curso` y el detalle de `detalle_dia_repo`), así
-  que el total da igual; con caja abierta es la caja de quien agarró el turno,
-  aunque cobre el Admin ("cobró Sergio"). Las anuladas salen en rojo, tachadas y
-  con quién, cuándo y por qué, y no suman. Arriba: ventas, anuladas y total;
-  buscador; pastillas por rubro y "Anuladas", con cuántas ventas y cuánto suman
-  las que se ven; IMPRIMIR saca la lista tal cual se ve. Se mira también desde
-  otra PC (`admin_remoto/lista_blanca.py`).
+  2026-11-19; antes, solo el Admin). Desde el 2026-11-20 muestra TODO lo que pasó
+  en el turno, en orden de hora y no solo lo cobrado: las ventas (con su rubro en
+  etiqueta de color, los mismos de Reportes), las PCs, la PS5 y la PCSTREAM que se
+  prendieron o a las que se les sumó tiempo, el socio que entró con su saldo, el
+  pase de una PC a otra, lo que le volvió al saldo al irse, ORDENAR SALDOS, la caja
+  que se abrió o pasó de mano (con lo que faltó o sobró), lo anotado a la Cuenta de
+  la PC y cuando se cobró. Columnas: hora, qué fue, qué pasó, pago, tiempo y plata;
+  pastillas Todo, Ventas (con los rubros abajo), Habilitaciones, Saldo de socios,
+  Caja y Cuenta y Anuladas. El TOTAL suma solo las ventas, las mismas del Cierre de
+  Turno (`historial_turno_repo.historial_del_turno`, con lo demás en
+  `historial_turno_movimientos_repo`), así que da igual; con caja abierta es la caja
+  de quien agarró el turno, aunque cobre el Admin ("cobró Sergio"). Las anuladas
+  salen en rojo, tachadas y con quién, cuándo y por qué, y no suman. Al abrir se ve
+  siempre el turno actual; el operador ve solo ese. El Admin tiene además una barra
+  (`historial_turno_barra.py`) con ◀ ▶ para pasar de a un turno, la fecha con
+  calendario y los turnos de ese día en pastillas (horario y quién tenía la caja):
+  un turno cerrado sale con una franja amarilla ("solo para mirar"), VOLVER AL
+  TURNO ACTUAL y el renglón del CIERRE al final, y su TOTAL es el de su Cierre de
+  Turno aunque después se haya anulado algo. IMPRIMIR saca la lista tal cual se ve.
+  Se mira también desde otra PC (`admin_remoto/lista_blanca.py`).
 - **Compras** (`compras_window.py`, `ComprasWindow`) — carga de mercadería
   por escaneo; F5/F6/F7 abren el buscador (`buscar_articulo.py`,
   `DialogoBuscarArticulo`) por código/descripción/marca. Al escanear pide cantidad y

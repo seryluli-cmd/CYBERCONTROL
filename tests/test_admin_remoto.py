@@ -769,6 +769,7 @@ _PANTALLA_PRINCIPAL = [
     ("ui/main_window.py", {"MainWindow"}),
     ("ui/control_stock_window.py", None),
     ("ui/historial_turno_window.py", None),
+    ("ui/historial_turno_barra.py", None),
     ("control_pcs/ui/pcs_window.py", None),
     ("control_pcs/ui/pcs_detalle.py", {"PanelDetalleEstacion", "texto_de_la_reserva", "es_playstation"}),
     ("control_pcs/ui/pcs_lista_de_bonos.py", None),

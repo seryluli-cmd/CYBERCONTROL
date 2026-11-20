@@ -45,6 +45,16 @@ COLORES_DE_ETIQUETA = tuple(TONOS_DE_ETIQUETA.values())
 TONO_ALERTA = "rojo"
 TONOS_DE_ETIQUETA[TONO_ALERTA] = ("#B42318", "#FDECEC", "#F1A9A3")
 
+# Dos más, también aparte (no son de un rubro ni se reparten en orden), para el
+# Historial del Turno con todos los movimientos (pedido del dueño, 2026-11-20; se
+# los vio en la maqueta A de PROPUESTA_HISTORIAL_DEL_TURNO/2_TODOS_LOS_MOVIMIENTOS):
+# la Cuenta de la PC en fucsia, el color que ya tiene su borde en el mosaico, y la
+# caja (apertura, relevo y cierre) en pizarra.
+TONO_CUENTA_PC = "fucsia"
+TONOS_DE_ETIQUETA[TONO_CUENTA_PC] = ("#A3127F", "#FDE7F7", "#F3B4E3")
+TONO_CAJA = "pizarra"
+TONOS_DE_ETIQUETA[TONO_CAJA] = ("#26303F", "#E6E9EE", "#B9C1CD")
+
 # Un color por rubro, EL MISMO en todo el programa: Reportes (el Ranking, los
 # títulos de TOTALES y del Resumen del Día, Socios y Bonos), el Historial del Turno
 # y el Origen de Consulta de Ventas y Control de Cierres. Pedido del dueño

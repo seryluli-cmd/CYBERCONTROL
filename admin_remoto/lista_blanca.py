@@ -101,7 +101,7 @@ FUNCIONES = {
         "listar_para_control_de_stock",
     ),
     # HISTORIAL DEL TURNO, el botón de al lado (solo mira)
-    "historial_turno_repo": ("historial_del_turno",),
+    "historial_turno_repo": ("historial_del_turno", "turnos_del_dia"),
     # HORARIOS DEL PERSONAL (Administrar Kiosko > Caja y personal; solo mira)
     "horarios_repo": ("horarios_del_personal",),
     # Compras
@@ -182,6 +182,7 @@ ACTOR = {
     ("articulos_repo", "cambiar_codigo"): "usuario_id",
     ("articulos_repo", "listar_para_control_de_stock"): "usuario_id",
     ("historial_turno_repo", "historial_del_turno"): "usuario_id",
+    ("historial_turno_repo", "turnos_del_dia"): "usuario_id",
     ("horarios_repo", "horarios_del_personal"): "usuario_id",
     ("articulos_repo", "crear_marca"): "usuario_id",
     ("articulos_repo", "renombrar_marca"): "usuario_id",
