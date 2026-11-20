@@ -106,6 +106,15 @@ POST /logout          {"estacion", "sesion_id" (opcional)}
     pide usuario/clave: alcanza con estar físicamente en esa PC, mismo
     criterio de confianza que el resto del sistema.
 
+POST /cambiar_clave   {"estacion", "sesion_id" (opcional), "clave_actual", "clave_nueva"}
+    El socio que está jugando en esa PC cambia su contraseña desde la franja
+    (pedido del dueño, 2026-11-20; Cliente PC V2.6 o más). El socio es el de la
+    sesión abierta: no viaja el usuario. Pide la actual y una nueva de al menos
+    `miembros_repo.LARGO_MINIMO_CLAVE_SOCIO` caracteres. 400 con el motivo para
+    mostrarle al socio (actual equivocada, nueva corta, sesión terminada, bono).
+    Un mostrador anterior a esto contesta 404 "No existe." y el Cliente PC le
+    dice al socio que lo pida en el mostrador.
+
 POST /evento_admin    {"estacion", "tipo", "segundos_atras"}
     El Cliente PC avisa que alguien entró a su panel admin, cerró el
     Cliente PC o abrió la reconfiguración (ver
@@ -575,6 +584,8 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             self._manejar_login()
         elif ruta.path == "/logout":
             self._manejar_logout()
+        elif ruta.path == "/cambiar_clave":
+            self._manejar_cambiar_clave()
         elif ruta.path == "/evento_admin":
             self._manejar_evento_admin()
         elif ruta.path == "/filtro_bloqueo":
@@ -690,6 +701,50 @@ class _ManejadorEstado(BaseHTTPRequestHandler):
             pcs_repo.finalizar_sesion(item["sesion"]["id"], dominio.CIERRE_SOCIO_DESDE_LA_PC)
         except Exception as error:
             registrar_error(error, "Servidor de red: logout de socio")
+            self._responder_error(500, _ERROR_INTERNO)
+            return
+
+        self._responder_json(200, {"ok": True})
+
+    def _manejar_cambiar_clave(self):
+        """
+        El socio que está jugando cambia su contraseña desde la franja de su PC
+        (pedido del dueño, 2026-11-20). No viaja el usuario: el socio es el de la
+        sesión abierta en esa estación. Como en /logout, si viene `sesion_id` tiene
+        que ser la sesión de ahora; acá, si no coincide, NO se hace nada: el que
+        está sentado ya es otro, y no le puede cambiar la contraseña al anterior.
+        """
+        try:
+            cuerpo = self._leer_cuerpo_json()
+            nombre_estacion = str(cuerpo["estacion"])
+            sesion_id_pedida = cuerpo.get("sesion_id")
+            clave_actual = str(cuerpo["clave_actual"])
+            clave_nueva = str(cuerpo["clave_nueva"])
+        except Exception:
+            self._responder_error(400, _PEDIDO_INVALIDO)
+            return
+
+        item = self._resolver_estacion(nombre_estacion)
+        if item is None:
+            return  # _resolver_estacion ya respondió 404/500
+
+        sesion = item["sesion"]
+        if sesion is None or (sesion_id_pedida is not None and sesion_id_pedida != sesion["id"]):
+            self._responder_error(400, "Tu sesión ya terminó: no se cambió la contraseña.")
+            return
+        if sesion["miembro_id"] is None:
+            # El Cliente PC no muestra el botón con un bono (no hay contraseña que cambiar).
+            self._responder_error(400, "Solo los socios tienen contraseña.")
+            return
+
+        try:
+            miembros_repo.cambiar_clave_desde_la_pc(sesion["miembro_id"], clave_actual, clave_nueva)
+        except ValueError as error:
+            # Contraseña actual equivocada, nueva muy corta...: el mensaje es para el socio.
+            self._responder_error(400, str(error))
+            return
+        except Exception as error:
+            registrar_error(error, "Servidor de red: cambiar la contraseña de un socio")
             self._responder_error(500, _ERROR_INTERNO)
             return
 

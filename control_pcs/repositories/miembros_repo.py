@@ -45,6 +45,11 @@ from control_pcs.repositories import pcs_repo, bonos_miembro_repo, reservas_hora
 # reintegros_repo.MINUTOS_POR_FRACCION (ver ahí por qué no se importa).
 MINUTOS_POR_FRACCION = 30
 
+# Lo más corta que puede ser la contraseña que el socio se pone él mismo desde su PC
+# (cambiar_clave_desde_la_pc; decisión del dueño, 2026-11-20). El Cliente PC tiene la misma
+# cuenta para avisar antes de mandarla.
+LARGO_MINIMO_CLAVE_SOCIO = 4
+
 
 class FaltanDatosDelSocio(Exception):
     """
@@ -256,6 +261,32 @@ def autenticar_miembro(usuario: str, clave: str):
     """
     with conexion_db() as conexion:
         return _buscar_miembro_autenticado(conexion, usuario, clave)
+
+
+def cambiar_clave_desde_la_pc(miembro_id: int, clave_actual: str, clave_nueva: str):
+    """
+    El socio que está jugando cambia su contraseña desde la franja de su PC
+    (pedido del dueño, 2026-11-20: "me lo pidieron"; eligió el botón en la franja,
+    no en la pantalla de bloqueo). Quién es lo sabe el servidor de red por la
+    sesión abierta en esa PC: acá llega solo su id. Tiene que escribir la actual
+    (alguien que encuentra una PC abierta no se la puede cambiar) y una nueva de
+    al menos LARGO_MINIMO_CLAVE_SOCIO caracteres (decisión del dueño). Levanta
+    ValueError con un mensaje para mostrarle al socio tal cual. El alta y
+    "Modificar" de Miembros no exigen ese largo: el mostrador pone la que quiera.
+    """
+    if len(clave_nueva.strip()) < LARGO_MINIMO_CLAVE_SOCIO:
+        raise ValueError(f"La contraseña nueva tiene que tener al menos {LARGO_MINIMO_CLAVE_SOCIO} caracteres.")
+    with conexion_db() as conexion:
+        fila = conexion.execute(
+            "SELECT clave_hash FROM miembros WHERE id = ? AND activo = 1", (miembro_id,)
+        ).fetchone()
+        if fila is None:
+            raise ValueError("Tu cuenta no está activa. Pasá por el mostrador.")
+        if not verificar_clave(clave_actual, fila["clave_hash"]):
+            raise ValueError("La contraseña actual no es correcta.")
+        if clave_nueva == clave_actual:
+            raise ValueError("La contraseña nueva es igual a la actual.")
+        conexion.execute("UPDATE miembros SET clave_hash = ? WHERE id = ?", (hash_clave(clave_nueva), miembro_id))
 
 
 def _sesiones_en_curso_del_socio(conexion, miembro_id: int, ahora: datetime) -> list:

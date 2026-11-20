@@ -280,6 +280,21 @@ class TestContratoConElClientePc(_ConServidor):
         self.assertIsNotNone(fila["numero_version_cliente"])
         self.assertIsNotNone(fila["ultima_conexion"])
 
+    def test_el_cliente_pc_de_verdad_le_cambia_la_contrasena_al_socio(self):
+        # "Cambiar contraseña" de la franja (pedido del dueño, 2026-11-20): lo que manda el Cliente
+        # PC es lo que lee POST /cambiar_clave, y el motivo vuelve tal cual para mostrarlo.
+        red_kiosko = _red_kiosko_del_cliente_pc()
+        if red_kiosko is None:
+            self.skipTest("No está la carpeta CLIENTE PC al lado")
+        config = {"nombre_estacion": "PC1", "servidor_ip": "127.0.0.1", "servidor_puerto": self._puerto,
+                  "clave_clientes": CLAVE_DE_PRUEBA, "_sesion_id": self.sesion_pc1}
+
+        self.assertEqual(red_kiosko.cambiar_clave(config, "mala", "nueva1"),
+                         {"ok": False, "error": "La contraseña actual no es correcta."})
+        self.assertEqual(red_kiosko.cambiar_clave(config, "clave123", "nueva1"), {"ok": True, "error": None})
+        self.assertIsNotNone(miembros_repo.autenticar_miembro("juan", "nueva1"))
+        self.assertIsNone(miembros_repo.autenticar_miembro("juan", "clave123"))
+
     def test_los_datos_que_lee_el_cliente_pc_son_los_de_la_lista(self):
         ruta = CARPETA_CLIENTE_PC / "red_kiosko.py"
         if not ruta.exists():

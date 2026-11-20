@@ -634,3 +634,13 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   decía la PC nueva (`_pc_en`, trampa en `docs/guia/TURNOS_Y_CAJA.md`). Las pruebas se partieron
   en `tests/test_historial_turno.py` y `tests/test_historial_turno_anteriores.py`. Cambia la lista
   blanca (`turnos_del_dia`): las dos copias necesitan el mismo .exe. Sin .exe.
+- **2026-11-20 — El socio cambia su contraseña desde su PC** (pedido del dueño: "quiero que el cliente
+  pueda cambiar su contraseña desde su PC, me lo pidieron"; eligió la maqueta B, el botón en la franja,
+  y un mínimo de 4 caracteres). `POST /cambiar_clave` nuevo en `servidor_red.py`: el socio es el de la
+  sesión abierta en esa PC (no viaja el usuario) y, si la PC manda una `sesion_id` que ya no es la de
+  ahora, no se cambia nada. La regla, en `miembros_repo.cambiar_clave_desde_la_pc` (la actual tiene que
+  ser la correcta; la nueva, de al menos `LARGO_MINIMO_CLAVE_SOCIO` caracteres y distinta). Del lado del
+  Cliente PC, "Cambiar contraseña" abajo de "Cerrar sesión" y "Minimizar" en la franja agrandada, solo
+  con un socio; un Cliente PC viejo no lo tiene y sigue igual. Pruebas en
+  `tests/test_cambiar_clave_socio.py` y el contrato con el Cliente PC de verdad en
+  `tests/test_contrato_cliente_pc.py`. Sin .exe; la lista blanca no cambia.
