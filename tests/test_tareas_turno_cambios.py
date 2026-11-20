@@ -50,7 +50,7 @@ class TestBorrar(_ConTareas):
                       lambda: repo.posponer(self.lucia_id, tarea_id, MARTES, 5, ahora=_el(MARTES, "19:30")),
                       lambda: repo.modificar_tarea(self.admin_id, tarea_id, LUCES, "20:00", TODOS,
                                                    ahora=_el(MARTES, "19:30"))):
-            with self.assertRaisesRegex(ValueError, "ya no está: la borró el Administrador"):
+            with self.assertRaisesRegex(ValueError, "ya no está: la borraron"):
                 hacer()
 
     def test_lo_que_ya_se_hizo_hoy_sigue_a_la_vista(self):

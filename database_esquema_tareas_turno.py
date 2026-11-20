@@ -27,7 +27,7 @@ def crear_tablas_tareas_turno(cursor, valores_sql):
     #   cargó). Cada columna está si y solo si su repetición la usa.
     # - creada / creada_por: cuándo y quién la cargó. Una vez que toca antes de
     #   `creada` no cuenta: la de las 18:00 cargada a las 19:00 avisa desde mañana.
-    # - borrada / borrada_por: el Admin que la sacó (nunca se borra la fila, regla 7).
+    # - borrada / borrada_por: quién la sacó (nunca se borra la fila, regla 7).
     # Lo que tenía antes de cada MODIFICAR queda en tareas_turno_cambios.
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS tareas_turno (

@@ -233,7 +233,10 @@ def funcion(nombre_modulo: str, nombre_funcion: str):
 def huella(obtener_funcion=None) -> str:
     """
     Una huella de lo que las dos copias tienen que tener igual: la lista, qué
-    parámetros recibe cada función y quién es el actor. Si el .exe del mostrador
+    parámetros recibe cada función, quién es el actor y las casillas de permisos de
+    Usuarios (viajan como {columna: sí/no} y la que falta se guarda apagada: con una
+    copia vieja, guardar a Gabriela le sacaría el permiso de Tareas del Turno, que esa
+    copia ni mostraba). Si el .exe del mostrador
     y el de la otra PC no son el mismo, las huellas no coinciden y no se entra
     (una función que cambió de parámetros recibiría datos corridos).
 
@@ -252,7 +255,8 @@ def _huella_de_los_repos() -> str:
 
 
 def _calcular_huella(obtener_funcion) -> str:
-    renglones = [f"protocolo {VERSION_DEL_PROTOCOLO}"]
+    renglones = [f"protocolo {VERSION_DEL_PROTOCOLO}",
+                 "permisos " + ",".join(columna for columna, _ in usuarios_repo.PERMISOS_EMPLEADA)]
     for nombre_modulo in sorted(FUNCIONES):
         for nombre_funcion in sorted(FUNCIONES[nombre_modulo]):
             firma = inspect.signature(obtener_funcion(nombre_modulo, nombre_funcion))

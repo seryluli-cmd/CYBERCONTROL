@@ -8,9 +8,11 @@ alguien la hace. Acá están las reglas; el aviso y la pantalla solo preguntan.
 
 Reglas:
 
-- Cargar, modificar y borrar una tarea: solo un Administrador (exigir_admin).
-  Marcarla HECHA y posponerla: cualquier operador que siga habilitado
-  (usuario_habilitado).
+- Cargar, modificar y borrar una tarea: un Administrador, o una empleada a la que
+  le dio el permiso Tareas del Turno en Usuarios (pedido del dueño, 2026-11-20:
+  "quiero que Gabriela sí pueda crear tareas"; usuarios_repo.exigir_permiso, que lo
+  relee de la base en cada cambio). Marcarla HECHA y posponerla: cualquier operador
+  que siga habilitado (usuario_habilitado).
 - Cada vez que una tarea toca es una "aparición": la tarea en un DÍA DEL LOCAL
   (de 06:00 a 06:00, turnos.HORA_CAMBIO_DE_DIA). TODOS LOS DÍAS toca todos;
   ALGUNOS DÍAS, los días de la semana que eligió el Admin; UN SOLO DÍA ("SOLO
@@ -394,8 +396,19 @@ def listar_tareas(ahora=None) -> list:
 
 
 # ---------------------------------------------------------------------
-# Cargar, modificar y borrar: solo el Administrador
+# Cargar, modificar y borrar: el Administrador o quien tenga el permiso
 # ---------------------------------------------------------------------
+
+def puede_cargar(usuario_id: int) -> bool:
+    """Si quien está adentro puede HOY cargar, modificar y borrar tareas (un
+    Administrador o quien tenga el permiso). Se relee de la base: lo que el Admin
+    le dio o le sacó con la sesión abierta vale la próxima vez que abre la ventana."""
+    return usuarios_repo.tiene_permiso_hoy(usuario_id, usuarios_repo.PERMISO_TAREAS_TURNO)
+
+
+def _exigir_que_pueda_cargar(usuario_id: int):
+    usuarios_repo.exigir_permiso(usuario_id, usuarios_repo.PERMISO_TAREAS_TURNO, _PARA_CARGAR)
+
 
 def _revisar(texto, hora, repeticion, dias_semana, hoy: date) -> dict:
     """Los campos de una tarea como se guardan, en el orden del diálogo (TAREA,
@@ -428,11 +441,11 @@ def _leer_tarea(conexion, tarea_id: int):
 
 
 def _leer_activa(conexion, tarea_id: int, para: str):
-    """La tarea, o ValueError si ya no está (el Admin pudo borrarla mientras el
-    aviso o la pantalla seguían abiertos)."""
+    """La tarea, o ValueError si ya no está (la pudieron borrar mientras el aviso
+    o la pantalla seguían abiertos)."""
     tarea = _leer_tarea(conexion, tarea_id)
     if tarea["estado"] != dominio.TAREA_ACTIVA:
-        raise ValueError(f'"{tarea["texto"]}" ya no está: la borró el Administrador. No se puede {para}.')
+        raise ValueError(f'"{tarea["texto"]}" ya no está: la borraron. No se puede {para}.')
     return tarea
 
 
@@ -443,7 +456,7 @@ def crear_tarea(usuario_id: int, texto, hora, repeticion, dias_semana=None, ahor
     los días de ELEGIR DÍAS (0 = lunes). SOLO HOY es el día del local en curso.
     ValueError si algo está mal escrito o si es de SOLO HOY y su hora ya pasó.
     """
-    usuarios_repo.exigir_admin(usuario_id, _PARA_CARGAR)
+    _exigir_que_pueda_cargar(usuario_id)
     ahora = _como_momento(ahora)
     campos = _revisar(texto, hora, repeticion, dias_semana, _hoy(ahora))
     if campos["repeticion"] == dominio.TAREA_UN_SOLO_DIA:
@@ -473,7 +486,7 @@ def modificar_tarea(usuario_id: int, tarea_id: int, texto, hora, repeticion, dia
     local en curso; con una hora que ya pasó solo se acepta si hoy ya le tocaba
     (corregir una de hoy), porque si no nunca avisaría.
     """
-    usuarios_repo.exigir_admin(usuario_id, _PARA_CARGAR)
+    _exigir_que_pueda_cargar(usuario_id)
     ahora = _como_momento(ahora)
     hoy = _hoy(ahora)
     nuevos = _revisar(texto, hora, repeticion, dias_semana, hoy)
@@ -503,7 +516,7 @@ def modificar_tarea(usuario_id: int, tarea_id: int, texto, hora, repeticion, dia
 def borrar_tarea(usuario_id: int, tarea_id: int, ahora=None):
     """La saca de la lista: deja de avisar y de verse. La fila queda BORRADA con
     quién y cuándo (regla 7), y lo que ya se hizo sigue en el historial."""
-    usuarios_repo.exigir_admin(usuario_id, _PARA_CARGAR)
+    _exigir_que_pueda_cargar(usuario_id)
     ahora = _como_momento(ahora)
     with conexion_db() as conexion:
         conexion.execute("BEGIN IMMEDIATE")

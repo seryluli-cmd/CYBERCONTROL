@@ -302,8 +302,10 @@ una hora, como "PRENDER LAS LUCES DE AFUERA" a las 19:30:
   de hoy, que siguen avisando), TODO EL DÍA y TODAS LAS TAREAS (las cargadas, con
   cuándo se repite). En la grilla, cada una con su estado (HECHA · quién y a qué
   hora, tachada; ATRASADA · 1 h 12 min; EN 18 MIN; MÁS TARDE) y la tecla HECHA, que
-  pregunta antes. + NUEVA TAREA, MODIFICAR y BORRAR son solo del Administrador (con
-  el borde punteado): los demás las ven igual y les dicen "Acceso Restringido". El
+  pregunta antes. + NUEVA TAREA, MODIFICAR y BORRAR son del Administrador y de quien
+  tenga el permiso Tareas del Turno (lo tilda el Admin en Usuarios, desde el
+  2026-11-20; con el borde punteado): los demás las ven igual y les dicen "Acceso
+  Restringido". El
   formulario (`ui/tareas_turno_dialogos.py`) pide TAREA, HORA (como la escriban:
   "1930", "19.30"), muestra el turno que le toca y SE REPITE: TODOS LOS DÍAS, ELEGIR
   DÍAS o SOLO HOY. HISTORIAL muestra los días que ya terminaron, con quién hizo cada
@@ -953,7 +955,9 @@ parámetro a cada ventana que se abre.
 
 `rol` es `ADMIN` o `EMPLEADA`. Una empleada puede recibir permisos para
 Artículos, Compras, Consulta de Ventas (sin anular), Reportes, Control de
-Cierres y operación de PCs/Miembros; la lista única está en
+Cierres, Tareas del Turno (cargar, cambiar y borrar tareas, desde el 2026-11-20;
+no abre Administrar Kiosko: ver `usuarios_repo.es_encargado`) y operación de
+PCs/Miembros; la lista única está en
 `usuarios_repo.PERMISOS_EMPLEADA` (ese último permiso ya no gobierna nada
 funcional desde el 2026-10-19: Miembros y la PlayStation 5 abren para
 cualquier operador logueado, igual que la grilla de PCs). También el

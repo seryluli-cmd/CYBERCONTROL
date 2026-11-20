@@ -32,12 +32,25 @@ from database import conexion_db, hash_clave, verificar_clave
 #   columnas no se borran, regla 6), pero ya no se lee ni se escribe. Si el
 #   dueño quiere volver a repartir quién opera qué, se suma de nuevo acá y se
 #   engancha en playstation_repo.puede_operar o en Miembros.
-PERMISOS_EMPLEADA = [
+# - Un permiso nuevo es una fila acá, su columna en el CREATE TABLE de
+#   database_esquema.py y en database_migraciones._migrar_columnas_permisos.
+#   La casilla de Usuarios sale sola de esta lista, y la huella de la otra PC
+#   (admin_remoto/lista_blanca.py) la incluye: las dos copias tienen que tener las
+#   mismas casillas, o la que no la tiene la apagaría al guardar ese usuario.
+PERMISOS_DE_ADMINISTRAR_KIOSKO = [
     ("permiso_articulos", "Artículos (crear/editar productos y precios)"),
     ("permiso_compras", "Compras (cargar mercadería / stock)"),
     ("permiso_consulta_ventas", "Consulta de Ventas (sin poder anular)"),
     ("permiso_reportes", "Reportes"),
     ("permiso_control_cierres", "Control de Cierres de Turno"),
+]
+# TAREAS DEL TURNO: cargar, cambiar y borrar tareas (pedido del dueño, 2026-11-20:
+# "quiero que una usuaria Gabriela sí pueda crear tareas ... y por si quiero que otros
+# operadores también"). Marcarlas HECHA y posponerlas lo hace cualquiera, sin permiso.
+# No está en PERMISOS_DE_ADMINISTRAR_KIOSKO a propósito: no abre Administrar Kiosko.
+PERMISO_TAREAS_TURNO = "permiso_tareas_turno"
+PERMISOS_EMPLEADA = PERMISOS_DE_ADMINISTRAR_KIOSKO + [
+    (PERMISO_TAREAS_TURNO, "Tareas del Turno (cargar, cambiar y borrar tareas)"),
 ]
 
 
@@ -51,6 +64,15 @@ def tiene_permiso(usuario, clave_permiso: str) -> bool:
     if dominio.es_admin(usuario):
         return True
     return bool(usuario[clave_permiso])
+
+
+def es_encargado(usuario) -> bool:
+    """True si `usuario` abre "Administrar Kiosko": un Admin, o una Empleada con al
+    menos uno de PERMISOS_DE_ADMINISTRAR_KIOSKO. "Encargado" no es un rol de la base.
+    El de Tareas del Turno no cuenta: con ese solo, el botón le sigue diciendo que no."""
+    return dominio.es_admin(usuario) or any(
+        tiene_permiso(usuario, clave_permiso) for clave_permiso, _ in PERMISOS_DE_ADMINISTRAR_KIOSKO
+    )
 
 
 def _validar_credenciales_y_registrar_sesion(conexion, fila, clave: str):
@@ -236,6 +258,34 @@ def exigir_admin(usuario_id: int, para: str):
     if not dominio.es_admin(usuario):
         raise PermissionError(f"Solo un Administrador puede {para}.")
     return usuario
+
+
+def exigir_permiso(usuario_id: int, clave_permiso: str, para: str):
+    """
+    Como usuario_habilitado(), y además tiene que tener HOY `clave_permiso` (un
+    Admin siempre lo tiene, ver tiene_permiso). Se relee de la base: el permiso que
+    el Admin le sacó con la sesión abierta ya no le sirve. Si no lo tiene,
+    PermissionError con un mensaje listo para mostrar ("... puede {para}").
+    Devuelve la fila del usuario.
+    """
+    usuario = usuario_habilitado(usuario_id)
+    if not tiene_permiso(usuario, clave_permiso):
+        raise PermissionError(
+            f"Solo un Administrador, o quien tenga el permiso, puede {para}. "
+            "El permiso lo da un Administrador en Usuarios."
+        )
+    return usuario
+
+
+def tiene_permiso_hoy(usuario_id: int, clave_permiso: str) -> bool:
+    """Lo mismo que exigir_permiso, pero contesta sí o no: para que una pantalla sepa,
+    al abrirse, si habilita sus teclas (sin esperar a que la persona salga y vuelva a
+    entrar después de que el Admin le dio o le sacó el permiso)."""
+    try:
+        exigir_permiso(usuario_id, clave_permiso, "")
+    except PermissionError:
+        return False
+    return True
 
 
 def _proximo_numero_disponible(conexion) -> int:

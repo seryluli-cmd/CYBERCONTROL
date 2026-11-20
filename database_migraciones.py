@@ -43,6 +43,7 @@ def _migrar_columnas_permisos(conexion: sqlite3.Connection):
     for columna in (
         "permiso_articulos", "permiso_compras", "permiso_consulta_ventas",
         "permiso_reportes", "permiso_control_cierres", "permiso_control_pcs",
+        "permiso_tareas_turno",
     ):
         _agregar_columna_si_falta(conexion, "usuarios", columna, "INTEGER NOT NULL DEFAULT 0")
     conexion.commit()

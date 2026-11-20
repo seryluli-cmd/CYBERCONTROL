@@ -28,7 +28,8 @@ los permisos (los que no le tocan a alguien no hacen nada al apretarlos):
   ("Operar PCs y Miembros") se sacó de Usuarios el 2026-10-22: ya no daba
   nada (ver usuarios_repo.PERMISOS_EMPLEADA).
 - "Encargado" (ADMIN, o EMPLEADA con al menos uno de los permisos de
-  usuarios_repo.PERMISOS_EMPLEADA): además abre "Administrar Kiosko", que
+  usuarios_repo.PERMISOS_DE_ADMINISTRAR_KIOSKO; ver usuarios_repo.es_encargado: el
+  de Tareas del Turno no cuenta): además abre "Administrar Kiosko", que
   agrupa Artículos/Compras/Consulta de Ventas/Reportes/Control de
   Cierres, y Usuarios si es Admin (eso no se puede delegar con permisos);
   lo que no le toca lo ve en gris, con candado (ui/administrar_kiosko_window.py).
@@ -143,14 +144,8 @@ class MainWindow(QMainWindow):
         # completa "🔄 Operador" (_cambiar_operador) y lo lee main.Aplicacion. Un
         # Cierre de Turno o el cierre forzoso lo dejan en None: esa caja ya no está.
         self.a_quien_volveria = None
-        # "Encargado" no es un rol propio en la base — es un Admin, o una
-        # Empleada con al menos uno de los permisos de administración de
-        # usuarios_repo.PERMISOS_EMPLEADA. Decide si el botón "Administrar
-        # Kiosko" abre algo (se ve siempre).
-        self._es_encargado = self.es_admin or any(
-            usuarios_repo.tiene_permiso(usuario, clave_permiso)
-            for clave_permiso, _ in usuarios_repo.PERMISOS_EMPLEADA
-        )
+        # Decide si el botón "Administrar Kiosko" abre algo (se ve siempre).
+        self._es_encargado = usuarios_repo.es_encargado(usuario)
         self._al_cerrar_sesion = al_cerrar_sesion
         self._remota = modo_remoto.es_copia_remota()
         self._titilar = False

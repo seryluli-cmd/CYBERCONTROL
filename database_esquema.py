@@ -46,7 +46,8 @@ def inicializar_base_de_datos():
     #     "permiso_*" de abajo (ver PERMISOS_EMPLEADA en
     #     usuarios_repo.py) para que también pueda entrar a Artículos,
     #     Compras, Consulta de Ventas (sin poder anular), Reportes o
-    #     Control de Cierres, sin tener que hacerla Admin del todo.
+    #     Control de Cierres, o cargar Tareas del Turno (desde el
+    #     2026-11-20), sin tener que hacerla Admin del todo.
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS usuarios (
             id                       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +61,8 @@ def inicializar_base_de_datos():
             permiso_consulta_ventas  INTEGER NOT NULL DEFAULT 0,
             permiso_reportes         INTEGER NOT NULL DEFAULT 0,
             permiso_control_cierres  INTEGER NOT NULL DEFAULT 0,
-            permiso_control_pcs      INTEGER NOT NULL DEFAULT 0
+            permiso_control_pcs      INTEGER NOT NULL DEFAULT 0,
+            permiso_tareas_turno     INTEGER NOT NULL DEFAULT 0
         )
     """)
     _migrar_columnas_permisos(conexion)

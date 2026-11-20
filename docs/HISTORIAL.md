@@ -601,3 +601,16 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   barra de arriba (que vuelve a medir lo de antes) y va debajo del mosaico, a la derecha de
   HISTORIAL DEL TURNO, con ese nombre; sigue titilando en rojo con las atrasadas ("TAREAS DEL
   TURNO · 2"). Lo arma `MainWindow` y lo suma `PanelControlPcs.agregar_boton_abajo`. Sin .exe.
+- **2026-11-20 — Permiso para cargar TAREAS DEL TURNO** (pedido del dueño: "quiero que una
+  usuaria Gabriela sí pueda crear tareas ... y por si quiero que otros operadores también";
+  eligió que pueda cargar, cambiar y borrar). Una casilla nueva en Usuarios > Permisos extra:
+  "Tareas del Turno (cargar, cambiar y borrar tareas)". Con ella, + NUEVA TAREA, MODIFICAR y
+  BORRAR andan igual que para el Admin; sin ella, siguen diciendo "Acceso Restringido". Marcar
+  HECHA y posponer sigue siendo de cualquiera. El repo lo relee de la base en cada cambio
+  (`usuarios_repo.exigir_permiso`), y la ventana al abrirse (`tareas_turno_repo.puede_cargar`):
+  dárselo o sacárselo vale sin que salga y vuelva a entrar. No abre Administrar Kiosko
+  (`usuarios_repo.es_encargado` mira solo `PERMISOS_DE_ADMINISTRAR_KIOSKO`). El historial ya
+  anotaba quién cargó, cambió o borró cada tarea. Columna nueva `usuarios.permiso_tareas_turno`
+  con migración (arranca en 0 para todos). `piezas_ventana.solo_para_el_admin` pasa a
+  `solo_con_permiso`. La huella de la otra PC ahora incluye las casillas de permisos: las dos
+  copias necesitan el mismo .exe. Sin .exe.

@@ -365,9 +365,11 @@ def marcar_solo_admin(boton: QPushButton):
     _repintar(boton)
 
 
-def solo_para_el_admin(boton: QPushButton, es_admin: bool):
-    """Una tecla que usa solo el Administrador: con el borde punteado para todos y,
-    para quien no es Admin, "Acceso Restringido" al apretarla (ver `restringir`)."""
+def solo_con_permiso(boton: QPushButton, puede: bool, quien: str = TEXTO_SOLO_ADMIN):
+    """Una tecla que no usa cualquiera: con el borde punteado para todos (y `quien`
+    la puede usar, de ayuda al pasar el mouse) y, para quien no puede, "Acceso
+    Restringido" al apretarla (ver `restringir`). `puede` lo decide el repo."""
     marcar_solo_admin(boton)
-    if not es_admin:
+    boton.setToolTip(quien)
+    if not puede:
         restringir(boton)

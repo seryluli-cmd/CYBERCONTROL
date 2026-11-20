@@ -142,6 +142,18 @@ class TestModo(unittest.TestCase):
 # Quién puede entrar desde otra PC
 # ---------------------------------------------------------------------------
 
+class TestLaHuella(unittest.TestCase):
+    def test_cambia_si_cambian_las_casillas_de_permisos(self):
+        # Viajan como {columna: sí/no} y la que falta se guarda apagada: con una copia
+        # que no tiene la casilla de Tareas del Turno (2026-11-20), guardar a Gabriela
+        # desde Usuarios le sacaría el permiso. Con otra huella, ni entra.
+        antes = lista_blanca.huella(lista_blanca.funcion)
+        self.assertEqual(antes, lista_blanca.huella())
+        sin_tareas = [p for p in usuarios_repo.PERMISOS_EMPLEADA if p[0] != usuarios_repo.PERMISO_TAREAS_TURNO]
+        with mock.patch.object(usuarios_repo, "PERMISOS_EMPLEADA", sin_tareas):
+            self.assertNotEqual(lista_blanca.huella(lista_blanca.funcion), antes)
+
+
 class TestQuienEntra(BaseConBaseTemporal):
     def setUp(self):
         super().setUp()
@@ -771,7 +783,7 @@ _PANTALLA_PRINCIPAL = [
 ]
 # Cuentas con lo que ya llegó del mostrador: se hacen en esta PC, sin base.
 _NO_VAN_A_LA_BASE = {
-    ("usuarios_repo", "tiene_permiso"), ("playstation_repo", "puede_operar"),
+    ("usuarios_repo", "tiene_permiso"), ("usuarios_repo", "es_encargado"), ("playstation_repo", "puede_operar"),
     ("reservas_horario_repo", "texto_de_la_hora"), ("reservas_horario_repo", "sin_pc_fija"),
     ("reservas_horario_repo", "pcs_libres"), ("mantenimiento_pc_repo", "minutos_vigentes"),
     ("congelado_repo", "esta_ocupada"), ("pcs_libres_repo", "prendidas_y_libres"),

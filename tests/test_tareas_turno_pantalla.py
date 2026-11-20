@@ -28,11 +28,11 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog, QPushButton
 
 import dominio
-from repositories import tareas_turno_repo
+from repositories import tareas_turno_repo, usuarios_repo
 from ui.tareas_turno_dialogos import DialogoHistorialTareas, DialogoTarea, texto_de_lo_pospuesto
 from ui.tareas_turno_window import (
-    COLUMNA_ESTADO, COLUMNA_HECHA, COLUMNA_HORA, COLUMNA_TAREA, FILTRO_TODAS, FILTRO_TODO_EL_DIA, TEXTO_HECHA,
-    TITULO_SE_REPITE, VentanaTareasTurno,
+    COLUMNA_ESTADO, COLUMNA_HECHA, COLUMNA_HORA, COLUMNA_TAREA, FILTRO_TODAS, FILTRO_TODO_EL_DIA, QUIEN_CARGA,
+    TEXTO_HECHA, TITULO_SE_REPITE, VentanaTareasTurno,
 )
 
 
@@ -227,6 +227,30 @@ class TestLoDelAdministrador(_ConLaVentana):
         for boton in (ventana.boton_nueva, ventana.boton_modificar, ventana.boton_borrar):
             self.assertIn(boton.text(), textos)
             self.assertTrue(boton.property("soloAdmin"))
+            self.assertFalse(boton.property("restringido"))
+            self.assertEqual(boton.toolTip(), QUIEN_CARGA)
+
+    def test_una_empleada_con_el_permiso_carga_y_borra_desde_la_ventana(self):
+        # Pedido del dueño, 2026-11-20 (Gabriela). Se lo dan con la sesión abierta:
+        # `self.carla` es la fila de cuando entró, sin el permiso, y alcanza con
+        # volver a abrir la ventana.
+        usuarios_repo.modificar_usuario(self.carla_id, "Carla", dominio.ROL_EMPLEADA,
+                                        permisos={usuarios_repo.PERMISO_TAREAS_TURNO: True})
+        ventana = self._ventana(self.carla)
+        for boton in (ventana.boton_nueva, ventana.boton_modificar, ventana.boton_borrar):
+            self.assertFalse(boton.property("restringido"))
+            self.assertTrue(boton.property("soloAdmin"))
+        with self._guardar_con("REPONER LA HELADERA", "2015"):
+            ventana.boton_nueva.click()
+        self.assertIn("REPONER LA HELADERA", self._columna(ventana, COLUMNA_TAREA))
+        ventana.tabla.selectRow(self._fila_de(ventana, BASURA))
+        ventana.boton_borrar.click()
+        self.assertNotIn(BASURA, [t["texto"] for t in tareas_turno_repo.listar_tareas(self.reloj[0])])
+
+        # Se lo sacan: la próxima vez que abre, otra vez Acceso Restringido.
+        usuarios_repo.modificar_usuario(self.carla_id, "Carla", dominio.ROL_EMPLEADA, permisos={})
+        ventana = self._ventana(self.carla)
+        self.assertTrue(ventana.boton_nueva.property("restringido"))
 
     def test_nueva_tarea_queda_elegida_y_si_no_es_de_este_turno_pasa_a_todas(self):
         ventana = self._ventana(self.admin)

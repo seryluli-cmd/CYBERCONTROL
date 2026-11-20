@@ -4,8 +4,8 @@ tests/test_tareas_turno.py
 TAREAS DEL TURNO (pedido del dueño, 2026-11-03): cosas para hacer a una hora
 ("PRENDER LAS LUCES DE AFUERA" a las 19:30).
 
-- Las carga, modifica y borra solo un Administrador; HECHA y POSPONER, cualquier
-  operador habilitado.
+- Las carga, modifica y borra un Administrador o quien tenga el permiso Tareas del
+  Turno (desde el 2026-11-20); HECHA y POSPONER, cualquier operador habilitado.
 - Se repiten todos los días, algunos días de la semana o solo hoy, siempre por el
   día del local (de 06:00 a 06:00): la de las 02:00 es de la Noche del día.
 - A su hora avisa; POSPONER 5 o 10 la calla esos minutos y después vuelve, hasta
@@ -36,18 +36,66 @@ from base_tareas_turno import (
 
 
 class TestQuienPuede(_ConTareas):
-    def test_la_empleada_no_carga_ni_modifica_ni_borra(self):
+    SIN_PERMISO = "Solo un Administrador, o quien tenga el permiso"
+
+    def _dar_permiso(self, usuario_id, nombre, dar=True):
+        """Lo que hace el Admin en Usuarios > Modificar: tildar (o destildar) la casilla."""
+        usuarios_repo.modificar_usuario(usuario_id, nombre, dominio.ROL_EMPLEADA,
+                                        permisos={usuarios_repo.PERMISO_TAREAS_TURNO: dar})
+
+    def test_la_empleada_sin_el_permiso_no_carga_ni_modifica_ni_borra(self):
         tarea_id = self._crear()
         ahora = _el(MARTES, "09:00")
-        with self.assertRaisesRegex(PermissionError, "Solo un Administrador"):
+        with self.assertRaisesRegex(PermissionError, self.SIN_PERMISO):
             repo.crear_tarea(self.lucia_id, "BARRER LA VEREDA", "10:00", TODOS, ahora=ahora)
-        with self.assertRaisesRegex(PermissionError, "Solo un Administrador"):
+        with self.assertRaisesRegex(PermissionError, self.SIN_PERMISO):
             repo.modificar_tarea(self.lucia_id, tarea_id, "OTRA COSA", "20:00", TODOS, ahora=ahora)
-        with self.assertRaisesRegex(PermissionError, "Solo un Administrador"):
+        with self.assertRaisesRegex(PermissionError, self.SIN_PERMISO):
             repo.borrar_tarea(self.gaby_id, tarea_id, ahora=ahora)
 
         tarea, = repo.listar_tareas(ahora)
         self.assertEqual((tarea["texto"], tarea["hora"]), (LUCES, "19:30"))
+
+    def test_con_el_permiso_la_empleada_carga_modifica_y_borra_y_queda_a_su_nombre(self):
+        # Pedido del dueño, 2026-11-20: "quiero que Gabriela sí pueda crear tareas".
+        self._dar_permiso(self.gaby_id, "Gaby")
+        ahora = _el(MARTES, "09:00")
+        vereda = repo.crear_tarea(self.gaby_id, "BARRER LA VEREDA", "10:00", TODOS, ahora=ahora)
+        repo.modificar_tarea(self.gaby_id, vereda, "BARRER LA VEREDA", "10:30", TODOS, ahora=ahora)
+        self.assertEqual(self._fila("tareas_turno", vereda)["creada_por"], self.gaby_id)
+        with conexion_db() as conexion:
+            cambio, = conexion.execute("SELECT usuario_id, hora FROM tareas_turno_cambios WHERE tarea_id = ?",
+                                       (vereda,)).fetchall()
+        # Quién la cambió y cómo era antes.
+        self.assertEqual(tuple(cambio), (self.gaby_id, "10:00"))
+        # También una que cargó el Admin.
+        luces = self._crear()
+        repo.borrar_tarea(self.gaby_id, luces, ahora=ahora)
+        self.assertEqual(self._fila("tareas_turno", luces)["borrada_por"], self.gaby_id)
+        self.assertEqual([(t["texto"], t["hora"]) for t in repo.listar_tareas(ahora)], [("BARRER LA VEREDA", "10:30")])
+        # Lucía, sin la casilla, sigue sin poder.
+        with self.assertRaisesRegex(PermissionError, self.SIN_PERMISO):
+            repo.borrar_tarea(self.lucia_id, vereda, ahora=ahora)
+
+    def test_sacarle_el_permiso_la_frena_aunque_siga_adentro(self):
+        self._dar_permiso(self.gaby_id, "Gaby")
+        self.assertTrue(repo.puede_cargar(self.gaby_id))
+        self._dar_permiso(self.gaby_id, "Gaby", dar=False)
+        self.assertFalse(repo.puede_cargar(self.gaby_id))
+        with self.assertRaisesRegex(PermissionError, self.SIN_PERMISO):
+            repo.crear_tarea(self.gaby_id, "BARRER LA VEREDA", "10:00", TODOS, ahora=_el(MARTES, "09:00"))
+        self.assertEqual(repo.listar_tareas(_el(MARTES, "09:00")), [])
+
+    def test_puede_cargar_el_admin_y_quien_tiene_el_permiso_si_sigue_habilitado(self):
+        self._dar_permiso(self.gaby_id, "Gaby")
+        self.assertTrue(repo.puede_cargar(self.admin_id))
+        self.assertTrue(repo.puede_cargar(self.gaby_id))
+        self.assertFalse(repo.puede_cargar(self.lucia_id))
+        self.assertFalse(repo.puede_cargar(999))
+        usuarios_repo.desactivar_usuario(self.gaby_id)
+        self.assertFalse(repo.puede_cargar(self.gaby_id))
+        with self.assertRaisesRegex(PermissionError, "ya no está habilitado"):
+            repo.crear_tarea(self.gaby_id, "BARRER LA VEREDA", "10:00", TODOS, ahora=_el(MARTES, "09:00"))
 
     def test_un_admin_dado_de_baja_no_sigue_cargando(self):
         otro_admin = usuarios_repo.crear_usuario("Dueño", "1234", dominio.ROL_ADMIN)

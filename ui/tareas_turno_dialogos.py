@@ -4,7 +4,7 @@ tareas_turno_dialogos.py
 TAREAS DEL TURNO (pedido del dueño, 2026-11-03): lo que abre la ventana de
 ui/tareas_turno_window.py, aparte para que ningún archivo pase las ~600 líneas.
 
-- DialogoTarea: + NUEVA TAREA y MODIFICAR (solo el Administrador). TAREA, HORA (como
+- DialogoTarea: + NUEVA TAREA y MODIFICAR (el Admin o quien tenga el permiso). TAREA, HORA (como
   la escriban: "1930", "19:30", "19.30", "7:05"), el TURNO que sale de esa hora y SE
   REPITE: TODOS LOS DÍAS, ELEGIR DÍAS (lunes a domingo, en pastillas) o SOLO HOY.
 - DialogoHistorialTareas: los días que ya terminaron, con quién hizo cada tarea y a
@@ -83,8 +83,8 @@ def _como_qdate(dia) -> QDate:
 class DialogoTarea(QDialog):
     """
     + NUEVA TAREA (`tarea` None) o MODIFICAR (`tarea`, uno de los dicts de
-    tareas_turno_repo.listar_tareas). Solo lo abre el Administrador, y el repo lo
-    vuelve a exigir al guardar. `ahora` es el reloj (para las pruebas). Al guardar
+    tareas_turno_repo.listar_tareas). Solo lo abre el Administrador o quien tenga el
+    permiso Tareas del Turno, y el repo lo vuelve a exigir al guardar. `ahora` es el reloj (para las pruebas). Al guardar
     queda en `tarea_id` el número de la tarea.
 
     No tiene se_puede_cerrar_sola: es un formulario a medio escribir, y el cierre

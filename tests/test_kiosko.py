@@ -468,6 +468,25 @@ class TestPermisosDeEmpleada(BaseConBaseTemporal):
         for columna, _ in usuarios_repo.PERMISOS_EMPLEADA:
             self.assertFalse(usuarios_repo.tiene_permiso(usuario, columna))
 
+    def test_el_permiso_de_tareas_no_abre_administrar_kiosko(self):
+        # 2026-11-20: Gabriela carga tareas, pero no por eso entra a Artículos o Reportes.
+        tareas = {usuarios_repo.PERMISO_TAREAS_TURNO: True}
+        gaby = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Gaby", "1234", "EMPLEADA", tareas))
+        self.assertTrue(usuarios_repo.tiene_permiso(gaby, usuarios_repo.PERMISO_TAREAS_TURNO))
+        self.assertFalse(usuarios_repo.es_encargado(gaby))
+        # Con uno de Administrar Kiosko sí; y el Admin siempre.
+        encargada = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario(
+            "Mica", "1234", "EMPLEADA", {**tareas, "permiso_reportes": True}))
+        self.assertTrue(usuarios_repo.es_encargado(encargada))
+        jefa = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Jefa", "1234", "ADMIN"))
+        self.assertTrue(usuarios_repo.es_encargado(jefa))
+        self.assertTrue(usuarios_repo.tiene_permiso(jefa, usuarios_repo.PERMISO_TAREAS_TURNO))
+
+    def test_la_casilla_de_tareas_esta_en_usuarios(self):
+        etiquetas = dict(usuarios_repo.PERMISOS_EMPLEADA)
+        self.assertEqual(etiquetas[usuarios_repo.PERMISO_TAREAS_TURNO],
+                         "Tareas del Turno (cargar, cambiar y borrar tareas)")
+
 
 class TestMigracionColumnasPermisos(BaseConBaseTemporal):
     def test_agrega_columnas_permiso_a_una_tabla_usuarios_vieja(self):

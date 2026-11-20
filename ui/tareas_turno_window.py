@@ -10,7 +10,8 @@ marcarlas y cargarlas. Las reglas, en repositories/tareas_turno_repo.py.
 
 - Arriba, el turno y el día del local ("Tarde · lunes 03/11") y cuántas hay PARA
   HACER, ATRASADAS (en rojo si hay) y HECHAS.
-- + NUEVA TAREA, MODIFICAR y BORRAR: solo el Administrador, con el borde punteado.
+- + NUEVA TAREA, MODIFICAR y BORRAR: el Administrador o quien tenga el permiso Tareas
+  del Turno (desde el 2026-11-20, lo da el Admin en Usuarios), con el borde punteado.
   A los demás les dicen "Acceso Restringido" al apretarlas; el repo lo vuelve a
   exigir al guardar.
 - Pastillas: ESTE TURNO (arranca acá; con las atrasadas de un turno anterior de hoy,
@@ -35,8 +36,8 @@ import turnos
 from errores import registrar_error
 from repositories import tareas_turno_repo
 from ui.piezas_ventana import (
-    agregar_indicador, cabecera_oscura, fila_de_filtros, solo_para_el_admin, panel_de_tabla, pie_de_ventana,
-    poner_indicador, tecla, tecla_de_renglon,
+    agregar_indicador, cabecera_oscura, fila_de_filtros, panel_de_tabla, pie_de_ventana, poner_indicador,
+    solo_con_permiso, tecla, tecla_de_renglon,
 )
 from ui.tareas_turno_dialogos import (
     COLOR_APAGADO, COLOR_ATRASADA, COLOR_HECHA, COLOR_MAS_TARDE, COLOR_PRONTO, DialogoHistorialTareas, DialogoTarea,
@@ -45,6 +46,9 @@ from ui.tareas_turno_dialogos import (
 from ui.utils import confirmar, crear_tabla, manejar_errores, mostrar_aviso, sin_boton_por_defecto
 
 TITULO = "Tareas del Turno"
+# La ayuda de + NUEVA TAREA, MODIFICAR y BORRAR (el borde punteado dice que no es
+# para todos).
+QUIEN_CARGA = "El Administrador, o quien tenga el permiso Tareas del Turno (se da en Usuarios)"
 # Las pastillas: la primera de fila_de_filtros vale None.
 FILTRO_ESTE_TURNO = None
 FILTRO_TODO_EL_DIA = "TODO EL DÍA"
@@ -101,7 +105,8 @@ class VentanaTareasTurno(QDialog):
     def __init__(self, usuario, parent=None, ahora=datetime.now):
         super().__init__(parent)
         self.usuario = usuario
-        self.es_admin = dominio.es_admin(usuario)
+        # Leído al abrir: el permiso que el Admin le dio con la sesión abierta ya vale.
+        self.puede_cargar = tareas_turno_repo.puede_cargar(usuario["id"])
         self._ahora = ahora
         # Lo que muestra cada renglón, en orden: apariciones del día o tareas cargadas.
         self._filas = []
@@ -129,13 +134,14 @@ class VentanaTareasTurno(QDialog):
         self.boton_historial.setToolTip("Los días anteriores: quién hizo cada tarea y a qué hora.")
         barra_botones = QHBoxLayout()
         barra_botones.setSpacing(8)
-        # Las del Admin, solo para el Admin. Hasta el 2026-11-04 a los demás ni les
-        # aparecían; ahora las ven igual y les dicen "Acceso Restringido" (pedido del dueño).
+        # Cargar, cambiar y borrar: el Admin o quien tenga el permiso. Hasta el
+        # 2026-11-04 a los demás ni les aparecían; ahora las ven igual y les dicen
+        # "Acceso Restringido" (pedido del dueño).
         self.boton_nueva = tecla("+  NUEVA TAREA", self._nueva, "teclaAzul")
         self.boton_modificar = tecla("✎  MODIFICAR", self._modificar)
         self.boton_borrar = tecla("BORRAR", self._borrar, "teclaRoja")
         for boton in (self.boton_nueva, self.boton_modificar, self.boton_borrar):
-            solo_para_el_admin(boton, self.es_admin)
+            solo_con_permiso(boton, self.puede_cargar, QUIEN_CARGA)
             barra_botones.addWidget(boton)
         barra_botones.addWidget(self.boton_historial)
         barra_botones.addStretch()
@@ -266,7 +272,7 @@ class VentanaTareasTurno(QDialog):
         return self._filas[self.tabla.currentRow()]
 
     # -----------------------------------------------------------------
-    # HECHA (cualquiera) y lo del Administrador
+    # HECHA (cualquiera) y cargar, cambiar y borrar (con el permiso)
     # -----------------------------------------------------------------
 
     @manejar_errores
