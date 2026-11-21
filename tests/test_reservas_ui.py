@@ -18,7 +18,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QDate, Qt, QTime  # noqa: E402
+from PySide6.QtCore import QDate, QRect, Qt, QTime  # noqa: E402
 from PySide6.QtWidgets import QApplication, QFrame, QPushButton  # noqa: E402
 
 import dominio  # noqa: E402
@@ -27,7 +27,7 @@ from control_pcs.repositories import (  # noqa: E402
     pcs_repo, playstation_repo, reservas_habilitar_repo, reservas_repo,
 )
 from control_pcs.ui.reservas_dialogos import DialogoHabilitarReserva  # noqa: E402
-from control_pcs.ui.reservas_nueva import DialogoNuevaReserva  # noqa: E402
+from control_pcs.ui.reservas_nueva import ALTO_DE_LA_VENTANA, DialogoNuevaReserva  # noqa: E402
 from control_pcs.ui.reservas_window import (  # noqa: E402
     COLOR_ESTADO, COLUMNA_EQUIPO, COLUMNA_ESTADO, TONO_DEL_EQUIPO, ReservasWindow,
 )
@@ -254,6 +254,25 @@ class TestNuevaReserva(_ConUnaReserva):
         # Las tarjetas de la PS5 se van y quedan las de las PCs, en azul.
         self.assertEqual(self._bonos(dialogo), [("3 horas", TONO_PCS), ("Promo 10 hs", TONO_PCS)])
         self.assertEqual(dialogo.titulo_bonos.text(), "BONO  ·  PC2")
+
+    def test_abre_un_30_por_ciento_mas_alta_sin_salirse_de_la_pantalla(self):
+        # Pedido del dueño (2026-11-21): "más alta un 30% para que cuando se elija una PC
+        # se puedan ver todas las promos". Era de 680; la lista de bonos se estira.
+        class _Pantalla:
+            def __init__(self, ancho, alto):
+                self._disponible = QRect(0, 0, ancho, alto)
+
+            def availableGeometry(self):
+                return self._disponible
+
+        self.assertEqual(ALTO_DE_LA_VENTANA, round(680 * 1.3))
+        with mock.patch.object(DialogoNuevaReserva, "screen", lambda _self: _Pantalla(1920, 1040)):
+            grande = self._dialogo()
+        self.assertEqual(grande.height(), ALTO_DE_LA_VENTANA)
+        # En una pantalla chica no se sale: lo que entra, dejando lugar para la barra de título.
+        with mock.patch.object(DialogoNuevaReserva, "screen", lambda _self: _Pantalla(1366, 728)):
+            chica = self._dialogo()
+        self.assertLessEqual(chica.height(), 728 - 40)
 
     def test_sin_bonos_lo_dice_y_no_cobra(self):
         dialogo = self._dialogo()  # arranca en la PS5-1, que acá no tiene bonos

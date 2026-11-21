@@ -723,3 +723,9 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   pizarra... (`ui.dibujos_tabla.DelegadoEtiqueta.colores_de`, el mismo color con que se dibuja la
   etiqueta). Lo anulado sigue todo en rojo. Prueba en `tests/test_historial_turno.py`; 2144 pruebas.
   Sin .exe; la lista blanca no cambia.
+- **2026-11-21 — Nueva reserva un 30% más alta** (pedido del dueño: "que sea más alta un 30% para que
+  cuando se elija una PC se puedan ver todas las promos de PCs"). Abre de 1100 x 884 en vez de 1100 x 680
+  (`reservas_nueva.ANCHO_DE_LA_VENTANA` / `ALTO_DE_LA_VENTANA`); la lista de bonos se estira con la ventana,
+  así que con una PC elegida se ven unas siete promos sin bajar. Nunca más que la pantalla (deja 40 px
+  para la barra de título), como Reportes y Miembros. Prueba en `tests/test_reservas_ui.py`. Sin .exe; la
+  lista blanca no cambia.

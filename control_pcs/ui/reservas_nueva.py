@@ -47,6 +47,10 @@ from ui.utils import (
 # entra en una pantalla de 1366 x 768.
 PCS_POR_FILA = 6
 
+# El tamaño con que abre (ver DialogoNuevaReserva.__init__): el alto es 680 + 30%.
+ANCHO_DE_LA_VENTANA = 1100
+ALTO_DE_LA_VENTANA = 884
+
 
 def _repintar(widget):
     """Vuelve a aplicar la hoja de estilos después de cambiarle una propiedad."""
@@ -86,7 +90,15 @@ class DialogoNuevaReserva(QDialog):
         self.setWindowTitle("Nueva reserva")
         self.equipos = reservas_repo.equipos_para_reservar()
         self._armar_interfaz()
-        self.resize(1100, 680)
+        # Un 30% más alta que al principio (680), pedido del dueño 2026-11-21: "para que
+        # cuando se elija una PC se puedan ver todas las promos" (la lista de bonos se estira
+        # con la ventana). Nunca más que la pantalla, para que no se salga de ella.
+        ancho, alto = ANCHO_DE_LA_VENTANA, ALTO_DE_LA_VENTANA
+        if self.screen() is not None:
+            disponible = self.screen().availableGeometry()
+            ancho = min(ancho, disponible.width() - 20)
+            alto = min(alto, disponible.height() - 40)
+        self.resize(ancho, alto)
         self._marcar_reservados()
         self._cargar_bonos()
 
