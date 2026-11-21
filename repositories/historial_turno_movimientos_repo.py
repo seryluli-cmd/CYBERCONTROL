@@ -239,7 +239,7 @@ def habilitaciones(conexion, desde: str, hasta: str) -> list:
 
     for fila in conexion.execute(
         """
-        SELECT sesiones_playstation.fecha_inicio,
+        SELECT sesiones_playstation.fecha_inicio, sesiones_playstation.consola,
                (SELECT venta_id FROM sesion_playstation_bonos WHERE sesion_id = sesiones_playstation.id
                 ORDER BY id LIMIT 1) AS venta_del_primer_bono,
                reservas.id AS reserva, reservas.cliente, reservas.bono_nombre
@@ -250,7 +250,7 @@ def habilitaciones(conexion, desde: str, hasta: str) -> list:
     ):
         if fila["reserva"] is None and fila["venta_del_primer_bono"] is not None:
             continue
-        detalle = f"{dominio.NOMBRE_PLAYSTATION} se prendió" + (
+        detalle = f"{dominio.nombre_consola(fila['consola'])} se prendió" + (
             _con_reserva(fila) if fila["reserva"] is not None else "")
         nota = "pagada al reservar" if fila["reserva"] is not None else ""
         movimientos.append(movimiento(fila["fecha_inicio"], TIPO_PS5, (GRUPO_HABILITACIONES,), detalle, nota))

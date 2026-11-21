@@ -23,11 +23,13 @@ from control_pcs.repositories import pcs_repo, playstation_repo, reservas_horari
 def lugares_para_habilitar(reserva_id: int) -> list:
     """
     Dónde se puede habilitar ahora una reserva: los equipos LIBRES de su tipo,
-    como {"estacion_id", "nombre", "es_la_reservada", "enlazada"} (enlazada: el
-    Cliente PC de esa PC está respondiendo). Para una de PC común, cualquier PC
-    común libre, con la reservada primero; una "A reprogramar" ya no tiene PC
-    propia (decisión del dueño). Para PCSTREAM, PCSTREAM; para la consola, la
-    consola (estacion_id None). Lista vacía si no hay ninguno libre.
+    como {"estacion_id", "consola", "nombre", "es_la_reservada", "enlazada"}
+    (enlazada: el Cliente PC de esa PC está respondiendo). Para una de PC común,
+    cualquier PC común libre, con la reservada primero; una "A reprogramar" ya no
+    tiene PC propia (decisión del dueño). Para PCSTREAM, PCSTREAM. Para una de
+    consola, cualquier PlayStation 5 libre, con la reservada primero, como con las
+    PCs ("consola" es su número y estacion_id va en None; en las PCs, "consola"
+    va en None). Lista vacía si no hay ninguno libre.
 
     "reservada_para" ("Marta hoy 11:00", o None): esa PC tiene otra reserva antes
     de que termine el bono de esta, así que quedaría ocupada cuando llegue ese
@@ -35,30 +37,37 @@ def lugares_para_habilitar(reserva_id: int) -> list:
     """
     with conexion_db() as conexion:
         reserva = reservas_repo._reserva_abierta(conexion, reserva_id)
-    if reserva["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION:
-        consola = playstation_repo.estado()
-        libre = consola["sesion"] is None or consola["tiempo_agotado"]
-        return [{"estacion_id": None, "nombre": dominio.NOMBRE_PLAYSTATION, "es_la_reservada": True,
-                 "enlazada": True, "reservada_para": None}] if libre else []
-
-    propia = reserva["estacion_id"] if reserva["estado"] == dominio.RESERVA_PENDIENTE else None
-    es_de_pcstream = reserva["equipo"] == dominio.EQUIPO_RESERVA_PCSTREAM
     ahora = datetime.now()
     hasta = ahora + timedelta(minutes=reserva["minutos"])
-    lugares = []
-    for item in pcs_repo.estado_estaciones():
-        estacion = item["estacion"]
-        if dominio.es_pcstream(estacion["nombre"]) != es_de_pcstream:
-            continue
-        if item["sesion"] is not None and item["segundos_restantes"]:
-            continue
+
+    def reservada_para(item):
         otra = item["reserva"]
-        reservada_para = None
         if otra is not None and otra["id"] != reserva_id and otra["inicio"] < hasta:
-            reservada_para = f"{otra['cliente']} {reservas_horario_repo.texto_de_la_hora(otra['inicio'], ahora)}"
-        lugares.append({"estacion_id": estacion["id"], "nombre": estacion["nombre"],
-                        "es_la_reservada": es_de_pcstream or estacion["id"] == propia,
-                        "enlazada": item["enlazada"], "reservada_para": reservada_para})
+            return f"{otra['cliente']} {reservas_horario_repo.texto_de_la_hora(otra['inicio'], ahora)}"
+        return None
+
+    lugares = []
+    if reserva["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION:
+        # Una consola a la que se le acabó el tiempo y nadie liberó cuenta como libre
+        # (se la libera al habilitar, ver playstation_repo._abrir_sesion_de_reserva).
+        for item in playstation_repo.estados():
+            if item["sesion"] is not None and not item["tiempo_agotado"]:
+                continue
+            lugares.append({"estacion_id": None, "consola": item["consola"], "nombre": item["nombre"],
+                            "es_la_reservada": item["consola"] == reserva["consola"],
+                            "enlazada": True, "reservada_para": reservada_para(item)})
+    else:
+        propia = reserva["estacion_id"] if reserva["estado"] == dominio.RESERVA_PENDIENTE else None
+        es_de_pcstream = reserva["equipo"] == dominio.EQUIPO_RESERVA_PCSTREAM
+        for item in pcs_repo.estado_estaciones():
+            estacion = item["estacion"]
+            if dominio.es_pcstream(estacion["nombre"]) != es_de_pcstream:
+                continue
+            if item["sesion"] is not None and item["segundos_restantes"]:
+                continue
+            lugares.append({"estacion_id": estacion["id"], "consola": None, "nombre": estacion["nombre"],
+                            "es_la_reservada": es_de_pcstream or estacion["id"] == propia,
+                            "enlazada": item["enlazada"], "reservada_para": reservada_para(item)})
     lugares.sort(key=lambda lugar: (not lugar["es_la_reservada"], lugar["reservada_para"] is not None))
     return lugares
 
@@ -129,27 +138,31 @@ def _falta(conexion, reserva) -> float:
     return max(0.0, round(reserva["precio"] - reservas_repo._pagado(conexion, reserva["id"]), 2))
 
 
-def preparar_habilitacion(reserva_id: int, estacion_id) -> float:
+def preparar_habilitacion(reserva_id: int, estacion_id, consola=None) -> float:
     """
     Lo que controla habilitar ANTES de cobrar el resto, sin grabar nada (la
     reserva sigue esperando y el lugar elegido sirve; ValueError si no), para no
     cobrar algo que después no se puede habilitar. Devuelve lo que falta cobrar.
+    `estacion_id` y `consola`, como en habilitar.
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
         reserva = reservas_repo._reserva_abierta(conexion, reserva_id)
         _no_es_de_socio(reserva)
-        if reserva["equipo"] != dominio.EQUIPO_RESERVA_PLAYSTATION:
+        if reserva["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION:
+            playstation_repo.revisar_libre(conexion, consola, ahora)
+        else:
             _revisar_pc(conexion, reserva, estacion_id, ahora)
         return _falta(conexion, reserva)
 
 
-def habilitar(reserva_id: int, usuario_id: int, estacion_id, pagos: list) -> dict:
+def habilitar(reserva_id: int, usuario_id: int, estacion_id, pagos: list, consola=None) -> dict:
     """
     El cliente llegó: se cobra lo que falta (si falta algo) y se le abre el
     equipo con el bono reservado. `estacion_id` es la PC donde se sienta (None
-    para la consola); `pagos`, los de la ventana de cobro del resto (vacío si ya
-    estaba todo pagado).
+    para una consola); `consola`, la PlayStation 5 donde juega (su número; puede
+    ser la otra si la reservada está ocupada, como con las PCs); `pagos`, los de
+    la ventana de cobro del resto (vacío si ya estaba todo pagado).
 
     Lo que falta entra en la caja de quien habilita. Si ya estaba todo pagado NO
     se crea ninguna venta: esa plata está en la caja donde se cobró al reservar.
@@ -182,9 +195,9 @@ def habilitar(reserva_id: int, usuario_id: int, estacion_id, pagos: list) -> dic
         if reserva["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION:
             estacion_id = None
             sesion_playstation_id = playstation_repo._abrir_sesion_de_reserva(
-                conexion, reserva["bono_id"], reserva["minutos"], reserva["precio"], venta_del_bono, ahora
+                conexion, consola, reserva["bono_id"], reserva["minutos"], reserva["precio"], venta_del_bono, ahora
             )
-            lugar = dominio.NOMBRE_PLAYSTATION
+            lugar = dominio.nombre_consola(consola)
         else:
             sesion_pc_id, lugar = _abrir_en_una_pc(conexion, reserva, estacion_id, venta_del_bono, ahora)
 

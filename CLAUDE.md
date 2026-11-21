@@ -117,7 +117,7 @@ desde ahí, nunca escritos a mano:
 | Método de pago | `PAGO_EFECTIVO`, `PAGO_DIGITAL`, `METODOS_PAGO` (no hay "mixto": ver [la guía de ventas](docs/guia/VENTAS_Y_ARTICULOS.md)) |
 | Turno | `TURNO_MANANA`, `TURNO_TARDE`, `TURNO_NOCHE`, `TURNOS` |
 | Origen de una venta | `ORIGEN_KIOSKO`, `ORIGEN_ALQUILER_PCS`, `ORIGEN_PLAYSTATION`, `ORIGENES_VENTA` |
-| Equipo que se alquila por tiempo / estado de su sesión | `DISPOSITIVO_PC`, `DISPOSITIVO_PLAYSTATION`, `NOMBRE_PLAYSTATION`, `NOMBRE_PCSTREAM`, `SESION_ACTIVA`, `SESION_FINALIZADA` |
+| Equipo que se alquila por tiempo / estado de su sesión | `DISPOSITIVO_PC`, `DISPOSITIVO_PLAYSTATION`, `CONSOLAS_PLAYSTATION`, `nombre_consola`, `NOMBRE_PCSTREAM`, `SESION_ACTIVA`, `SESION_FINALIZADA` |
 | Comando a una PC / su estado en la cola | `TIPOS_COMANDO_PC` (los de Shadow Defender, en `COMANDOS_CON_CLAVE`; el payload de `COMANDO_MANTENIMIENTO`, en `ORDENES_MANTENIMIENTO`), `ESTADO_COMANDO_PENDIENTE`, `ESTADO_COMANDO_ENTREGADO` |
 | Aviso de admin de una PC | `EVENTOS_ADMIN_PC` (los que manda el Cliente PC + `CLIENTE_REANUDADO`) |
 

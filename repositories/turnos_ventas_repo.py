@@ -335,10 +335,11 @@ def _reservas_habilitadas_sin_cobro(conexion, desde: str, hasta: str) -> list:
     """
     filas = conexion.execute(
         """
-        SELECT reservas.id AS numero, reservas.cliente, reservas.sesion_playstation_id,
+        SELECT reservas.id AS numero, reservas.cliente, sesiones_playstation.consola AS consola_habilitada,
                habilitada.nombre AS pc, primer_pago.fecha AS pagada_el, usuarios.nombre AS pagada_a
         FROM reservas
         LEFT JOIN estaciones AS habilitada ON habilitada.id = reservas.estacion_habilitada_id
+        LEFT JOIN sesiones_playstation ON sesiones_playstation.id = reservas.sesion_playstation_id
         LEFT JOIN ventas AS primer_pago ON primer_pago.id = (
             SELECT MIN(reservas_pagos.venta_id) FROM reservas_pagos
             WHERE reservas_pagos.reserva_id = reservas.id AND reservas_pagos.tipo = ?)
@@ -355,7 +356,7 @@ def _reservas_habilitadas_sin_cobro(conexion, desde: str, hasta: str) -> list:
     ).fetchall()
     return [
         {"numero": fila["numero"], "cliente": fila["cliente"],
-         "lugar": dominio.NOMBRE_PLAYSTATION if fila["sesion_playstation_id"] is not None else fila["pc"],
+         "lugar": dominio.lugar_habilitado(fila["consola_habilitada"], fila["pc"]),
          "pagada_el": fila["pagada_el"], "pagada_a": fila["pagada_a"]}
         for fila in filas
     ]

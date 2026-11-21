@@ -1,18 +1,23 @@
 """
 playstation_repo.py
 =====================
-La PlayStation 5 del local: UNA sola consola, con el nombre fijo
-"PLAYSTATION 5" (dominio.NOMBRE_PLAYSTATION), que se alquila por tiempo con
-bonos propios -- el mismo modelo de cobro que las PCs (bonos prearmados con
-tiempo y monto fijos, nunca minuto suelto), pero con su catálogo, sus sesiones
-y su origen de venta aparte.
+Las PlayStation 5 del local: desde el 2026-11-21 son DOS, PS5-1 y PS5-2 (cada
+consola es un número de dominio.CONSOLAS_PLAYSTATION y su nombre sale de
+dominio.nombre_consola). Se alquilan por tiempo con bonos propios -- el mismo
+modelo de cobro que las PCs (bonos prearmados con tiempo y monto fijos, nunca
+minuto suelto), pero con su catálogo, sus sesiones y su origen de venta aparte.
+Lo que decidió el dueño al comprar la segunda: el MISMO catálogo de bonos para
+las dos (y las mismas ofertas), la plata junta como "PlayStation 5" en la caja y
+los reportes (el detalle dice en cuál fue) y cada reserva aparta una consola en
+particular. Cada consola tiene a lo sumo una sesión en curso, y todo lo que se
+hace con una (vender, liberar, habilitar una reserva) dice cuál.
 
 Por qué no es "una estación más" de `pcs_repo`: una estación es una PC con su
 Cliente PC (bloqueo, reinicio, apagado, IP, renombrar, dar de baja desde
 "Gestionar Estaciones"). Nada de eso existe en una consola, y si estuviera en
 la misma tabla, cada camino pensado para PCs podría alcanzarla por error. Acá
 no hay `estacion_id` en ninguna función: lo que se vende en este módulo SOLO
-puede ir a la consola, y lo que `pcs_repo` vende SOLO puede ir a una PC.
+puede ir a una consola, y lo que `pcs_repo` vende SOLO puede ir a una PC.
 
 Lo que SÍ se reutiliza de las PCs, en vez de copiarlo (regla 2 de CLAUDE.md):
 la mecánica del catálogo (`CatalogoDeBonos`, otra tabla), las reglas de un bono
@@ -139,23 +144,24 @@ class AdministradorDeBonos:
 # La consola: estado, venta de bonos, liberar
 # ---------------------------------------------------------------------
 
-def _sesion_activa(conexion):
-    """La sesión en curso de la consola, o None. A lo sumo hay una (lo
-    garantiza el índice único idx_sesion_playstation_activa)."""
+def _sesion_activa(conexion, consola: int):
+    """La sesión en curso de esa consola, o None. A lo sumo hay una por consola
+    (lo garantiza el índice único idx_sesion_playstation_activa)."""
     return conexion.execute(
-        "SELECT * FROM sesiones_playstation WHERE estado = ?", (dominio.SESION_ACTIVA,)
+        "SELECT * FROM sesiones_playstation WHERE estado = ? AND consola = ?", (dominio.SESION_ACTIVA, consola)
     ).fetchone()
 
 
-def estado() -> dict:
+def estados() -> list:
     """
-    Cómo está la consola ahora, para la grilla de Control de PCs. Tiene la
-    misma forma que cada elemento de `pcs_repo.estado_estaciones()` en lo que
-    importa -- "sesion" y "segundos_restantes" -- más:
+    Cómo está cada consola ahora, para la grilla de Control de PCs, en el orden
+    de dominio.CONSOLAS_PLAYSTATION. Cada una tiene la misma forma que un
+    elemento de `pcs_repo.estado_estaciones()` en lo que importa -- "sesion" y
+    "segundos_restantes" -- más:
 
     - "dispositivo": dominio.DISPOSITIVO_PLAYSTATION (la grilla distingue por
       esto una fila de una PC).
-    - "nombre": el nombre fijo, dominio.NOMBRE_PLAYSTATION.
+    - "consola": su número, y "nombre": dominio.nombre_consola de ese número.
     - "tiempo_agotado": True si hay una sesión cuyo tiempo llegó a cero y nadie
       la liberó todavía -- es lo que dispara el parpadeo rojo.
     - "reserva": su próxima reserva Pendiente, o None (como en
@@ -166,27 +172,42 @@ def estado() -> dict:
     """
     ahora = datetime.now()
     with conexion_db() as conexion:
-        sesion = _sesion_activa(conexion)
-        reserva = reservas_horario_repo.proxima(reservas_horario_repo.pendientes(conexion, ahora))
+        sesiones = {
+            fila["consola"]: fila for fila in conexion.execute(
+                "SELECT * FROM sesiones_playstation WHERE estado = ?", (dominio.SESION_ACTIVA,)
+            )
+        }
+        reservas = reservas_horario_repo.pendientes(conexion, ahora)
 
-    segundos = None
-    if sesion is not None:
-        segundos = dominio.segundos_restantes(datetime.fromisoformat(sesion["fecha_fin_prevista"]), ahora)
+    resultado = []
+    for consola in dominio.CONSOLAS_PLAYSTATION:
+        sesion = sesiones.get(consola)
+        segundos = None
+        if sesion is not None:
+            segundos = dominio.segundos_restantes(datetime.fromisoformat(sesion["fecha_fin_prevista"]), ahora)
+        resultado.append({
+            "dispositivo": dominio.DISPOSITIVO_PLAYSTATION,
+            "consola": consola,
+            "nombre": dominio.nombre_consola(consola),
+            "sesion": sesion,
+            "segundos_restantes": segundos,
+            "tiempo_agotado": sesion is not None and segundos == 0,
+            "reserva": reservas_horario_repo.proxima(reservas, consola=consola),
+        })
+    return resultado
 
-    return {
-        "dispositivo": dominio.DISPOSITIVO_PLAYSTATION,
-        "nombre": dominio.NOMBRE_PLAYSTATION,
-        "sesion": sesion,
-        "segundos_restantes": segundos,
-        "tiempo_agotado": sesion is not None and segundos == 0,
-        "reserva": reserva,
-    }
+
+def estado(consola: int) -> dict:
+    """Lo mismo que `estados()`, de una sola consola."""
+    dominio.validar_consola(consola)
+    return next(item for item in estados() if item["consola"] == consola)
 
 
-def vender_bono(usuario_id: int, bono_id: int, pagos: list, momento_del_precio=None, bono_mostrado=None) -> int:
+def vender_bono(usuario_id: int, consola: int, bono_id: int, pagos: list, momento_del_precio=None,
+                bono_mostrado=None) -> int:
     """
-    Vende un bono de la PlayStation 5 y devuelve el id de la venta. Si la
-    consola no tiene sesión, arranca una; si ya tiene una en curso (los clientes
+    Vende un bono de la PlayStation 5 en esa consola (su número) y devuelve el
+    id de la venta. Si la consola no tiene sesión, arranca una; si ya tiene una en curso (los clientes
     siguen jugando) le suma los minutos; si el tiempo ya se había agotado y
     nadie la liberó, los minutos nuevos cuentan desde ahora y el aviso rojo se
     apaga solo (ver dominio.fin_al_sumar_minutos).
@@ -211,6 +232,7 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list, momento_del_precio=N
     sumarle el bono a la que se acaba de cerrar (revisión general del 2026-11-16).
     """
     _exigir_operador(usuario_id)
+    dominio.validar_consola(consola)
     bono = obtener_bono(bono_id)
     if bono is None or not bono["activo"]:
         raise ValueError("Ese bono de la PlayStation 5 ya no está disponible.")
@@ -222,17 +244,10 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list, momento_del_precio=N
         vendido = ofertas_repo.como_se_vende(conexion, dominio.EQUIPO_RESERVA_PLAYSTATION, bono, momento,
                                              bono_mostrado)
         # Que los pagos sumen justo el precio lo revisa registrar_venta_sin_detalle.
-        sesion = _sesion_activa(conexion)
+        sesion = _sesion_activa(conexion, consola)
         if sesion is None:
             fin_previsto = dominio.fin_al_sumar_minutos(None, vendido["minutos"], ahora)
-            sesion_id = conexion.execute(
-                """
-                INSERT INTO sesiones_playstation (fecha_inicio, fecha_fin_prevista, estado)
-                VALUES (?, ?, ?)
-                """,
-                (ahora.isoformat(timespec="seconds"), fin_previsto.isoformat(timespec="seconds"),
-                 dominio.SESION_ACTIVA),
-            ).lastrowid
+            sesion_id = _abrir_sesion(conexion, consola, ahora, fin_previsto)
         else:
             sesion_id = sesion["id"]
             fin_previsto = dominio.fin_al_sumar_minutos(
@@ -259,35 +274,49 @@ def vender_bono(usuario_id: int, bono_id: int, pagos: list, momento_del_precio=N
         return venta_id
 
 
-def _abrir_sesion_de_reserva(conexion, bono_id: int, minutos: int, precio: float, venta_id: int,
+def _abrir_sesion(conexion, consola: int, ahora: datetime, fin_previsto: datetime) -> int:
+    """Una sesión nueva en esa consola, en la transacción de quien llama. Devuelve su id."""
+    return conexion.execute(
+        "INSERT INTO sesiones_playstation (fecha_inicio, fecha_fin_prevista, estado, consola) VALUES (?, ?, ?, ?)",
+        (ahora.isoformat(timespec="seconds"), fin_previsto.isoformat(timespec="seconds"), dominio.SESION_ACTIVA,
+         consola),
+    ).lastrowid
+
+
+def revisar_libre(conexion, consola: int, ahora: datetime):
+    """ValueError si esa consola no existe o está en uso (una a la que se le acabó
+    el tiempo y nadie liberó cuenta como libre). Solo lee: lo usan habilitar una
+    reserva (_abrir_sesion_de_reserva) y la pregunta de antes de cobrarle el resto
+    (reservas_habilitar_repo.preparar_habilitacion)."""
+    sesion = _sesion_activa(conexion, dominio.validar_consola(consola))
+    if sesion is not None and dominio.segundos_restantes(datetime.fromisoformat(sesion["fecha_fin_prevista"]), ahora):
+        raise ValueError(f"La {dominio.nombre_consola(consola)} está en uso: se habilita cuando se libere.")
+    return sesion
+
+
+def _abrir_sesion_de_reserva(conexion, consola: int, bono_id: int, minutos: int, precio: float, venta_id: int,
                              ahora: datetime) -> int:
     """
-    Habilita en la consola una reserva que ya está paga (la llama
+    Habilita en esa consola una reserva que ya está paga (la llama
     reservas_habilitar_repo.habilitar dentro de su transacción, que hace lo mismo con una
     PC): una sesión nueva con los minutos del bono reservado, sin cobrar nada
     acá, y el bono anotado en sesion_playstation_bonos con la venta con que se
     pagó la reserva (así los reportes lo cuentan como cualquier bono de la
     consola, una sola vez). Devuelve el id de la sesión.
 
-    La consola tiene que estar libre. Si se le acabó el tiempo y nadie la liberó
-    (titila en rojo), se la libera acá, con la hora en que llegó a cero: los que
-    estaban ya terminaron y la toma el cliente de la reserva.
+    La consola tiene que estar libre (revisar_libre). Si se le acabó el tiempo y
+    nadie la liberó (titila en rojo), se la libera acá, con la hora en que llegó a
+    cero: los que estaban ya terminaron y la toma el cliente de la reserva.
     """
-    sesion = _sesion_activa(conexion)
+    sesion = revisar_libre(conexion, consola, ahora)
     if sesion is not None:
         fin = datetime.fromisoformat(sesion["fecha_fin_prevista"])
-        if dominio.segundos_restantes(fin, ahora) > 0:
-            raise ValueError(f"La {dominio.NOMBRE_PLAYSTATION} está en uso: se habilita cuando se libere.")
         conexion.execute(
             "UPDATE sesiones_playstation SET estado = ?, fecha_fin_real = ? WHERE id = ?",
             (dominio.SESION_FINALIZADA, min(ahora, fin).isoformat(timespec="seconds"), sesion["id"]),
         )
 
-    fin_previsto = dominio.fin_al_sumar_minutos(None, minutos, ahora)
-    sesion_id = conexion.execute(
-        "INSERT INTO sesiones_playstation (fecha_inicio, fecha_fin_prevista, estado) VALUES (?, ?, ?)",
-        (ahora.isoformat(timespec="seconds"), fin_previsto.isoformat(timespec="seconds"), dominio.SESION_ACTIVA),
-    ).lastrowid
+    sesion_id = _abrir_sesion(conexion, consola, ahora, dominio.fin_al_sumar_minutos(None, minutos, ahora))
     conexion.execute(
         """
         INSERT INTO sesion_playstation_bonos (sesion_id, bono_id, minutos, precio, venta_id)
@@ -298,9 +327,9 @@ def _abrir_sesion_de_reserva(conexion, bono_id: int, minutos: int, precio: float
     return sesion_id
 
 
-def finalizar_sesion(usuario_id: int):
+def finalizar_sesion(usuario_id: int, consola: int):
     """
-    Libera la consola: da de baja la sesión en curso, tenga o no tiempo sin
+    Libera esa consola: da de baja su sesión en curso, tenga o no tiempo sin
     usar. Es lo que hace el operador al avisar a los clientes que se acabó el
     tiempo (apaga el parpadeo rojo) y lo que usa para cortar antes de tiempo.
     Como un bono de PC, lo que no se usó NO se reintegra: es un consumible.
@@ -309,54 +338,57 @@ def finalizar_sesion(usuario_id: int):
     Cualquier operador logueado puede liberarla, igual que vender.
     """
     _exigir_operador(usuario_id)
+    dominio.validar_consola(consola)
     with conexion_db() as conexion:
         conexion.execute(
-            "UPDATE sesiones_playstation SET estado = ?, fecha_fin_real = ? WHERE estado = ?",
-            (dominio.SESION_FINALIZADA, datetime.now().isoformat(timespec="seconds"), dominio.SESION_ACTIVA),
+            "UPDATE sesiones_playstation SET estado = ?, fecha_fin_real = ? WHERE estado = ? AND consola = ?",
+            (dominio.SESION_FINALIZADA, datetime.now().isoformat(timespec="seconds"), dominio.SESION_ACTIVA,
+             consola),
         )
 
 
 def eventos_recientes(limite: int = 30) -> list:
     """
-    Los últimos movimientos de la consola (sesión iniciada, bono cobrado,
+    Los últimos movimientos de las consolas (sesión iniciada, bono cobrado,
     sesión liberada), con la misma forma que los de `pcs_repo.actividad_reciente`
     para que el panel "Actividad reciente" los mezcle con los de las PCs (es
-    `actividad_reciente` quien los junta y ordena). Datos crudos: el texto se
-    arma en la pantalla.
+    `actividad_reciente` quien los junta y ordena); "estacion_nombre" es el de la
+    consola (PS5-1, PS5-2). Datos crudos: el texto se arma en la pantalla.
     """
-    nombre = dominio.NOMBRE_PLAYSTATION
+    nombre = dominio.nombre_consola
     eventos = []
     with conexion_db() as conexion:
         for fila in conexion.execute(
-            "SELECT fecha_inicio AS fecha FROM sesiones_playstation ORDER BY fecha_inicio DESC LIMIT ?",
+            "SELECT fecha_inicio AS fecha, consola FROM sesiones_playstation ORDER BY fecha_inicio DESC LIMIT ?",
             (limite,),
         ):
-            eventos.append({"fecha": fila["fecha"], "tipo": "INICIO", "estacion_nombre": nombre})
+            eventos.append({"fecha": fila["fecha"], "tipo": "INICIO", "estacion_nombre": nombre(fila["consola"])})
 
         for fila in conexion.execute(
             """
-            SELECT fecha_fin_real AS fecha FROM sesiones_playstation
+            SELECT fecha_fin_real AS fecha, consola FROM sesiones_playstation
             WHERE fecha_fin_real IS NOT NULL ORDER BY fecha_fin_real DESC LIMIT ?
             """,
             (limite,),
         ):
-            eventos.append({"fecha": fila["fecha"], "tipo": "FIN", "estacion_nombre": nombre})
+            eventos.append({"fecha": fila["fecha"], "tipo": "FIN", "estacion_nombre": nombre(fila["consola"])})
 
         # Por número de venta y no por fecha, igual que los bonos de las PCs
         # (ver actividad_repo): así lee solo los últimos y no toda la historia. El de
         # una reserva no: sale como "reserva habilitada" (actividad_repo).
         for fila in conexion.execute(
             """
-            SELECT v.fecha AS fecha, b.nombre AS bono_nombre, spb.precio AS precio
+            SELECT v.fecha AS fecha, b.nombre AS bono_nombre, spb.precio AS precio, s.consola AS consola
             FROM sesion_playstation_bonos spb
             JOIN ventas v ON v.id = spb.venta_id
             JOIN bonos_playstation b ON b.id = spb.bono_id
+            JOIN sesiones_playstation s ON s.id = spb.sesion_id
             WHERE NOT EXISTS (SELECT 1 FROM reservas_pagos rp WHERE rp.venta_id = spb.venta_id)
               AND v.estado = ?
             ORDER BY spb.venta_id DESC LIMIT ?
             """,
             (dominio.VENTA_CONFIRMADA, limite),
         ):
-            eventos.append({"fecha": fila["fecha"], "tipo": "BONO", "estacion_nombre": nombre,
+            eventos.append({"fecha": fila["fecha"], "tipo": "BONO", "estacion_nombre": nombre(fila["consola"]),
                             "bono_nombre": fila["bono_nombre"], "precio": fila["precio"]})
     return eventos

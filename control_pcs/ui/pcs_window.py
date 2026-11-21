@@ -14,11 +14,11 @@ cargó ninguna fila en `estaciones` (ver "Gestionar Estaciones" en
 "Configuración ADMIN", ui/main_window.py) — sin estaciones no hay nada
 que listar acá.
 
-Primera en el mosaico, antes de las PCs, está la PlayStation 5 (ver
-`playstation_repo`): una sola consola con nombre fijo, que se vende por tiempo
-con bonos propios. Mientras corre muestra su cuenta regresiva (se redibuja cada
-segundo) y al llegar a cero su monitor titila en rojo hasta que el operador avise
-a los clientes y la libere -- a diferencia de una PC, no se da de baja sola.
+Primeras en el mosaico, antes de las PCs, están las PlayStation 5, PS5-1 y PS5-2
+(ver `playstation_repo`): consolas con nombre fijo, que se venden por tiempo con
+bonos propios. Mientras corre, cada una muestra su cuenta regresiva (se redibuja
+cada segundo) y al llegar a cero su monitor titila en rojo hasta que el operador
+avise a los clientes y la libere -- a diferencia de una PC, no se da de baja sola.
 Justo después va PCSTREAM, la PC de streaming (pedido del dueño): una PC más,
 con bloqueo, pero con sus propios bonos (ver pcstream_repo). El orden lo decide
 pcs_repo._orden_natural, que la pone antes que las demás PCs.
@@ -171,19 +171,15 @@ INTERVALO_PARPADEO_MS = 500
 # en sus últimos 15 minutos (pedido del dueño, 2026-10-25; ver marcar_cuentas_urgentes).
 INTERVALO_PARPADEO_RAPIDO_MS = 200
 
-# Cada cuánto se redibuja la cuenta regresiva de la PlayStation 5.
+# Cada cuánto se redibuja la cuenta regresiva de las PlayStation 5.
 INTERVALO_CUENTA_REGRESIVA_MS = 1000
 
-# Cómo se identifica un equipo del mosaico: ("PC", id de la estación) o
-# ("PLAYSTATION", None) -- la consola es una sola, no tiene id. Es lo que
-# permite volver a seleccionar la misma fila cuando la grilla se reconstruye.
-_CLAVE_PLAYSTATION = (dominio.DISPOSITIVO_PLAYSTATION, None)
-
-
 def _clave_de_item(item):
-    """La identidad de un equipo del mosaico (ver _CLAVE_PLAYSTATION)."""
+    """La identidad de un equipo del mosaico: ("PC", id de la estación) o
+    ("PLAYSTATION", número de la consola). Es lo que permite volver a seleccionar
+    la misma fila cuando la grilla se reconstruye."""
     if es_playstation(item):
-        return _CLAVE_PLAYSTATION
+        return (dominio.DISPOSITIVO_PLAYSTATION, item["consola"])
     return (dominio.DISPOSITIVO_PC, item["estacion"]["id"])
 
 
@@ -201,8 +197,8 @@ class PanelControlPcs(QWidget):
         super().__init__(parent)
         self.usuario = usuario
         self._estados = []              # solo las PCs (pcs_repo.estado_estaciones)
-        self._item_playstation = None   # la consola (playstation_repo.estado)
-        self._items_en_grilla = []      # lo que hay en cada fila: la consola y después las PCs
+        self._items_playstation = []    # las consolas (playstation_repo.estados)
+        self._items_en_grilla = []      # lo que hay en cada fila: las consolas y después las PCs
         self._seleccion = None          # clave de la fila elegida (ver _clave_de_item)
         self._filas_en_alerta = []
         self._filas_calientes = []      # las PCs con el procesador caliente: "CALIENTE" titila
@@ -211,7 +207,7 @@ class PanelControlPcs(QWidget):
         self._estaciones_urgentes = set()
         self._parpadeo_rapido_encendido = True
         self._parpadeo_encendido = True
-        # Desde otra PC (ver _refrescar_desde_otra_pc): cuándo llegó la consola, desde
+        # Desde otra PC (ver _refrescar_desde_otra_pc): cuándo llegaron las consolas, desde
         # cuándo no contesta el mostrador y cuándo se vuelve a probar.
         self._remota = modo_remoto.es_copia_remota()
         self._playstation_recibida_a = datetime.now()
@@ -238,7 +234,7 @@ class PanelControlPcs(QWidget):
         self._timer_parpadeo_rapido.timeout.connect(self._alternar_parpadeo_rapido)
         self._timer_parpadeo_rapido.start()
 
-        # Otro más, de un segundo, para la cuenta regresiva de la PlayStation 5
+        # Otro más, de un segundo, para la cuenta regresiva de las PlayStation 5
         # (ver _actualizar_cuenta_regresiva): por la misma razón que el de
         # arriba, no puede colgarse del refresco de 5s.
         self._timer_cuenta_regresiva = QTimer(self)
@@ -352,10 +348,10 @@ class PanelControlPcs(QWidget):
     def _traer_y_redibujar(self):
         estados = self._dar_de_baja_las_vencidas(pcs_repo.estado_estaciones())
         self._estados = estados
-        # La PlayStation 5 NO entra en el "job de vencimiento": al llegar a cero
-        # no se libera sola, queda avisando en rojo hasta que el operador la
+        # Las PlayStation 5 NO entran en el "job de vencimiento": al llegar a cero
+        # no se liberan solas, quedan avisando en rojo hasta que el operador las
         # libera (ver playstation_repo).
-        self._item_playstation = playstation_repo.estado()
+        self._items_playstation = playstation_repo.estados()
         self._playstation_recibida_a = datetime.now()
         self.aviso_reservas.actualizar(reservas_horario_repo.reservas_para_la_grilla(), estados)
         self._redibujar_mosaico()
@@ -544,12 +540,12 @@ class PanelControlPcs(QWidget):
 
     @staticmethod
     def _ficha_de_playstation(item):
-        """Lo mismo que _ficha_de_pc, para la PlayStation 5 (un elemento de
-        playstation_repo.estado()). No hay Cliente PC que reporte conexión: la
+        """Lo mismo que _ficha_de_pc, para una PlayStation 5 (un elemento de
+        playstation_repo.estados()). No hay Cliente PC que reporte conexión: la
         consola está libre, en uso, por vencer, o con el tiempo agotado -- y ESE
         caso es una alerta: titila en rojo hasta que el operador avise a los
         clientes y la libere (o venda otro bono)."""
-        comun = {"clave": _CLAVE_PLAYSTATION, "nombre": item["nombre"], "es_consola": True}
+        comun = {"clave": _clave_de_item(item), "nombre": item["nombre"], "es_consola": True}
         reserva = item.get("reserva") if item.get("reserva") is not None and item["reserva"]["marcada"] else None
         if item["sesion"] is None:
             if reserva is not None:
@@ -580,10 +576,8 @@ class PanelControlPcs(QWidget):
         return Ficha(estado="▶ En uso", color=COLOR_EN_USO, dibujo=DIBUJO_RELOJ, **en_sesion)
 
     def _redibujar_mosaico(self):
-        # La PlayStation 5 va primero, antes de las PCs.
-        self._items_en_grilla = (
-            [self._item_playstation] if self._item_playstation is not None else []
-        ) + list(self._estados)
+        # Las PlayStation 5 van primero, antes de las PCs.
+        self._items_en_grilla = list(self._items_playstation) + list(self._estados)
         fichas = [
             self._ficha_de_playstation(item) if es_playstation(item) else self._ficha_de_pc(item)
             for item in self._items_en_grilla
@@ -632,7 +626,7 @@ class PanelControlPcs(QWidget):
 
     def _actualizar_cuenta_regresiva(self):
         """
-        Redibuja, cada segundo, el tiempo restante de la PlayStation 5 (el
+        Redibuja, cada segundo, el tiempo restante de cada PlayStation 5 (el
         mosaico entero se refresca solo cada 5s, y una cuenta regresiva que
         salta de a 5 no se ve como tal). Solo cambia el tiempo de su casillero
         -- nunca rearma el mosaico --, y calcula contra el reloj de AHORA con
@@ -645,23 +639,23 @@ class PanelControlPcs(QWidget):
         a cero espera el refresco de siempre: si no hay red, pedirlo cada
         segundo trabaría la ventana.
         """
-        item = self._item_playstation
-        if item is None or item["sesion"] is None or item["tiempo_agotado"]:
-            return
-        if self._remota:
-            pasaron = (datetime.now() - self._playstation_recibida_a).total_seconds()
-            segundos = max(0, int(item["segundos_restantes"] - pasaron))
-        else:
-            fin_previsto = datetime.fromisoformat(item["sesion"]["fecha_fin_prevista"])
-            segundos = dominio.segundos_restantes(fin_previsto, datetime.now())
-            if segundos == 0:
-                self._refrescar()
-                return
-        # La consola es siempre el primer casillero (ver _redibujar_mosaico).
-        if self.mosaico.count() > 0:
-            self.mosaico.cambiar_restante(0, formato_tiempo(segundos, con_segundos=True))
-        if self._seleccion == _CLAVE_PLAYSTATION:
-            self.panel_detalle.mostrar_estado_playstation({**item, "segundos_restantes": segundos})
+        # Las consolas son siempre los primeros casilleros, en orden (ver _redibujar_mosaico).
+        for fila, item in enumerate(self._items_playstation):
+            if item["sesion"] is None or item["tiempo_agotado"]:
+                continue
+            if self._remota:
+                pasaron = (datetime.now() - self._playstation_recibida_a).total_seconds()
+                segundos = max(0, int(item["segundos_restantes"] - pasaron))
+            else:
+                fin_previsto = datetime.fromisoformat(item["sesion"]["fecha_fin_prevista"])
+                segundos = dominio.segundos_restantes(fin_previsto, datetime.now())
+                if segundos == 0:
+                    self._refrescar()
+                    return
+            if fila < self.mosaico.count():
+                self.mosaico.cambiar_restante(fila, formato_tiempo(segundos, con_segundos=True))
+            if self._seleccion == _clave_de_item(item):
+                self.panel_detalle.mostrar_estado_playstation({**item, "segundos_restantes": segundos})
 
     def _alternar_parpadeo(self):
         """

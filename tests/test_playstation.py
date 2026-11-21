@@ -19,13 +19,13 @@ import contextlib
 import os
 import sqlite3
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest import mock
 
 import database
 import dominio
 from repositories import reportes_repo, turnos_repo, usuarios_repo, ventas_repo
-from control_pcs.repositories import anular_bono_repo, bonos_miembro_repo, pcs_repo, playstation_repo
+from control_pcs.repositories import anular_bono_repo, bonos_miembro_repo, pcs_repo, playstation_repo, reservas_repo
 from base import BaseConBaseTemporal
 
 
@@ -70,11 +70,11 @@ class _ConPlaystation(BaseConBaseTemporal):
         if pagos is None:
             pagos = _efectivo(playstation_repo.obtener_bono(bono_id)["precio"])
         with _reloj(momento):
-            return playstation_repo.vender_bono(usuario_id or self.operadora_id, bono_id, pagos)
+            return playstation_repo.vender_bono(usuario_id or self.operadora_id, 1, bono_id, pagos)
 
     def _estado(self, momento):
         with _reloj(momento):
-            return playstation_repo.estado()
+            return playstation_repo.estado(1)
 
 
 class TestPermisosDeLaPlaystation(_ConPlaystation):
@@ -131,7 +131,7 @@ class TestPermisosDeLaPlaystation(_ConPlaystation):
             self.assertIsNotNone(self._estado(self.HORA)["sesion"])
 
             with _reloj(self.HORA):
-                playstation_repo.finalizar_sesion(usuario_id)
+                playstation_repo.finalizar_sesion(usuario_id, 1)
             self.assertIsNone(self._estado(self.HORA)["sesion"])
 
             with self.assertRaises(PermissionError):
@@ -142,7 +142,7 @@ class TestPermisosDeLaPlaystation(_ConPlaystation):
         self.assertEqual(usuarios_repo.obtener_usuario(self.admin_id)["permiso_control_pcs"], 0)
         self._vender(self.HORA, usuario_id=self.admin_id)
         with _reloj(self.HORA):
-            playstation_repo.finalizar_sesion(self.admin_id)
+            playstation_repo.finalizar_sesion(self.admin_id, 1)
 
     def test_puede_operar_es_siempre_true(self):
         """Pedido del dueño, 2026-10-19: ya no depende del permiso. Queda la
@@ -247,12 +247,12 @@ class TestIncompatibilidadEntreBonos(_ConPlaystation):
 
         self.assertEqual([e["nombre"] for e in pcs_repo.listar_estaciones(solo_activas=False)], ["PC 1"])
         # El servidor de red (que atiende a los Clientes PC por nombre) no la encuentra.
-        self.assertIsNone(pcs_repo.estado_de_estacion(dominio.NOMBRE_PLAYSTATION))
+        self.assertIsNone(pcs_repo.estado_de_estacion(dominio.nombre_consola(1)))
         self.assertTrue(all(item["dispositivo"] == dominio.DISPOSITIVO_PC for item in pcs_repo.estado_estaciones()))
 
         consola = self._estado(self.HORA)
         self.assertEqual(consola["dispositivo"], dominio.DISPOSITIVO_PLAYSTATION)
-        self.assertEqual(consola["nombre"], "PLAYSTATION 5")
+        self.assertEqual(consola["nombre"], "PS5-1")
 
     def test_un_bono_de_pc_solo_va_a_una_pc_que_existe_y_esta_activa(self):
         bono_pc_id = pcs_repo.crear_bono("3 horas", 180, 9000)
@@ -330,8 +330,8 @@ class TestVentasDeLaPlaystation(_ConPlaystation):
 
         eventos = [(e["tipo"], e["estacion_nombre"]) for e in pcs_repo.actividad_reciente()]
 
-        self.assertIn(("INICIO", "PLAYSTATION 5"), eventos)
-        self.assertIn(("BONO", "PLAYSTATION 5"), eventos)
+        self.assertIn(("INICIO", "PS5-1"), eventos)
+        self.assertIn(("BONO", "PS5-1"), eventos)
 
     def test_anular_la_venta_la_saca_de_la_caja_y_de_los_reportes(self):
         venta_id = self._vender(self.HORA)
@@ -414,7 +414,7 @@ class TestTiempoDeLaPlaystation(_ConPlaystation):
     def test_liberar_la_consola_apaga_el_aviso_y_deja_la_sesion_cerrada(self):
         self._vender(self.HORA)
         with _reloj(datetime(2026, 1, 5, 11, 5, 0)):
-            playstation_repo.finalizar_sesion(self.operadora_id)
+            playstation_repo.finalizar_sesion(self.operadora_id, 1)
 
         estado = self._estado(datetime(2026, 1, 5, 11, 5, 0))
         self.assertIsNone(estado["sesion"])
@@ -425,14 +425,14 @@ class TestTiempoDeLaPlaystation(_ConPlaystation):
                          (dominio.SESION_FINALIZADA, "2026-01-05T11:05:00"))
 
     def test_liberar_sin_sesion_no_hace_nada(self):
-        playstation_repo.finalizar_sesion(self.operadora_id)
+        playstation_repo.finalizar_sesion(self.operadora_id, 1)
         self.assertEqual(_contar("sesiones_playstation"), 0)
 
     def test_despues_de_liberar_la_proxima_venta_arranca_una_sesion_nueva(self):
         self._vender(self.HORA)
         primera = self._estado(self.HORA)["sesion"]["id"]
         with _reloj(self.HORA):
-            playstation_repo.finalizar_sesion(self.operadora_id)
+            playstation_repo.finalizar_sesion(self.operadora_id, 1)
 
         self._vender(datetime(2026, 1, 5, 12, 0, 0))
 
@@ -440,7 +440,7 @@ class TestTiempoDeLaPlaystation(_ConPlaystation):
         self.assertNotEqual(estado["sesion"]["id"], primera)
         self.assertEqual(estado["sesion"]["fecha_fin_prevista"], "2026-01-05T13:00:00")
 
-    def test_la_base_no_deja_abrir_dos_sesiones_activas_a_la_vez(self):
+    def test_la_base_no_deja_abrir_dos_sesiones_activas_a_la_vez_en_la_misma_consola(self):
         self._vender(self.HORA)
 
         with self.assertRaises(sqlite3.IntegrityError):
@@ -449,6 +449,140 @@ class TestTiempoDeLaPlaystation(_ConPlaystation):
                     "INSERT INTO sesiones_playstation (fecha_inicio, fecha_fin_prevista, estado) "
                     "VALUES ('2026-01-05T10:00:00', '2026-01-05T11:00:00', 'ACTIVA')"
                 )
+        # En la otra consola, sí.
+        with database.conexion_db() as conexion:
+            conexion.execute(
+                "INSERT INTO sesiones_playstation (fecha_inicio, fecha_fin_prevista, estado, consola) "
+                "VALUES ('2026-01-05T10:00:00', '2026-01-05T11:00:00', 'ACTIVA', 2)"
+            )
+
+
+class TestDosConsolas(_ConPlaystation):
+    """Desde el 2026-11-21 son dos, PS5-1 y PS5-2 (pedido del dueño): cada una con su
+    sesión y su tiempo, los mismos bonos para las dos, la plata junta como PlayStation 5
+    y lo que se muestra dice en cuál fue."""
+
+    def _vender_en(self, consola, momento):
+        with _reloj(momento):
+            return playstation_repo.vender_bono(self.operadora_id, consola, self.bono_id, _efectivo(3000.0))
+
+    def _estados(self, momento):
+        with _reloj(momento):
+            return playstation_repo.estados()
+
+    def test_se_ven_las_dos_en_orden_con_su_nombre(self):
+        estados = self._estados(self.HORA)
+
+        self.assertEqual([(item["consola"], item["nombre"]) for item in estados], [(1, "PS5-1"), (2, "PS5-2")])
+        self.assertTrue(all(item["sesion"] is None and item["dispositivo"] == dominio.DISPOSITIVO_PLAYSTATION
+                            for item in estados))
+
+    def test_cada_una_tiene_su_sesion_y_su_tiempo(self):
+        self._vender_en(1, self.HORA)
+        self._vender_en(2, self.HORA.replace(minute=30))
+        self._vender_en(2, self.HORA.replace(minute=40))  # se le suma a la 2, no a la 1
+
+        una, dos = self._estados(self.HORA.replace(minute=45))
+
+        self.assertEqual(una["sesion"]["fecha_fin_prevista"], "2026-01-05T11:00:00")
+        self.assertEqual(dos["sesion"]["fecha_fin_prevista"], "2026-01-05T12:30:00")
+        self.assertEqual((una["segundos_restantes"], dos["segundos_restantes"]), (15 * 60, 105 * 60))
+        self.assertEqual(_contar("sesiones_playstation"), 2)
+
+    def test_la_que_se_agota_avisa_sola_y_liberarla_no_toca_la_otra(self):
+        self._vender_en(1, self.HORA)
+        self._vender_en(2, self.HORA.replace(minute=30))
+
+        una, dos = self._estados(self.HORA.replace(hour=11, minute=10))
+        self.assertEqual((una["tiempo_agotado"], dos["tiempo_agotado"]), (True, False))
+
+        playstation_repo.finalizar_sesion(self.operadora_id, 1)
+        una, dos = self._estados(self.HORA.replace(hour=11, minute=10))
+        self.assertIsNone(una["sesion"])
+        self.assertEqual(dos["sesion"]["fecha_fin_prevista"], "2026-01-05T11:30:00")
+
+    def test_una_consola_que_no_existe_no_se_vende_ni_se_libera(self):
+        for consola in (None, 0, 3):
+            with self.assertRaisesRegex(ValueError, "cuál de las PlayStation"):
+                self._vender_en(consola, self.HORA)
+            with self.assertRaisesRegex(ValueError, "cuál de las PlayStation"):
+                playstation_repo.finalizar_sesion(self.operadora_id, consola)
+        self.assertEqual((_contar("ventas"), _contar("sesiones_playstation")), (0, 0))
+
+    def test_la_plata_va_junta_y_lo_que_se_muestra_dice_en_cual(self):
+        venta_1 = self._vender_en(1, self.HORA)
+        venta_2 = self._vender_en(2, self.HORA)
+
+        origenes = {fila["id"]: fila["origen"] for fila in ventas_repo.listar_ventas_recientes()}
+        self.assertEqual((origenes[venta_1], origenes[venta_2]), (dominio.ORIGEN_PLAYSTATION,) * 2)
+        eventos = [(evento["tipo"], evento["estacion_nombre"]) for evento in pcs_repo.actividad_reciente()]
+        self.assertIn(("BONO", "PS5-1"), eventos)
+        self.assertIn(("BONO", "PS5-2"), eventos)
+        # Quitar un bono: el de la consola elegida, y dice cuál es.
+        with _reloj(self.HORA):
+            self.assertEqual([bono["venta_id"] for bono in anular_bono_repo.bonos_de_la_sesion(consola=2)],
+                             [venta_2])
+        self.assertEqual(anular_bono_repo.resumen_de_bono(venta_2)["estacion"], "PS5-2")
+
+
+class TestMigracionDeLaSegundaConsola(BaseConBaseTemporal):
+    """database._migrar_consola_en_sesiones_playstation y _migrar_consola_en_reservas:
+    una base de cuando había una sola PlayStation 5 (sin la columna "consola" y con el
+    índice de UNA sola sesión activa en total) pasa a tener dos, sin perder nada."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN)
+        self.bono = playstation_repo.crear_bono(self.admin, "1 hora", 60, 3000)
+        with _reloj(datetime(2026, 1, 5, 10, 0)):
+            self.venta = playstation_repo.vender_bono(self.admin, 1, self.bono, _efectivo(3000.0))
+        manana = datetime.combine(date.today(), datetime.min.time()).replace(hour=10) + timedelta(days=1)
+        self.reserva = reservas_repo.crear_reserva(
+            self.admin, "Juan", "", dominio.EQUIPO_RESERVA_PLAYSTATION, None, self.bono, manana, 3000.0,
+            _efectivo(3000.0), consola=2,
+        )
+        # Como era la base: sin "consola" en las dos tablas y el índice viejo.
+        with database.conexion_db() as conexion:
+            conexion.execute("DROP INDEX idx_sesion_playstation_activa")
+            conexion.execute("ALTER TABLE sesiones_playstation DROP COLUMN consola")
+            conexion.execute("ALTER TABLE reservas DROP COLUMN consola")
+            conexion.execute(self.INDICE_VIEJO)
+
+    # Lo que hacía (y sigue haciendo) un CyberBios de antes al arrancar.
+    INDICE_VIEJO = ("CREATE UNIQUE INDEX IF NOT EXISTS idx_sesion_playstation_activa "
+                    "ON sesiones_playstation(estado) WHERE estado = 'ACTIVA'")
+
+    def test_lo_de_antes_queda_en_la_ps5_1_y_se_puede_usar_la_ps5_2(self):
+        database.inicializar_base_de_datos()
+
+        with _reloj(datetime(2026, 1, 5, 10, 30)):
+            una, dos = playstation_repo.estados()
+        self.assertEqual(una["sesion"]["fecha_fin_prevista"], "2026-01-05T11:00:00")
+        self.assertIsNone(dos["sesion"])
+        self.assertEqual(reservas_repo.obtener_reserva(self.reserva)["consola"], 1)
+        with _reloj(datetime(2026, 1, 5, 10, 30)):
+            playstation_repo.vender_bono(self.admin, 2, self.bono, _efectivo(3000.0))
+            self.assertIsNotNone(playstation_repo.estado(2)["sesion"])
+
+    def test_un_cyberbios_de_antes_sigue_arrancando_con_las_dos_en_uso(self):
+        database.inicializar_base_de_datos()
+        with _reloj(datetime(2026, 1, 5, 10, 30)):
+            playstation_repo.vender_bono(self.admin, 2, self.bono, _efectivo(3000.0))
+
+        with database.conexion_db() as conexion:
+            conexion.execute(self.INDICE_VIEJO)  # no hace nada: el nombre ya está ocupado
+            indice = conexion.execute(
+                "SELECT sql FROM sqlite_master WHERE name = 'idx_sesion_playstation_activa'"
+            ).fetchone()["sql"]
+        self.assertIn("consola", indice)
+
+    def test_correrla_de_nuevo_no_cambia_nada(self):
+        database.inicializar_base_de_datos()
+        with database.conexion_db() as conexion:
+            antes = [tuple(fila) for fila in conexion.execute("SELECT * FROM sesiones_playstation")]
+        database.inicializar_base_de_datos()
+        with database.conexion_db() as conexion:
+            self.assertEqual([tuple(fila) for fila in conexion.execute("SELECT * FROM sesiones_playstation")], antes)
 
 
 class TestCuentaDelTiempoCompartida(unittest.TestCase):

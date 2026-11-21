@@ -105,18 +105,19 @@ Control de PCs, Miembros y PlayStation usan sus propios subdirectorios en
   común (origen KIOSKO, sin `venta_detalle`) más una fila en
   `tramites_venta` que dice cuál fue. Ver `tramites_repo.registrar_tramite`.
 - **`bonos_playstation`** + **`sesiones_playstation`** +
-  **`sesion_playstation_bonos`** — la **PlayStation 5** del local (una sola
-  consola, nombre fijo "PLAYSTATION 5"), que se alquila por tiempo como una
+  **`sesion_playstation_bonos`** — las **PlayStation 5** del local (dos desde el
+  2026-11-21, PS5-1 y PS5-2: cada una es un número de `dominio.CONSOLAS_PLAYSTATION`
+  y la columna `consola` dice de cuál es cada sesión), que se alquilan por tiempo como una
   PC pero con su propio catálogo de bonos (tabla aparte de `bonos_tiempo` y
   `bonos_miembro`), sus sesiones (el vencimiento es una fecha absoluta, así
   que el tiempo sigue bien aunque se cierre el programa; a lo sumo una
-  sesión `ACTIVA`, lo garantiza un índice único) y el vínculo con la venta
+  sesión `ACTIVA` por consola, lo garantiza un índice único) y el vínculo con la venta
   que cobró cada bono. **No es una fila de `estaciones`** a propósito: una
   estación es una PC con Cliente PC y ninguna de sus acciones (renombrar,
   dar de baja, reiniciar, bono de PC) puede alcanzar a la consola. Sus ventas
   llevan `ventas.origen = 'PLAYSTATION'` (`dominio.ORIGEN_PLAYSTATION`), así
-  Caja, Cierre de Turno y Reportes la muestran aparte de Kiosko y de Alquiler
-  de PCs. Ver `control_pcs/repositories/playstation_repo.py`.
+  Caja, Cierre de Turno y Reportes las muestran aparte de Kiosko y de Alquiler
+  de PCs (las dos juntas, como "PlayStation 5"; los bonos son los mismos para las dos). Ver `control_pcs/repositories/playstation_repo.py`.
 - **`reservas`** + **`reservas_pagos`** — las **reservas** de una PC (una
   puntual o "cualquier PC disponible"), PCSTREAM o la PlayStation 5 (pedido del
   dueño, 2026-10-20). La reserva guarda quién y cuándo viene, el equipo y una
@@ -376,10 +377,11 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   "Gestionar trámites" (`DialogoGestionTramites`: Nuevo / Modificar /
   Desactivar), que también está en Configuración ADMIN. En Consulta de
   Ventas el trámite se ve como una fila "Trámite: <nombre>".
-- **PlayStation 5** (`control_pcs/ui/pcs_window.py` + `pcs_detalle.py`) — es
-  el primer monitor del mosaico de Control de PCs, antes de las PCs, con el
-  nombre fijo "PLAYSTATION 5" (no se edita, no se da de baja, no tiene menú de
-  PC). Al elegirla, el panel lateral habilita **solo** sus bonos (que van
+- **PlayStation 5** (`control_pcs/ui/pcs_window.py` + `pcs_detalle.py`) — son
+  dos desde el 2026-11-21, PS5-1 y PS5-2: los primeros monitores del mosaico de
+  Control de PCs, antes de las PCs, con nombre fijo (no se editan, no se dan de
+  baja, no tienen menú de PC), cada una con su sesión y su cuenta regresiva. Al
+  elegir una, el panel lateral habilita **solo** sus bonos (que van
   debajo de los de PC, que quedan deshabilitados); al elegir una PC pasa lo
   inverso, y un bono nunca puede cobrarse al equipo equivocado
   (`PanelDetalleEstacion` toma la lista del equipo elegido, y los repos

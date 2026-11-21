@@ -367,6 +367,8 @@ from database_migraciones import (
     _migrar_columna_oferta_en_bonos_vendidos,
     _migrar_columna_desde_ip_en_sesiones,
     _migrar_columna_miembro_en_reservas,
+    _migrar_consola_en_sesiones_playstation,
+    _migrar_consola_en_reservas,
     _sql_tabla_movimientos_saldo_miembro,
     _reconstruir_tabla,
     _admite_todos_los_tipos,

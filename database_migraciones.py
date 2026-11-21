@@ -254,6 +254,54 @@ def _migrar_columna_miembro_en_reservas(conexion: sqlite3.Connection):
     conexion.commit()
 
 
+
+# Una sola sesión ACTIVA por consola. Conserva el NOMBRE del índice de cuando la
+# consola era una sola (que era sobre "estado": una sola ACTIVA en total), a
+# propósito: un CyberBios de antes, si alguna vez se vuelve a abrir con esta base,
+# hace "CREATE UNIQUE INDEX IF NOT EXISTS idx_sesion_playstation_activa" al
+# arrancar; con el nombre ocupado no hace nada. Con otro nombre, intentaría crear
+# el índice viejo y, con las dos consolas en uso, no arrancaría.
+INDICE_UNA_SESION_ACTIVA_POR_CONSOLA = "idx_sesion_playstation_activa"
+
+
+def _migrar_consola_en_sesiones_playstation(conexion: sqlite3.Connection):
+    """
+    La segunda PlayStation 5 (pedido del dueño, 2026-11-21): agrega
+    sesiones_playstation.consola (el número de la consola, ver
+    dominio.CONSOLAS_PLAYSTATION) y cambia el índice de "una sola sesión ACTIVA"
+    por "una sola sesión ACTIVA POR CONSOLA". Todo lo de antes queda en la 1
+    (DEFAULT 1), que es la consola que ya tenían. Segura de correr en cada
+    arranque; en una base nueva solo crea el índice.
+    """
+    _agregar_columna_si_falta(conexion, "sesiones_playstation", "consola", "INTEGER NOT NULL DEFAULT 1")
+    indice = conexion.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?", (INDICE_UNA_SESION_ACTIVA_POR_CONSOLA,)
+    ).fetchone()
+    if indice is not None and "consola" not in indice["sql"]:
+        conexion.execute(f"DROP INDEX {INDICE_UNA_SESION_ACTIVA_POR_CONSOLA}")
+        indice = None
+    if indice is None:
+        conexion.execute(
+            f"CREATE UNIQUE INDEX {INDICE_UNA_SESION_ACTIVA_POR_CONSOLA} "
+            f"ON sesiones_playstation(consola) WHERE estado = '{dominio.SESION_ACTIVA}'"
+        )
+    conexion.commit()
+
+
+def _migrar_consola_en_reservas(conexion: sqlite3.Connection):
+    """
+    Agrega reservas.consola (2026-11-21, la segunda PlayStation 5): cuál de las
+    consolas se reservó. Las reservas de PlayStation que no la tienen pasan a la 1,
+    la consola de siempre: las de antes de este cambio y, por las dudas, las que
+    tomara un CyberBios de antes con esta base. Las de PC y PCSTREAM quedan en NULL.
+    """
+    _agregar_columna_si_falta(conexion, "reservas", "consola", "INTEGER")
+    conexion.execute(
+        "UPDATE reservas SET consola = ? WHERE equipo = ? AND consola IS NULL",
+        (dominio.CONSOLAS_PLAYSTATION[0], dominio.EQUIPO_RESERVA_PLAYSTATION),
+    )
+    conexion.commit()
+
 # --- Reconstruir una tabla (cambiar un CHECK o un REFERENCES) ---
 
 # Columnas de movimientos_saldo_miembro, para copiarlas al reconstruir la tabla.
@@ -557,7 +605,7 @@ def _crear_indice_una_sesion_activa_por_pc(conexion: sqlite3.Connection) -> bool
     """
     Que la base no deje dos sesiones ACTIVAS en una misma PC (revisión general
     del 2026-11-16, mejora 2b): un índice único parcial, como el de la consola
-    (idx_sesion_playstation_activa). Vender un bono y que un socio entre ya toman
+    (idx_sesion_playstation_activa, una por consola). Vender un bono y que un socio entre ya toman
     el candado (BEGIN IMMEDIATE); esto lo asegura la base aunque algún día un
     error de código intentara abrir una segunda. Antes, un socio que entraba a
     una PC libre justo cuando el mostrador le vendía un bono podía dejarla con

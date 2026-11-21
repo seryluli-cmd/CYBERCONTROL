@@ -109,7 +109,7 @@ class TestElPanelDeLaPc(_ConOfertas):
     def test_sin_oferta_en_los_bonos_del_equipo_elegido_no_hay_cartel(self):
         self.toda_la_semana()
         panel = self.panel()
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
         self.assertTrue(panel.cartel_oferta.isHidden())
 
     def test_una_oferta_pausada_no_se_ve(self):

@@ -1110,9 +1110,9 @@ class TestCopiaRemota(unittest.TestCase):
 
         nombres = [item["nombre"] if es_playstation(item) else item["estacion"]["nombre"]
                    for item in panel._items_en_grilla]
-        self.assertEqual(nombres, [dominio.NOMBRE_PLAYSTATION, mostrador_de_prueba.PC_OCUPADA,
-                                   mostrador_de_prueba.PC_LIBRE])
-        ocupada, libre = panel._items_en_grilla[1:]
+        consolas = [dominio.nombre_consola(consola) for consola in dominio.CONSOLAS_PLAYSTATION]
+        self.assertEqual(nombres, consolas + [mostrador_de_prueba.PC_OCUPADA, mostrador_de_prueba.PC_LIBRE])
+        ocupada, libre = panel._items_en_grilla[len(consolas):]
         self.assertEqual(panel._ficha_de_pc(ocupada).quien, "Bono")
         self.assertIsNone(libre["sesion"])
         self.assertIn(mostrador_de_prueba.PC_OCUPADA, panel.panel_actividad.toPlainText())
@@ -1136,7 +1136,7 @@ class TestCopiaRemota(unittest.TestCase):
         ventas_antes = contar(base, "ventas")
         ventana = self._ventana_principal()
         panel = ventana.panel_pcs
-        ocupada = panel._items_en_grilla[1]
+        ocupada = panel._items_en_grilla[len(dominio.CONSOLAS_PLAYSTATION)]
         estacion, sesion = ocupada["estacion"], ocupada["sesion"]
 
         class MenuQueEligeLaPrimera(QMenu):
@@ -1160,7 +1160,7 @@ class TestCopiaRemota(unittest.TestCase):
         errores, avisos = [], []
         with self._juntando(errores, avisos), \
                 mock.patch.object(pcs_window, "QMenu", MenuQueEligeLaPrimera), \
-                mock.patch.object(panel.mosaico, "fila_en", return_value=1):
+                mock.patch.object(panel.mosaico, "fila_en", return_value=len(dominio.CONSOLAS_PLAYSTATION)):
             # MIEMBROS no: desde acá ofrece ORDENAR SALDOS (ver test_miembros_desde_aca_ofrece_ordenar_saldos).
             # TAREAS: el aviso y las tareas son del mostrador (ui/aviso_tarea.py).
             for texto in ("VENDER", "IMPRESIONES", "TRÁMITES", "RESERVAS", "TAREAS", "CIERRE DE TURNO",
@@ -1230,11 +1230,11 @@ class TestCopiaRemota(unittest.TestCase):
         finalizar.assert_not_called()
 
         # 100 segundos según el mostrador, hace 30; la hora de fin, con el reloj de otra PC.
-        panel._item_playstation = {
-            "dispositivo": dominio.DISPOSITIVO_PLAYSTATION, "nombre": dominio.NOMBRE_PLAYSTATION,
+        panel._items_playstation = [{
+            "dispositivo": dominio.DISPOSITIVO_PLAYSTATION, "consola": 1, "nombre": dominio.nombre_consola(1),
             "sesion": {"fecha_fin_prevista": "2000-01-01T00:00:00"}, "segundos_restantes": 100,
             "tiempo_agotado": False, "reserva": None,
-        }
+        }]
         panel._playstation_recibida_a = datetime.now() - timedelta(seconds=30)
         with mock.patch.object(panel.mosaico, "cambiar_restante") as cambiar, \
                 mock.patch.object(panel, "_refrescar") as refrescar:
@@ -1242,7 +1242,7 @@ class TestCopiaRemota(unittest.TestCase):
             self.assertIn(cambiar.call_args.args[1],
                           {formato_tiempo(69, con_segundos=True), formato_tiempo(70, con_segundos=True)})
             # A cero espera el refresco de siempre (sin red, pedirlo cada segundo trabaría la ventana).
-            panel._item_playstation["segundos_restantes"] = 5
+            panel._items_playstation[0]["segundos_restantes"] = 5
             panel._actualizar_cuenta_regresiva()
             self.assertEqual(cambiar.call_args.args[1], formato_tiempo(0, con_segundos=True))
         refrescar.assert_not_called()

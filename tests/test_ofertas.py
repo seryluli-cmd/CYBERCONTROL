@@ -383,7 +383,7 @@ class TestVenderConOferta(_ConCatalogos):
     def test_la_playstation_con_50_cobra_la_mitad(self):
         oferta = self.armar(tipo=dominio.OFERTA_MITAD, franjas=[(VIE, TARDE)], bonos=[(PS5, self.ps5_hora)])
         with reloj(_a_las(VIERNES, 15)):
-            venta = playstation_repo.vender_bono(self.toby, self.ps5_hora, _efectivo(2000.0))
+            venta = playstation_repo.vender_bono(self.toby, 1, self.ps5_hora, _efectivo(2000.0))
         vinculo = self.vinculo("sesion_playstation_bonos", venta)
         self.assertEqual((vinculo["minutos"], vinculo["precio"], vinculo["oferta_id"]), (60, 2000.0, oferta))
         self.assertEqual(self.total_de(venta), 2000.0)
@@ -440,7 +440,7 @@ class TestVenderConOferta(_ConCatalogos):
                                       momento_del_precio=_a_las(VIERNES, 22), bono_mostrado=a_la_pc)
             self.assertIn("cambió mientras se cobraba", str(error.exception))
             with self.assertRaises(ValueError):
-                playstation_repo.vender_bono(self.toby, self.ps5_hora, _efectivo(2000.0),
+                playstation_repo.vender_bono(self.toby, 1, self.ps5_hora, _efectivo(2000.0),
                                              momento_del_precio=_a_las(VIERNES, 22), bono_mostrado=a_la_consola)
         self.assertEqual(self.cuantas_ventas(), 0)
         with conexion_db() as conexion:

@@ -33,15 +33,15 @@ _BONOS = (
 )
 
 
-def _consulta(vinculo: str, catalogo: str, sesiones: str, donde: str):
-    """(SQL, parámetros que van antes del `?` de `donde`) para traer un bono con su venta,
-    su sesión y el nombre de la PC (o de la consola)."""
+def _consulta(vinculo: str, catalogo: str, sesiones: str, donde: str) -> str:
+    """El SQL para traer un bono con su venta, su sesión y el nombre de la PC
+    ("estacion") o el número de la consola ("consola"; el nombre lo pone _con_nombre)."""
     es_consola = sesiones == "sesiones_playstation"
-    sql = f"""
+    return f"""
         SELECT sb.venta_id, sb.sesion_id, sb.minutos, b.nombre AS bono,
                v.total AS monto, v.estado AS estado_venta, v.fecha AS fecha_venta,
                s.estado AS estado_sesion, s.fecha_fin_prevista,
-               {"?" if es_consola else "e.nombre"} AS estacion,
+               {"NULL AS estacion, s.consola" if es_consola else "e.nombre AS estacion, NULL"} AS consola,
                EXISTS (SELECT 1 FROM reservas_pagos rp WHERE rp.venta_id = sb.venta_id) AS de_reserva
         FROM {vinculo} sb
         JOIN ventas v ON v.id = sb.venta_id
@@ -50,17 +50,23 @@ def _consulta(vinculo: str, catalogo: str, sesiones: str, donde: str):
         {"" if es_consola else "JOIN estaciones e ON e.id = s.estacion_id"}
         WHERE {donde}
     """
-    return sql, ((dominio.NOMBRE_PLAYSTATION,) if es_consola else ())
+
+
+def _con_nombre(fila) -> dict:
+    """La fila de _consulta como dict, con "estacion" = el nombre de la consola si es de una."""
+    datos = dict(fila)
+    if datos["consola"] is not None:
+        datos["estacion"] = dominio.nombre_consola(datos["consola"])
+    return datos
 
 
 def _buscar(conexion, venta_id: int):
     """El bono que vendió esa venta, con `sesiones` (la tabla donde está su sesión);
     None si la venta no vendió ningún bono."""
     for vinculo, catalogo, sesiones in _BONOS:
-        sql, antes = _consulta(vinculo, catalogo, sesiones, "sb.venta_id = ?")
-        fila = conexion.execute(sql, (*antes, venta_id)).fetchone()
+        fila = conexion.execute(_consulta(vinculo, catalogo, sesiones, "sb.venta_id = ?"), (venta_id,)).fetchone()
         if fila is not None:
-            return dict(fila, sesiones=sesiones)
+            return dict(_con_nombre(fila), sesiones=sesiones)
     return None
 
 
@@ -102,10 +108,10 @@ def resumen_de_bono(venta_id: int):
     }
 
 
-def bonos_de_la_sesion(estacion_id: int = None) -> list:
+def bonos_de_la_sesion(estacion_id: int = None, consola: int = None) -> list:
     """
-    Los bonos que vendió la sesión EN CURSO de una PC (o de la consola, con
-    `estacion_id=None`) y que siguen valiendo -- los que el Administrador puede
+    Los bonos que vendió la sesión EN CURSO de una PC (o de una consola: con
+    `estacion_id=None` y `consola`, su número) y que siguen valiendo -- los que el Administrador puede
     quitar desde el panel de la PC --, el más nuevo primero. Cada uno:
     {"venta_id", "bono", "minutos", "monto", "fecha"}. Sin los de una reserva. Vacía
     si no tiene sesión.
@@ -115,11 +121,14 @@ def bonos_de_la_sesion(estacion_id: int = None) -> list:
         for vinculo, catalogo, sesiones in _BONOS:
             if (sesiones == "sesiones_playstation") != (estacion_id is None):
                 continue
-            sql, antes = _consulta(vinculo, catalogo, sesiones, "s.estado = ? AND v.estado = ?")
-            parametros = [*antes, dominio.SESION_ACTIVA, dominio.VENTA_CONFIRMADA]
+            sql = _consulta(vinculo, catalogo, sesiones, "s.estado = ? AND v.estado = ?")
+            parametros = [dominio.SESION_ACTIVA, dominio.VENTA_CONFIRMADA]
             if estacion_id is not None:
                 sql += " AND s.estacion_id = ?"
                 parametros.append(estacion_id)
+            else:
+                sql += " AND s.consola = ?"
+                parametros.append(consola)
             for fila in conexion.execute(sql, parametros):
                 if not fila["de_reserva"]:
                     bonos.append({"venta_id": fila["venta_id"], "bono": fila["bono"], "minutos": fila["minutos"],

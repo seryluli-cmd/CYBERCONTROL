@@ -164,8 +164,8 @@ class TestElBonoEsperaSuTurno(BaseCandados):
 
     def test_la_consola_tambien_espera_si_la_liberan_en_ese_instante(self):
         bono_ps5 = playstation_repo.crear_bono(self.admin, "1 hora PS5", UNA_HORA, 2000)
-        playstation_repo.vender_bono(self.toby, bono_ps5, _efectivo(2000))
-        vieja = playstation_repo.estado()["sesion"]
+        playstation_repo.vender_bono(self.toby, 1, bono_ps5, _efectivo(2000))
+        vieja = playstation_repo.estado(1)["sesion"]
 
         def liberar(conexion):
             conexion.execute(
@@ -174,7 +174,7 @@ class TestElBonoEsperaSuTurno(BaseCandados):
             )
 
         venta = self.mientras_otro_tiene_el_candado(
-            liberar, lambda: playstation_repo.vender_bono(self.toby, bono_ps5, _efectivo(2000))
+            liberar, lambda: playstation_repo.vender_bono(self.toby, 1, bono_ps5, _efectivo(2000))
         )
 
         sesion = self.sesion_del_bono(venta, "sesion_playstation_bonos", "sesiones_playstation")
@@ -376,8 +376,8 @@ class TestLosPagosSumanElTotal(BaseCandados):
     def test_un_bono_de_la_consola_pagado_de_mas_no_se_graba(self):
         bono_ps5 = playstation_repo.crear_bono(self.admin, "1 hora PS5", UNA_HORA, 2000)
         with self.assertRaisesRegex(ValueError, "no coincide con el total"):
-            playstation_repo.vender_bono(self.toby, bono_ps5, _efectivo(9000.0))
-        self.assertIsNone(playstation_repo.estado()["sesion"])
+            playstation_repo.vender_bono(self.toby, 1, bono_ps5, _efectivo(9000.0))
+        self.assertIsNone(playstation_repo.estado(1)["sesion"])
 
     def test_una_carga_de_saldo_pagada_de_mas_no_se_graba(self):
         socio = miembros_repo.crear_miembro("juan", "clave123", "Juan", "30111222")

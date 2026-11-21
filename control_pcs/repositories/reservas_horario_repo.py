@@ -6,7 +6,7 @@ RESERVAS, parte 2: "que el programa cuide la hora" (pedido del dueño,
 proyectos). La parte 1, la plata, está en reservas_repo.py.
 
 - Desde MINUTOS_EQUIPO_RESERVADO_ANTES antes de la hora, una PC puntual,
-  PCSTREAM o la PlayStation 5 se ve RESERVADA: celeste en el mosaico si está
+  PCSTREAM o la PlayStation 5 reservada (PS5-1 o PS5-2) se ve RESERVADA: celeste en el mosaico si está
   libre (pcs_window), y en la pantalla de bloqueo de la PC un cartel
   "RESERVADA para Juan · hoy 10:00" (lo manda servidor_red en GET /estado con
   cartel_para_la_pc; lo dibuja CLIENTE PC/cartel_reserva.py desde la V1.2).
@@ -48,15 +48,16 @@ def pendientes(conexion, ahora: datetime) -> list:
     """
     Las reservas Pendientes cuyo cliente todavía puede llegar (su hora +
     MINUTOS_TOLERANCIA_RESERVA no pasó), de la más próxima a la más lejana. Cada
-    una como {"id", "cliente", "equipo", "estacion_id", "inicio" (datetime),
-    "minutos", "marcada", "miembro_id"}; "marcada" es si el equipo ya se ve
+    una como {"id", "cliente", "equipo", "estacion_id", "consola", "inicio"
+    (datetime), "minutos", "marcada", "miembro_id"}; "consola" es la PlayStation 5
+    pedida (None si no es de consola); "marcada" es si el equipo ya se ve
     RESERVADO (faltan MINUTOS_EQUIPO_RESERVADO_ANTES o menos) y "miembro_id", el
     socio de una reserva de socio (None en una común).
     """
     desde = ahora - timedelta(minutes=dominio.MINUTOS_TOLERANCIA_RESERVA)
     filas = conexion.execute(
         """
-        SELECT id, cliente, equipo, estacion_id, fecha_reserva, minutos, miembro_id FROM reservas
+        SELECT id, cliente, equipo, estacion_id, consola, fecha_reserva, minutos, miembro_id FROM reservas
         WHERE estado = ? AND fecha_reserva >= ?
         ORDER BY fecha_reserva, id
         """,
@@ -68,26 +69,29 @@ def pendientes(conexion, ahora: datetime) -> list:
         inicio = datetime.fromisoformat(fila["fecha_reserva"])
         reservas.append({
             "id": fila["id"], "cliente": fila["cliente"], "equipo": fila["equipo"],
-            "estacion_id": fila["estacion_id"], "inicio": inicio, "minutos": fila["minutos"],
+            "estacion_id": fila["estacion_id"], "consola": fila["consola"], "inicio": inicio,
+            "minutos": fila["minutos"],
             "marcada": inicio - antes <= ahora, "miembro_id": fila["miembro_id"],
         })
     return reservas
 
 
-def es_del_equipo(reserva: dict, estacion=None) -> bool:
+def es_del_equipo(reserva: dict, estacion=None, consola=None) -> bool:
     """Si `reserva` aparta ese equipo: `estacion` es una fila de `estaciones`, o
-    None para la PlayStation 5. PCSTREAM se reconoce por el nombre (como en todo
-    el programa) y una de "Cualquier PC disponible" no aparta ninguna PC."""
+    None para una PlayStation 5, y entonces `consola` es su número (cada reserva
+    de consola aparta la que se pidió). PCSTREAM se reconoce por el nombre (como
+    en todo el programa) y una de "Cualquier PC disponible" no aparta ninguna PC."""
     if estacion is None:
-        return reserva["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION
+        return reserva["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION and reserva["consola"] == consola
     if dominio.es_pcstream(estacion["nombre"]):
         return reserva["equipo"] == dominio.EQUIPO_RESERVA_PCSTREAM
     return reserva["equipo"] == dominio.EQUIPO_RESERVA_PC and reserva["estacion_id"] == estacion["id"]
 
 
-def proxima(reservas: list, estacion=None):
-    """La primera de `reservas` (las de `pendientes`) que aparta ese equipo, o None."""
-    return next((reserva for reserva in reservas if es_del_equipo(reserva, estacion)), None)
+def proxima(reservas: list, estacion=None, consola=None):
+    """La primera de `reservas` (las de `pendientes`) que aparta ese equipo (ver
+    es_del_equipo), o None."""
+    return next((reserva for reserva in reservas if es_del_equipo(reserva, estacion, consola)), None)
 
 
 def reserva_que_corta(reservas: list, estacion, sesion):
@@ -138,7 +142,7 @@ def texto_de_la_hora(inicio: datetime, ahora: datetime) -> str:
 
 def reservas_para_la_grilla(ahora: datetime = None) -> list:
     """Las de `pendientes`, para que la pantalla de PCs las reparta entre sus
-    equipos (pcs_repo.estado_estaciones, playstation_repo.estado)."""
+    equipos (pcs_repo.estado_estaciones, playstation_repo.estados)."""
     ahora = ahora or datetime.now()
     with conexion_db() as conexion:
         return pendientes(conexion, ahora)
@@ -183,20 +187,22 @@ def cartel_para_la_pc(estacion, ahora: datetime = None):
 # Lo que se cuida: vender un bono, entrar con saldo de socio
 # ---------------------------------------------------------------------
 
-def aviso_al_vender(estacion_id, minutos: int, ahora: datetime = None):
+def aviso_al_vender(estacion_id, minutos: int, ahora: datetime = None, consola=None):
     """
     Si venderle a ese equipo un bono de `minutos` lo deja usándose después de la
     hora de una reserva suya, el texto del aviso para el operador; si no, None.
-    `estacion_id` es la PC (también PCSTREAM), o None para la PlayStation 5. El
+    `estacion_id` es la PC (también PCSTREAM), o None para una PlayStation 5, y
+    entonces `consola` es su número. El
     vencimiento se calcula como al cobrar (dominio.fin_al_sumar_minutos, sobre la
     sesión en curso si hay una). No frena nada: lo decide el operador.
     """
     ahora = ahora or datetime.now()
     with conexion_db() as conexion:
         if estacion_id is None:
-            estacion, nombre = None, f"La {dominio.NOMBRE_PLAYSTATION}"
+            estacion, nombre = None, f"La {dominio.nombre_consola(dominio.validar_consola(consola))}"
             sesion = conexion.execute(
-                "SELECT fecha_fin_prevista FROM sesiones_playstation WHERE estado = ?", (dominio.SESION_ACTIVA,)
+                "SELECT fecha_fin_prevista FROM sesiones_playstation WHERE estado = ? AND consola = ?",
+                (dominio.SESION_ACTIVA, consola),
             ).fetchone()
         else:
             estacion = conexion.execute("SELECT * FROM estaciones WHERE id = ?", (estacion_id,)).fetchone()
@@ -212,7 +218,8 @@ def aviso_al_vender(estacion_id, minutos: int, ahora: datetime = None):
     fin_actual = datetime.fromisoformat(sesion["fecha_fin_prevista"]) if sesion is not None else None
     fin = dominio.fin_al_sumar_minutos(fin_actual, minutos, ahora)
     reserva = next(
-        (reserva for reserva in reservas if es_del_equipo(reserva, estacion) and reserva["inicio"] < fin), None
+        (reserva for reserva in reservas
+         if es_del_equipo(reserva, estacion, consola) and reserva["inicio"] < fin), None
     )
     if reserva is None:
         return None

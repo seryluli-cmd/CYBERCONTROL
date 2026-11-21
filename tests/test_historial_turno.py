@@ -111,7 +111,7 @@ class BaseHistorial(BaseConBaseTemporal):
         self.v_kiosko = self.vender_coca(self.lucia_id, 2)
         self.v_pc = pcs_repo.asignar_bono(self.pc, self.bono_pc, self.lucia_id, _efectivo(8000.0))
         self.v_stream = pcs_repo.asignar_bono(self.pcstream, self.bono_stream, self.lucia_id, _digital(2000.0))
-        self.v_ps5 = playstation_repo.vender_bono(self.lucia_id, self.bono_ps5, _efectivo(6000.0))
+        self.v_ps5 = playstation_repo.vender_bono(self.lucia_id, 1, self.bono_ps5, _efectivo(6000.0))
         self.v_socio = miembros_repo.cargar_saldo_por_bono(
             self.socio, self.bono_socio, _digital(9700.0), self.lucia_id)["venta_id"]
         self.v_carga = miembros_repo.cargar_saldo_por_monto(
@@ -151,7 +151,7 @@ class TestQueSeCobro(BaseHistorial):
             self.v_kiosko: (repo.RUBRO_KIOSKO, "2 x Coca 500"),
             self.v_pc: (repo.RUBRO_BONO_PC, "PC12X · Promo 5hs (5 h)"),
             self.v_stream: (repo.RUBRO_PCSTREAM, f"{dominio.NOMBRE_PCSTREAM} · 1 hora (1 h)"),
-            self.v_ps5: (repo.RUBRO_PS5, f"{dominio.NOMBRE_PLAYSTATION} · Promo 2hs (2 h)"),
+            self.v_ps5: (repo.RUBRO_PS5, f"{dominio.nombre_consola(1)} · Promo 2hs (2 h)"),
             self.v_socio: (repo.RUBRO_MIEMBRO, "Socio Ulises · Promo 10hs (10 h)"),
             self.v_tramite: (repo.RUBRO_TRAMITE, "Trámite: Turno ANSES"),
             self.v_impresiones: (repo.RUBRO_IMPRESIONES, "14 x Impresión B/N"),

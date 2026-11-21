@@ -24,6 +24,7 @@ def inicializar_base_de_datos():
         _migrar_columnas_cierre_en_sesiones, _migrar_columna_whatsapp_en_miembros,
         _migrar_columna_oferta_en_bonos_vendidos,
         _migrar_columna_desde_ip_en_sesiones, _migrar_columna_miembro_en_reservas,
+        _migrar_consola_en_sesiones_playstation, _migrar_consola_en_reservas,
         _migrar_referencia_bono_en_movimientos_saldo_miembro,
         _migrar_check_tipo_en_movimientos_saldo_miembro, _migrar_columna_origen_en_ventas,
         _migrar_check_origen_en_ventas, _migrar_borrar_clave_vieja_de_clientes_pc, _cargar_datos_iniciales,
@@ -579,9 +580,10 @@ def inicializar_base_de_datos():
     """)
 
     # -------------------------------------------------------------------
-    # PLAYSTATION 5 (una única consola, se alquila por tiempo como una PC)
+    # PLAYSTATION 5 (desde el 2026-11-21 son dos, PS5-1 y PS5-2; se alquilan
+    # por tiempo como una PC)
     # -------------------------------------------------------------------
-    # La consola NO es una fila de "estaciones": una estación es una PC con su
+    # Una consola NO es una fila de "estaciones": una estación es una PC con su
     # Cliente PC (bloqueo, comandos remotos, IP, "Gestionar Estaciones"), y nada
     # de eso existe en una consola. Por eso tiene sus propias tablas, y ningún
     # camino pensado para PCs (renombrar, dar de baja, reiniciar, pasarle un
@@ -593,7 +595,8 @@ def inicializar_base_de_datos():
     # en la otra.
     cursor.execute(_sql_tabla_de_bonos("bonos_playstation"))
     # Misma idea que "sesiones_pc"/"sesion_bonos": una sesión por cada uso
-    # continuo de la consola, que se extiende (fecha_fin_prevista) si se vende
+    # continuo de una consola ("consola", su número: dominio.CONSOLAS_PLAYSTATION;
+    # las de antes del 2026-11-21 son de la 1), que se extiende (fecha_fin_prevista) si se vende
     # otro bono mientras sigue en curso. El vencimiento es una fecha ABSOLUTA,
     # no un contador: cerrar y reabrir el programa no cambia cuánto queda. Al
     # llegar a cero la sesión NO se da de baja sola (a diferencia de una PC, que
@@ -605,16 +608,13 @@ def inicializar_base_de_datos():
             fecha_inicio        TEXT NOT NULL,
             fecha_fin_prevista  TEXT NOT NULL,
             estado              TEXT NOT NULL DEFAULT 'ACTIVA' CHECK (estado IN ('ACTIVA', 'FINALIZADA')),
-            fecha_fin_real      TEXT
+            fecha_fin_real      TEXT,
+            consola             INTEGER NOT NULL DEFAULT 1
         )
     """)
-    # Una sola consola, así que a lo sumo UNA sesión ACTIVA a la vez: el índice
-    # parcial lo garantiza desde la base, aunque algún día un error de código (o
-    # dos pedidos juntos) intentara abrir una segunda.
-    cursor.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sesion_playstation_activa "
-        "ON sesiones_playstation(estado) WHERE estado = 'ACTIVA'"
-    )
+    # La columna "consola" en una base de antes y el índice de a lo sumo UNA
+    # sesión ACTIVA por consola (ver la migración).
+    _migrar_consola_en_sesiones_playstation(conexion)
     # Qué bono(s) se vendieron en cada sesión, con el venta_id de la venta que
     # los cobró (origen PLAYSTATION, ver dominio.ORIGEN_PLAYSTATION): la
     # trazabilidad entre "se vendió este bono" y "esto es lo que se facturó".
@@ -642,8 +642,9 @@ def inicializar_base_de_datos():
     # reservó: el precio queda fijo aunque después cambie el bono). "bono_id" no
     # lleva REFERENCES porque sale de uno de tres catálogos según el equipo
     # (bonos_tiempo, bonos_pcstream o bonos_playstation). "estacion_id" es la PC
-    # pedida: NULL es "cualquier PC disponible" (y también PCSTREAM y la
-    # PlayStation 5, que son una sola). Al habilitarla queda dónde se usó y con
+    # pedida: NULL es "cualquier PC disponible" (y también PCSTREAM, que es una
+    # sola, y la PlayStation 5). "consola" (2026-11-21) es la PlayStation 5 pedida
+    # (su número; NULL en las de PC y PCSTREAM). Al habilitarla queda dónde se usó y con
     # qué sesión. "estado_desde"/"estado_por" dicen desde cuándo está como está y
     # quién la pasó (NULL = el programa solo, al vencer la tolerancia o los días
     # para reprogramar). "miembro_id" (2026-10-26) es el socio de una reserva de
@@ -670,10 +671,12 @@ def inicializar_base_de_datos():
             sesion_pc_id            INTEGER REFERENCES sesiones_pc(id),
             sesion_playstation_id   INTEGER REFERENCES sesiones_playstation(id),
             motivo_devolucion       TEXT,
-            miembro_id              INTEGER REFERENCES miembros(id)
+            miembro_id              INTEGER REFERENCES miembros(id),
+            consola                 INTEGER
         )
     """)
     _migrar_columna_miembro_en_reservas(conexion)
+    _migrar_consola_en_reservas(conexion)
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS reservas_pagos (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,

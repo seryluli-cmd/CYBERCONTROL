@@ -58,14 +58,14 @@ def _de_una_reserva(fila) -> tuple:
     El bono cuenta UNA vez en "Lo vendido": en lo que se pagó al reservar; el
     resto no suma unidades y la devolución la resta.
     """
-    equipo = dominio.nombre_equipo_reservado(fila["equipo"], fila["pc"])
+    equipo = dominio.nombre_equipo_reservado(fila["equipo"], fila["pc"], fila["consola"])
     if fila["tipo"] == dominio.PAGO_RESERVA_ANTICIPO:
         que = "Seña" if fila["total"] < fila["precio"] - 0.005 else "Pago total"
         cuando = datetime.fromisoformat(fila["fecha_reserva"]).strftime("%d/%m %H:%M")
         detalle = f"{que} reserva Nº {fila['numero']} · {fila['cliente']} · {fila['bono_nombre']} · {equipo} {cuando}"
         cantidad = 1
     elif fila["tipo"] == dominio.PAGO_RESERVA_RESTO:
-        lugar = dominio.NOMBRE_PLAYSTATION if fila["sesion_playstation_id"] is not None else fila["habilitada_en"]
+        lugar = dominio.lugar_habilitado(fila["consola_habilitada"], fila["habilitada_en"])
         detalle = (f"Resto reserva Nº {fila['numero']} · {fila['cliente']} · {fila['bono_nombre']}"
                    f" · habilitada en {lugar or equipo}")
         cantidad = 0
@@ -195,16 +195,17 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
     for fila in conexion.execute(
         """
         SELECT sesion_playstation_bonos.venta_id, sesion_playstation_bonos.minutos,
-               bonos_playstation.nombre AS bono, ventas.total
+               bonos_playstation.nombre AS bono, ventas.total, sesiones_playstation.consola
         FROM sesion_playstation_bonos
         JOIN ventas ON ventas.id = sesion_playstation_bonos.venta_id
         JOIN bonos_playstation ON bonos_playstation.id = sesion_playstation_bonos.bono_id
+        JOIN sesiones_playstation ON sesiones_playstation.id = sesion_playstation_bonos.sesion_id
         WHERE ventas.fecha > ? AND ventas.fecha <= ?
         """, rango,
     ):
         resultado[fila["venta_id"]] = _sin_articulo(
             reportes_repo.CATEGORIA_BONO_PLAYSTATION,
-            f"{dominio.NOMBRE_PLAYSTATION} · {fila['bono']} ({dominio.texto_minutos(fila['minutos'])})",
+            f"{dominio.nombre_consola(fila['consola'])} · {fila['bono']} ({dominio.texto_minutos(fila['minutos'])})",
             fila["bono"], fila["total"],
         )
 
@@ -238,13 +239,14 @@ def _que_se_vendio_entre(conexion, desde: str, hasta: str) -> dict:
         """
         SELECT reservas_pagos.venta_id, reservas_pagos.tipo, reservas.id AS numero, reservas.cliente,
                reservas.bono_nombre, reservas.equipo, reservas.precio, reservas.fecha_reserva,
-               reservas.sesion_playstation_id, estaciones.nombre AS pc, habilitada.nombre AS habilitada_en,
-               ventas.total
+               reservas.consola, sesiones_playstation.consola AS consola_habilitada,
+               estaciones.nombre AS pc, habilitada.nombre AS habilitada_en, ventas.total
         FROM reservas_pagos
         JOIN ventas ON ventas.id = reservas_pagos.venta_id
         JOIN reservas ON reservas.id = reservas_pagos.reserva_id
         LEFT JOIN estaciones ON estaciones.id = reservas.estacion_id
         LEFT JOIN estaciones AS habilitada ON habilitada.id = reservas.estacion_habilitada_id
+        LEFT JOIN sesiones_playstation ON sesiones_playstation.id = reservas.sesion_playstation_id
         WHERE ventas.fecha > ? AND ventas.fecha <= ?
         """, rango,
     ):

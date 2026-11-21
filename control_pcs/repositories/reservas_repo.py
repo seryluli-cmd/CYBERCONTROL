@@ -84,24 +84,26 @@ def equipos_para_reservar() -> list:
     """
     Lo que se puede elegir como equipo de una reserva nueva, en el orden en que
     se muestra: "Cualquier PC disponible", cada PC común activa (en orden
-    natural), PCSTREAM si existe y la PlayStation 5. Cada uno es {"equipo",
-    "estacion_id", "nombre"}; estacion_id es None en "cualquier PC" y en PCSTREAM
-    y la consola, que son una sola.
+    natural), PCSTREAM si existe y cada PlayStation 5. Cada uno es {"equipo",
+    "estacion_id", "consola", "nombre"}; estacion_id es None en "cualquier PC",
+    en PCSTREAM (que es una sola) y en las consolas, y "consola" es el número de
+    la consola (None en las demás).
     """
-    opciones = [{"equipo": dominio.EQUIPO_RESERVA_PC, "estacion_id": None,
+    opciones = [{"equipo": dominio.EQUIPO_RESERVA_PC, "estacion_id": None, "consola": None,
                  "nombre": dominio.NOMBRE_RESERVA_CUALQUIER_PC}]
     hay_pcstream = False
     for estacion in pcs_repo.listar_estaciones():
         if dominio.es_pcstream(estacion["nombre"]):
             hay_pcstream = True
             continue
-        opciones.append({"equipo": dominio.EQUIPO_RESERVA_PC, "estacion_id": estacion["id"],
+        opciones.append({"equipo": dominio.EQUIPO_RESERVA_PC, "estacion_id": estacion["id"], "consola": None,
                          "nombre": estacion["nombre"]})
     if hay_pcstream:
-        opciones.append({"equipo": dominio.EQUIPO_RESERVA_PCSTREAM, "estacion_id": None,
+        opciones.append({"equipo": dominio.EQUIPO_RESERVA_PCSTREAM, "estacion_id": None, "consola": None,
                          "nombre": dominio.NOMBRE_PCSTREAM})
-    opciones.append({"equipo": dominio.EQUIPO_RESERVA_PLAYSTATION, "estacion_id": None,
-                     "nombre": dominio.NOMBRE_PLAYSTATION})
+    for consola in dominio.CONSOLAS_PLAYSTATION:
+        opciones.append({"equipo": dominio.EQUIPO_RESERVA_PLAYSTATION, "estacion_id": None, "consola": consola,
+                         "nombre": dominio.nombre_consola(consola)})
     return opciones
 
 
@@ -110,12 +112,14 @@ def bonos_para(equipo: str) -> list:
     return _catalogo(equipo).listar_bonos()
 
 
-def _validar_equipo(conexion, equipo: str, estacion_id):
+def _validar_equipo(conexion, equipo: str, estacion_id, consola=None):
     """Levanta ValueError si el equipo no se puede reservar: una PC puntual tiene
-    que estar activa y no ser PCSTREAM (tiene sus precios), y para reservar
-    PCSTREAM tiene que existir."""
+    que estar activa y no ser PCSTREAM (tiene sus precios), para reservar
+    PCSTREAM tiene que existir y una de consola dice cuál (`consola`)."""
     if equipo not in dominio.EQUIPOS_RESERVA:
         raise ValueError("Elegí qué equipo se reserva.")
+    if equipo == dominio.EQUIPO_RESERVA_PLAYSTATION:
+        dominio.validar_consola(consola)
     if equipo == dominio.EQUIPO_RESERVA_PC and estacion_id is not None:
         estacion = conexion.execute(
             "SELECT nombre FROM estaciones WHERE id = ? AND activa = 1", (estacion_id,)
@@ -137,10 +141,10 @@ def _estacion_pcstream(conexion):
 
 
 def _validar_horario(conexion, equipo: str, estacion_id, inicio: datetime, minutos: int, ahora: datetime,
-                     excluir_id: int = None):
+                     excluir_id: int = None, consola=None):
     """
     Levanta ValueError si la hora ya pasó, o si ese mismo equipo (la PC puntual,
-    PCSTREAM o la consola) ya tiene otra reserva pendiente que se pisa con esta:
+    PCSTREAM o esa consola) ya tiene otra reserva pendiente que se pisa con esta:
     de su hora a su hora + los minutos del bono. "Cualquier PC disponible" no
     aparta ninguna PC (decisión del dueño), así que no choca con nada.
     """
@@ -155,8 +159,9 @@ def _validar_horario(conexion, equipo: str, estacion_id, inicio: datetime, minut
         FROM reservas
         WHERE reservas.estado = ? AND reservas.equipo = ? AND reservas.id IS NOT ?
           AND (reservas.estacion_id = ? OR (? IS NULL AND reservas.estacion_id IS NULL))
+          AND reservas.consola IS ?
         """,
-        (dominio.RESERVA_PENDIENTE, equipo, excluir_id, estacion_id, estacion_id),
+        (dominio.RESERVA_PENDIENTE, equipo, excluir_id, estacion_id, estacion_id, consola),
     ).fetchall()
     for otra in otras:
         otra_inicio = datetime.fromisoformat(otra["fecha_reserva"])
@@ -169,9 +174,9 @@ def _validar_horario(conexion, equipo: str, estacion_id, inicio: datetime, minut
 
 
 def _validar_reserva_nueva(conexion, equipo: str, estacion_id, bono_id: int, inicio: datetime, monto: float,
-                           ahora: datetime):
+                           ahora: datetime, consola=None):
     """Todo lo que controla crear_reserva antes de grabar. Devuelve el bono."""
-    _validar_equipo(conexion, equipo, estacion_id)
+    _validar_equipo(conexion, equipo, estacion_id, consola)
     bono = _catalogo(equipo).obtener_bono(bono_id) if bono_id is not None else None
     if bono is None or not bono["activo"]:
         raise ValueError("Ese bono ya no está disponible.")
@@ -180,11 +185,17 @@ def _validar_reserva_nueva(conexion, equipo: str, estacion_id, bono_id: int, ini
         raise ValueError("Lo que paga ahora tiene que ser más que cero: la reserva se toma con una seña o con todo.")
     if monto > round(bono["precio"], 2):
         raise ValueError("Lo que paga ahora no puede ser más que el precio del bono.")
-    _validar_horario(conexion, equipo, estacion_id, inicio, bono["minutos"], ahora)
+    _validar_horario(conexion, equipo, estacion_id, inicio, bono["minutos"], ahora, consola=consola)
     return bono
 
 
-def revisar_reserva(equipo: str, estacion_id, bono_id: int, inicio: datetime, monto: float):
+def _consola_si_es_de_consola(equipo: str, consola):
+    """La consola pedida, solo si la reserva es de una PlayStation 5 (las demás
+    van con None, aunque la pantalla mande otra cosa)."""
+    return consola if equipo == dominio.EQUIPO_RESERVA_PLAYSTATION else None
+
+
+def revisar_reserva(equipo: str, estacion_id, bono_id: int, inicio: datetime, monto: float, consola=None):
     """
     Lo mismo que controla crear_reserva, sin grabar nada (ValueError con el
     motivo): la pantalla lo pregunta ANTES de abrir el cobro, así nunca se cobra
@@ -192,11 +203,12 @@ def revisar_reserva(equipo: str, estacion_id, bono_id: int, inicio: datetime, mo
     controlar.
     """
     with conexion_db() as conexion:
-        _validar_reserva_nueva(conexion, equipo, estacion_id, bono_id, inicio, monto, datetime.now())
+        _validar_reserva_nueva(conexion, equipo, estacion_id, bono_id, inicio, monto, datetime.now(),
+                               _consola_si_es_de_consola(equipo, consola))
 
 
 def crear_reserva(usuario_id: int, cliente: str, celular: str, equipo: str, estacion_id, bono_id: int,
-                  inicio: datetime, monto: float, pagos: list) -> int:
+                  inicio: datetime, monto: float, pagos: list, consola=None) -> int:
     """
     Toma una reserva y cobra lo que paga ahora (`monto`: una seña o todo, más de
     cero y hasta el precio del bono). `pagos` son los de la ventana de cobro
@@ -204,8 +216,9 @@ def crear_reserva(usuario_id: int, cliente: str, celular: str, equipo: str, esta
     la reserva.
 
     `equipo` es dominio.EQUIPO_RESERVA_*; `estacion_id`, la PC pedida (None =
-    cualquier PC disponible; siempre None para PCSTREAM y la consola). `inicio` es
-    el día y la hora a la que viene (los segundos se descartan).
+    cualquier PC disponible; siempre None para PCSTREAM y las consolas); `consola`,
+    la PlayStation 5 pedida (su número; solo en las de consola). `inicio` es el
+    día y la hora a la que viene (los segundos se descartan).
 
     La reserva, la venta y su vínculo se graban juntos (regla 8): la venta entra
     en la caja abierta, a nombre de quien cobra (cajas_repo._quien_vende), como
@@ -218,22 +231,24 @@ def crear_reserva(usuario_id: int, cliente: str, celular: str, equipo: str, esta
     # Que los pagos sumen justo `monto` lo revisa registrar_venta_sin_detalle (en _cobrar).
     if equipo != dominio.EQUIPO_RESERVA_PC:
         estacion_id = None
+    consola = _consola_si_es_de_consola(equipo, consola)
     inicio = inicio.replace(second=0, microsecond=0)
     usuarios_repo.usuario_habilitado(usuario_id)
 
     ahora = datetime.now()
     with conexion_db() as conexion:
         conexion.execute("BEGIN IMMEDIATE")
-        bono = _validar_reserva_nueva(conexion, equipo, estacion_id, bono_id, inicio, monto, ahora)
+        bono = _validar_reserva_nueva(conexion, equipo, estacion_id, bono_id, inicio, monto, ahora, consola)
         reserva_id = conexion.execute(
             """
             INSERT INTO reservas (fecha_creacion, usuario_id, cliente, celular, equipo, estacion_id, bono_id,
-                                  bono_nombre, minutos, precio, fecha_reserva, estado, estado_desde, estado_por)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  bono_nombre, minutos, precio, fecha_reserva, estado, estado_desde, estado_por,
+                                  consola)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (_iso(ahora), usuario_id, cliente, (celular or "").strip(), equipo, estacion_id, bono["id"],
              bono["nombre"], bono["minutos"], round(bono["precio"], 2), inicio.isoformat(timespec="seconds"),
-             dominio.RESERVA_PENDIENTE, _iso(ahora), usuario_id),
+             dominio.RESERVA_PENDIENTE, _iso(ahora), usuario_id, consola),
         ).lastrowid
         _cobrar(conexion, reserva_id, dominio.PAGO_RESERVA_ANTICIPO, usuario_id, monto, pagos, equipo, ahora)
     return reserva_id
@@ -323,26 +338,28 @@ def actualizar_estados(ahora: datetime = None):
 
 _SELECT_RESERVAS = """
     SELECT reservas.*, estaciones.nombre AS estacion_nombre, habilitada.nombre AS habilitada_nombre,
+           sesiones_playstation.consola AS consola_habilitada,
            COALESCE((SELECT SUM(ventas.total) FROM reservas_pagos
                      JOIN ventas ON ventas.id = reservas_pagos.venta_id
                      WHERE reservas_pagos.reserva_id = reservas.id AND ventas.estado = ?), 0) AS pagado
     FROM reservas
     LEFT JOIN estaciones ON estaciones.id = reservas.estacion_id
     LEFT JOIN estaciones AS habilitada ON habilitada.id = reservas.estacion_habilitada_id
+    LEFT JOIN sesiones_playstation ON sesiones_playstation.id = reservas.sesion_playstation_id
 """
 
 
 def _armar(fila) -> dict:
     """Una fila de reservas lista para la pantalla: sus columnas más "equipo_nombre"
-    (la PC pedida, "Cualquier PC disponible", PCSTREAM o la consola),
+    (la PC pedida, "Cualquier PC disponible", PCSTREAM o la consola pedida),
     "habilitada_en", "pagado", "falta", "es_de_socio" y, si está A reprogramar,
     "vence"."""
     reserva = dict(fila)
     reserva["es_de_socio"] = reserva["miembro_id"] is not None
-    reserva["equipo_nombre"] = dominio.nombre_equipo_reservado(reserva["equipo"], reserva["estacion_nombre"])
-    reserva["habilitada_en"] = (
-        dominio.NOMBRE_PLAYSTATION if reserva["sesion_playstation_id"] is not None else reserva["habilitada_nombre"]
+    reserva["equipo_nombre"] = dominio.nombre_equipo_reservado(
+        reserva["equipo"], reserva["estacion_nombre"], reserva["consola"]
     )
+    reserva["habilitada_en"] = dominio.lugar_habilitado(reserva["consola_habilitada"], reserva["habilitada_nombre"])
     reserva["pagado"] = round(reserva["pagado"], 2)
     reserva["falta"] = max(0.0, round(reserva["precio"] - reserva["pagado"], 2))
     reserva["vence"] = None
@@ -492,8 +509,8 @@ def reprogramar(reserva_id: int, usuario_id: int, inicio: datetime, estacion_id=
     vuelve a Pendiente). Una de PC que quedó A reprogramar ya no elige PC
     (decisión del dueño): vuelve como "cualquier PC disponible" aunque venga
     `estacion_id`. Una Pendiente de PC puede cambiar de PC. PCSTREAM y la consola
-    son una sola y siguen siendo las mismas. No mueve plata: el precio y lo
-    pagado no cambian.
+    reservada siguen siendo las mismas. No mueve plata: el precio y lo pagado no
+    cambian.
     """
     usuarios_repo.usuario_habilitado(usuario_id)
     inicio = inicio.replace(second=0, microsecond=0)
@@ -503,9 +520,9 @@ def reprogramar(reserva_id: int, usuario_id: int, inicio: datetime, estacion_id=
         reserva = _reserva_abierta(conexion, reserva_id)
         if reserva["equipo"] != dominio.EQUIPO_RESERVA_PC or reserva["estado"] == dominio.RESERVA_A_REPROGRAMAR:
             estacion_id = None
-        _validar_equipo(conexion, reserva["equipo"], estacion_id)
+        _validar_equipo(conexion, reserva["equipo"], estacion_id, reserva["consola"])
         _validar_horario(conexion, reserva["equipo"], estacion_id, inicio, reserva["minutos"], ahora,
-                         excluir_id=reserva_id)
+                         excluir_id=reserva_id, consola=reserva["consola"])
         conexion.execute(
             """
             UPDATE reservas SET fecha_reserva = ?, estacion_id = ?, estado = ?, estado_desde = ?, estado_por = ?

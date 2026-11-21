@@ -56,7 +56,7 @@ def texto_de_la_reserva(item) -> str:
 
 def es_playstation(item) -> bool:
     """True si un equipo de Control de PCs (un elemento de
-    pcs_repo.estado_estaciones o de playstation_repo.estado) es la PlayStation 5
+    pcs_repo.estado_estaciones o de playstation_repo.estados) es una PlayStation 5
     y no una PC; None (nada elegido) da False. La usan este panel y el mosaico
     (pcs_window)."""
     return item is not None and item["dispositivo"] == dominio.DISPOSITIVO_PLAYSTATION
@@ -235,7 +235,7 @@ class PanelDetalleEstacion(QFrame):
 
     def mostrar(self, item):
         """`item` es un elemento de pcs_repo.estado_estaciones() (una PC), el de
-        playstation_repo.estado() (la consola), o None si no hay nada
+        playstation_repo.estados() (una consola), o None si no hay nada
         seleccionado en la grilla."""
         self.item = item
         es_consola = es_playstation(item)
@@ -265,7 +265,7 @@ class PanelDetalleEstacion(QFrame):
         # nuevo con cada refresco de la grilla (cada 5s) y no puede devolver el
         # scroll adonde estaba mientras alguien lo está moviendo a mano.
         equipo = None if item is None else (
-            item["dispositivo"], None if es_consola else item["estacion"]["id"]
+            item["dispositivo"], item["consola"] if es_consola else item["estacion"]["id"]
         )
         if equipo is not None and equipo != self._equipo_mostrado:
             lista_activa = self._lista_del_equipo(item)
@@ -344,11 +344,11 @@ class PanelDetalleEstacion(QFrame):
         item = self.item
         if item is None or item["sesion"] is None:
             return
-        consola = es_playstation(item)
-        equipo = item["nombre"] if consola else item["estacion"]["nombre"]
-        venta_id = elegir_bono_a_quitar(
-            self, equipo, anular_bono_repo.bonos_de_la_sesion(None if consola else item["estacion"]["id"])
-        )
+        if es_playstation(item):
+            equipo, bonos = item["nombre"], anular_bono_repo.bonos_de_la_sesion(consola=item["consola"])
+        else:
+            equipo, bonos = item["estacion"]["nombre"], anular_bono_repo.bonos_de_la_sesion(item["estacion"]["id"])
+        venta_id = elegir_bono_a_quitar(self, equipo, bonos)
         if venta_id is not None and anular_bono_con_cartel(self, self.usuario, venta_id):
             self._avisar_cambio()
 
@@ -522,9 +522,10 @@ class PanelDetalleEstacion(QFrame):
 
         # Si el bono deja el equipo ocupado a la hora de una reserva suya, se avisa
         # antes de cobrar; no se frena: decide el operador (decisión del dueño).
-        aviso = reservas_horario_repo.aviso_al_vender(
-            None if es_playstation(item) else item["estacion"]["id"], bono["minutos"]
-        )
+        if es_playstation(item):
+            aviso = reservas_horario_repo.aviso_al_vender(None, bono["minutos"], consola=item["consola"])
+        else:
+            aviso = reservas_horario_repo.aviso_al_vender(item["estacion"]["id"], bono["minutos"])
         if aviso and not confirmar(self, "Equipo reservado", aviso):
             return
 
@@ -532,8 +533,8 @@ class PanelDetalleEstacion(QFrame):
         if pagos is None:
             return
         if es_playstation(item):
-            playstation_repo.vender_bono(self.usuario["id"], bono["id"], pagos, momento_del_precio=momento,
-                                         bono_mostrado=bono)
+            playstation_repo.vender_bono(self.usuario["id"], item["consola"], bono["id"], pagos,
+                                         momento_del_precio=momento, bono_mostrado=bono)
         else:
             # PCSTREAM también: pcs_repo.asignar_bono busca el bono en SU catálogo.
             pcs_repo.asignar_bono(item["estacion"]["id"], bono["id"], self.usuario["id"], pagos,
@@ -575,7 +576,7 @@ class PanelDetalleEstacion(QFrame):
             else:
                 aviso = f"¿Ya les avisaste a los clientes? Se va a liberar la {item['nombre']}."
             if confirmar(self, "Confirmar", aviso):
-                playstation_repo.finalizar_sesion(self.usuario["id"])
+                playstation_repo.finalizar_sesion(self.usuario["id"], item["consola"])
                 self._avisar_cambio()
             return
 

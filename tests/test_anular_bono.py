@@ -260,15 +260,15 @@ class TestOtrosBonos(BaseAnularBono):
 
     def test_el_bono_de_la_playstation_se_quita_igual(self):
         bono = playstation_repo.crear_bono(self.admin, "2 horas PS5", 120, 6000)
-        playstation_repo.vender_bono(self.toby, bono, _efectivo(6000))
-        repetida = playstation_repo.vender_bono(self.toby, bono, _efectivo(6000))
+        playstation_repo.vender_bono(self.toby, 1, bono, _efectivo(6000))
+        repetida = playstation_repo.vender_bono(self.toby, 1, bono, _efectivo(6000))
         sesion = self.sesion_de(repetida, "sesion_playstation_bonos")
         fin = self.fin_de(sesion, "sesiones_playstation")
 
-        self.assertEqual([b["venta_id"] for b in anular_bono_repo.bonos_de_la_sesion(None)][0], repetida)
+        self.assertEqual([b["venta_id"] for b in anular_bono_repo.bonos_de_la_sesion(consola=1)][0], repetida)
         hecho = anular_bono_repo.anular_bono(repetida, self.admin, "se cargó dos veces")
 
-        self.assertEqual((hecho["sacados"], hecho["estacion"]), (120, dominio.NOMBRE_PLAYSTATION))
+        self.assertEqual((hecho["sacados"], hecho["estacion"]), (120, dominio.nombre_consola(1)))
         self.assertEqual(fin - self.fin_de(sesion, "sesiones_playstation"), timedelta(minutes=120))
         self.assertEqual(self.estado_de(repetida), dominio.VENTA_ANULADA)
 

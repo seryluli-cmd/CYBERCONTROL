@@ -155,8 +155,8 @@ FUNCIONES = {
     "pcstream_repo": ("uso_por_dia",) + _CATALOGO_DE_BONOS,
     # Reportes > PCs: Socios y Bonos
     "socios_bonos_repo": ("comparar",),
-    # La consola en la grilla (estado) y su catálogo
-    "playstation_repo": ("estado",) + _CATALOGO_DE_BONOS,
+    # Las consolas en la grilla (estados) y su catálogo
+    "playstation_repo": ("estados",) + _CATALOGO_DE_BONOS,
     "bonos_miembro_repo": _CATALOGO_DE_BONOS,
     # Configuración ADMIN > Ofertas (2x1 y 50%, 2026-11-13) y las que corren, para el
     # panel de la PC. Vender con la oferta (como_se_vende) es del mostrador.

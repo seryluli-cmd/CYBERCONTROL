@@ -91,7 +91,7 @@ class _UnDiaConDeTodo(BaseConBaseTemporal):
                 ((datetime.fromisoformat(vendido) + timedelta(minutes=1)).isoformat(timespec="microseconds"),),
             )
         self.v_stream = pcs_repo.asignar_bono(self.pcstream, bono_stream, self.lucia_id, _digital(2000.0))
-        self.v_ps5 = playstation_repo.vender_bono(self.lucia_id, bono_ps5, _efectivo(1500.0))
+        self.v_ps5 = playstation_repo.vender_bono(self.lucia_id, 1, bono_ps5, _efectivo(1500.0))
         self.v_carga = miembros_repo.cargar_saldo_por_monto(socio, 3000.0, _efectivo(3000.0), self.lucia_id)["venta_id"]
         self.v_pack = miembros_repo.cargar_saldo_por_bono(socio, bono_socio, _digital(4000.0), self.lucia_id)["venta_id"]
         self.v_admin = self._vender(self.admin_id, 1)  # queda a nombre de Lucía
@@ -140,7 +140,7 @@ class TestCadaVentaDiceQueSeVendio(_UnDiaConDeTodo):
             # La PC donde estaba al venderlo, aunque después se la cambió a la PC2.
             self.v_pc: (reportes_repo.CATEGORIA_BONO_PC, "PC1 · 3 horas (3 h)"),
             self.v_stream: (reportes_repo.CATEGORIA_BONO_PCSTREAM, f"{dominio.NOMBRE_PCSTREAM} · 1 hora (1 h)"),
-            self.v_ps5: (reportes_repo.CATEGORIA_BONO_PLAYSTATION, f"{dominio.NOMBRE_PLAYSTATION} · Media hora (30 min)"),
+            self.v_ps5: (reportes_repo.CATEGORIA_BONO_PLAYSTATION, f"{dominio.nombre_consola(1)} · Media hora (30 min)"),
             self.v_pack: (reportes_repo.CATEGORIA_BONO_SOCIO, "Socio Juan · Pack 5 h (5 h)"),
         }
         for venta_id, (rubro, texto) in esperado.items():

@@ -644,3 +644,19 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   con un socio; un Cliente PC viejo no lo tiene y sigue igual. Pruebas en
   `tests/test_cambiar_clave_socio.py` y el contrato con el Cliente PC de verdad en
   `tests/test_contrato_cliente_pc.py`. Sin .exe; la lista blanca no cambia.
+- **2026-11-21 — Dos PlayStation 5: PS5-1 y PS5-2** (pedido del dueño: "compré otra Play Station 5
+  así que debemos agregarla al programa"; eligió los nombres PS5-1 y PS5-2, los mismos bonos para las
+  dos, la plata junta como "PlayStation 5" en Caja, Cierre de Turno y Reportes con el detalle diciendo
+  en cuál, y que una reserva sea de una consola en particular, como las PCs). Cada consola es un número
+  (`dominio.CONSOLAS_PLAYSTATION`, `dominio.nombre_consola`), nunca una estación:
+  `sesiones_playstation.consola` y `reservas.consola` (NULL en las de PC), y una sola sesión `ACTIVA`
+  por consola con el índice de siempre, `idx_sesion_playstation_activa`, que conserva el nombre para
+  que un CyberBios viejo siga arrancando (trampa en `docs/guia/PCS_Y_BONOS.md`). La migración deja lo de
+  antes en la PS5-1; probada con una copia de la base del local: las 58 sesiones en la PS5-1 y las
+  ventas, la plata y las filas de cada tabla iguales. El mosaico muestra las dos antes de las PCs;
+  vender, liberar, quitar un bono y el aviso de la reserva van a la consola elegida; Actividad
+  reciente, Historial del Turno, Detalle del Día y las reservas dicen cuál. Una reserva de PlayStation
+  choca solo con las de su consola y, si la suya está ocupada, se habilita en la otra libre. Pruebas
+  nuevas en `tests/test_playstation.py` (`TestDosConsolas`, `TestMigracionDeLaSegundaConsola`) y
+  `tests/test_reservas.py`; 2129 pruebas. Cambia la lista blanca (`playstation_repo.estados`): las
+  dos copias necesitan el mismo .exe. Sin .exe.

@@ -71,11 +71,13 @@ class _ConReservas(BaseConBaseTemporal):
         self.bono_stream = pcstream_repo.crear_bono("3 hs PCSTREAM", 180, 4500.0)
         self.bono_ps5 = playstation_repo.crear_bono(self.admin, "2 horas PS5", 120, 6000.0)
 
-    def _reservar(self, cuando, equipo=dominio.EQUIPO_RESERVA_PC, estacion="pc1", bono=None, cliente="Juan Pérez"):
+    def _reservar(self, cuando, equipo=dominio.EQUIPO_RESERVA_PC, estacion="pc1", bono=None, cliente="Juan Pérez",
+                  consola=1):
+        """`consola` solo cuenta en una de PlayStation (por defecto, la PS5-1)."""
         estacion_id = getattr(self, estacion) if estacion else None
         return reservas_repo.crear_reserva(
             self.ana, cliente, "11 5555-4444", equipo, estacion_id, bono or self.promo, cuando, 1000.0,
-            _efectivo(1000.0),
+            _efectivo(1000.0), consola=consola if equipo == dominio.EQUIPO_RESERVA_PLAYSTATION else None,
         )
 
     def _estacion(self, estacion_id):
@@ -114,7 +116,8 @@ class TestCuandoSeVeReservada(_ConReservas):
         self.assertEqual(reservas_horario_repo.proxima(reservas, self._estacion(self.pc1))["cliente"], "Juan")
         self.assertIsNone(reservas_horario_repo.proxima(reservas, self._estacion(self.pc2)))
         self.assertEqual(reservas_horario_repo.proxima(reservas, self._estacion(self.pcstream))["cliente"], "Lucas")
-        self.assertEqual(reservas_horario_repo.proxima(reservas)["cliente"], "Mía")
+        self.assertEqual(reservas_horario_repo.proxima(reservas, consola=1)["cliente"], "Mía")
+        self.assertIsNone(reservas_horario_repo.proxima(reservas, consola=2))
         self.assertEqual([r["cliente"] for r in reservas_horario_repo.sin_pc_fija(reservas)], ["Marta"])
 
     def test_la_hora_se_nombra_hoy_manana_o_con_el_dia(self):
@@ -171,7 +174,8 @@ class TestAvisoAlVender(_ConReservas):
         self._reservar(_manana_a_las(10), equipo=dominio.EQUIPO_RESERVA_PCSTREAM, estacion=None,
                        bono=self.bono_stream)
 
-        self.assertIn(dominio.NOMBRE_PLAYSTATION, reservas_horario_repo.aviso_al_vender(None, 180, _manana_a_las(8)))
+        self.assertIn("PS5-1", reservas_horario_repo.aviso_al_vender(None, 180, _manana_a_las(8), consola=1))
+        self.assertIsNone(reservas_horario_repo.aviso_al_vender(None, 180, _manana_a_las(8), consola=2))
         self.assertIn("PCSTREAM", reservas_horario_repo.aviso_al_vender(self.pcstream, 180, _manana_a_las(8)))
 
     def test_avisar_no_impide_vender(self):
@@ -315,7 +319,9 @@ class TestMosaico(_ConReservas):
     def test_la_playstation_libre_reservada_tambien_se_ve_celeste(self):
         self._reservar(_en(60), equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None, bono=self.bono_ps5)
 
-        self.assertEqual(self._ficha(self._grilla(), dominio.NOMBRE_PLAYSTATION).color, pcs_window.COLOR_RESERVADA)
+        grilla = self._grilla()
+        self.assertEqual(self._ficha(grilla, "PS5-1").color, pcs_window.COLOR_RESERVADA)
+        self.assertEqual(self._ficha(grilla, "PS5-2").color, pcs_window.COLOR_DISPONIBLE)
 
     def test_las_de_cualquier_pc_van_en_el_aviso_de_arriba_con_las_libres(self):
         for estacion in (self.pc1, self.pc2, self.pcstream):

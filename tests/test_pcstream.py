@@ -406,7 +406,7 @@ class TestPcstreamEnPantalla(_ConPcstream):
 
         nombres = [grilla.mosaico.ficha(fila).nombre for fila in range(grilla.mosaico.count())]
 
-        self.assertEqual(nombres, ["PLAYSTATION 5", "PCSTREAM", "PC 1", "PC 2"])
+        self.assertEqual(nombres, ["PS5-1", "PS5-2", "PCSTREAM", "PC 1", "PC 2"])
 
     def test_el_admin_administra_sus_bonos_desde_su_propia_pantalla(self):
         dialogo = DialogoGestionBonosPcstream()

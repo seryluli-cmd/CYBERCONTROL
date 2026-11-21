@@ -57,11 +57,13 @@ class _ConReservas(BaseConBaseTemporal):
         self.bono_ps5 = playstation_repo.crear_bono(self.admin, "2 horas PS5", 120, 6000.0)
 
     def _reservar(self, monto=5000.0, equipo=dominio.EQUIPO_RESERVA_PC, estacion="pc1", bono=None,
-                  cuando=None, por=None, cliente="Juan Pérez"):
+                  cuando=None, por=None, cliente="Juan Pérez", consola=1):
+        """`consola` solo cuenta en una de PlayStation (por defecto, la PS5-1)."""
         estacion_id = getattr(self, estacion) if estacion else None
         return reservas_repo.crear_reserva(
             por or self.ana, cliente, "11 5555-4444", equipo, estacion_id, bono or self.promo,
             cuando or _manana_a_las(10), monto, _efectivo(monto),
+            consola=consola if equipo == dominio.EQUIPO_RESERVA_PLAYSTATION else None,
         )
 
     def _cerrar_turno(self, usuario):
@@ -143,14 +145,14 @@ class TestLaPlata(_ConReservas):
         reserva = self._reservar(5000.0)
         reservas_habilitar_repo.habilitar(reserva, self.luis, self.pc1, _efectivo(5000.0))
         ps5 = self._reservar(6000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None, bono=self.bono_ps5)
-        reservas_habilitar_repo.habilitar(ps5, self.luis, None, [])
+        reservas_habilitar_repo.habilitar(ps5, self.luis, None, [], consola=1)
 
         eventos = actividad_repo.actividad_reciente()
 
         self.assertNotIn("BONO", [evento["tipo"] for evento in eventos])
         self.assertEqual(
             sorted((e["estacion_nombre"], e["numero"]) for e in eventos if e["tipo"] == "RESERVA"),
-            sorted([("PC1", reserva), (dominio.NOMBRE_PLAYSTATION, ps5)]),
+            sorted([("PC1", reserva), (dominio.nombre_consola(1), ps5)]),
         )
 
     def test_el_precio_queda_fijo_aunque_despues_cambie_el_bono(self):
@@ -358,8 +360,7 @@ class TestEquipos(_ConReservas):
         with self.assertRaisesRegex(ValueError, "sus propios bonos"):
             self._reservar(estacion="pcstream")
         nombres = [opcion["nombre"] for opcion in reservas_repo.equipos_para_reservar()]
-        self.assertEqual(nombres, [dominio.NOMBRE_RESERVA_CUALQUIER_PC, "PC1", "PC2", "PCSTREAM",
-                                   dominio.NOMBRE_PLAYSTATION])
+        self.assertEqual(nombres, [dominio.NOMBRE_RESERVA_CUALQUIER_PC, "PC1", "PC2", "PCSTREAM", "PS5-1", "PS5-2"])
 
     def test_la_playstation_se_reserva_y_se_habilita_como_playstation(self):
         reserva = self._reservar(3000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None,
@@ -367,20 +368,56 @@ class TestEquipos(_ConReservas):
         resumen = turnos_repo.resumen_turno_actual()
         self.assertEqual((resumen["playstation_efectivo"], resumen["playstation_solo_efectivo"]), (3000.0, 0.0))
 
-        reservas_habilitar_repo.habilitar(reserva, self.luis, None, _efectivo(3000.0))
+        reservas_habilitar_repo.habilitar(reserva, self.luis, None, _efectivo(3000.0), consola=1)
 
-        consola = playstation_repo.estado()
+        consola = playstation_repo.estado(1)
         self.assertGreater(consola["segundos_restantes"], 119 * 60)
-        self.assertEqual(reservas_repo.obtener_reserva(reserva)["habilitada_en"], dominio.NOMBRE_PLAYSTATION)
+        self.assertEqual(reservas_repo.obtener_reserva(reserva)["habilitada_en"], dominio.nombre_consola(1))
 
-    def test_la_playstation_en_uso_no_se_habilita(self):
+    def test_la_playstation_en_uso_no_se_habilita_y_se_ofrece_la_otra(self):
+        # Como con las PCs: si la reservada está ocupada, se puede habilitar en la otra libre.
         reserva = self._reservar(6000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None,
                                  bono=self.bono_ps5)
-        playstation_repo.vender_bono(self.luis, self.bono_ps5, _efectivo(6000.0))
+        playstation_repo.vender_bono(self.luis, 1, self.bono_ps5, _efectivo(6000.0))
 
-        self.assertEqual(reservas_habilitar_repo.lugares_para_habilitar(reserva), [])
-        with self.assertRaisesRegex(ValueError, "en uso"):
-            reservas_habilitar_repo.habilitar(reserva, self.luis, None, [])
+        lugares = reservas_habilitar_repo.lugares_para_habilitar(reserva)
+        self.assertEqual([(lugar["nombre"], lugar["es_la_reservada"]) for lugar in lugares], [("PS5-2", False)])
+        with self.assertRaisesRegex(ValueError, "PS5-1 está en uso"):
+            reservas_habilitar_repo.preparar_habilitacion(reserva, None, consola=1)
+        with self.assertRaisesRegex(ValueError, "PS5-1 está en uso"):
+            reservas_habilitar_repo.habilitar(reserva, self.luis, None, [], consola=1)
+
+        self.assertEqual(reservas_habilitar_repo.habilitar(reserva, self.luis, None, [], consola=2)["lugar"], "PS5-2")
+        self.assertEqual(reservas_repo.obtener_reserva(reserva)["habilitada_en"], "PS5-2")
+        self.assertEqual(playstation_repo.estado(2)["sesion"]["fecha_fin_prevista"] is not None, True)
+
+        ocupadas = playstation_repo.estados()
+        self.assertTrue(all(item["sesion"] is not None for item in ocupadas))
+        otra = self._reservar(6000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None,
+                              bono=self.bono_ps5, cliente="Mía", cuando=_manana_a_las(15))
+        self.assertEqual(reservas_habilitar_repo.lugares_para_habilitar(otra), [])
+
+    def test_cada_playstation_se_reserva_aparte(self):
+        self._reservar(6000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None, bono=self.bono_ps5,
+                       consola=1)
+        # La misma hora en la otra consola se puede; en la misma, no.
+        en_la_2 = self._reservar(6000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None,
+                                 bono=self.bono_ps5, consola=2, cliente="Mía")
+        with self.assertRaisesRegex(ValueError, "ya está reservado"):
+            self._reservar(6000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None, bono=self.bono_ps5,
+                           consola=1, cliente="Lucas")
+        with self.assertRaisesRegex(ValueError, "cuál de las PlayStation"):
+            self._reservar(6000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None, bono=self.bono_ps5,
+                           consola=None, cliente="Lucas", cuando=_manana_a_las(18))
+        self.assertEqual(reservas_repo.obtener_reserva(en_la_2)["equipo_nombre"], "PS5-2")
+
+        # Reprogramarla no le cambia la consola, y choca solo con las de su consola.
+        self._reservar(6000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None, bono=self.bono_ps5,
+                       consola=2, cliente="Lucas", cuando=_manana_a_las(18))
+        with self.assertRaisesRegex(ValueError, "ya está reservado"):
+            reservas_repo.reprogramar(en_la_2, self.ana, _manana_a_las(17))
+        reservas_repo.reprogramar(en_la_2, self.ana, _manana_a_las(11))  # la PS5-1 de 10 a 12 no la toca
+        self.assertEqual(reservas_repo.obtener_reserva(en_la_2)["consola"], 2)
 
     def test_cualquier_pc_se_habilita_en_una_libre(self):
         reserva = self._reservar(3000.0, estacion=None, bono=self.tres_horas)

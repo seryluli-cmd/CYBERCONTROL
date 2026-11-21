@@ -158,20 +158,22 @@ def actividad_reciente(limite: int = 30):
                              "segundos_pc": fila["segundos_pc"]})
 
         # Las reservas que se habilitaron (reservas_repo), en la PC donde se usaron o
-        # en la consola. Con su índice (estado, estado_desde): lee solo las últimas.
+        # en una consola. Con su índice (estado, estado_desde): lee solo las últimas.
         for fila in conexion.execute("""
             SELECT r.estado_desde AS fecha, r.id AS numero, r.cliente AS cliente, r.bono_nombre AS bono_nombre,
-                   CASE WHEN r.sesion_playstation_id IS NOT NULL THEN ? ELSE e.nombre END AS estacion_nombre
+                   e.nombre AS pc, s.consola AS consola
             FROM reservas r
             LEFT JOIN estaciones e ON e.id = r.estacion_habilitada_id
+            LEFT JOIN sesiones_playstation s ON s.id = r.sesion_playstation_id
             WHERE r.estado = ?
             ORDER BY r.estado_desde DESC LIMIT ?
-        """, (dominio.NOMBRE_PLAYSTATION, dominio.RESERVA_HABILITADA, limite)).fetchall():
-            eventos.append({"fecha": fila["fecha"], "tipo": "RESERVA", "estacion_nombre": fila["estacion_nombre"],
+        """, (dominio.RESERVA_HABILITADA, limite)).fetchall():
+            eventos.append({"fecha": fila["fecha"], "tipo": "RESERVA",
+                            "estacion_nombre": dominio.lugar_habilitado(fila["consola"], fila["pc"]),
                             "numero": fila["numero"], "cliente": fila["cliente"],
                             "bono_nombre": fila["bono_nombre"]})
 
-    # La PlayStation 5 comparte el panel con las PCs: sus sesiones y bonos
+    # Las PlayStation 5 comparten el panel con las PCs: sus sesiones y bonos
     # llegan con la misma forma (ver playstation_repo.eventos_recientes).
     eventos.extend(playstation_repo.eventos_recientes(limite))
 

@@ -256,13 +256,14 @@ class DialogoNuevaReserva(QDialog):
         inicio = _momento(self.campo_dia.date(), self.campo_hora.time())
         monto = self._monto()
         # Antes de cobrar: que no se cobre una reserva que después no se puede guardar.
-        reservas_repo.revisar_reserva(equipo["equipo"], equipo["estacion_id"], bono["id"], inicio, monto)
+        reservas_repo.revisar_reserva(equipo["equipo"], equipo["estacion_id"], bono["id"], inicio, monto,
+                                      consola=equipo["consola"])
         pagos = cobrar(self, monto)
         if pagos is None:
             return
         self.reserva_id = reservas_repo.crear_reserva(
             self.usuario["id"], cliente, self.campo_celular.text(), equipo["equipo"], equipo["estacion_id"],
-            bono["id"], inicio, monto, pagos,
+            bono["id"], inicio, monto, pagos, consola=equipo["consola"],
         )
         mostrar_info(
             self, "Reserva tomada",
@@ -336,7 +337,7 @@ class DialogoHabilitarReserva(QDialog):
         self.combo_lugar.setMinimumWidth(220)
         for lugar in self.lugares:
             texto = lugar["nombre"]
-            if lugar["es_la_reservada"] and reserva["equipo"] == dominio.EQUIPO_RESERVA_PC:
+            if lugar["es_la_reservada"] and reserva["equipo"] != dominio.EQUIPO_RESERVA_PCSTREAM:
                 texto += "  (la reservada)"
             if not lugar["enlazada"]:
                 texto += "  (sin conexión)"
@@ -351,11 +352,11 @@ class DialogoHabilitarReserva(QDialog):
 
         if not self.lugares:
             ayuda = "No hay ningún equipo libre para esta reserva: liberá uno y volvé a abrir esta ventana."
-        elif reserva["equipo"] != dominio.EQUIPO_RESERVA_PC:
+        elif reserva["equipo"] == dominio.EQUIPO_RESERVA_PCSTREAM:
             ayuda = ""
-        elif reserva["estado"] == dominio.RESERVA_A_REPROGRAMAR:
+        elif reserva["equipo"] == dominio.EQUIPO_RESERVA_PC and reserva["estado"] == dominio.RESERVA_A_REPROGRAMAR:
             ayuda = "Quedó A reprogramar: ya no tiene PC propia, se le da cualquiera de las libres."
-        elif reserva["estacion_id"] is None:
+        elif reserva["equipo"] == dominio.EQUIPO_RESERVA_PC and reserva["estacion_id"] is None:
             ayuda = "Reserva sin PC fija: se elige cualquiera de las libres."
         elif not any(lugar["es_la_reservada"] for lugar in self.lugares):
             ayuda = f"{reserva['equipo_nombre']} está ocupada: elegí otra libre."
@@ -400,14 +401,15 @@ class DialogoHabilitarReserva(QDialog):
         if lugar is None:
             return
         # Antes de cobrar el resto: que el equipo siga libre y la reserva esperando.
-        falta = reservas_habilitar_repo.preparar_habilitacion(self.reserva["id"], lugar["estacion_id"])
+        falta = reservas_habilitar_repo.preparar_habilitacion(self.reserva["id"], lugar["estacion_id"],
+                                                              consola=lugar["consola"])
         pagos = []
         if falta:
             pagos = cobrar(self, falta)
             if pagos is None:
                 return
         resultado = reservas_habilitar_repo.habilitar(
-            self.reserva["id"], self.usuario["id"], lugar["estacion_id"], pagos
+            self.reserva["id"], self.usuario["id"], lugar["estacion_id"], pagos, consola=lugar["consola"]
         )
         cobro = (f"Cobraste {formato_pesos(resultado['cobrado'])}." if resultado["cobrado"]
                  else "No se cobró nada: ya estaba pagada.")
@@ -446,7 +448,7 @@ class DialogoReprogramar(QDialog):
         fila_dia.addStretch()
 
         # Una de PC pendiente puede cambiar de PC; una A reprogramar ya no elige
-        # (se le da cualquiera), y PCSTREAM y la consola son una sola.
+        # (se le da cualquiera), y PCSTREAM y la consola reservada no cambian.
         self.combo_equipo = QComboBox()
         elige_pc = reserva["equipo"] == dominio.EQUIPO_RESERVA_PC and reserva["estado"] == dominio.RESERVA_PENDIENTE
         if elige_pc:
@@ -455,7 +457,7 @@ class DialogoReprogramar(QDialog):
                     self.combo_equipo.addItem(opcion["nombre"], opcion["estacion_id"])
             self.combo_equipo.setCurrentIndex(max(0, self.combo_equipo.findData(reserva["estacion_id"])))
         else:
-            nombre = dominio.nombre_equipo_reservado(reserva["equipo"])
+            nombre = dominio.nombre_equipo_reservado(reserva["equipo"], consola=reserva["consola"])
             self.combo_equipo.addItem(nombre, None)
             self.combo_equipo.setEnabled(False)
 

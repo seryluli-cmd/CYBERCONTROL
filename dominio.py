@@ -347,16 +347,40 @@ def cuenta_del_cobro(total: float, efectivo: float, digital: float, paga_con: fl
 # Dispositivos que se alquilan por tiempo (PCs y PlayStation 5)
 # --------------------------------------------------------------------
 # El local alquila tiempo de dos tipos de equipo: las PCs (muchas, cada una
-# una fila de "estaciones") y UNA PlayStation 5. Cada una tiene su catálogo
+# una fila de "estaciones") y las PlayStation 5. Cada tipo tiene su catálogo
 # de bonos y sus sesiones, y nunca se mezclan: un bono de PC no se le puede
 # vender a la consola ni al revés. En la grilla de Control de PCs, cada fila
 # trae su tipo en `item["dispositivo"]`.
 DISPOSITIVO_PC = "PC"
 DISPOSITIVO_PLAYSTATION = "PLAYSTATION"
 
-# La consola es una sola y su nombre no se edita (a diferencia de una PC, que
-# es una fila de "estaciones" que el Admin renombra o da de baja).
-NOMBRE_PLAYSTATION = "PLAYSTATION 5"
+# Las PlayStation 5 del local. Hasta el 2026-11-21 era una sola ("PLAYSTATION 5");
+# ese día el dueño compró la segunda y eligió llamarlas PS5-1 y PS5-2, con los
+# mismos bonos para las dos, la plata junta como "PlayStation 5" y la reserva de
+# una consola en particular. Cada consola es un NÚMERO fijo (el que queda en
+# sesiones_playstation.consola y en reservas.consola) y su nombre sale de
+# nombre_consola: no se edita (a diferencia de una PC, que es una fila de
+# "estaciones" que el Admin renombra o da de baja). La 1 es la de siempre: todo
+# lo de antes quedó a su nombre. Una tercera es un número más acá (y el .exe).
+CONSOLAS_PLAYSTATION = (1, 2)
+
+
+def nombre_consola(consola: int) -> str:
+    """Cómo se ve una consola en todo el programa: "PS5-1", "PS5-2"."""
+    return f"PS5-{consola}"
+
+
+def validar_consola(consola) -> int:
+    """La consola, si es una de CONSOLAS_PLAYSTATION; si no, ValueError."""
+    if consola not in CONSOLAS_PLAYSTATION:
+        raise ValueError("Elegí cuál de las PlayStation 5.")
+    return consola
+
+
+def lugar_habilitado(consola_habilitada, nombre_pc) -> str:
+    """Dónde se usó una reserva habilitada: la consola (si se habilitó en una,
+    `consola_habilitada` es su número) o la PC (`nombre_pc`)."""
+    return nombre_consola(consola_habilitada) if consola_habilitada is not None else nombre_pc
 
 # La PC de streaming SÍ es una PC (una fila de "estaciones", con su Cliente PC y
 # su bloqueo), pero se cobra con su propio catálogo de bonos (ver
@@ -663,7 +687,8 @@ def fin_al_sumar_minutos(fin_actual, minutos: int, ahora: datetime) -> datetime:
 # --------------------------------------------------------------------
 # Un cliente reserva un equipo para más tarde y paga una seña o todo en el
 # momento. Qué equipo: una PC común (una puntual, o "cualquiera disponible"),
-# PCSTREAM o la PlayStation 5. Cada uno se cobra con SU catálogo de bonos.
+# PCSTREAM o una de las PlayStation 5 (la pedida va en reservas.consola). Cada
+# uno se cobra con SU catálogo de bonos.
 EQUIPO_RESERVA_PC = "PC"
 EQUIPO_RESERVA_PCSTREAM = "PCSTREAM"
 EQUIPO_RESERVA_PLAYSTATION = "PLAYSTATION"
@@ -672,11 +697,11 @@ EQUIPOS_RESERVA = (EQUIPO_RESERVA_PC, EQUIPO_RESERVA_PCSTREAM, EQUIPO_RESERVA_PL
 NOMBRE_RESERVA_CUALQUIER_PC = "Cualquier PC disponible"
 
 
-def nombre_equipo_reservado(equipo: str, nombre_pc=None) -> str:
+def nombre_equipo_reservado(equipo: str, nombre_pc=None, consola=None) -> str:
     """Cómo se nombra el equipo de una reserva: la PC pedida (`nombre_pc`),
-    "Cualquier PC disponible", PCSTREAM o la PlayStation 5."""
+    "Cualquier PC disponible", PCSTREAM o la consola pedida (`consola`, su número)."""
     if equipo == EQUIPO_RESERVA_PLAYSTATION:
-        return NOMBRE_PLAYSTATION
+        return nombre_consola(consola)
     if equipo == EQUIPO_RESERVA_PCSTREAM:
         return NOMBRE_PCSTREAM
     return nombre_pc or NOMBRE_RESERVA_CUALQUIER_PC

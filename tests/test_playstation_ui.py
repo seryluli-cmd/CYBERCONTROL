@@ -3,8 +3,8 @@ tests/test_playstation_ui.py
 ==============================
 La PlayStation 5 en pantalla (se prueba sin abrir ninguna ventana, plataforma
 "offscreen" de Qt): que el panel lateral habilite SOLO la lista de bonos del
-equipo elegido (nunca se puede aplicar un bono al equivocado), que la consola
-sea la primera fila de la grilla con su nombre fijo, que la cuenta regresiva
+equipo elegido (nunca se puede aplicar un bono al equivocado), que las dos
+consolas (PS5-1 y PS5-2) sean las primeras fichas con su nombre fijo, que la cuenta regresiva
 corra y que al llegar a cero la fila titile en rojo. La lógica de fondo (permisos,
 ventas, tiempo) está en tests/test_playstation.py.
 
@@ -126,14 +126,14 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
     def test_con_la_consola_elegida_solo_se_pueden_tocar_los_bonos_de_la_consola(self):
         panel = self._panel(self.operadora_id)
 
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
 
         self.assertFalse(any(self._habilitados(panel.lista_pc)))
         self.assertTrue(all(self._habilitados(panel.lista_playstation)))
         self.assertTrue(panel.boton_cobrar.isEnabled())
         # Abrir con el saldo de un socio es solo de las PCs.
         self.assertFalse(panel.boton_miembro.isEnabled())
-        self.assertEqual(panel.etiqueta_titulo.text(), "PLAYSTATION 5")
+        self.assertEqual(panel.etiqueta_titulo.text(), "PS5-1")
 
     def test_los_bonos_de_la_consola_van_debajo_de_los_de_pc(self):
         panel = self._panel(self.operadora_id)
@@ -158,7 +158,7 @@ class TestPanelDeBonosPorEquipo(_ConPantalla):
         for usuario_id in (self.admin_id, self.operadora_id, self.empleada_id):
             panel = self._panel(usuario_id)
 
-            panel.mostrar(playstation_repo.estado())
+            panel.mostrar(playstation_repo.estado(1))
 
             self.assertTrue(all(self._habilitados(panel.lista_playstation)), usuario_id)
             self.assertTrue(panel.boton_cobrar.isEnabled(), usuario_id)
@@ -173,13 +173,13 @@ class TestCobrarDesdeElPanel(_ConPantalla):
 
     def test_con_la_consola_elegida_se_cobra_el_bono_de_la_consola(self):
         panel = self._panel(self.operadora_id)
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
 
         self._cobrar(panel)
 
         venta = ventas_repo.listar_ventas_recientes()[0]
         self.assertEqual((venta["origen"], venta["total"]), (dominio.ORIGEN_PLAYSTATION, 3000.0))
-        self.assertIsNotNone(playstation_repo.estado()["sesion"])
+        self.assertIsNotNone(playstation_repo.estado(1)["sesion"])
         self.assertIsNone(self._item_pc()["sesion"])  # ninguna PC recibió nada
         self.assertEqual(self.errores, [])
 
@@ -187,13 +187,13 @@ class TestCobrarDesdeElPanel(_ConPantalla):
         # Pedido del dueño (2026-10-18): la misma ventana que una venta de
         # kiosko, en vez de elegir el medio de pago en un combo del panel.
         panel = self._panel(self.operadora_id)
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
 
         with mock.patch("control_pcs.ui.pcs_detalle.cobrar", return_value=_efectivo(3000.0)) as cobrar:
             panel.boton_cobrar.click()
 
         cobrar.assert_called_once_with(panel, 3000.0)
-        self.assertIsNotNone(playstation_repo.estado()["sesion"])
+        self.assertIsNotNone(playstation_repo.estado(1)["sesion"])
 
     def test_si_se_cancela_el_cobro_no_se_vende_nada(self):
         panel = self._panel(self.operadora_id)
@@ -225,11 +225,11 @@ class TestCobrarDesdeElPanel(_ConPantalla):
         venta = ventas_repo.listar_ventas_recientes()[0]
         self.assertEqual((venta["origen"], venta["total"]), (dominio.ORIGEN_ALQUILER_PCS, 9000.0))
         self.assertIsNotNone(self._item_pc()["sesion"])
-        self.assertIsNone(playstation_repo.estado()["sesion"])  # la consola no recibió nada
+        self.assertIsNone(playstation_repo.estado(1)["sesion"])  # la consola no recibió nada
 
     def test_se_cobra_el_bono_tildado_en_la_lista_del_equipo_elegido(self):
         panel = self._panel(self.operadora_id)
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
         panel.lista_playstation.grupo.button(self.bono_ps_2_id).click()  # "2 horas PS5", $5.000
 
         self._cobrar(panel)
@@ -259,7 +259,7 @@ class TestCobrarDesdeElPanel(_ConPantalla):
         panel = self._panel(self.operadora_id)
         panel.mostrar(self._item_pc())
         panel.lista_pc.grupo.button(self.bono_pc_2_id).click()
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
         panel.lista_playstation.grupo.button(self.bono_ps_2_id).click()
 
         panel.mostrar(self._item_pc())
@@ -269,22 +269,22 @@ class TestCobrarDesdeElPanel(_ConPantalla):
 
     def test_liberar_la_consola_desde_el_panel(self):
         panel = self._panel(self.operadora_id)
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
         self._cobrar(panel)
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
         self.assertTrue(panel.boton_finalizar.isEnabled())
 
         with mock.patch("control_pcs.ui.pcs_detalle.confirmar", return_value=True):
             panel._finalizar_sesion()
 
-        self.assertIsNone(playstation_repo.estado()["sesion"])
+        self.assertIsNone(playstation_repo.estado(1)["sesion"])
 
     def test_cuando_se_acaba_el_tiempo_el_panel_pide_avisar_y_liberar(self):
         panel = self._panel(self.operadora_id)
         with _reloj_de_la_pantalla(datetime(2026, 1, 5, 10, 0, 0)):
-            playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+            playstation_repo.vender_bono(self.operadora_id, 1, self.bono_ps_id, _efectivo(3000.0))
         with _reloj_de_la_pantalla(datetime(2026, 1, 5, 11, 30, 0)):  # media hora después de vencer
-            panel.mostrar(playstation_repo.estado())
+            panel.mostrar(playstation_repo.estado(1))
 
         self.assertIn("Se acabó el tiempo", panel.etiqueta_estado.text())
         self.assertIn("liberar", panel.boton_finalizar.text())
@@ -294,7 +294,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
     def _vencida(self):
         """Una sesión de la consola que se acabó hace mucho (ya pasó en el reloj real)."""
         with _reloj_de_la_pantalla(datetime(2026, 1, 5, 10, 0, 0)):
-            playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+            playstation_repo.vender_bono(self.operadora_id, 1, self.bono_ps_id, _efectivo(3000.0))
 
     def _nombres(self, grilla):
         return [grilla.mosaico.ficha(fila).nombre for fila in range(grilla.mosaico.count())]
@@ -304,17 +304,21 @@ class TestGrillaConLaPlaystation(_ConPantalla):
 
         grilla = self._grilla()
 
-        self.assertEqual(self._nombres(grilla), ["PLAYSTATION 5", "PC 1", "PC 2"])
+        self.assertEqual(self._nombres(grilla), ["PS5-1", "PS5-2", "PC 1", "PC 2"])
         self.assertEqual(grilla.mosaico.ficha(0).estado, "✓ Disponible")
 
     def test_elegir_la_consola_o_una_pc_cambia_el_panel(self):
         grilla = self._grilla()
 
         grilla.mosaico.elegir(0)
-        self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PLAYSTATION 5")
+        self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PS5-1")
         self.assertTrue(all(self._habilitados(grilla.panel_detalle.lista_playstation)))
 
         grilla.mosaico.elegir(1)
+        self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PS5-2")
+        self.assertTrue(all(self._habilitados(grilla.panel_detalle.lista_playstation)))
+
+        grilla.mosaico.elegir(2)
         self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PC 1")
         self.assertTrue(all(self._habilitados(grilla.panel_detalle.lista_pc)))
         self.assertFalse(any(self._habilitados(grilla.panel_detalle.lista_playstation)))
@@ -326,12 +330,17 @@ class TestGrillaConLaPlaystation(_ConPantalla):
         grilla._refrescar()
 
         self.assertEqual(grilla.mosaico.fila_elegida(), 0)
-        self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PLAYSTATION 5")
+        self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PS5-1")
+
+        grilla.mosaico.elegir(1)
+        grilla._refrescar()
+        self.assertEqual(grilla.mosaico.fila_elegida(), 1)
+        self.assertEqual(grilla.panel_detalle.etiqueta_titulo.text(), "PS5-2")
 
     def test_la_consola_en_uso_muestra_la_cuenta_regresiva(self):
         ahora = datetime.now().replace(microsecond=0)
         with _reloj_de_la_pantalla(ahora):
-            playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+            playstation_repo.vender_bono(self.operadora_id, 1, self.bono_ps_id, _efectivo(3000.0))
 
         grilla = self._grilla()
 
@@ -343,7 +352,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
     def test_la_cuenta_regresiva_se_redibuja_cada_segundo_sin_reconstruir_la_grilla(self):
         ahora = datetime.now().replace(microsecond=0)
         with _reloj_de_la_pantalla(ahora):
-            playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+            playstation_repo.vender_bono(self.operadora_id, 1, self.bono_ps_id, _efectivo(3000.0))
         grilla = self._grilla()
         casillero = grilla.mosaico.item(0)
 
@@ -360,7 +369,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
     def test_al_llegar_a_cero_la_fila_empieza_a_titilar_en_rojo(self):
         ahora = datetime.now().replace(microsecond=0)
         with _reloj_de_la_pantalla(ahora):
-            playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+            playstation_repo.vender_bono(self.operadora_id, 1, self.bono_ps_id, _efectivo(3000.0))
         grilla = self._grilla()
         self.assertEqual(grilla._filas_en_alerta, [])
 
@@ -401,7 +410,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
         grilla = self._grilla()
 
         self.assertIsNone(self._item_pc()["sesion"])               # la PC se liberó sola
-        self.assertIsNotNone(playstation_repo.estado()["sesion"])  # la consola no
+        self.assertIsNotNone(playstation_repo.estado(1)["sesion"])  # la consola no
         self.assertIn(0, grilla._filas_en_alerta)
 
     def test_liberar_o_vender_otro_bono_apaga_el_aviso(self):
@@ -409,7 +418,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
         grilla = self._grilla()
         self.assertEqual(grilla._filas_en_alerta, [0])
 
-        playstation_repo.finalizar_sesion(self.operadora_id)
+        playstation_repo.finalizar_sesion(self.operadora_id, 1)
         grilla._refrescar()
 
         self.assertEqual(grilla._filas_en_alerta, [])
@@ -419,7 +428,7 @@ class TestGrillaConLaPlaystation(_ConPantalla):
         self._vencida()
         grilla._refrescar()
         self.assertEqual(grilla._filas_en_alerta, [0])
-        playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+        playstation_repo.vender_bono(self.operadora_id, 1, self.bono_ps_id, _efectivo(3000.0))
         grilla._refrescar()
         self.assertEqual(grilla._filas_en_alerta, [])
 
@@ -440,7 +449,7 @@ class TestPantallasDeLaPlata(_ConPantalla):
 
     def setUp(self):
         super().setUp()
-        playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+        playstation_repo.vender_bono(self.operadora_id, 1, self.bono_ps_id, _efectivo(3000.0))
 
     def _abrir(self, ventana):
         self.addCleanup(ventana.deleteLater)
@@ -561,9 +570,9 @@ class TestPreguntasAlCerrarSinHablarDeReintegros(_ConPantalla):
         self.assertEqual(aviso, "¿Finalizar la sesión de 'PC 1'?")
 
     def test_liberar_la_consola_con_tiempo(self):
-        playstation_repo.vender_bono(self.operadora_id, self.bono_ps_id, _efectivo(3000.0))
+        playstation_repo.vender_bono(self.operadora_id, 1, self.bono_ps_id, _efectivo(3000.0))
         panel = self._panel(self.operadora_id)
-        panel.mostrar(playstation_repo.estado())
+        panel.mostrar(playstation_repo.estado(1))
 
         aviso = self._pregunta("control_pcs.ui.pcs_detalle.confirmar", panel._finalizar_sesion)
 
