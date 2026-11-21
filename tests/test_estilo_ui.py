@@ -20,7 +20,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtCore import QSize, Qt  # noqa: E402
 from PySide6.QtGui import QPalette  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QAbstractItemView, QApplication, QDialog, QFrame, QLabel, QLineEdit, QPushButton, QStyle,
@@ -32,6 +32,7 @@ import main as programa  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
 from ui.login_window import LoginWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
+from ui.dibujos_barra import LADO_ICONO_MIEMBROS  # noqa: E402
 from ui.utils import crear_tabla, icono_de_emoji  # noqa: E402
 from control_pcs.ui.miembros_window import DialogoTramosTarifaMiembro  # noqa: E402
 from control_pcs.ui.pcs_detalle import PanelDetalleEstacion  # noqa: E402
@@ -142,6 +143,27 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
         self.assertEqual(pedidos, [("🔄", clave.fontInfo().pixelSize() * 1.25)])
         self.assertEqual(operador.iconSize(), icono_de_emoji(*pedidos[0])[1])
 
+    def test_miembros_lleva_los_munequitos_azules_dibujados(self):
+        # Pedido del dueño (2026-11-21): "unos como el del Messenger que sean azules" (eligió la
+        # maqueta B). Van dibujados, como ícono: el emoji de "dos personas" salía como tres caras
+        # sueltas en el Windows del mostrador. Se mira el dibujo de verdad (no depende de la letra).
+        admin = usuarios_repo.obtener_usuario(usuarios_repo.crear_usuario("Admin", "1234", dominio.ROL_ADMIN))
+        ventana = MainWindow(admin, lambda: None)
+        self.addCleanup(ventana.deleteLater)
+        self.addCleanup(ventana.panel_pcs.detener_actualizacion)
+
+        barra = ventana.findChild(QFrame, "encabezadoInicio")
+        miembros = next(b for b in barra.findChildren(QPushButton) if b.text().strip() == "MIEMBROS")
+        self.assertEqual(miembros.text(), "  MIEMBROS")
+        self.assertEqual(miembros.iconSize(), QSize(LADO_ICONO_MIEMBROS, LADO_ICONO_MIEMBROS))
+        imagen = miembros.icon().pixmap(miembros.iconSize()).toImage()
+        pintados = [imagen.pixelColor(x, y) for y in range(imagen.height()) for x in range(imagen.width())
+                    if imagen.pixelColor(x, y).alpha() > 200]
+        self.assertGreater(len(pintados), imagen.width() * imagen.height() // 5)
+        # Azules: en casi todo lo pintado manda el azul (el brillo es blanco, por eso no es todo).
+        azules = [color for color in pintados if color.blue() > color.red() + 40]
+        self.assertGreater(len(azules), len(pintados) * 0.8)
+
     def test_operador_va_pegado_a_la_derecha_de_clave(self):
         # Pedido del dueño (2026-10-23): antes iba solo en la punta derecha y con
         # la pantalla de 1920 del mostrador quedaba lejos de todo.
@@ -218,7 +240,7 @@ class TestAspectoDelPrograma(BaseConBaseTemporal):
 
         titulo = next(e for e in barra.findChildren(QLabel) if e.text() == "Administrador: Sergio")
         botones = {boton.text(): boton for boton in barra.findChildren(QPushButton)}
-        for texto in ("🧑  MIEMBROS", "🛠️  ADMIN KIOSKO", "⚙️  CONFIG ADMIN"):
+        for texto in ("  MIEMBROS", "🛠️  ADMIN KIOSKO", "⚙️  CONFIG ADMIN"):
             self.assertIn(texto, botones)
         ventana.resize(1340, 700)
         ventana.show()

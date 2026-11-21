@@ -126,7 +126,7 @@ class TestBarraParaTodos(_ConUsuarios):
         botones = self._botones(empleada)
 
         with mock.patch("ui.main_window.MiembrosWindow") as clase:
-            botones["🧑  MIEMBROS"].click()
+            botones["  MIEMBROS"].click()
 
         clase.assert_called_once()
 

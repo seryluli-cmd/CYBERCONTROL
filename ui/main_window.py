@@ -95,6 +95,7 @@ from ui.ingreso_caja import mensaje_del_sobre
 from ui.aviso_tarea import RevisorDeTareas
 from ui.tareas_turno_window import VentanaTareasTurno
 from ui.vuelta_del_admin import VueltaDelAdmin
+from ui.dibujos_barra import icono_miembros
 from ui.utils import (
     aplicar_clase, confirmar, icono_de_emoji, manejar_errores, mostrar_error, mostrar_info,
     solo_en_el_mostrador,
@@ -272,12 +273,16 @@ class MainWindow(QMainWindow):
         # Cobro rápido de impresiones, sin entrar a Vender (pedido del dueño, 2026-10-19).
         self._agregar_boton_barra(layout_barra, "🖨️  Impresiones", self._abrir_impresiones)
         self._agregar_boton_barra(layout_barra, "📄  Trámites", self._abrir_tramites)
-        # Una sola carita (2026-10-18): el emoji de "dos personas" de antes,
-        # en el Windows del mostrador, se veía como tres caras sueltas.
         # Abre para cualquier operador logueado (pedido del dueño, 2026-10-19):
         # antes pedía permiso_control_pcs o Admin, pero cargarle saldo a un socio
         # es una venta más y cualquiera tiene que poder hacerlo.
-        self._agregar_boton_barra(layout_barra, "🧑  Miembros", self._abrir_miembros)
+        boton_miembros = self._agregar_boton_barra(layout_barra, "  Miembros", self._abrir_miembros)
+        # Dos muñequitos azules como los del Messenger (pedido del dueño, 2026-11-21, maqueta B).
+        # Van DIBUJADOS, como ícono: el emoji de "dos personas", en el Windows del mostrador,
+        # salía como tres caras sueltas (de 2026-10-18 a 2026-11-21 fue una carita amarilla, 🧑).
+        icono, tamano = icono_miembros()
+        boton_miembros.setIcon(icono)
+        boton_miembros.setIconSize(tamano)
         # Reservas de PCs, PCSTREAM y PlayStation 5 (pedido del dueño, 2026-10-20): cobra,
         # así que se abre solo en el mostrador. Dice cuántas esperan hoy (ver _actualizar_boton_reservas).
         self.boton_reservas = self._agregar_boton_barra(layout_barra, "", self._abrir_reservas)

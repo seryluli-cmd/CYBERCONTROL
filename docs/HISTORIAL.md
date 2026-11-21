@@ -707,3 +707,12 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   (`dominio.cuenta_del_cobro`) son los de antes. `piezas_ventana.cifra_destacada` ahora guarda también
   `.titulo`; la cifra roja y los colores nuevos, en `ui/hoja_de_estilos.py`. Pruebas en
   `tests/test_dialogo_pago.py`. Sin .exe; la lista blanca no cambia.
+- **2026-11-21 — MIEMBROS con dos muñequitos azules** (pedido del dueño, con una captura del botón: "quiero
+  cambiar el iconito por unos como el del Messenger que sean azules"). Eligió la B entre tres maquetas (A un
+  muñequito con brillo, B dos con brillo, C dos planos). Reemplaza la carita amarilla 🧑 que tenía desde el
+  2026-10-18. Van DIBUJADOS con QPainter (`ui/dibujos_barra.py`, `icono_miembros`) y puestos como ícono de
+  26 px en el botón, que ahora dice "  MIEMBROS": el emoji de "dos personas" salía como tres caras sueltas en
+  el Windows del mostrador. El dibujo es propio (cabeza redonda y cuerpo con degradé, no el logo del
+  Messenger). Prueba en `tests/test_estilo_ui.py` (`test_miembros_lleva_los_munequitos_azules_dibujados`,
+  mira que el dibujo sea azul de verdad); las que buscaban "🧑  MIEMBROS" ahora buscan "  MIEMBROS". Sin
+  .exe; la lista blanca no cambia.
