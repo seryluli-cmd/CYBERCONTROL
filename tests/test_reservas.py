@@ -425,6 +425,27 @@ class TestEquipos(_ConReservas):
         reservas_repo.reprogramar(en_la_2, self.ana, _manana_a_las(11))  # la PS5-1 de 10 a 12 no la toca
         self.assertEqual(reservas_repo.obtener_reserva(en_la_2)["consola"], 2)
 
+    def test_reservados_a_esa_hora_dice_quien_tiene_cada_equipo(self):
+        # Lo que muestra Nueva reserva en cada equipo (maqueta B, 2026-11-21).
+        self._reservar(5000.0)  # PC1, mañana de 10 a 20
+        self._reservar(3000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None, bono=self.bono_ps5,
+                       consola=2, cliente="Mía", cuando=_manana_a_las(15))
+        self._reservar(1500.0, estacion=None, bono=self.tres_horas, cliente="Lucas")  # no aparta ninguna
+        no_vino = self._reservar(1000.0, estacion="pc2", bono=self.tres_horas, cliente="Marta")
+        reservas_repo.marcar_no_vino(no_vino, self.ana)  # ya no espera: no cuenta
+
+        def quien_tiene(hora, minuto=0):
+            reservados = reservas_repo.reservados_a_esa_hora(_manana_a_las(hora, minuto))
+            return {opcion["nombre"]: reservados[reservas_repo.clave_del_equipo(opcion)]
+                    for opcion in reservas_repo.equipos_para_reservar()
+                    if reservas_repo.clave_del_equipo(opcion) in reservados}
+
+        self.assertEqual(quien_tiene(10), {"PC1": "Juan Pérez"})
+        self.assertEqual(quien_tiene(15, 30), {"PC1": "Juan Pérez", "PS5-2": "Mía"})
+        self.assertEqual(quien_tiene(17), {"PC1": "Juan Pérez"})  # la de la PS5 terminó a las 17
+        self.assertEqual(quien_tiene(20), {})
+        self.assertEqual(quien_tiene(9, 59), {})
+
     def test_cualquier_pc_se_habilita_en_una_libre(self):
         reserva = self._reservar(3000.0, estacion=None, bono=self.tres_horas)
         pcs_repo.asignar_bono(self.pc1, self.tres_horas, self.luis, _efectivo(3000.0))

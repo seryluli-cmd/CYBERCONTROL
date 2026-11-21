@@ -11,7 +11,7 @@ esta área. Si cambiás algo de lo que dice esta guía, corregila en el mismo co
 | Función | Es el único lugar donde... |
 |---|---|
 | `control_pcs/ui/pcs_cometa.CometaEnElBorde` | el cometa celeste que da vueltas por el borde del fondo negro del mosaico (pedido del dueño 2026-10-23; solo adorno). Widget transparente encima de `#marcoMosaico` que deja pasar los clics; cada cuadro (unos 30 por segundo) repinta solo la zona del cometa, no hace nada si la pantalla no se ve y se frena en `PanelControlPcs.detener_actualizacion`. La cola son capas continuas encimadas: en tramos sueltos se notaban los cortes |
-| `control_pcs.ui.dibujos_de_ventana.pixmap_de(...)` · `.icono_de(...)` · `.poner_icono(...)` · `.pixmap_de_avatar(...)` · `CasillaDibujada` | se dibujan con QPainter los íconos de botón (usuario, mas, lupa, lapiz, moneda, reloj, prohibido, subir, flecha, etiqueta), el círculo con las iniciales de un socio y una casilla de tildar con tilde (la `QCheckBox` de la hoja de estilos se ve como un cuadrado azul liso, sin tilde): hay emojis que el Windows del mostrador no trae |
+| `control_pcs.ui.dibujos_de_ventana.pixmap_de(...)` · `.icono_de(...)` · `.poner_icono(...)` · `.pixmap_de_avatar(...)` · `CasillaDibujada` | se dibujan con QPainter los íconos de botón (usuario, mas, lupa, lapiz, moneda, reloj, prohibido, subir, flecha, etiqueta, consola y monitor; los dos últimos, de Nueva reserva), el círculo con las iniciales de un socio y una casilla de tildar con tilde (la `QCheckBox` de la hoja de estilos se ve como un cuadrado azul liso, sin tilde): hay emojis que el Windows del mostrador no trae |
 | `ui.ingreso_dibujos.Portal` · `.TextoConDegradado` · `.hora_y_fecha(momento)` | se dibuja la pantalla de ingreso con el diseño "Portal" (maqueta D que eligió el dueño el 2026-10-30 entre cinco, `PROPUESTA_PANTALLA_INGRESO` en la carpeta de los proyectos: le gustaron las cinco y las guarda para sus otros programas). Muestra el joystick en anillos de neón que giran, con estrellas, sobre fondo casi negro, y escribe la hora de abajo en castellano. `ui/login_window.py` solo arma los campos encima, redibuja la parte de arriba unas 30 veces por segundo (`ALTO_QUE_SE_MUEVE`) y apaga la animación al ocultarse (al entrar). Los campos oscuros van por objectName en `ui/hoja_de_estilos.py` (`nombreIngreso`, `claveIngreso`, `botonEntrar`...), nunca con una hoja propia de la ventana: los avisos y la caja al entrar son hijos suyos. La lista que se despliega se oscurece con la paleta al abrirla (`_ListaDeNombres`): la hoja de estilos no llega a su marco. No cambies el título "CyberBIOS - Ingreso": la prueba de humo del .exe lo busca |
 | `main.aplicar_estilo(app)` | se fija el aspecto de TODO el programa: estilo Fusion, esquema de color CLARO y la hoja de estilos (`HOJA_DE_ESTILOS`, en `ui/hoja_de_estilos.py`) |
 | `ui.utils.formato_fecha_hora(fecha)` | una fecha con hora de la base se convierte en `"16/10/2026 22:13"` |
@@ -58,6 +58,15 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
 - **En una `QListWidget`, `font-weight` y `font-size` en `::item` no hacen nada.** La
   letra de los renglones va en la regla de la lista misma (el menú de Reportes,
   `QListWidget#menuReportes`, 2026-11-19: con la letra en `::item` salía fina).
+- **Un botón con etiquetas adentro (una "tarjeta") lleva `padding: 0` en su regla.** Todos
+  los `QPushButton` traen de la hoja un relleno de 9 x 18, que se suma a la capa de
+  etiquetas de adentro: las tarjetas de bono de Nueva reserva salían el doble de altas y
+  se veía una y media (2026-11-21, `tarjetaBono`, `tarjetaConsola`, `tarjetaCualquierPc`).
+  El texto lo dibujan las etiquetas: el nombre va en `setAccessibleName`, y las etiquetas,
+  transparentes al mouse para que el clic le llegue al botón.
+- **Un campo de números o de hora con el borde de la hoja dibuja rotas sus flechitas.**
+  Por eso todos llevan `setButtonSymbols(NoButtons)` (se escribe o se mueve con la
+  ruedita); la Hora de Nueva reserva también (2026-11-21).
 
 - **Un objeto de Qt que se pasa a otro sin que lo adopte tiene que quedar en una
   variable.** `QPrintPreviewDialog(QPrinter(...), parent)` usa la impresora

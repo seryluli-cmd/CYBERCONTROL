@@ -107,6 +107,37 @@ def equipos_para_reservar() -> list:
     return opciones
 
 
+def clave_del_equipo(opcion: dict) -> tuple:
+    """Cómo se reconoce un equipo en `reservados_a_esa_hora`: (equipo, estacion_id,
+    consola), lo mismo que trae cada opción de `equipos_para_reservar`."""
+    return opcion["equipo"], opcion["estacion_id"], opcion["consola"]
+
+
+def reservados_a_esa_hora(momento: datetime) -> dict:
+    """
+    Los equipos que ya tienen una reserva que espera justo a esa hora (`momento`
+    cae entre su hora y su hora + los minutos de su bono): {clave_del_equipo: el
+    cliente}. Nueva reserva lo muestra en cada equipo antes de elegirlo ("libre a
+    las 16:00" o "reservada · Santi", pedido del dueño 2026-11-21, maqueta B). Mira
+    solo ese momento: que el bono entero no se pise con otra reserva lo sigue
+    controlando crear_reserva al cobrar. "Cualquier PC disponible" no aparta ninguna
+    PC, así que nunca está.
+    """
+    with conexion_db() as conexion:
+        filas = conexion.execute(
+            "SELECT equipo, estacion_id, consola, cliente, fecha_reserva, minutos FROM reservas WHERE estado = ?",
+            (dominio.RESERVA_PENDIENTE,),
+        ).fetchall()
+    reservados = {}
+    for fila in filas:
+        if fila["equipo"] == dominio.EQUIPO_RESERVA_PC and fila["estacion_id"] is None:
+            continue
+        inicio = datetime.fromisoformat(fila["fecha_reserva"])
+        if inicio <= momento < inicio + timedelta(minutes=fila["minutos"]):
+            reservados[(fila["equipo"], fila["estacion_id"], fila["consola"])] = fila["cliente"]
+    return reservados
+
+
 def bonos_para(equipo: str) -> list:
     """Los bonos activos del catálogo de ese equipo, para elegir el de la reserva."""
     return _catalogo(equipo).listar_bonos()

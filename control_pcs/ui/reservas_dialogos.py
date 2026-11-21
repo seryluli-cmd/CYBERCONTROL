@@ -4,8 +4,8 @@ reservas_dialogos.py
 Los formularios de la ventana RESERVAS (control_pcs/ui/reservas_window.py),
 como en las maquetas que aprobó el dueño el 2026-10-20:
 
-- DialogoNuevaReserva: cliente, celular, día y hora, equipo, bono y cuánto paga
-  ahora (50%, 100% u otro monto). Se cobra con la ventana de cobro de siempre.
+- Nueva reserva se mudó a reservas_nueva.py el 2026-11-21, con el diseño B que
+  eligió el dueño (los equipos a la vista).
 - DialogoHabilitarReserva: el cliente llegó. Dice cuánto pagó, cuándo y en qué
   caja quedó esa plata, cobra lo que falta (si falta algo) y abre el equipo.
 - DialogoReprogramar: otro día u otra hora.
@@ -17,22 +17,20 @@ control_pcs/repositories/reservas_repo.py: acá solo se pregunta y se muestra.
 
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QDate, Qt, QTime
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QDate, QTime
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QDialog, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QApplication, QPushButton, QRadioButton, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTimeEdit,
-    QVBoxLayout,
+    QButtonGroup, QComboBox, QDialog, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QRadioButton, QTimeEdit, QVBoxLayout,
 )
 
 import dominio
 from repositories import relevo_repo
 from control_pcs.repositories import reservas_habilitar_repo, reservas_repo
 from ui.dialogo_pago import cobrar
-from ui.dibujos_tabla import TONO_PCS, TONO_PCSTREAM, TONO_PLAYSTATION, color_fuerte
+from ui.dibujos_tabla import TONO_PCS, TONO_PCSTREAM, TONO_PLAYSTATION
 from ui.tarjeta_cierre import etiqueta_dato
 from ui.utils import (
-    CampoPesos, aplicar_clase, confirmar, crear_selector_de_fecha, encadenar_enter, formato_pesos, manejar_errores,
+    aplicar_clase, confirmar, crear_selector_de_fecha, encadenar_enter, formato_pesos, manejar_errores,
     mostrar_error, mostrar_info, sin_boton_por_defecto,
 )
 
@@ -40,71 +38,14 @@ _DIAS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
 
 # El color de cada equipo en Reservas, el de su rubro en todo el programa
 # (ui/dibujos_tabla.py): pedido del dueño (2026-11-21) para ver de un vistazo qué es
-# de la PS5 (rosa) y qué de una PC (azul), en la lista de reservas y en la de equipos
-# de Nueva reserva. Va por el tipo de equipo, no por el nombre: cualquier PC sale
+# de la PS5 (rosa) y qué de una PC (azul), en la lista de reservas y en los equipos
+# de Nueva reserva (reservas_nueva.py). Va por el tipo de equipo, no por el nombre: cualquier PC sale
 # azul y cualquier consola, rosa.
 TONO_DEL_EQUIPO = {
     dominio.EQUIPO_RESERVA_PC: TONO_PCS,
     dominio.EQUIPO_RESERVA_PCSTREAM: TONO_PCSTREAM,
     dominio.EQUIPO_RESERVA_PLAYSTATION: TONO_PLAYSTATION,
 }
-
-
-def _punto_de_color(color: QColor) -> QIcon:
-    """Un círculo lleno de ese color, adelante de cada equipo en la lista: se ve
-    también con la lista cerrada (el color de la letra solo se ve abierta)."""
-    lienzo = QPixmap(12, 12)
-    lienzo.fill(Qt.transparent)
-    pintor = QPainter(lienzo)
-    pintor.setRenderHint(QPainter.Antialiasing)
-    pintor.setPen(Qt.NoPen)
-    pintor.setBrush(color)
-    pintor.drawEllipse(1, 1, 10, 10)
-    pintor.end()
-    return QIcon(lienzo)
-
-
-class _DelegadoDeEquipos(QStyledItemDelegate):
-    """Cómo se dibuja la lista abierta de equipos de Nueva reserva. El dibujante de
-    siempre de un QComboBox ignora el color de la letra de cada renglón (salían
-    todos negros); este lo respeta, deja los renglones de la altura de siempre y
-    dibuja la raya entre las consolas y las PCs (sin esto quedaba un renglón vacío)."""
-
-    ALTO = 24
-    MARGEN = 8
-
-    @staticmethod
-    def _es_raya(indice) -> bool:
-        # Así marca QComboBox.insertSeparator el renglón de la raya.
-        return indice.data(Qt.AccessibleDescriptionRole) == "separator"
-
-    def sizeHint(self, opcion, indice):
-        tamaño = super().sizeHint(opcion, indice)
-        tamaño.setHeight(9 if self._es_raya(indice) else max(tamaño.height(), self.ALTO))
-        tamaño.setWidth(tamaño.width() + self.MARGEN)
-        return tamaño
-
-    def paint(self, pintor, opcion, indice):
-        if self._es_raya(indice):
-            pintor.save()
-            pintor.setPen(QColor("#CDD3DE"))
-            medio = opcion.rect.center().y()
-            pintor.drawLine(opcion.rect.left() + 6, medio, opcion.rect.right() - 6, medio)
-            pintor.restore()
-            return
-        opcion = QStyleOptionViewItem(opcion)
-        self.initStyleOption(opcion, indice)
-        # El fondo (el renglón elegido) de punta a punta, y el punto y el nombre un
-        # poco corridos del borde, como en las otras listas.
-        fondo = QStyleOptionViewItem(opcion)
-        fondo.text = ""
-        fondo.icon = QIcon()
-        estilo = opcion.widget.style() if opcion.widget else QApplication.style()
-        estilo.drawControl(QStyle.CE_ItemViewItem, fondo, pintor, opcion.widget)
-        opcion.rect = opcion.rect.adjusted(self.MARGEN, 0, 0, 0)
-        opcion.state &= ~QStyle.State_Selected
-        opcion.state &= ~QStyle.State_MouseOver
-        estilo.drawControl(QStyle.CE_ItemViewItem, opcion, pintor, opcion.widget)
 
 
 def texto_dia_y_hora(fecha_iso: str) -> str:
@@ -157,205 +98,6 @@ def _proxima_hora_en_punto() -> datetime:
 def _momento(fecha: QDate, hora: QTime) -> datetime:
     """El día de un selector de fecha y la hora de un QTimeEdit, juntos."""
     return datetime(fecha.year(), fecha.month(), fecha.day(), hora.hour(), hora.minute())
-
-
-# ---------------------------------------------------------------------
-# Nueva reserva
-# ---------------------------------------------------------------------
-
-class DialogoNuevaReserva(QDialog):
-    """Tomar una reserva y cobrar la seña (o todo). Al aceptar queda
-    `self.reserva_id`, el número de la reserva nueva."""
-
-    def __init__(self, usuario, parent=None):
-        super().__init__(parent)
-        self.usuario = usuario
-        self.reserva_id = None
-        self.setWindowTitle("Nueva reserva")
-        self.resize(600, 420)
-        self._armar_interfaz()
-        self._cargar_bonos()
-
-    def _armar_interfaz(self):
-        self.campo_cliente = QLineEdit()
-        self.campo_cliente.setPlaceholderText("Nombre de quien reserva")
-        self.campo_celular = QLineEdit()
-        self.campo_celular.setPlaceholderText("(opcional, para avisarle)")
-
-        inicio = _proxima_hora_en_punto()
-        self.campo_dia = crear_selector_de_fecha(QDate(inicio.year, inicio.month, inicio.day))
-        self.campo_hora = _campo_hora(QTime(inicio.hour, 0))
-        fila_dia = QHBoxLayout()
-        fila_dia.addWidget(self.campo_dia)
-        fila_dia.addWidget(QLabel("Hora:"))
-        fila_dia.addWidget(self.campo_hora)
-        fila_dia.addStretch()
-
-        # Las PS5 vienen arriba de todo (equipos_para_reservar) y cada equipo con el
-        # color de su rubro; una raya separa las consolas de las PCs.
-        self.combo_equipo = QComboBox()
-        self.combo_equipo.setItemDelegate(_DelegadoDeEquipos(self.combo_equipo))
-        consolas = 0
-        for opcion in reservas_repo.equipos_para_reservar():
-            color = color_fuerte(TONO_DEL_EQUIPO[opcion["equipo"]])
-            self.combo_equipo.addItem(_punto_de_color(color), opcion["nombre"], opcion)
-            self.combo_equipo.setItemData(self.combo_equipo.count() - 1, color, Qt.ForegroundRole)
-            consolas += opcion["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION
-        if 0 < consolas < self.combo_equipo.count():
-            self.combo_equipo.insertSeparator(consolas)
-        # Arranca en el primero, la PS5-1 (lo eligió el dueño el 2026-11-21, sabiendo
-        # que una reserva de PC hecha sin mirar apartaría la consola: los bonos que
-        # se ofrecen son los de la PS5, y eso avisa).
-        self.combo_equipo.setCurrentIndex(0)
-        self.combo_equipo.currentIndexChanged.connect(self._cargar_bonos)
-
-        self.combo_bono = QComboBox()
-        self.combo_bono.currentIndexChanged.connect(self._actualizar_monto)
-
-        # Cuánto paga ahora: la mitad, todo, u otro monto (más de cero y hasta el precio).
-        self.opcion_mitad = QRadioButton("50%")
-        self.opcion_todo = QRadioButton("100%")
-        self.opcion_otro = QRadioButton("Otro monto:")
-        self.opcion_mitad.setChecked(True)
-        self._grupo_paga = QButtonGroup(self)
-        fila_paga = QHBoxLayout()
-        for opcion in (self.opcion_mitad, self.opcion_todo, self.opcion_otro):
-            self._grupo_paga.addButton(opcion)
-            opcion.toggled.connect(self._actualizar_monto)
-            fila_paga.addWidget(opcion)
-        self.spin_otro = CampoPesos()
-        self.spin_otro.valueChanged.connect(self._actualizar_monto)
-        fila_paga.addWidget(self.spin_otro)
-        fila_paga.addStretch()
-
-        formulario = QFormLayout()
-        formulario.addRow("Cliente:", self.campo_cliente)
-        formulario.addRow("Celular:", self.campo_celular)
-        formulario.addRow("Día:", fila_dia)
-        formulario.addRow("Equipo:", self.combo_equipo)
-        formulario.addRow("", _gris_chico(
-            "Con \"Cualquier PC disponible\" no se aparta ninguna PC: cuando llega se le da la que esté libre."
-        ))
-        formulario.addRow("Bono:", self.combo_bono)
-        formulario.addRow("Paga ahora:", fila_paga)
-
-        self.aviso = aviso_azul("")
-        self.etiqueta_sin_bonos = QLabel()
-        self.etiqueta_sin_bonos.setWordWrap(True)
-        self.etiqueta_sin_bonos.setStyleSheet("color: #A6323C;")
-        self.etiqueta_sin_bonos.hide()
-
-        self.boton_cobrar = QPushButton()
-        aplicar_clase(self.boton_cobrar, "primario")
-        self.boton_cobrar.clicked.connect(self._cobrar)
-        boton_cancelar = QPushButton("Cancelar")
-        boton_cancelar.clicked.connect(self.reject)
-        botones = QHBoxLayout()
-        botones.addStretch()
-        botones.addWidget(self.boton_cobrar)
-        botones.addWidget(boton_cancelar)
-
-        layout = QVBoxLayout()
-        layout.addLayout(formulario)
-        layout.addWidget(self.etiqueta_sin_bonos)
-        layout.addWidget(self.aviso)
-        layout.addStretch()
-        layout.addLayout(botones)
-        self.setLayout(layout)
-        encadenar_enter(self.campo_cliente, self.campo_celular, self.campo_dia, self.campo_hora,
-                        self.combo_equipo, self.combo_bono, accion_final=self._cobrar)
-        sin_boton_por_defecto(self)
-        self.campo_cliente.setFocus()
-
-    def _equipo(self) -> dict:
-        return self.combo_equipo.currentData()
-
-    def _bono(self):
-        return self.combo_bono.currentData()
-
-    def _cargar_bonos(self, _=None):
-        """Los bonos del catálogo del equipo elegido (cada equipo cobra con el suyo)."""
-        self.combo_bono.blockSignals(True)
-        self.combo_bono.clear()
-        for bono in reservas_repo.bonos_para(self._equipo()["equipo"]):
-            self.combo_bono.addItem(f"{bono['nombre']} — {formato_pesos(bono['precio'])}", bono)
-        self.combo_bono.blockSignals(False)
-        vacio = self.combo_bono.count() == 0
-        self.etiqueta_sin_bonos.setText(
-            f"Todavía no hay bonos para {self._equipo()['nombre']}: el Admin los crea en Configuración ADMIN."
-            if vacio else ""
-        )
-        self.etiqueta_sin_bonos.setVisible(vacio)
-        self._actualizar_monto()
-
-    def _monto(self) -> float:
-        """Lo que paga ahora, según la opción elegida."""
-        bono = self._bono()
-        if bono is None:
-            return 0.0
-        if self.opcion_todo.isChecked():
-            return round(bono["precio"], 2)
-        if self.opcion_otro.isChecked():
-            return round(self.spin_otro.value(), 2)
-        return round(bono["precio"] / 2, 2)
-
-    def _actualizar_monto(self, _=None):
-        """Los importes de las opciones, el botón Cobrar y el aviso de abajo
-        (qué pasa si no viene) siguen al bono y a la opción elegida."""
-        bono = self._bono()
-        precio = bono["precio"] if bono else 0.0
-        self.opcion_mitad.setText(f"50%  ({formato_pesos(round(precio / 2, 2))})")
-        self.opcion_todo.setText(f"100%  ({formato_pesos(precio)})")
-        self.spin_otro.setEnabled(self.opcion_otro.isChecked())
-        monto = self._monto()
-        self.boton_cobrar.setText(f"Cobrar {formato_pesos(monto)}")
-        self.boton_cobrar.setEnabled(bono is not None)
-        if bono is None:
-            self.aviso.cuerpo.setText("Elegí un equipo que tenga bonos.")
-        elif monto >= round(precio, 2):
-            self.aviso.cuerpo.setText(
-                f"El precio queda fijo en {formato_pesos(precio)} aunque después cambie el bono. "
-                "Paga todo: si no viene, queda \"A reprogramar\" para darle otro día (con cualquier PC "
-                f"disponible), y vence a los {dominio.DIAS_PARA_REPROGRAMAR_RESERVA} días."
-            )
-        else:
-            self.aviso.cuerpo.setText(
-                f"El precio queda fijo en {formato_pesos(precio)} aunque después cambie el bono. "
-                f"Cuando llegue se cobra lo que falta. Si no viene (o llega más de "
-                f"{dominio.texto_tolerancia_reserva()} tarde), pierde la seña."
-            )
-
-    @manejar_errores
-    def _cobrar(self):
-        cliente = self.campo_cliente.text().strip()
-        if not cliente:
-            mostrar_error(self, "Falta el cliente", "Escribí el nombre de quien reserva.")
-            self.campo_cliente.setFocus()
-            return
-        bono = self._bono()
-        if bono is None:
-            mostrar_error(self, "Sin bono", "Elegí un equipo que tenga bonos.")
-            return
-        equipo = self._equipo()
-        inicio = _momento(self.campo_dia.date(), self.campo_hora.time())
-        monto = self._monto()
-        # Antes de cobrar: que no se cobre una reserva que después no se puede guardar.
-        reservas_repo.revisar_reserva(equipo["equipo"], equipo["estacion_id"], bono["id"], inicio, monto,
-                                      consola=equipo["consola"])
-        pagos = cobrar(self, monto)
-        if pagos is None:
-            return
-        self.reserva_id = reservas_repo.crear_reserva(
-            self.usuario["id"], cliente, self.campo_celular.text(), equipo["equipo"], equipo["estacion_id"],
-            bono["id"], inicio, monto, pagos, consola=equipo["consola"],
-        )
-        mostrar_info(
-            self, "Reserva tomada",
-            f"Reserva Nº {self.reserva_id}: {cliente}, {equipo['nombre']}, {texto_dia_y_hora(inicio.isoformat())}.\n"
-            f"{bono['nombre']} · cobraste {formato_pesos(monto)}"
-            + ("." if monto >= bono["precio"] else f", falta {formato_pesos(bono['precio'] - monto)}."),
-        )
-        self.accept()
 
 
 # ---------------------------------------------------------------------

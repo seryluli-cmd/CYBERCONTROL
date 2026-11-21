@@ -2292,5 +2292,209 @@ HOJA_DE_ESTILOS = """
     QLabel#margenHorario {
         color: #8A94A6;
     }
+
+    /* Nueva reserva con el diseño "B: equipos a la vista" (el dueño la eligió el 2026-11-21,
+       PROPUESTA_NUEVA_RESERVA; control_pcs/ui/reservas_nueva.py). Los colores son los de cada
+       rubro (ui/dibujos_tabla.py): la PS5 en rosa, las PCs en azul y PCSTREAM en celeste. */
+    QLabel#rotuloCampo {
+        color: #5B6475;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    QLineEdit#campoReserva, QDateEdit#campoReserva, QTimeEdit#campoReserva {
+        min-height: 22px;
+    }
+    QTimeEdit#campoReserva {
+        padding: 7px 9px;
+        border: 1px solid #CDD3DE;
+        border-radius: 7px;
+        background-color: #FFFFFF;
+    }
+    QTimeEdit#campoReserva:focus {
+        border: 1.5px solid #2F6FED;
+    }
+    /* padding 0: las tarjetas llevan una capa de etiquetas adentro, y el relleno de
+       9 x 18 de todos los botones las estiraba de más. */
+    QPushButton[clase="tarjetaConsola"] {
+        padding: 0;
+        background-color: #FFFFFF;
+        border: 1px solid #F5BCD8;
+        border-radius: 12px;
+        min-height: 72px;
+    }
+    QPushButton[clase="tarjetaConsola"]:hover {
+        border: 1px solid #B02A6B;
+    }
+    QPushButton[clase="tarjetaConsola"]:checked {
+        background-color: #FDEBF4;
+        border: 2px solid #B02A6B;
+    }
+    QPushButton[clase="tarjetaConsola"] > QLabel {
+        background: transparent;
+    }
+    QPushButton[clase="tarjetaConsola"] > QLabel#tituloEquipo {
+        color: #B02A6B;
+        font-size: 18px;
+        font-weight: 800;
+    }
+    QPushButton[clase="tarjetaConsola"] > QLabel#detalleEquipo {
+        color: #5B6475;
+        font-size: 12px;
+    }
+    QPushButton[clase="tarjetaConsola"] > QLabel#detalleEquipo[reservada="true"] {
+        color: #B42318;
+        font-weight: 700;
+    }
+    QPushButton[clase="tarjetaConsola"] > QLabel#tildeEquipo {
+        background-color: #B02A6B;
+        color: #FFFFFF;
+        border-radius: 12px;
+        font-weight: 800;
+    }
+    QPushButton[clase="tarjetaCualquierPc"] {
+        padding: 0;
+        background-color: #FFFFFF;
+        border: 1px dashed #BFD3FB;
+        border-radius: 10px;
+        min-height: 38px;
+    }
+    QPushButton[clase="tarjetaCualquierPc"]:hover {
+        border: 1px solid #1D4FA8;
+    }
+    QPushButton[clase="tarjetaCualquierPc"]:checked {
+        background-color: #EAF1FF;
+        border: 2px solid #1D4FA8;
+    }
+    QPushButton[clase="tarjetaCualquierPc"] > QLabel {
+        background: transparent;
+        font-size: 13px;
+    }
+    QPushButton[clase="tarjetaCualquierPc"] > QLabel#tituloCualquierPc {
+        color: #1D4FA8;
+        font-weight: 800;
+    }
+    QPushButton[clase="tarjetaCualquierPc"] > QLabel#detalleCualquierPc {
+        color: #5B6475;
+    }
+    QPushButton[clase="fichaPc"] {
+        background-color: #EAF1FF;
+        color: #1D4FA8;
+        border: 1px solid #BFD3FB;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        min-height: 30px;
+        padding: 0 6px;
+    }
+    QPushButton[clase="fichaPc"]:hover {
+        border: 1px solid #1D4FA8;
+    }
+    QPushButton[clase="fichaPc"][tono="celeste"] {
+        background-color: #E5F7FB;
+        color: #0E6F86;
+        border: 1px solid #AEE2EE;
+    }
+    QPushButton[clase="fichaPc"][reservada="true"] {
+        background-color: #F1F3F6;
+        color: #9AA2AF;
+        border: 1px dashed #CDD3DE;
+    }
+    QPushButton[clase="fichaPc"]:checked {
+        background-color: #1D4FA8;
+        color: #FFFFFF;
+        border: 1px solid #1D4FA8;
+    }
+    QPushButton[clase="fichaPc"][tono="celeste"]:checked {
+        background-color: #0E6F86;
+        border: 1px solid #0E6F86;
+    }
+    QPushButton[clase="fichaPc"][reservada="true"]:checked {
+        background-color: #8A93A3;
+        border: 1px solid #8A93A3;
+    }
+    QPushButton[clase="tarjetaBono"] {
+        padding: 0;
+        background-color: #FFFFFF;
+        border: 1px solid #D9DEE7;
+        border-radius: 9px;
+        min-height: 40px;
+    }
+    QPushButton[clase="tarjetaBono"]:hover {
+        border: 1px solid #9AA6B8;
+    }
+    QPushButton[clase="tarjetaBono"][tono="rosa"]:checked {
+        background-color: #FDEBF4;
+        border: 1px solid #B02A6B;
+    }
+    QPushButton[clase="tarjetaBono"][tono="azul"]:checked {
+        background-color: #EAF1FF;
+        border: 1px solid #1D4FA8;
+    }
+    QPushButton[clase="tarjetaBono"][tono="celeste"]:checked {
+        background-color: #E5F7FB;
+        border: 1px solid #0E6F86;
+    }
+    QPushButton[clase="tarjetaBono"] > QLabel {
+        background: transparent;
+        color: #1B2233;
+    }
+    QPushButton[clase="tarjetaBono"] > QLabel#nombreBono {
+        font-size: 13px;
+        font-weight: 700;
+    }
+    QPushButton[clase="tarjetaBono"] > QLabel#detalleBono {
+        color: #5B6475;
+        font-size: 11px;
+    }
+    QPushButton[clase="tarjetaBono"] > QLabel#precioBono {
+        font-size: 14px;
+        font-weight: 800;
+    }
+    /* El puntito del bono elegido: la propiedad la pone la ventana al elegir (un
+       ":checked" del botón no llega a las etiquetas de adentro). */
+    QPushButton[clase="tarjetaBono"] > QLabel#puntoBono {
+        color: #9AA2AF;
+        font-size: 14px;
+    }
+    QPushButton[clase="tarjetaBono"] > QLabel#puntoBono[elegido="true"][tono="rosa"] { color: #B02A6B; }
+    QPushButton[clase="tarjetaBono"] > QLabel#puntoBono[elegido="true"][tono="azul"] { color: #1D4FA8; }
+    QPushButton[clase="tarjetaBono"] > QLabel#puntoBono[elegido="true"][tono="celeste"] { color: #0E6F86; }
+    QScrollArea#listaDeBonos, QWidget#contenidoBonos {
+        background: transparent;
+        border: none;
+    }
+    QLabel#sinBonos {
+        color: #A6323C;
+    }
+    QFrame#barraCobro {
+        background-color: #FFFFFF;
+        border: 1px solid #DCE1E9;
+        border-radius: 12px;
+    }
+    QFrame#barraCobro > QLabel {
+        background: transparent;
+    }
+    QFrame#barraCobro > QLabel#resumenReserva {
+        color: #5B6475;
+        font-size: 12px;
+    }
+    QFrame#barraCobro > QLabel#cobrasAhora {
+        color: #1E9E50;
+        font-size: 20px;
+        font-weight: 800;
+    }
+    QFrame#barraCobro > QLabel#faltaCuandoLlegue {
+        color: #5B6475;
+        font-size: 13px;
+    }
+    QPushButton#teclaGrandeReserva {
+        min-height: 40px;
+        font-size: 15px;
+        padding: 0 24px;
+    }
+    QLabel#avisoNuevaReserva {
+        color: #5B6475;
+        font-size: 12px;
+    }
 """.replace("__RUTA_FLECHA_ABAJO__", RUTA_FLECHA_ABAJO).replace(
     "__RUTA_FLECHA_ABAJO_CLARA__", RUTA_FLECHA_ABAJO_CLARA)

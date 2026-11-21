@@ -681,3 +681,17 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   reserva de PC hecha sin mirar apartaría la consola (los bonos que se ofrecen son los de la PS5). Reprogramar y Reserva de socio solo
   ofrecen PCs y no cambian. Pruebas en `tests/test_reservas.py` y `tests/test_reservas_ui.py`. Sin .exe;
   la lista blanca no cambia.
+- **2026-11-21 — Nueva reserva con el diseño B, "equipos a la vista"** (pedido del dueño: "quiero que
+  mejores la estética, es muy básica, quiero que parezca más profesional: me suma puntos cuando muestro el
+  programa"; eligió la B entre tres maquetas, `PROPUESTA_NUEVA_RESERVA` en la carpeta de los proyectos).
+  La ventana salió de `reservas_dialogos.py` (con ella pasaba las 600 líneas) a
+  `control_pcs/ui/reservas_nueva.py`: cabecera oscura con la tolerancia en una pastilla; a la izquierda
+  el cliente, el día y la hora, los bonos del equipo elegido como tarjetas de su color y "Paga ahora"
+  (50%, 100% u OTRO MONTO); a la derecha los equipos a la vista en vez de la lista desplegable: las PS5
+  en tarjetas rosas grandes con un joystick dibujado, "Cualquier PC disponible" y una ficha azul por PC
+  (PCSTREAM en celeste); abajo una barra con el resumen, lo que se cobra ahora en verde y COBRAR. Cada
+  equipo dice si ya tiene una reserva a esa hora ("Reservada a las 16:00 · Santi"; la PC, en gris), con
+  `reservas_repo.reservados_a_esa_hora`: es solo para mostrar, el que decide sigue siendo
+  `crear_reserva`. Las reglas y la plata no cambian; se fue `_DelegadoDeEquipos`, que dibujaba la lista
+  vieja. Pruebas en `tests/test_reservas_ui.py` (`TestNuevaReserva`) y `tests/test_reservas.py`. Sin
+  .exe; la lista blanca no cambia.

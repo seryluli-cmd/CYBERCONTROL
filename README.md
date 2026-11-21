@@ -392,7 +392,7 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   liberarla lo puede hacer cualquier operador logueado; crear/modificar/dar
   de baja sus bonos es solo del Admin, desde Configuración ADMIN →
   "Gestionar Bonos de PlayStation 5". Ver `playstation_repo.vender_bono`.
-- **Reservas** (`control_pcs/ui/reservas_window.py` + `reservas_dialogos.py`;
+- **Reservas** (`control_pcs/ui/reservas_window.py` + `reservas_nueva.py` + `reservas_dialogos.py`;
   botón "📅 Reservas · N hoy" de la barra, solo en el mostrador) — pedido del
   dueño, 2026-10-20 (parte 1: la plata). Un cliente reserva un equipo para otro
   momento y paga una seña o todo; cuando vuelve puede ser otro turno. Nueva

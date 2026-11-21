@@ -82,13 +82,34 @@ def _etiqueta(p):
     p.drawEllipse(QPointF(9, 11), 1.7, 1.7)
 
 
+def _consola(p):
+    # Un joystick: las PlayStation 5 de Nueva reserva (2026-11-21). El emoji 🎮 no está
+    # en todos los Windows.
+    p.drawRoundedRect(QRectF(2, 6, 18, 10.5), 5.25, 5.25)
+    p.drawLine(QPointF(6.6, 9.3), QPointF(6.6, 13.3))
+    p.drawLine(QPointF(4.6, 11.3), QPointF(8.6, 11.3))
+    p.save()
+    p.setBrush(p.pen().color())
+    p.drawEllipse(QPointF(14.6, 9.9), 0.9, 0.9)
+    p.drawEllipse(QPointF(16.8, 12.5), 0.9, 0.9)
+    p.restore()
+
+
+def _monitor(p):
+    # "Cualquier PC disponible" en Nueva reserva (2026-11-21).
+    p.drawRoundedRect(QRectF(3, 3.5, 16, 11), 2, 2)
+    p.drawLine(QPointF(11, 14.5), QPointF(11, 17.5))
+    p.drawLine(QPointF(7.5, 18.5), QPointF(14.5, 18.5))
+
+
 _DIBUJOS = {"usuario": _usuario, "mas": _mas, "lupa": _lupa, "lapiz": _lapiz, "moneda": _moneda,
-            "reloj": _reloj, "prohibido": _prohibido, "subir": _subir, "flecha": _flecha, "etiqueta": _etiqueta}
+            "reloj": _reloj, "prohibido": _prohibido, "subir": _subir, "flecha": _flecha, "etiqueta": _etiqueta,
+            "consola": _consola, "monitor": _monitor}
 
 
 def pixmap_de(nombre: str, lado: int = 20, color: str = "#FFFFFF", grosor: float = 1.8) -> QPixmap:
-    """El ícono `nombre` (usuario, mas, lupa, lapiz, moneda, reloj, prohibido, subir, flecha o etiqueta)
-    como un trazo de `color` de `lado` x `lado` píxeles."""
+    """El ícono `nombre` (usuario, mas, lupa, lapiz, moneda, reloj, prohibido, subir, flecha, etiqueta,
+    consola o monitor) como un trazo de `color` de `lado` x `lado` píxeles."""
     pixmap = QPixmap(lado * _ESCALA, lado * _ESCALA)
     pixmap.fill(Qt.transparent)
     pincel = QPainter(pixmap)

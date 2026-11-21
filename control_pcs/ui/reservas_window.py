@@ -10,7 +10,7 @@ PROPUESTA_VENTANAS_ADMIN): cabecera oscura con cuántas hay hoy, cuántas espera
 cuántas hay que reprogramar, No vino y Devolver plata en rojo y aparte, y el
 estado de cada reserva como una pastilla de color.
 
-Los formularios están en reservas_dialogos.py y las reglas en
+Los formularios están en reservas_dialogos.py (Nueva reserva, en reservas_nueva.py) y las reglas en
 control_pcs/repositories/reservas_repo.py. Se abre solo en el mostrador: cobra.
 "RESERVA DE SOCIO" (2026-10-26) abre reservas_socio_dialogo.py: un socio con
 saldo reserva sin seña; en la lista se ve "(socio)" y no tiene plata.
@@ -30,9 +30,9 @@ from turnos import dia_en_que_empezo_el_turno
 from control_pcs.repositories import reservas_repo
 from control_pcs.repositories import reservas_socios_repo
 from control_pcs.ui.reservas_dialogos import (
-    TONO_DEL_EQUIPO, DialogoDevolver, DialogoHabilitarReserva, DialogoNuevaReserva, DialogoReprogramar,
-    texto_dia_y_hora,
+    TONO_DEL_EQUIPO, DialogoDevolver, DialogoHabilitarReserva, DialogoReprogramar, texto_dia_y_hora,
 )
+from control_pcs.ui.reservas_nueva import DialogoNuevaReserva
 from control_pcs.ui.reservas_socio_dialogo import DialogoReservaDeSocio
 from ui.dibujos_tabla import DelegadoEtiqueta
 from ui.piezas_ventana import (

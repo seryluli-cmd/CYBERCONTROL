@@ -1,8 +1,8 @@
 """
 tests/test_reservas_ui.py
 ===========================
-Las pantallas de RESERVAS (control_pcs/ui/reservas_window.py y
-reservas_dialogos.py) y el renglón "Reservas" de Caja y Cierre de Turno
+Las pantallas de RESERVAS (control_pcs/ui/reservas_window.py,
+reservas_nueva.py y reservas_dialogos.py) y el renglón "Reservas" de Caja y Cierre de Turno
 (variante A, elegida por el dueño el 2026-10-20). Se prueban sin abrir ninguna
 ventana (plataforma "offscreen"); la ventana de cobro se reemplaza por lo que
 devolvería. La cuenta de la plata está en tests/test_reservas.py.
@@ -26,12 +26,13 @@ from repositories import usuarios_repo  # noqa: E402
 from control_pcs.repositories import (  # noqa: E402
     pcs_repo, playstation_repo, reservas_habilitar_repo, reservas_repo,
 )
-from control_pcs.ui.reservas_dialogos import DialogoHabilitarReserva, DialogoNuevaReserva  # noqa: E402
+from control_pcs.ui.reservas_dialogos import DialogoHabilitarReserva  # noqa: E402
+from control_pcs.ui.reservas_nueva import DialogoNuevaReserva  # noqa: E402
 from control_pcs.ui.reservas_window import (  # noqa: E402
     COLOR_ESTADO, COLUMNA_EQUIPO, COLUMNA_ESTADO, TONO_DEL_EQUIPO, ReservasWindow,
 )
 from ui.dibujos_tabla import (  # noqa: E402
-    TONO_PCS, TONO_PLAYSTATION, TONOS_DE_ETIQUETA, DelegadoEtiqueta, color_fuerte,
+    TONO_PCS, TONO_PLAYSTATION, TONOS_DE_ETIQUETA, DelegadoEtiqueta,
 )
 from ui.caja_window import CajaWindow, CierreTurnoWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
@@ -216,61 +217,147 @@ class TestVentanaReservas(_ConUnaReserva):
         self.assertEqual(set(TONO_DEL_EQUIPO), set(dominio.EQUIPOS_RESERVA))
 
 
-class TestDialogos(_ConUnaReserva):
-    def test_nueva_reserva_pone_las_ps5_arriba_y_cada_equipo_con_su_color(self):
+class TestNuevaReserva(_ConUnaReserva):
+    """La ventana con el diseño B (equipos a la vista), elegido por el dueño el 2026-11-21."""
+
+    def _dialogo(self, hora=10):
+        dialogo = self._abrir(DialogoNuevaReserva(self._usuario()))
+        manana = _manana_a_las(hora)
+        dialogo.campo_dia.setDate(QDate(manana.year, manana.month, manana.day))
+        dialogo.campo_hora.setTime(QTime(hora, 0))
+        return dialogo
+
+    def _boton(self, dialogo, nombre):
+        return next(boton for boton, opcion in dialogo.botones_equipo if opcion["nombre"] == nombre)
+
+    def _bonos(self, dialogo):
+        return [(boton.bono["nombre"], boton.property("tono")) for boton in dialogo.grupo_bono.buttons()]
+
+    def test_pone_las_ps5_arriba_y_cada_equipo_con_su_color(self):
         # Pedido del dueño (2026-11-21): las dos PS5 arriba de todo y de otro color que las PCs.
         admin = usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN)
         playstation_repo.crear_bono(admin, "2 horas PS5", 120, 6000.0)
-        dialogo = self._abrir(DialogoNuevaReserva(self._usuario()))
-        combo = dialogo.combo_equipo
+        dialogo = self._dialogo()
 
-        textos = [combo.itemText(indice) for indice in range(combo.count())]
-        self.assertEqual(textos, ["PS5-1", "PS5-2", "", dominio.NOMBRE_RESERVA_CUALQUIER_PC, "PC1", "PC2"])
-        # Arranca en la PS5-1 (lo eligió el dueño), con los bonos de la PS5.
-        self.assertEqual(combo.currentText(), "PS5-1")
-        self.assertEqual([dialogo.combo_bono.itemText(i) for i in range(dialogo.combo_bono.count())],
-                         ["2 horas PS5 — $ 6.000"])
-        for indice in (0, 1):
-            self.assertEqual(combo.itemData(indice, Qt.ForegroundRole), color_fuerte(TONO_PLAYSTATION))
-        for indice in (3, 4, 5):
-            self.assertEqual(combo.itemData(indice, Qt.ForegroundRole), color_fuerte(TONO_PCS))
+        self.assertEqual([(opcion["nombre"], boton.property("clase")) for boton, opcion in dialogo.botones_equipo],
+                         [("PS5-1", "tarjetaConsola"), ("PS5-2", "tarjetaConsola"),
+                          (dominio.NOMBRE_RESERVA_CUALQUIER_PC, "tarjetaCualquierPc"),
+                          ("PC1", "fichaPc"), ("PC2", "fichaPc")])
+        self.assertEqual(self._boton(dialogo, "PC1").property("tono"), TONO_PCS)
+        # Arranca en la PS5-1 (lo eligió el dueño), con los bonos de la PS5 en rosa.
+        self.assertTrue(self._boton(dialogo, "PS5-1").isChecked())
+        self.assertEqual(self._bonos(dialogo), [("2 horas PS5", TONO_PLAYSTATION)])
+        self.assertEqual(dialogo.titulo_bonos.text(), "BONO  ·  PS5-1")
 
-    def test_nueva_reserva_cobra_la_mitad_y_la_guarda(self):
-        dialogo = self._abrir(DialogoNuevaReserva(self._usuario()))
+        dialogo.elegir_equipo("PC2")
+
+        # Las tarjetas de la PS5 se van y quedan las de las PCs, en azul.
+        self.assertEqual(self._bonos(dialogo), [("3 horas", TONO_PCS), ("Promo 10 hs", TONO_PCS)])
+        self.assertEqual(dialogo.titulo_bonos.text(), "BONO  ·  PC2")
+
+    def test_sin_bonos_lo_dice_y_no_cobra(self):
+        dialogo = self._dialogo()  # arranca en la PS5-1, que acá no tiene bonos
+
+        self.assertFalse(dialogo.etiqueta_sin_bonos.isHidden())
+        self.assertIn("PS5-1", dialogo.etiqueta_sin_bonos.text())
+        self.assertFalse(dialogo.boton_cobrar.isEnabled())
+
+    def test_el_bono_elegido_lleva_el_puntito(self):
+        dialogo = self._dialogo()
+        dialogo.elegir_equipo("PC2")
+
+        dialogo.elegir_bono("Promo 10 hs")
+
+        puntos = {boton.bono["nombre"]: (boton.punto.text(), boton.punto.property("elegido"))
+                  for boton in dialogo.grupo_bono.buttons()}
+        self.assertEqual(puntos, {"3 horas": ("○", "false"), "Promo 10 hs": ("●", "true")})
+
+    def test_la_barra_sigue_a_lo_que_paga_ahora(self):
+        dialogo = self._dialogo()
+        dialogo.elegir_equipo("PC2")
+        dialogo.elegir_bono("Promo 10 hs")
+
+        self.assertEqual(dialogo.etiqueta_cobras.text(), "Cobrás ahora $ 5.000")
+        self.assertEqual(dialogo.etiqueta_falta.text(), "·  falta $ 5.000 cuando llegue")
+        self.assertIn("PC2", dialogo.etiqueta_resumen.text())
+        self.assertTrue(dialogo.fila_otro.isHidden())
+
+        dialogo.opcion_todo.click()
+        self.assertEqual(dialogo.boton_cobrar.text(), "✓  COBRAR $ 10.000")
+        self.assertEqual(dialogo.etiqueta_falta.text(), "·  paga todo")
+
+        dialogo.opcion_otro.click()
+        dialogo.spin_otro.setValue(2000)
+        self.assertFalse(dialogo.fila_otro.isHidden())
+        self.assertEqual(dialogo.boton_cobrar.text(), "✓  COBRAR $ 2.000")
+
+    def test_marca_lo_que_ya_esta_reservado_a_esa_hora(self):
+        admin = usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN)
+        bono_ps5 = playstation_repo.crear_bono(admin, "2 horas PS5", 120, 6000.0)
+        self._reservar(5000.0)  # PC1, mañana de 10 a 20
+        reservas_repo.crear_reserva(self.ana, "Santi", "", dominio.EQUIPO_RESERVA_PLAYSTATION, None, bono_ps5,
+                                    _manana_a_las(15), 3000.0, _efectivo(3000.0), consola=2)
+
+        dialogo = self._dialogo(hora=16)
+
+        ps5_1, ps5_2 = self._boton(dialogo, "PS5-1"), self._boton(dialogo, "PS5-2")
+        self.assertEqual(ps5_1.detalle.text(), "PlayStation 5  ·  libre a las 16:00")
+        self.assertEqual(ps5_2.detalle.text(), "Reservada a las 16:00 · Santi")
+        self.assertEqual(ps5_2.detalle.property("reservada"), "true")
+        pc1, pc2 = self._boton(dialogo, "PC1"), self._boton(dialogo, "PC2")
+        self.assertEqual((pc1.property("reservada"), pc2.property("reservada")), ("true", "false"))
+        self.assertIn("Juan Pérez", pc1.toolTip())
+
+        # A otra hora se libera solo (la de PC1 termina a las 20).
+        dialogo.campo_hora.setTime(QTime(21, 0))
+
+        self.assertEqual(ps5_2.detalle.property("reservada"), "false")
+        self.assertEqual(pc1.property("reservada"), "false")
+        self.assertEqual(pc1.toolTip(), "")
+
+    def test_cobra_la_mitad_y_la_guarda(self):
+        dialogo = self._dialogo()
         dialogo.campo_cliente.setText("Marta")
-        manana = _manana_a_las(10)
-        dialogo.campo_dia.setDate(QDate(manana.year, manana.month, manana.day))
-        dialogo.campo_hora.setTime(QTime(10, 0))
-        dialogo.combo_equipo.setCurrentIndex(dialogo.combo_equipo.findText("PC2"))
-        dialogo.combo_bono.setCurrentIndex(1)  # Promo 10 hs (van por minutos)
+        dialogo.elegir_equipo("PC2")
+        dialogo.elegir_bono("Promo 10 hs")
 
-        self.assertEqual(dialogo.boton_cobrar.text(), "Cobrar $ 5.000")
-        with mock.patch("control_pcs.ui.reservas_dialogos.cobrar", return_value=_efectivo(5000.0)) as cobro, \
-                mock.patch("control_pcs.ui.reservas_dialogos.mostrar_info"):
+        self.assertEqual(dialogo.boton_cobrar.text(), "✓  COBRAR $ 5.000")
+        with mock.patch("control_pcs.ui.reservas_nueva.cobrar", return_value=_efectivo(5000.0)) as cobro, \
+                mock.patch("control_pcs.ui.reservas_nueva.mostrar_info"):
             dialogo.boton_cobrar.click()
 
         cobro.assert_called_once()
         self.assertEqual(cobro.call_args.args[1], 5000.0)
         datos = reservas_repo.obtener_reserva(dialogo.reserva_id)
         self.assertEqual((datos["cliente"], datos["equipo_nombre"], datos["pagado"], datos["fecha_reserva"]),
-                         ("Marta", "PC2", 5000.0, manana.isoformat()))
+                         ("Marta", "PC2", 5000.0, _manana_a_las(10).isoformat()))
 
     def test_si_la_reserva_no_se_puede_guardar_no_se_abre_el_cobro(self):
         self._reservar(5000.0)  # PC1, mañana de 10 a 20
-        dialogo = self._abrir(DialogoNuevaReserva(self._usuario()))
+        dialogo = self._dialogo(hora=12)
         dialogo.campo_cliente.setText("Marta")
-        manana = _manana_a_las(10)
-        dialogo.campo_dia.setDate(QDate(manana.year, manana.month, manana.day))
-        dialogo.campo_hora.setTime(QTime(12, 0))
-        dialogo.combo_equipo.setCurrentIndex(dialogo.combo_equipo.findText("PC1"))
+        dialogo.elegir_equipo("PC1")
 
-        with mock.patch("control_pcs.ui.reservas_dialogos.cobrar") as cobro, \
+        with mock.patch("control_pcs.ui.reservas_nueva.cobrar") as cobro, \
                 mock.patch("ui.utils.mostrar_error") as error:
             dialogo.boton_cobrar.click()
 
         cobro.assert_not_called()
         self.assertIn("ya está reservado", error.call_args.args[2])
 
+    def test_sin_cliente_no_cobra(self):
+        dialogo = self._dialogo()
+        dialogo.elegir_equipo("PC2")
+
+        with mock.patch("control_pcs.ui.reservas_nueva.cobrar") as cobro, \
+                mock.patch("control_pcs.ui.reservas_nueva.mostrar_error") as error:
+            dialogo.boton_cobrar.click()
+
+        cobro.assert_not_called()
+        self.assertEqual(error.call_args.args[1], "Falta el cliente")
+
+
+class TestDialogos(_ConUnaReserva):
     def test_habilitar_con_sena_cobra_el_resto(self):
         reserva = self._reservar(5000.0)
         dialogo = self._abrir(DialogoHabilitarReserva(self._usuario(), reserva))
