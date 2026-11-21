@@ -94,6 +94,65 @@ def agregar_pastilla(cabecera: QFrame, texto: str, tono: str) -> QLabel:
     return pastilla
 
 
+def agregar_contador(cabecera: QFrame, titulo: str, tono: str) -> QPushButton:
+    """
+    Un contador que se toca, a la derecha de la cabecera: el número grande y, debajo, su
+    título chiquito ("2 / HOY"), del color de `tono` (azul, celeste o naranja). Es un
+    botón que queda apretado (`isChecked`) mientras filtra la lista, y entonces se pinta
+    lleno de su color. Las pastillas HOY / ESPERAN / A REPROGRAMAR de Reservas pasaron a
+    ser esto el 2026-11-21 (pedido del dueño, maqueta A: "que HOY 2 sea un botón").
+    `contador.valor` y `contador.titulo` son sus etiquetas; el número va con `poner_contador`.
+    """
+    contador = _Contador()
+    contador.setObjectName("contadorCabecera")
+    contador.setProperty("tono", tono)
+    contador.setCheckable(True)
+    contador.setCursor(Qt.PointingHandCursor)
+    # Sin foco: tocarlo no le saca el cursor al buscador.
+    contador.setFocusPolicy(Qt.NoFocus)
+    capa = QVBoxLayout(contador)
+    capa.setContentsMargins(14, 5, 14, 6)
+    capa.setSpacing(0)
+    contador.valor = QLabel("—")
+    contador.valor.setObjectName("valorContador")
+    contador.titulo = QLabel(titulo.upper())
+    contador.titulo.setObjectName("tituloContador")
+    for etiqueta in (contador.valor, contador.titulo):
+        etiqueta.setAlignment(Qt.AlignCenter)
+        etiqueta.setProperty("tono", tono)
+        # El clic lo recibe el botón de abajo, no la etiqueta.
+        etiqueta.setAttribute(Qt.WA_TransparentForMouseEvents)
+        capa.addWidget(etiqueta)
+    # Apretado, la letra va en blanco sobre el color lleno. Las etiquetas no se enteran
+    # solas del :checked del botón: se les pone "elegido" y se las vuelve a pintar.
+    contador.toggled.connect(lambda elegido: _marcar_contador(contador, elegido))
+    cabecera.fila.addWidget(contador, 0, Qt.AlignVCenter)
+    return contador
+
+
+class _Contador(QPushButton):
+    """Un QPushButton mide solo su texto (acá no tiene): sin esto, el número y el título de
+    adentro quedaban aplastados en una rayita. Que mida lo que tiene adentro."""
+
+    def sizeHint(self):
+        return self.layout().sizeHint()
+
+    def minimumSizeHint(self):
+        return self.layout().sizeHint()
+
+
+def _marcar_contador(contador: QPushButton, elegido: bool):
+    for etiqueta in (contador.valor, contador.titulo):
+        etiqueta.setProperty("elegido", elegido)
+        _repintar(etiqueta)
+
+
+def poner_contador(contador: QPushButton, numero: int):
+    """El número de un contador de la cabecera (y su nombre para quien lee la pantalla)."""
+    contador.valor.setText(str(numero))
+    contador.setAccessibleName(f"{contador.titulo.text()} {numero}")
+
+
 def panel_blanco() -> tuple:
     """Un panel blanco con bordes redondeados: (el panel, su layout vertical)."""
     panel = QFrame()

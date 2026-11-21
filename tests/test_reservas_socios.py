@@ -321,7 +321,9 @@ class TestPantallas(_ConSocios):
     def test_la_ventana_tiene_el_boton_de_reserva_de_socio(self):
         ventana = self._abrir(ReservasWindow(self._usuario()))
 
-        self.assertIn("👤  RESERVA DE SOCIO", [boton.text() for boton in ventana.findChildren(QPushButton)])
+        # Desde el 2026-11-21 el muñequito va dibujado como ícono, no como emoji en el texto.
+        boton = next(boton for boton in ventana.findChildren(QPushButton) if boton.text().strip() == "RESERVA DE SOCIO")
+        self.assertFalse(boton.icon().isNull())
 
     def test_habilitar_una_de_socio_explica_que_entre_con_su_usuario(self):
         reserva = self._reservar(_en(180))

@@ -102,14 +102,36 @@ def _monitor(p):
     p.drawLine(QPointF(7.5, 18.5), QPointF(14.5, 18.5))
 
 
+def _play(p):
+    # HABILITAR de Reservas (2026-11-21, maqueta A): el triángulo de "arrancar", lleno.
+    p.save()
+    p.setBrush(p.pen().color())
+    p.drawPolygon(QPolygonF([QPointF(7, 5), QPointF(17.5, 11), QPointF(7, 17)]))
+    p.restore()
+
+
+def _calendario(p):
+    # REPROGRAMAR de Reservas (2026-11-21): la hoja del almanaque con sus dos argollas.
+    p.drawRoundedRect(QRectF(3.5, 5, 15, 13.5), 2.2, 2.2)
+    p.drawLine(QPointF(3.5, 9.5), QPointF(18.5, 9.5))
+    p.drawLine(QPointF(7.5, 3), QPointF(7.5, 6.5))
+    p.drawLine(QPointF(14.5, 3), QPointF(14.5, 6.5))
+    p.save()
+    p.setBrush(p.pen().color())
+    p.drawEllipse(QPointF(8, 13.8), 0.8, 0.8)
+    p.drawEllipse(QPointF(11, 13.8), 0.8, 0.8)
+    p.drawEllipse(QPointF(14, 13.8), 0.8, 0.8)
+    p.restore()
+
+
 _DIBUJOS = {"usuario": _usuario, "mas": _mas, "lupa": _lupa, "lapiz": _lapiz, "moneda": _moneda,
             "reloj": _reloj, "prohibido": _prohibido, "subir": _subir, "flecha": _flecha, "etiqueta": _etiqueta,
-            "consola": _consola, "monitor": _monitor}
+            "consola": _consola, "monitor": _monitor, "play": _play, "calendario": _calendario}
 
 
 def pixmap_de(nombre: str, lado: int = 20, color: str = "#FFFFFF", grosor: float = 1.8) -> QPixmap:
     """El ícono `nombre` (usuario, mas, lupa, lapiz, moneda, reloj, prohibido, subir, flecha, etiqueta,
-    consola o monitor) como un trazo de `color` de `lado` x `lado` píxeles."""
+    consola, monitor, play o calendario) como un trazo de `color` de `lado` x `lado` píxeles."""
     pixmap = QPixmap(lado * _ESCALA, lado * _ESCALA)
     pixmap.fill(Qt.transparent)
     pincel = QPainter(pixmap)

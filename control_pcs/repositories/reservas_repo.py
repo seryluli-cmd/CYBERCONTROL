@@ -54,6 +54,10 @@ from control_pcs.repositories import pcs_repo, pcstream_repo, playstation_repo
 # muestra la ventana debajo de las que esperan: las más nuevas.
 LIMITE_TERMINADAS = 200
 
+# Lo que muestra cada contador de la cabecera de Reservas al tocarlo (pedido del dueño
+# 2026-11-21: "que HOY 2 sea un botón, para saber qué reservas se esperan hoy").
+SOLO_HOY, SOLO_ESPERAN, SOLO_A_REPROGRAMAR = "hoy", "esperan", "a_reprogramar"
+
 
 def _catalogo(equipo: str):
     """El repo con el catálogo de bonos de ese equipo: cada uno cobra con el suyo
@@ -414,15 +418,20 @@ def _coincide(reserva: dict, buscar: str) -> bool:
     return bool(digitos) and digitos in "".join(c for c in reserva["celular"] if c.isdigit())
 
 
-def listar_reservas(solo_abiertas: bool = False, buscar: str = "", ahora: datetime = None) -> list:
+def listar_reservas(solo_abiertas: bool = False, buscar: str = "", ahora: datetime = None,
+                    solo: str = None) -> list:
     """
     Las reservas para la ventana RESERVAS, ya con su estado al día (ver
     _pasar_las_vencidas): primero las que esperan al cliente (Pendiente y A
     reprogramar), de la más próxima a la más lejana; después, salvo con
     `solo_abiertas`, las terminadas, de la más nueva a la más vieja (las últimas
     LIMITE_TERMINADAS). `buscar` filtra por cliente o celular. Cada una, con la
-    forma de _armar.
+    forma de _armar. `solo` deja las de un contador de la cabecera, sin terminadas:
+    SOLO_HOY (las mismas que cuenta reservas_de_hoy), SOLO_ESPERAN (Pendiente) o
+    SOLO_A_REPROGRAMAR.
     """
+    if solo not in (None, SOLO_HOY, SOLO_ESPERAN, SOLO_A_REPROGRAMAR):
+        raise ValueError(f"No hay un contador {solo!r}.")
     ahora = ahora or datetime.now()
     with conexion_db() as conexion:
         _pasar_las_vencidas(conexion, ahora)
@@ -430,7 +439,9 @@ def listar_reservas(solo_abiertas: bool = False, buscar: str = "", ahora: dateti
             _SELECT_RESERVAS + " WHERE reservas.estado IN (?, ?) ORDER BY reservas.fecha_reserva, reservas.id",
             (dominio.VENTA_CONFIRMADA, *dominio.ESTADOS_RESERVA_ABIERTA),
         ).fetchall()
-        terminadas = [] if solo_abiertas else conexion.execute(
+        if solo is not None:
+            abiertas = [fila for fila in abiertas if _es_del_contador(fila, solo, ahora)]
+        terminadas = [] if solo_abiertas or solo is not None else conexion.execute(
             _SELECT_RESERVAS + " WHERE reservas.estado NOT IN (?, ?) ORDER BY reservas.id DESC LIMIT ?",
             (dominio.VENTA_CONFIRMADA, *dominio.ESTADOS_RESERVA_ABIERTA, LIMITE_TERMINADAS),
         ).fetchall()
@@ -473,13 +484,32 @@ def obtener_reserva(reserva_id: int) -> dict:
     return reserva
 
 
-def reservas_de_hoy(ahora: datetime = None) -> int:
-    """Cuántas reservas esperan hoy (el día del local, de 06:00 a 06:00) y todavía
-    no pasaron su tolerancia: el número del botón Reservas de la barra. Solo lee."""
-    ahora = ahora or datetime.now()
+def _de_hoy(ahora: datetime) -> tuple:
+    """Las puntas de una reserva "de hoy" que todavía espera: (desde, hasta, todavia),
+    como texto ISO para `desde <= fecha_reserva < hasta` y `fecha_reserva >= todavia`."""
     hoy = dia_en_que_empezo_el_turno(ahora)
     desde, hasta = limites_de_los_dias(hoy, hoy)
     todavia = (ahora - timedelta(minutes=dominio.MINUTOS_TOLERANCIA_RESERVA)).isoformat(timespec="seconds")
+    return desde, hasta, todavia
+
+
+def _es_del_contador(reserva, solo: str, ahora: datetime) -> bool:
+    """Si una reserva que espera entra en el contador `solo` de la cabecera."""
+    if solo == SOLO_A_REPROGRAMAR:
+        return reserva["estado"] == dominio.RESERVA_A_REPROGRAMAR
+    if reserva["estado"] != dominio.RESERVA_PENDIENTE:
+        return False
+    if solo == SOLO_ESPERAN:
+        return True
+    desde, hasta, todavia = _de_hoy(ahora)
+    return desde <= reserva["fecha_reserva"] < hasta and reserva["fecha_reserva"] >= todavia
+
+
+def reservas_de_hoy(ahora: datetime = None) -> int:
+    """Cuántas reservas esperan hoy (el día del local, de 06:00 a 06:00) y todavía
+    no pasaron su tolerancia: el número del botón Reservas de la barra y del
+    contador HOY (que al tocarlo muestra esas mismas, ver _es_del_contador). Solo lee."""
+    desde, hasta, todavia = _de_hoy(ahora or datetime.now())
     with conexion_db() as conexion:
         return conexion.execute(
             """

@@ -901,6 +901,63 @@ HOJA_DE_ESTILOS = """
         border: 1px solid rgba(60, 200, 120, 115);
         color: #8FE6B4;
     }
+    /* Los contadores que se tocan (piezas_ventana.agregar_contador; HOY / ESPERAN /
+       A REPROGRAMAR de Reservas, maqueta A del 2026-11-21): del color de su pastilla y,
+       apretados (filtrando), llenos de ese color con borde y letra blancos. Cada estado
+       va con el #id: si no, ganarían los QPushButton:hover / :checked de arriba. */
+    QPushButton#contadorCabecera {
+        border-radius: 10px;
+        padding: 0px;
+        min-width: 66px;
+    }
+    QPushButton#contadorCabecera[tono="azul"] {
+        background-color: rgba(76, 141, 255, 38);
+        border: 1px solid rgba(76, 141, 255, 115);
+    }
+    QPushButton#contadorCabecera[tono="azul"]:hover {
+        background-color: rgba(76, 141, 255, 75);
+    }
+    QPushButton#contadorCabecera[tono="azul"]:checked {
+        background-color: #2F6FED;
+        border: 1px solid #FFFFFF;
+    }
+    QPushButton#contadorCabecera[tono="celeste"] {
+        background-color: rgba(34, 195, 230, 34);
+        border: 1px solid rgba(34, 195, 230, 115);
+    }
+    QPushButton#contadorCabecera[tono="celeste"]:hover {
+        background-color: rgba(34, 195, 230, 70);
+    }
+    QPushButton#contadorCabecera[tono="celeste"]:checked {
+        background-color: #1597B5;
+        border: 1px solid #FFFFFF;
+    }
+    QPushButton#contadorCabecera[tono="naranja"] {
+        background-color: rgba(245, 140, 50, 38);
+        border: 1px solid rgba(245, 140, 50, 125);
+    }
+    QPushButton#contadorCabecera[tono="naranja"]:hover {
+        background-color: rgba(245, 140, 50, 75);
+    }
+    QPushButton#contadorCabecera[tono="naranja"]:checked {
+        background-color: #D9701A;
+        border: 1px solid #FFFFFF;
+    }
+    QLabel#valorContador {
+        background: transparent;
+        font-size: 20px;
+        font-weight: 800;
+    }
+    QLabel#tituloContador {
+        background: transparent;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+    QLabel#valorContador[tono="azul"], QLabel#tituloContador[tono="azul"] { color: #9DC0FF; }
+    QLabel#valorContador[tono="celeste"], QLabel#tituloContador[tono="celeste"] { color: #8FE3F4; }
+    QLabel#valorContador[tono="naranja"], QLabel#tituloContador[tono="naranja"] { color: #FFB677; }
+    QLabel#valorContador[elegido="true"], QLabel#tituloContador[elegido="true"] { color: #FFFFFF; }
     QFrame#panelBlanco {
         background-color: #FFFFFF;
         border: 1px solid #DDE2EA;

@@ -70,6 +70,25 @@ class _ConUnaReserva(BaseConBaseTemporal):
         return ventana
 
 
+class _RelojManana8(datetime):
+    """El reloj del repo de reservas parado mañana a las 8: así una reserva de mañana a las
+    10 es "de hoy", corra la prueba a la hora que corra."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return _manana_a_las(8)
+
+
+def _contadores(ventana):
+    """Los contadores de la cabecera de Reservas, como (título, número)."""
+    return [(contador.titulo.text(), contador.valor.text()) for contador in ventana.contadores.values()]
+
+
+def _clientes(ventana):
+    """Los clientes de la lista de Reservas, de arriba abajo."""
+    return [ventana.tabla.item(fila, 2).text() for fila in range(ventana.tabla.rowCount())]
+
+
 def _montos(renglon):
     """Lo que muestra un renglón de la tabla de dónde vino la plata: (efectivo, digital)."""
     return renglon.efectivo.text(), renglon.digital.text()
@@ -160,10 +179,53 @@ class TestVentanaReservas(_ConUnaReserva):
 
         ventana = self._abrir(ReservasWindow(self._usuario()))
 
-        self.assertEqual(ventana.pastilla_hoy.text(), "HOY  0")
-        self.assertEqual(ventana.pastilla_esperan.text(), "ESPERAN  1")
-        self.assertEqual(ventana.pastilla_a_reprogramar.text(), "A REPROGRAMAR  1")
-        self.assertFalse(ventana.pastilla_a_reprogramar.isHidden())
+        # Desde el 2026-11-21, contadores que se tocan (número grande y su título).
+        self.assertEqual(_contadores(ventana), [("HOY", "0"), ("ESPERAN", "1"), ("A REPROGRAMAR", "1")])
+        self.assertFalse(ventana.contador_a_reprogramar.isHidden())
+
+    def test_tocar_un_contador_deja_solo_esas_y_tocarlo_de_nuevo_todas(self):
+        # Pedido del dueño 2026-11-21 (maqueta A): "que HOY 2 sea un botón, para saber qué
+        # reservas se esperan hoy". Lo mismo ESPERAN y A REPROGRAMAR.
+        self._reservar(5000.0)  # mañana a las 10: con el reloj en mañana a las 8, es de hoy
+        reservas_repo.crear_reserva(self.ana, "Marta", "", dominio.EQUIPO_RESERVA_PC, self.pc2, self.tres_horas,
+                                    _manana_a_las(10) + timedelta(days=1), 1000.0, _efectivo(1000.0))
+        pagada = reservas_repo.crear_reserva(self.ana, "Rosa", "", dominio.EQUIPO_RESERVA_PC, self.pc2,
+                                             self.tres_horas, _manana_a_las(14), 3000.0, _efectivo(3000.0))
+        reservas_repo.marcar_no_vino(pagada, self.ana)  # pagó todo: queda A reprogramar
+
+        with mock.patch("control_pcs.repositories.reservas_repo.datetime", _RelojManana8):
+            ventana = self._abrir(ReservasWindow(self._usuario()))
+            todas, las_que_esperan = ventana.findChild(QFrame, "pistaSegmentos").findChildren(QPushButton)
+            self.assertEqual(_contadores(ventana), [("HOY", "1"), ("ESPERAN", "2"), ("A REPROGRAMAR", "1")])
+            self.assertEqual(len(_clientes(ventana)), 3)
+
+            ventana.contador_hoy.click()
+            self.assertEqual(_clientes(ventana), ["Juan Pérez"])
+            self.assertTrue(ventana.contador_hoy.isChecked())
+            self.assertTrue(ventana.contador_hoy.valor.property("elegido"))  # letra blanca
+            self.assertFalse(todas.isChecked() or las_que_esperan.isChecked())
+            self.assertIn("Mostrando solo las de hoy", ventana.cabecera.detalle.text())
+
+            ventana.contador_esperan.click()
+            self.assertEqual(_clientes(ventana), ["Juan Pérez", "Marta"])
+            self.assertFalse(ventana.contador_hoy.isChecked())
+
+            ventana.contador_a_reprogramar.click()
+            self.assertEqual(_clientes(ventana), ["Rosa"])
+
+            # El mismo otra vez: vuelve a TODAS.
+            ventana.contador_a_reprogramar.click()
+            self.assertEqual(len(_clientes(ventana)), 3)
+            self.assertTrue(todas.isChecked())
+            self.assertFalse(any(contador.isChecked() for contador in ventana.contadores.values()))
+            self.assertFalse(ventana.contador_hoy.valor.property("elegido"))
+
+            # TODAS / LAS QUE ESPERAN también sacan el contador.
+            ventana.contador_hoy.click()
+            las_que_esperan.click()
+            self.assertFalse(ventana.contador_hoy.isChecked())
+            self.assertEqual(len(_clientes(ventana)), 3)
+            self.assertIn("tocá un contador", ventana.cabecera.detalle.text())
 
     def test_las_que_esperan_esconde_las_terminadas(self):
         self._reservar(5000.0)
@@ -173,7 +235,7 @@ class TestVentanaReservas(_ConUnaReserva):
         ventana = self._abrir(ReservasWindow(self._usuario()))
         todas, las_que_esperan = ventana.findChild(QFrame, "pistaSegmentos").findChildren(QPushButton)
         self.assertEqual(ventana.tabla.rowCount(), 2)
-        self.assertTrue(ventana.pastilla_a_reprogramar.isHidden())
+        self.assertTrue(ventana.contador_a_reprogramar.isHidden())
 
         las_que_esperan.click()
         self.assertEqual([ventana.tabla.item(0, 2).text(), ventana.tabla.rowCount()], ["Juan Pérez", 1])

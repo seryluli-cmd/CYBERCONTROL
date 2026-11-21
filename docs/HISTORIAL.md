@@ -729,3 +729,15 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   así que con una PC elegida se ven unas siete promos sin bajar. Nunca más que la pantalla (deja 40 px
   para la barra de título), como Reportes y Miembros. Prueba en `tests/test_reservas_ui.py`. Sin .exe; la
   lista blanca no cambia.
+- **2026-11-21 — Reservas: HOY, ESPERAN y A REPROGRAMAR se tocan, y las teclas con su dibujito** (pedido
+  del dueño, con una captura: "quiero que el botón de arriba que dice HOY 2 sea un BOTÓN, para que se
+  pueda saber qué reservas se esperan hoy; lo mismo con los demás", y después "mejorá los botones
+  también"). Eligió la A entre tres maquetas (A contadores grandes en la cabecera, B pastillas con el
+  número en un círculo y teclas planas, C una sola fila de filtros). Las pastillas pasaron a ser
+  contadores con el número grande (`piezas_ventana.agregar_contador`): tocar uno deja en la lista solo
+  esas (`reservas_repo.listar_reservas(solo=...)`; HOY muestra las mismas que cuenta `reservas_de_hoy`),
+  queda lleno de su color y arriba dice "Mostrando solo las de hoy · tocá HOY de nuevo para ver todas";
+  tocarlo otra vez, o TODAS / LAS QUE ESPERAN, vuelve a mostrar todas. Las seis teclas llevan un
+  dibujito hecho con QPainter (más, muñequito, play, almanaque, prohibido y moneda; play y almanaque son
+  nuevos en `dibujos_de_ventana`) en vez de emojis, y son un poco más altas. Pruebas en
+  `tests/test_reservas.py` y `tests/test_reservas_ui.py`. Sin .exe; la lista blanca no cambia.

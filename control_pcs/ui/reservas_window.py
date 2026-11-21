@@ -8,7 +8,9 @@ reserva, Habilitar, Reprogramar, No vino y Devolver plata (solo el Admin).
 Desde el 2026-10-26, con el diseño que eligió el dueño (maqueta "A" de
 PROPUESTA_VENTANAS_ADMIN): cabecera oscura con cuántas hay hoy, cuántas esperan y
 cuántas hay que reprogramar, No vino y Devolver plata en rojo y aparte, y el
-estado de cada reserva como una pastilla de color.
+estado de cada reserva como una pastilla de color. Desde el 2026-11-21 (pedido del
+dueño, maqueta A: "que HOY 2 sea un botón"), HOY, ESPERAN y A REPROGRAMAR son
+contadores que se tocan y dejan en la lista solo esas, y cada tecla lleva su dibujito.
 
 Los formularios están en reservas_dialogos.py (Nueva reserva, en reservas_nueva.py) y las reglas en
 control_pcs/repositories/reservas_repo.py. Se abre solo en el mostrador: cobra.
@@ -29,6 +31,7 @@ import dominio
 from turnos import dia_en_que_empezo_el_turno
 from control_pcs.repositories import reservas_repo
 from control_pcs.repositories import reservas_socios_repo
+from control_pcs.ui.dibujos_de_ventana import poner_icono
 from control_pcs.ui.reservas_dialogos import (
     TONO_DEL_EQUIPO, DialogoDevolver, DialogoHabilitarReserva, DialogoReprogramar, texto_dia_y_hora,
 )
@@ -36,7 +39,8 @@ from control_pcs.ui.reservas_nueva import DialogoNuevaReserva
 from control_pcs.ui.reservas_socio_dialogo import DialogoReservaDeSocio
 from ui.dibujos_tabla import DelegadoEtiqueta
 from ui.piezas_ventana import (
-    TONO_AZUL, TONO_CELESTE, TONO_NARANJA, agregar_pastilla, cabecera_oscura, linea_divisoria, tecla,
+    TONO_AZUL, TONO_CELESTE, TONO_NARANJA, agregar_contador, cabecera_oscura, linea_divisoria, poner_contador,
+    tecla,
 )
 from ui.utils import (
     aplicar_clase, confirmar, crear_tabla, formato_pesos, icono_de_emoji, manejar_errores, mostrar_error,
@@ -66,6 +70,24 @@ COLOR_APAGADO = "#9AA2AF"
 COLOR_FALTA = "#C2620A"
 
 _DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+
+# Los contadores de la cabecera: título, color y qué dice arriba mientras filtran.
+_CONTADORES = {
+    reservas_repo.SOLO_HOY: ("Hoy", TONO_AZUL, "las de hoy"),
+    reservas_repo.SOLO_ESPERAN: ("Esperan", TONO_CELESTE, "las pendientes"),
+    reservas_repo.SOLO_A_REPROGRAMAR: ("A reprogramar", TONO_NARANJA, "las que hay que reprogramar"),
+}
+
+# El rojo de la letra de teclaRoja (ui/hoja_de_estilos.py), para su dibujito.
+COLOR_ROJO_TECLA = "#A6323C"
+
+
+def _con_dibujo(boton: QPushButton, dibujo: str, color: str) -> QPushButton:
+    """La tecla con su dibujito adelante (los de dibujos_de_ventana), un poco más alta."""
+    poner_icono(boton, dibujo, 16, color)
+    boton.setText(f" {boton.text()}")
+    boton.setMinimumHeight(38)
+    return boton
 
 
 def _texto_del_minimo() -> str:
@@ -133,6 +155,8 @@ class ReservasWindow(QDialog):
         self.usuario = usuario
         self.es_admin = dominio.es_admin(usuario)
         self.reservas = []
+        # El contador de la cabecera que está filtrando (reservas_repo.SOLO_*), o None.
+        self._filtro = None
         self.setWindowTitle("Reservas")
         self.resize(1180, 640)
         self._armar_interfaz()
@@ -141,26 +165,35 @@ class ReservasWindow(QDialog):
     def _armar_interfaz(self):
         # El día del local (de 06:00 a 06:00), el mismo con que cuenta la pastilla HOY.
         hoy = dia_en_que_empezo_el_turno(datetime.now())
-        cabecera = cabecera_oscura(
-            "📅", "Reservas", f"Hoy es {_DIAS[hoy.weekday()]} {hoy:%d/%m} · las que esperan van arriba")
-        self.pastilla_hoy = agregar_pastilla(cabecera, "", TONO_AZUL)
-        self.pastilla_esperan = agregar_pastilla(cabecera, "", TONO_CELESTE)
-        self.pastilla_a_reprogramar = agregar_pastilla(cabecera, "", TONO_NARANJA)
+        self._hoy_es = f"Hoy es {_DIAS[hoy.weekday()]} {hoy:%d/%m}"
+        self.cabecera = cabecera_oscura("📅", "Reservas")
+        # Tocar un contador deja en la lista solo esas; tocarlo de nuevo, o TODAS / LAS
+        # QUE ESPERAN, vuelve a mostrar todas.
+        self.contadores = {}
+        for filtro, (titulo, tono, _que_muestra) in _CONTADORES.items():
+            contador = agregar_contador(self.cabecera, titulo, tono)
+            contador.clicked.connect(lambda _apretado=False, filtro=filtro: self._tocar_contador(filtro))
+            self.contadores[filtro] = contador
+        self.contador_hoy, self.contador_esperan, self.contador_a_reprogramar = self.contadores.values()
 
-        # Lo de todos los días primero; No vino y Devolver plata, en rojo y aparte.
+        # Lo de todos los días primero; No vino y Devolver plata, en rojo y aparte. Cada
+        # tecla con su dibujito (maqueta A del 2026-11-21), dibujado y no emoji: hay
+        # emojis que el Windows del mostrador no trae.
         botones = QHBoxLayout()
         botones.setSpacing(8)
-        botones.addWidget(tecla("＋  NUEVA RESERVA", self._nueva, "teclaAzul"))
-        botones.addWidget(tecla("👤  RESERVA DE SOCIO", self._nueva_de_socio, "teclaAzul"))
-        botones.addWidget(tecla("▶  HABILITAR", self._habilitar, "teclaVerde"))
-        botones.addWidget(tecla("🗓️  REPROGRAMAR", self._reprogramar))
+        botones.addWidget(_con_dibujo(tecla("NUEVA RESERVA", self._nueva, "teclaAzul"), "mas", "#FFFFFF"))
+        botones.addWidget(_con_dibujo(tecla("RESERVA DE SOCIO", self._nueva_de_socio, "teclaAzul"),
+                                      "usuario", "#FFFFFF"))
+        botones.addWidget(_con_dibujo(tecla("HABILITAR", self._habilitar, "teclaVerde"), "play", "#FFFFFF"))
+        botones.addWidget(_con_dibujo(tecla("REPROGRAMAR", self._reprogramar), "calendario", "#1B2233"))
         botones.addSpacing(6)
         botones.addWidget(linea_divisoria(vertical=True))
         botones.addSpacing(6)
-        botones.addWidget(tecla("NO VINO", self._no_vino, "teclaRoja"))
+        botones.addWidget(_con_dibujo(tecla("NO VINO", self._no_vino, "teclaRoja"), "prohibido", COLOR_ROJO_TECLA))
         # Lo aprieta cualquiera (avisa que es del Admin), con candado si no es Admin.
-        botones.addWidget(tecla("DEVOLVER PLATA" if self.es_admin else "DEVOLVER PLATA  🔒", self._devolver,
-                                "teclaRoja"))
+        botones.addWidget(_con_dibujo(
+            tecla("DEVOLVER PLATA" if self.es_admin else "DEVOLVER PLATA  🔒", self._devolver, "teclaRoja"),
+            "moneda", COLOR_ROJO_TECLA))
         botones.addStretch()
 
         # "Todas" o "Las que esperan": dos botones en una pista, uno siempre elegido.
@@ -178,7 +211,7 @@ class ReservasWindow(QDialog):
             capa_pista.addWidget(segmento)
         self._grupo_mostrar.buttons()[0].setChecked(True)
         self.boton_solo_las_que_esperan = self._grupo_mostrar.buttons()[1]
-        self._grupo_mostrar.buttonClicked.connect(lambda _boton: self._cargar())
+        self._grupo_mostrar.buttonClicked.connect(lambda _boton: self._elegir_segmento())
         botones.addWidget(pista)
 
         self.campo_buscar = QLineEdit()
@@ -222,7 +255,7 @@ class ReservasWindow(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
-        layout.addWidget(cabecera)
+        layout.addWidget(self.cabecera)
         layout.addLayout(botones)
         layout.addWidget(self.tabla, 1)
         layout.addLayout(pie)
@@ -239,6 +272,7 @@ class ReservasWindow(QDialog):
         self.reservas = reservas_repo.listar_reservas(
             solo_abiertas=self.boton_solo_las_que_esperan.isChecked(),
             buscar=self.campo_buscar.text(),
+            solo=self._filtro,
         )
         self.tabla.setRowCount(0)
         for reserva in self.reservas:
@@ -299,10 +333,40 @@ class ReservasWindow(QDialog):
         abiertas = reservas_repo.listar_reservas(solo_abiertas=True)
         esperan = sum(1 for reserva in abiertas if reserva["estado"] == dominio.RESERVA_PENDIENTE)
         a_reprogramar = len(abiertas) - esperan
-        self.pastilla_hoy.setText(f"HOY  {reservas_repo.reservas_de_hoy()}")
-        self.pastilla_esperan.setText(f"ESPERAN  {esperan}")
-        self.pastilla_a_reprogramar.setText(f"A REPROGRAMAR  {a_reprogramar}")
-        self.pastilla_a_reprogramar.setVisible(bool(a_reprogramar))
+        poner_contador(self.contador_hoy, reservas_repo.reservas_de_hoy())
+        poner_contador(self.contador_esperan, esperan)
+        poner_contador(self.contador_a_reprogramar, a_reprogramar)
+        # Sin ninguna se esconde, salvo que esté filtrando: así se lo puede volver a tocar.
+        self.contador_a_reprogramar.setVisible(
+            bool(a_reprogramar) or self._filtro == reservas_repo.SOLO_A_REPROGRAMAR)
+        if self._filtro is None:
+            detalle = f"{self._hoy_es} · tocá un contador para ver solo esas"
+        else:
+            titulo, _tono, que_muestra = _CONTADORES[self._filtro]
+            detalle = f"Mostrando solo {que_muestra} · tocá {titulo.upper()} de nuevo para ver todas"
+        self.cabecera.detalle.setText(detalle)
+
+    def _tocar_contador(self, filtro: str):
+        """Un contador de la cabecera: deja en la lista solo esas reservas; si ya
+        estaba filtrando ese, vuelve a TODAS."""
+        self._filtro = None if filtro == self._filtro else filtro
+        for clave, contador in self.contadores.items():
+            contador.setChecked(clave == self._filtro)
+        # Mientras filtra un contador, TODAS y LAS QUE ESPERAN quedan sin elegir (un grupo
+        # exclusivo no deja destildar el último: por eso se lo suelta un momento).
+        todas = self._grupo_mostrar.buttons()[0]
+        self._grupo_mostrar.setExclusive(False)
+        for boton in self._grupo_mostrar.buttons():
+            boton.setChecked(self._filtro is None and boton is todas)
+        self._grupo_mostrar.setExclusive(True)
+        self._cargar()
+
+    def _elegir_segmento(self):
+        """TODAS o LAS QUE ESPERAN: deja de filtrar por un contador."""
+        self._filtro = None
+        for contador in self.contadores.values():
+            contador.setChecked(False)
+        self._cargar()
 
     def _elegida(self):
         """La reserva elegida en la lista, o None."""

@@ -295,6 +295,38 @@ class TestHorarios(_ConReservas):
         self.assertEqual(reservas_repo.reservas_de_hoy(hora + timedelta(minutes=65)), 0)
         self.assertEqual(reservas_repo.reservas_de_hoy(hora - timedelta(days=1)), 0)
 
+    def test_cada_contador_de_la_cabecera_deja_solo_las_suyas(self):
+        # Pedido del dueño 2026-11-21: HOY, ESPERAN y A REPROGRAMAR se tocan y filtran.
+        hora = _manana_a_las(10)
+        self._reservar(cliente="Hoy", cuando=hora)
+        # A la 01:00 de la noche sigue siendo "hoy" para el local (de 06:00 a 06:00).
+        self._reservar(cliente="Madrugada", cuando=hora + timedelta(hours=15), estacion="pc2")
+        self._reservar(cliente="Otro día", cuando=hora + timedelta(days=1))
+        pagada = self._reservar(cliente="Pagada", cuando=hora, estacion=None, bono=self.tres_horas, monto=3000.0)
+        reservas_repo.marcar_no_vino(pagada, self.ana)  # pagó todo: A reprogramar
+        sena = self._reservar(cliente="Con seña", cuando=hora + timedelta(hours=10), bono=self.tres_horas,
+                              monto=1000.0)
+        reservas_repo.marcar_no_vino(sena, self.ana)  # perdió la seña: terminada
+
+        antes = hora - timedelta(hours=2)
+
+        def clientes(solo, ahora=antes, buscar=""):
+            return [reserva["cliente"]
+                    for reserva in reservas_repo.listar_reservas(solo=solo, buscar=buscar, ahora=ahora)]
+
+        self.assertEqual(clientes(reservas_repo.SOLO_HOY), ["Hoy", "Madrugada"])
+        self.assertEqual(len(clientes(reservas_repo.SOLO_HOY)), reservas_repo.reservas_de_hoy(antes))
+        self.assertEqual(clientes(reservas_repo.SOLO_ESPERAN), ["Hoy", "Madrugada", "Otro día"])
+        self.assertEqual(clientes(reservas_repo.SOLO_A_REPROGRAMAR), ["Pagada"])
+        # La búsqueda sigue andando adentro de un contador.
+        self.assertEqual(clientes(reservas_repo.SOLO_HOY, buscar="madru"), ["Madrugada"])
+        # Pasada la tolerancia, la de las 10:00 ya no es de hoy: ni en el contador ni en la lista.
+        despues = hora + timedelta(minutes=65)
+        self.assertEqual(clientes(reservas_repo.SOLO_HOY, despues), ["Madrugada"])
+        self.assertEqual(reservas_repo.reservas_de_hoy(despues), 1)
+        with self.assertRaises(ValueError):
+            reservas_repo.listar_reservas(solo="cualquiera")
+
     def test_la_lista_pone_primero_las_que_esperan_y_busca_sin_acentos(self):
         terminada = self._reservar(cliente="Pedro Ruiz", cuando=_manana_a_las(9))
         reservas_repo.marcar_no_vino(terminada, self.luis)
