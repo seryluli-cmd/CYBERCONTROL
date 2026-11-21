@@ -219,14 +219,17 @@ class TestVentanaReservas(_ConUnaReserva):
 class TestDialogos(_ConUnaReserva):
     def test_nueva_reserva_pone_las_ps5_arriba_y_cada_equipo_con_su_color(self):
         # Pedido del dueño (2026-11-21): las dos PS5 arriba de todo y de otro color que las PCs.
+        admin = usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN)
+        playstation_repo.crear_bono(admin, "2 horas PS5", 120, 6000.0)
         dialogo = self._abrir(DialogoNuevaReserva(self._usuario()))
         combo = dialogo.combo_equipo
 
         textos = [combo.itemText(indice) for indice in range(combo.count())]
         self.assertEqual(textos, ["PS5-1", "PS5-2", "", dominio.NOMBRE_RESERVA_CUALQUIER_PC, "PC1", "PC2"])
-        # Arranca donde arrancaba: "Cualquier PC disponible" no aparta ningún equipo.
-        self.assertEqual(combo.currentText(), dominio.NOMBRE_RESERVA_CUALQUIER_PC)
-        self.assertEqual(dialogo.combo_bono.itemText(0)[:7], "3 horas")
+        # Arranca en la PS5-1 (lo eligió el dueño), con los bonos de la PS5.
+        self.assertEqual(combo.currentText(), "PS5-1")
+        self.assertEqual([dialogo.combo_bono.itemText(i) for i in range(dialogo.combo_bono.count())],
+                         ["2 horas PS5 — $ 6.000"])
         for indice in (0, 1):
             self.assertEqual(combo.itemData(indice, Qt.ForegroundRole), color_fuerte(TONO_PLAYSTATION))
         for indice in (3, 4, 5):

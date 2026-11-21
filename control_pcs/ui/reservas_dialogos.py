@@ -203,9 +203,10 @@ class DialogoNuevaReserva(QDialog):
             consolas += opcion["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION
         if 0 < consolas < self.combo_equipo.count():
             self.combo_equipo.insertSeparator(consolas)
-        # Arranca en "Cualquier PC disponible", como antes de subir las PS5: si
-        # arrancara en la PS5-1, una reserva de PC hecha sin mirar apartaría la consola.
-        self.combo_equipo.setCurrentIndex(max(0, self.combo_equipo.findText(dominio.NOMBRE_RESERVA_CUALQUIER_PC)))
+        # Arranca en el primero, la PS5-1 (lo eligió el dueño el 2026-11-21, sabiendo
+        # que una reserva de PC hecha sin mirar apartaría la consola: los bonos que
+        # se ofrecen son los de la PS5, y eso avisa).
+        self.combo_equipo.setCurrentIndex(0)
         self.combo_equipo.currentIndexChanged.connect(self._cargar_bonos)
 
         self.combo_bono = QComboBox()

@@ -677,7 +677,7 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   ~30 PCs); la lista de equipos de Nueva reserva lleva una raya entre las consolas y las PCs y cada
   renglón con un punto y la letra del color de su rubro (`reservas_dialogos.TONO_DEL_EQUIPO`, el mismo
   de la lista de reservas; `_DelegadoDeEquipos` la dibuja, porque el dibujante de siempre del
-  QComboBox ignora el color de la letra). Sigue arrancando en "Cualquier PC disponible": arrancar en la
-  PS5-1 apartaría la consola en una reserva de PC hecha sin mirar. Reprogramar y Reserva de socio solo
+  QComboBox ignora el color de la letra). Arranca en la PS5-1: el dueño lo eligió sabiendo que una
+  reserva de PC hecha sin mirar apartaría la consola (los bonos que se ofrecen son los de la PS5). Reprogramar y Reserva de socio solo
   ofrecen PCs y no cambian. Pruebas en `tests/test_reservas.py` y `tests/test_reservas_ui.py`. Sin .exe;
   la lista blanca no cambia.
