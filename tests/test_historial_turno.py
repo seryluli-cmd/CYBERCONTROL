@@ -37,9 +37,10 @@ from repositories import (  # noqa: E402
     articulos_repo, historial_turno_repo as repo, impresiones_repo, relevo_repo, tramites_repo, turnos_repo,
     usuarios_repo, ventas_repo,
 )
+from ui.dibujos_tabla import TONO_PCS, TONOS_DE_ETIQUETA  # noqa: E402
 from ui.historial_turno_window import (  # noqa: E402
-    COLUMNA_PAGO, COLUMNA_PLATA, COLUMNA_TIEMPO, COLUMNA_TIPO, FILTRO_ANULADAS, BotonHistorialTurno,
-    VentanaHistorialTurno,
+    COLUMNA_DETALLE, COLUMNA_PAGO, COLUMNA_PLATA, COLUMNA_TIEMPO, COLUMNA_TIPO, FILTRO_ANULADAS, ROJO,
+    BotonHistorialTurno, VentanaHistorialTurno,
 )
 from base import BaseConBaseTemporal, esperar_que_avance_el_reloj  # noqa: E402
 
@@ -435,6 +436,23 @@ class TestVentana(BaseHistorial):
         self.assertEqual(ventana.tabla.item(fila, COLUMNA_PLATA).text(), "$ 8.000")
         caja = 0   # la apertura de la caja: no movió plata
         self.assertEqual(ventana.tabla.item(caja, COLUMNA_PLATA).text(), "—")
+
+    def test_que_paso_va_del_color_de_su_etiqueta(self):
+        # Pedido del dueño (2026-11-21): que "Qué pasó" y "Qué fue" tengan el mismo
+        # color, "para que sea más fácil de leer". Lo anulado sigue en rojo.
+        ventana = self.ventana()
+        movimientos = self.historial()["movimientos"]
+
+        def color(fila):
+            return ventana.tabla.item(fila, COLUMNA_DETALLE).foreground().color().name().upper()
+
+        for fila, movimiento in enumerate(movimientos):
+            esperado = ROJO.name() if movimiento["anulada"] else ventana.etiquetas.colores_de(movimiento["tipo"])[0]
+            self.assertEqual(color(fila), esperado.upper(), movimiento["tipo"])
+        pc_abierta = [m["venta_id"] for m in movimientos].index(self.v_pc)
+        self.assertEqual(color(pc_abierta), TONOS_DE_ETIQUETA[TONO_PCS][0].upper())
+        anulada = [m["venta_id"] for m in movimientos].index(self.v_repetida)
+        self.assertEqual(color(anulada), ROJO.name().upper())
 
     def test_las_pastillas_por_tipo(self):
         ventana = self.ventana()

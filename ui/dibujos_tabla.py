@@ -146,6 +146,15 @@ class DelegadoEtiqueta(QStyledItemDelegate):
         uno de TONOS_DE_ETIQUETA."""
         self._colores = {texto: TONOS_DE_ETIQUETA[tono] for texto, tono in tonos.items()}
 
+    def colores_de(self, texto: str) -> tuple:
+        """(letra, fondo, borde) con que se dibuja la etiqueta de `texto`: el que se le
+        fijó o, si no, el de su nombre (con `grande`, gris). También pinta el resto
+        del renglón del color de su etiqueta (el "Qué pasó" del Historial del Turno)."""
+        colores = self._colores.get(texto)
+        if colores is None:
+            colores = TONOS_DE_ETIQUETA["gris"] if self.grande else color_de_etiqueta(texto)
+        return colores
+
     def fuente(self, base: QFont) -> QFont:
         """La letra de la etiqueta, sacada de la de la celda."""
         fuente = QFont(base)
@@ -177,10 +186,7 @@ class DelegadoEtiqueta(QStyledItemDelegate):
         texto = (index.data() or "").strip()
         if not texto:
             return
-        colores = self._colores.get(texto)
-        if colores is None:
-            colores = TONOS_DE_ETIQUETA["gris"] if self.grande else color_de_etiqueta(texto)
-        letra, fondo, borde = colores
+        letra, fondo, borde = self.colores_de(texto)
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setFont(self.fuente(option.font))

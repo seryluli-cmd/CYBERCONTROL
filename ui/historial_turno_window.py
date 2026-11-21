@@ -22,6 +22,9 @@ equivocó al cobrar (pedido del dueño, 2026-11-19; antes, solo el Admin).
 
 Lo anulado sale en rojo y no suma. Solo muestra: anular sigue siendo cosa de
 Consulta de Ventas o de "Quitar un bono".
+
+Desde el 2026-11-21 el texto de "Qué pasó" va del mismo color que la etiqueta de
+"Qué fue" de su renglón (pedido del dueño: "para que sea más fácil de leer").
 """
 
 from datetime import datetime
@@ -246,9 +249,9 @@ class VentanaHistorialTurno(QDialog):
         self.filtros_rubros.hide()
 
         self.tabla = crear_tabla(COLUMNAS, estirar=COLUMNA_DETALLE, por_filas=True)
-        etiquetas = DelegadoEtiqueta(self.tabla)
-        etiquetas.colores_fijos(TONOS)
-        self.tabla.setItemDelegateForColumn(COLUMNA_TIPO, etiquetas)
+        self.etiquetas = DelegadoEtiqueta(self.tabla)
+        self.etiquetas.colores_fijos(TONOS)
+        self.tabla.setItemDelegateForColumn(COLUMNA_TIPO, self.etiquetas)
         for columna, ancho in ((COLUMNA_HORA, 62), (COLUMNA_TIPO, 160), (COLUMNA_PAGO, 130),
                                (COLUMNA_TIEMPO, 150), (COLUMNA_PLATA, 135)):
             self.tabla.setColumnWidth(columna, ancho)
@@ -371,10 +374,13 @@ class VentanaHistorialTurno(QDialog):
             texto_plata, color_plata, negrita = texto_de_la_plata(movimiento)
             if anulada:
                 color_plata, negrita = ROJO, False
+            # "Qué pasó" con la letra de su etiqueta de "Qué fue" (pedido del dueño,
+            # 2026-11-21: "para que sea más fácil de leer"); lo anulado sigue en rojo.
+            color_de_lo_que_paso = rojo or QColor(self.etiquetas.colores_de(movimiento["tipo"])[0])
             celdas = (
                 (movimiento["hora"], rojo, False, False),
                 (movimiento["tipo"], None, False, False),
-                (_que_paso(movimiento), rojo, False, False),
+                (_que_paso(movimiento), color_de_lo_que_paso, False, False),
                 (pago, rojo or (FUCSIA if pago == repo.PAGO_A_CUENTA
                                 else (GRIS if pago == repo.SIN_PAGO else None)), False, False),
                 (movimiento["tiempo"] or "—", rojo or (None if movimiento["tiempo"] else GRIS), False, anulada),

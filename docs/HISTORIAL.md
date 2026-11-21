@@ -716,3 +716,10 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   Messenger). Prueba en `tests/test_estilo_ui.py` (`test_miembros_lleva_los_munequitos_azules_dibujados`,
   mira que el dibujo sea azul de verdad); las que buscaban "🧑  MIEMBROS" ahora buscan "  MIEMBROS". Sin
   .exe; la lista blanca no cambia.
+- **2026-11-21 — Historial del Turno: "Qué pasó" del color de su etiqueta** (pedido del dueño: "quiero
+  que qué pasó y qué fue tengan el mismo color, para que sea más fácil de leer"). El texto de "Qué pasó"
+  va con la letra de la etiqueta de "Qué fue" de su renglón: lo de las PCs en azul, la PS5 en rosa,
+  PCSTREAM en celeste, el kiosko en verde, los socios en violeta, los trámites en ámbar, la caja en
+  pizarra... (`ui.dibujos_tabla.DelegadoEtiqueta.colores_de`, el mismo color con que se dibuja la
+  etiqueta). Lo anulado sigue todo en rojo. Prueba en `tests/test_historial_turno.py`; 2144 pruebas.
+  Sin .exe; la lista blanca no cambia.
