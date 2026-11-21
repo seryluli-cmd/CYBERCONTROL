@@ -644,6 +644,16 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   con un socio; un Cliente PC viejo no lo tiene y sigue igual. Pruebas en
   `tests/test_cambiar_clave_socio.py` y el contrato con el Cliente PC de verdad en
   `tests/test_contrato_cliente_pc.py`. Sin .exe; la lista blanca no cambia.
+- **2026-11-21 — Reservas: el equipo con su color y 1 hora de tolerancia** (pedido del dueño: "quiero
+  que PS5 y PC18X tengan diferentes colores" y "que la tolerancia para que venza la reserva sea de 1
+  hora"). En la lista de RESERVAS el equipo va en una etiqueta del color de su rubro, el de todo el
+  programa (`reservas_window.TONO_DEL_EQUIPO`): las PCs en azul, la PlayStation 5 en rosa y PCSTREAM
+  en celeste; va por el tipo de equipo, no por el nombre. `dominio.MINUTOS_TOLERANCIA_RESERVA` pasó de
+  20 a 60: hasta 1 hora después de la hora la reserva sigue esperando (el equipo sigue RESERVADO y un
+  socio no entra a esa PC); después pasa sola a No vino o A reprogramar. Los avisos la nombran con
+  `dominio.texto_tolerancia_reserva()` ("1 hora"). Pruebas en `tests/test_reservas.py`,
+  `test_reservas_parte2.py`, `test_reservas_socios.py` y `test_reservas_ui.py`. Sin .exe; la lista
+  blanca no cambia.
 - **2026-11-21 — Dos PlayStation 5: PS5-1 y PS5-2** (pedido del dueño: "compré otra Play Station 5
   así que debemos agregarla al programa"; eligió los nombres PS5-1 y PS5-2, los mismos bonos para las
   dos, la plata junta como "PlayStation 5" en Caja, Cierre de Turno y Reportes con el detalle diciendo
@@ -658,5 +668,6 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   reciente, Historial del Turno, Detalle del Día y las reservas dicen cuál. Una reserva de PlayStation
   choca solo con las de su consola y, si la suya está ocupada, se habilita en la otra libre. Pruebas
   nuevas en `tests/test_playstation.py` (`TestDosConsolas`, `TestMigracionDeLaSegundaConsola`) y
-  `tests/test_reservas.py`; 2129 pruebas. Cambia la lista blanca (`playstation_repo.estados`): las
+  `tests/test_reservas.py` (la de colores de `tests/test_reservas_ui.py` ahora reserva las dos y las dos
+  salen rosa); 2132 pruebas. Cambia la lista blanca (`playstation_repo.estados`): las
   dos copias necesitan el mismo .exe. Sin .exe.

@@ -33,6 +33,7 @@ from control_pcs.ui.reservas_dialogos import (
     DialogoDevolver, DialogoHabilitarReserva, DialogoNuevaReserva, DialogoReprogramar, texto_dia_y_hora,
 )
 from control_pcs.ui.reservas_socio_dialogo import DialogoReservaDeSocio
+from ui.dibujos_tabla import TONO_PCS, TONO_PCSTREAM, TONO_PLAYSTATION, DelegadoEtiqueta
 from ui.piezas_ventana import (
     TONO_AZUL, TONO_CELESTE, TONO_NARANJA, agregar_pastilla, cabecera_oscura, linea_divisoria, tecla,
 )
@@ -43,6 +44,17 @@ from ui.utils import (
 
 TITULOS = ("Nº", "Día y hora", "Cliente", "Celular", "Equipo", "Bono", "Precio", "Pagó", "Falta", "Estado")
 COLUMNA_ESTADO = TITULOS.index("Estado")
+COLUMNA_EQUIPO = TITULOS.index("Equipo")
+
+# El equipo va en una etiqueta del color de su rubro, el mismo de todo el programa
+# (ui/dibujos_tabla.py): pedido del dueño (2026-11-21) para ver de un vistazo qué
+# reserva es de la PS5 (rosa) y cuál de una PC (azul). Va por el tipo de equipo,
+# no por el nombre: cualquier PC sale azul y cualquier consola, rosa.
+TONO_DEL_EQUIPO = {
+    dominio.EQUIPO_RESERVA_PC: TONO_PCS,
+    dominio.EQUIPO_RESERVA_PCSTREAM: TONO_PCSTREAM,
+    dominio.EQUIPO_RESERVA_PLAYSTATION: TONO_PLAYSTATION,
+}
 
 # El color del estado en la lista, como en la maqueta: azul lo que espera,
 # naranja lo que hay que reprogramar, verde lo que se usó, gris lo terminado.
@@ -189,6 +201,10 @@ class ReservasWindow(QDialog):
         self.tabla.setShowGrid(False)
         self.tabla.verticalHeader().setDefaultSectionSize(38)
         self.tabla.setItemDelegateForColumn(COLUMNA_ESTADO, _DelegadoEstado(self.tabla))
+        # La grande: la chica quedaba mucho más baja que la pastilla del Estado. Además
+        # su sizeHint ensancha la columna para que "CUALQUIER PC DISPONIBLE" entre entera.
+        self.etiqueta_equipo = DelegadoEtiqueta(self.tabla, grande=True)
+        self.tabla.setItemDelegateForColumn(COLUMNA_EQUIPO, self.etiqueta_equipo)
         self.tabla.cellDoubleClicked.connect(lambda *_: self._habilitar())
 
         pie_ayuda = QFrame()
@@ -198,7 +214,7 @@ class ReservasWindow(QDialog):
         ayuda = QLabel(
             "ⓘ&nbsp; <b>No vino con seña:</b> la pierde. &nbsp;·&nbsp; <b>Pagó el 100%:</b> queda A reprogramar "
             f"(vence a los {dominio.DIAS_PARA_REPROGRAMAR_RESERVA} días) y ese día va a cualquier PC disponible. "
-            f"&nbsp;·&nbsp; A los {dominio.MINUTOS_TOLERANCIA_RESERVA} minutos de la hora pasa sola. "
+            f"&nbsp;·&nbsp; <b>Tolerancia:</b> {dominio.texto_tolerancia_reserva()}; después pasa sola. "
             "&nbsp;·&nbsp; <b>Devolver plata:</b> solo el Admin; sale de la caja de quien la entrega. "
             f"&nbsp;·&nbsp; <b>Socio</b> (con {_texto_del_minimo()} o más de saldo): no paga nada; entra con su "
             "usuario y usa su saldo."
@@ -256,6 +272,9 @@ class ReservasWindow(QDialog):
             self._pintar_fila(fila, reserva)
             if reserva["id"] == elegir:
                 self.tabla.selectRow(fila)
+        self.etiqueta_equipo.colores_fijos(
+            {reserva["equipo_nombre"]: TONO_DEL_EQUIPO[reserva["equipo"]] for reserva in self.reservas}
+        )
         self.tabla.resizeColumnsToContents()
         # Un poco de aire entre columnas: la tabla no tiene rayas que las separen.
         for columna in range(COLUMNA_ESTADO):

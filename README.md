@@ -400,7 +400,7 @@ encima), espera; Ventas con el carrito vacío y Caja se cierran solas
   caja de quien la toma); Habilitar dice cuánto pagó, cuándo y a quién, cobra lo
   que falta (queda en la caja de quien habilita) y abre el equipo con el bono
   reservado. **Habilitar una reserva ya pagada no crea ninguna venta.** Si no
-  viene (sola, a la hora + 20 minutos, o con "No vino"): con seña la pierde; si
+  viene (sola, a la hora + 1 hora de tolerancia, o con "No vino"): con seña la pierde; si
   pagó todo queda "A reprogramar" (otro día, con cualquier PC disponible) y vence
   a los 5 días. Ninguna de las dos cosas mueve plata. Devolver plata es solo del
   Admin: una venta en negativo en la caja de ahora (el cierre viejo no se toca).

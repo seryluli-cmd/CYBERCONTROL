@@ -742,8 +742,21 @@ CLASES_PAGO_RESERVA = (
 )
 
 # Pasada la hora de la reserva más esto sin que el cliente llegue, la reserva
-# pasa sola a "No vino" o a "A reprogramar" (decisión del dueño).
-MINUTOS_TOLERANCIA_RESERVA = 20
+# pasa sola a "No vino" o a "A reprogramar" (decisión del dueño). Eran 20 minutos;
+# el 2026-11-21 el dueño la llevó a 1 hora. Mientras dura, el equipo sigue
+# apartado (RESERVADO en el mosaico, un socio no entra a esa PC).
+MINUTOS_TOLERANCIA_RESERVA = 60
+
+
+def texto_tolerancia_reserva() -> str:
+    """La tolerancia como se dice en los avisos de las reservas: "1 hora",
+    "2 horas", "20 minutos" o "1 h 30 min"."""
+    horas, minutos = divmod(MINUTOS_TOLERANCIA_RESERVA, 60)
+    if not horas:
+        return f"{minutos} minutos"
+    if not minutos:
+        return "1 hora" if horas == 1 else f"{horas} horas"
+    return f"{horas} h {minutos} min"
 # Una reserva "A reprogramar" vence a los cinco días (decisión del dueño).
 DIAS_PARA_REPROGRAMAR_RESERVA = 5
 # Desde cuánto antes de la hora una PC puntual, PCSTREAM o la consola se ve

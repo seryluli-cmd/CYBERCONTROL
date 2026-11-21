@@ -238,7 +238,7 @@ class DialogoNuevaReserva(QDialog):
             self.aviso.cuerpo.setText(
                 f"El precio queda fijo en {formato_pesos(precio)} aunque después cambie el bono. "
                 f"Cuando llegue se cobra lo que falta. Si no viene (o llega más de "
-                f"{dominio.MINUTOS_TOLERANCIA_RESERVA} minutos tarde), pierde la seña."
+                f"{dominio.texto_tolerancia_reserva()} tarde), pierde la seña."
             )
 
     @manejar_errores

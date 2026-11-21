@@ -11,7 +11,7 @@ y reservas_habilitar_repo.py). Lo que más importa es la plata, que se valida as
 - la devolución baja lo que hay que retirar AHORA y no toca el cierre viejo.
 
 Y las reglas del dueño: pierde la seña si no viene, "A reprogramar" si pagó
-todo (vence a los 5 días), 20 minutos de tolerancia, el precio queda fijo,
+todo (vence a los 5 días), 1 hora de tolerancia, el precio queda fijo,
 "Cualquier PC" no aparta ninguna, PCSTREAM y la PlayStation 5 con sus bonos.
 
 Se ejecutan con:
@@ -222,30 +222,34 @@ class TestNoVino(_ConReservas):
 
         self.assertEqual(reservas_repo.marcar_no_vino(reserva, self.luis), dominio.RESERVA_A_REPROGRAMAR)
 
-    def test_pasados_los_20_minutos_de_tolerancia_pasa_sola(self):
+    def test_pasada_la_hora_de_tolerancia_pasa_sola(self):
+        # Eran 20 minutos; el dueño la llevó a 1 hora el 2026-11-21.
         hora = _manana_a_las(10)
         con_sena = self._reservar(5000.0, cuando=hora)
         pagada = self._reservar(3000.0, estacion="pc2", bono=self.tres_horas, cuando=hora)
 
-        reservas_repo.actualizar_estados(hora + timedelta(minutes=19))
+        reservas_repo.actualizar_estados(hora + timedelta(minutes=59))
         self.assertEqual(self._estado(con_sena), dominio.RESERVA_PENDIENTE)
 
-        reservas_repo.actualizar_estados(hora + timedelta(minutes=21))
+        reservas_repo.actualizar_estados(hora + timedelta(minutes=61))
         self.assertEqual(self._estado(con_sena), dominio.RESERVA_NO_VINO)
         self.assertEqual(self._estado(pagada), dominio.RESERVA_A_REPROGRAMAR)
         # Queda anotado que lo hizo el programa, a la hora en que venció.
         datos = reservas_repo.obtener_reserva(pagada)
         self.assertIsNone(datos["estado_por"])
-        self.assertEqual(datos["estado_desde"][:19], (hora + timedelta(minutes=20)).isoformat())
+        self.assertEqual(datos["estado_desde"][:19], (hora + timedelta(hours=1)).isoformat())
+
+    def test_la_tolerancia_se_dice_en_horas(self):
+        self.assertEqual(dominio.texto_tolerancia_reserva(), "1 hora")
 
     def test_a_reprogramar_vence_a_los_cinco_dias(self):
         hora = _manana_a_las(10)
         reserva = self._reservar(10000.0, cuando=hora)
-        reservas_repo.actualizar_estados(hora + timedelta(minutes=21))
+        reservas_repo.actualizar_estados(hora + timedelta(minutes=61))
 
-        reservas_repo.actualizar_estados(hora + timedelta(days=5, minutes=19))
+        reservas_repo.actualizar_estados(hora + timedelta(days=5, minutes=59))
         self.assertEqual(self._estado(reserva), dominio.RESERVA_A_REPROGRAMAR)
-        reservas_repo.actualizar_estados(hora + timedelta(days=5, minutes=21))
+        reservas_repo.actualizar_estados(hora + timedelta(days=5, minutes=61))
         self.assertEqual(self._estado(reserva), dominio.RESERVA_VENCIDA)
 
     def test_reprogramada_vuelve_a_esperar_y_ya_no_tiene_pc_propia(self):
@@ -287,7 +291,8 @@ class TestHorarios(_ConReservas):
         self._reservar(cuando=hora)
 
         self.assertEqual(reservas_repo.reservas_de_hoy(hora - timedelta(hours=2)), 1)
-        self.assertEqual(reservas_repo.reservas_de_hoy(hora + timedelta(minutes=25)), 0)
+        self.assertEqual(reservas_repo.reservas_de_hoy(hora + timedelta(minutes=50)), 1)
+        self.assertEqual(reservas_repo.reservas_de_hoy(hora + timedelta(minutes=65)), 0)
         self.assertEqual(reservas_repo.reservas_de_hoy(hora - timedelta(days=1)), 0)
 
     def test_la_lista_pone_primero_las_que_esperan_y_busca_sin_acentos(self):

@@ -118,7 +118,7 @@ class DialogoReservaDeSocio(QDialog):
         self.aviso = aviso_azul(
             "No paga nada ahora: su saldo es la garantía. Cuando llega, entra a la PC con su usuario y su clave "
             "y usa su saldo como siempre (la reserva queda habilitada sola). Si no viene (o llega más de "
-            f"{dominio.MINUTOS_TOLERANCIA_RESERVA} minutos tarde), queda \"No vino\" y no pierde nada.",
+            f"{dominio.texto_tolerancia_reserva()} tarde), queda \"No vino\" y no pierde nada.",
         )
 
         layout = QVBoxLayout()

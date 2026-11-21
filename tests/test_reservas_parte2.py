@@ -6,7 +6,7 @@ RESERVAS, parte 2: "que el programa cuide la hora" (pedido del dueño,
 dueño que se prueban acá:
 
 - una PC puntual, PCSTREAM o la consola se ve RESERVADA 2 h antes de la hora y
-  hasta la hora + los 20 minutos de tolerancia (celeste en el mosaico si está
+  hasta la hora + la hora de tolerancia (celeste en el mosaico si está
   libre; en uso conserva su color y avisa "Res. 10:00");
 - la pantalla de bloqueo de esa PC recibe el cartel en GET /estado;
 - venderle a otro cliente un bono que se pasa de la hora AVISA (no frena);
@@ -89,14 +89,14 @@ class _ConReservas(BaseConBaseTemporal):
 
 
 class TestCuandoSeVeReservada(_ConReservas):
-    def test_se_ve_reservada_dos_horas_antes_y_hasta_los_20_minutos_de_tolerancia(self):
+    def test_se_ve_reservada_dos_horas_antes_y_hasta_la_hora_de_tolerancia(self):
         self._reservar(_manana_a_las(10))
 
         self.assertFalse(self._pendientes(_manana_a_las(7, 59))[0]["marcada"])
         self.assertTrue(self._pendientes(_manana_a_las(8))[0]["marcada"])
-        self.assertTrue(self._pendientes(_manana_a_las(10, 20))[0]["marcada"])
+        self.assertTrue(self._pendientes(_manana_a_las(11))[0]["marcada"])
         # Pasada la tolerancia ya no espera a nadie (al listarla pasa a No vino).
-        self.assertEqual(self._pendientes(_manana_a_las(10, 21)), [])
+        self.assertEqual(self._pendientes(_manana_a_las(11, 1)), [])
 
     def test_una_reserva_que_ya_no_esta_pendiente_no_aparta_nada(self):
         reserva = self._reservar(_manana_a_las(10))
@@ -249,7 +249,7 @@ class TestSocioEnUnaPcReservada(_ConReservas):
         reserva = self._reservar(_en(60))
         with conexion_db() as conexion:
             conexion.execute("UPDATE reservas SET fecha_reserva = ? WHERE id = ?",
-                             (_en(-25).isoformat(timespec="seconds"), reserva))
+                             (_en(-65).isoformat(timespec="seconds"), reserva))
 
         self.assertEqual(miembros_repo.abrir_estacion_por_miembro(self.pc1, "juan", "clave123")["minutos_usados"], 300)
 

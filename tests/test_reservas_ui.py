@@ -23,9 +23,14 @@ from PySide6.QtWidgets import QApplication, QFrame, QPushButton  # noqa: E402
 
 import dominio  # noqa: E402
 from repositories import usuarios_repo  # noqa: E402
-from control_pcs.repositories import pcs_repo, reservas_habilitar_repo, reservas_repo  # noqa: E402
+from control_pcs.repositories import (  # noqa: E402
+    pcs_repo, playstation_repo, reservas_habilitar_repo, reservas_repo,
+)
 from control_pcs.ui.reservas_dialogos import DialogoHabilitarReserva, DialogoNuevaReserva  # noqa: E402
-from control_pcs.ui.reservas_window import COLOR_ESTADO, COLUMNA_ESTADO, ReservasWindow  # noqa: E402
+from control_pcs.ui.reservas_window import (  # noqa: E402
+    COLOR_ESTADO, COLUMNA_EQUIPO, COLUMNA_ESTADO, TONO_DEL_EQUIPO, ReservasWindow,
+)
+from ui.dibujos_tabla import TONO_PCS, TONO_PLAYSTATION, TONOS_DE_ETIQUETA, DelegadoEtiqueta  # noqa: E402
 from ui.caja_window import CajaWindow, CierreTurnoWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
@@ -181,6 +186,32 @@ class TestVentanaReservas(_ConUnaReserva):
         estado = ventana.tabla.item(0, COLUMNA_ESTADO)
         self.assertEqual(estado.text(), "Pendiente")
         self.assertEqual(estado.data(Qt.UserRole), COLOR_ESTADO[dominio.RESERVA_PENDIENTE])
+
+    def test_la_ps5_y_las_pcs_van_de_distinto_color(self):
+        # Pedido del dueño (2026-11-21): el color de su rubro, el de todo el programa.
+        admin = usuarios_repo.crear_usuario("Sergio", "1234", dominio.ROL_ADMIN)
+        bono_ps5 = playstation_repo.crear_bono(admin, "2 horas PS5", 120, 6000.0)
+        self._reservar(5000.0)
+        # Las dos PS5 (2026-11-21): cada una con su nombre, las dos en rosa.
+        for consola, cliente in ((1, "Lautaro"), (2, "Mía")):
+            reservas_repo.crear_reserva(self.ana, cliente, "", dominio.EQUIPO_RESERVA_PLAYSTATION, None,
+                                        bono_ps5, _manana_a_las(12), 6000.0, _efectivo(6000.0), consola=consola)
+
+        ventana = self._abrir(ReservasWindow(self._usuario()))
+
+        etiqueta = ventana.tabla.itemDelegateForColumn(COLUMNA_EQUIPO)
+        self.assertIsInstance(etiqueta, DelegadoEtiqueta)
+        equipos = {ventana.tabla.item(fila, COLUMNA_EQUIPO).text() for fila in range(ventana.tabla.rowCount())}
+        self.assertEqual(equipos, {"PC1", "PS5-1", "PS5-2"})
+        self.assertEqual(etiqueta._colores["PC1"], TONOS_DE_ETIQUETA[TONO_PCS])
+        for consola in ("PS5-1", "PS5-2"):
+            self.assertEqual(etiqueta._colores[consola], TONOS_DE_ETIQUETA[TONO_PLAYSTATION])
+            # La etiqueta entra entera (va en mayúscula y negrita, más ancha que el texto).
+            self.assertGreaterEqual(ventana.tabla.columnWidth(COLUMNA_EQUIPO),
+                                    etiqueta.ancho_para(consola, ventana.tabla.font()))
+
+    def test_cada_equipo_que_se_reserva_tiene_su_color(self):
+        self.assertEqual(set(TONO_DEL_EQUIPO), set(dominio.EQUIPOS_RESERVA))
 
 
 class TestDialogos(_ConUnaReserva):
