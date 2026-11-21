@@ -695,3 +695,15 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   `crear_reserva`. Las reglas y la plata no cambian; se fue `_DelegadoDeEquipos`, que dibujaba la lista
   vieja. Pruebas en `tests/test_reservas_ui.py` (`TestNuevaReserva`) y `tests/test_reservas.py`. Sin
   .exe; la lista blanca no cambia.
+- **2026-11-21 — Cobrar Venta con el diseño A** (pedido del dueño, con una captura de la ventana: "quiero
+  que mejores la estética de esta pantalla, que sea mucho más profesional y bella"). Eligió la A entre tres
+  maquetas (A cabecera oscura como Caja y Cierre de Turno, B ticket oscuro como Venta, C total grande y un
+  recuadro por medio). `ui/dialogo_pago.py`: la cabecera oscura con el total a la derecha; en un panel
+  blanco, Efectivo, Digital y Paga con, cada uno con su dibujito en un cuadradito de color, el importe
+  grande y a la derecha y TODO EFECTIVO / TODO DIGITAL como teclas (Alt+E y Alt+D siguen); abajo, dos
+  cifras grandes: SE COBRA en verde (dice si va todo en efectivo, todo digital o cuánto en cada uno; pasa a
+  FALTA en rojo si con lo que paga no alcanza) y el VUELTO en rojo, titilando (sin vuelto, "$ 0" en gris);
+  CANCELAR y CONFIRMAR COBRO verde. Solo cambió cómo se ve: los campos, Enter, los atajos y la cuenta
+  (`dominio.cuenta_del_cobro`) son los de antes. `piezas_ventana.cifra_destacada` ahora guarda también
+  `.titulo`; la cifra roja y los colores nuevos, en `ui/hoja_de_estilos.py`. Pruebas en
+  `tests/test_dialogo_pago.py`. Sin .exe; la lista blanca no cambia.

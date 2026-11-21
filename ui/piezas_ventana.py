@@ -109,20 +109,21 @@ def cifra_destacada(titulo: str, aclaracion: str, tono: str) -> QFrame:
     una línea que aclara qué suma ("Sin el cambio: lo cobrado en efectivo"). Es lo primero
     que se lee en Caja, en Cierre de Turno y en Reportes (Resumen de Ventas y PCSTREAM,
     donde con TONO_GRIS muestra también un número que no es plata, como el tiempo
-    vendido). `cifra.valor` es la etiqueta del monto."""
+    vendido). `cifra.valor` es la etiqueta del monto, `cifra.titulo` la del título (Cobrar
+    Venta lo cambia: "SE COBRA" o "FALTA") y `cifra.aclaracion` la de la línea de abajo."""
     cifra = QFrame()
     cifra.setObjectName("cifraDestacada")
     cifra.setProperty("tono", tono)
     capa = QVBoxLayout(cifra)
     capa.setContentsMargins(16, 12, 16, 12)
     capa.setSpacing(0)
-    etiqueta_titulo = QLabel(titulo)
-    etiqueta_titulo.setObjectName("tituloCifra")
+    cifra.titulo = QLabel(titulo)
+    cifra.titulo.setObjectName("tituloCifra")
     cifra.valor = QLabel()
     cifra.valor.setObjectName("valorCifra")
     cifra.aclaracion = QLabel(aclaracion)
     cifra.aclaracion.setObjectName("aclaracionCifra")
-    capa.addWidget(etiqueta_titulo)
+    capa.addWidget(cifra.titulo)
     capa.addWidget(cifra.valor)
     capa.addWidget(cifra.aclaracion)
     return cifra

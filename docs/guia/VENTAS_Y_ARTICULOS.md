@@ -128,7 +128,10 @@ Si necesitás uno de esos datos, **llamá a la función existente**.
   apretado no cobra: `encadenar_enter` descarta la repetición del teclado y los atajos de
   Confirmar no se repiten (`tests/test_dialogo_pago.py`, `tests/test_enter_como_tab.py`).
   Excepción a propósito: el texto de varias líneas del filtro de palabras (Enter es un
-  renglón nuevo).
+  renglón nuevo). El aspecto es el diseño A que eligió el dueño el 2026-11-21 (cabecera oscura
+  con el total, cada medio con su dibujito y, abajo, SE COBRA / FALTA y el VUELTO como cifras
+  grandes, `cifra_cobro` y `cifra_vuelto`): si lo retocás, cambiá cómo se ve y no cómo
+  funciona; el vuelto titila cambiando el color del número, nunca ocultándolo.
 - **Los candados de la plata los pone el repo, no la pantalla** (revisión general
   del 2026-11-16, mejora 2; regla 3):
   - `pcs_repo.asignar_bono` y `playstation_repo.vender_bono` toman `BEGIN IMMEDIATE`

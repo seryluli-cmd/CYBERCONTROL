@@ -2147,6 +2147,73 @@ HOJA_DE_ESTILOS = """
     QFrame#cifraDestacada[tono="gris"] > QLabel#tituloCifra { color: #4B5B75; }
     QFrame#cifraDestacada[tono="gris"] > QLabel#valorCifra { color: #1B2233; }
     QFrame#cifraDestacada[tono="gris"] > QLabel#aclaracionCifra { color: #7A8699; }
+    /* Cobrar Venta, diseño A del 2026-11-21 (ui/dialogo_pago.py; el dueño lo eligió entre
+       tres maquetas): el total en blanco a la derecha de la cabecera oscura, cada medio de
+       pago con su dibujito en un cuadradito de color, los importes grandes y a la derecha y,
+       abajo, lo que se cobra y el vuelto como cifras grandes. La cifra roja es FALTA o el
+       VUELTO; sin vuelto queda gris y "apagada"; el vuelto titila pasando su número a
+       transparente (parpadeo="apagado"), así el recuadro no se corre. Va por objectName:
+       los avisos que se abran encima no heredan nada. */
+    QLabel#tituloTotalCobro {
+        color: #8A93A3;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+    QLabel#totalCobro {
+        color: #FFFFFF;
+        font-size: 30px;
+        font-weight: 800;
+    }
+    QLabel#insigniaCobro {
+        border-radius: 10px;
+        font-size: 19px;
+    }
+    QLabel#insigniaCobro[tono="verde"] { background-color: #ECF8F0; border: 1px solid #BCE3CA; }
+    QLabel#insigniaCobro[tono="azul"] { background-color: #EDF3FF; border: 1px solid #C4D6F8; }
+    QLabel#insigniaCobro[tono="ambar"] { background-color: #FFF6E5; border: 1px solid #F3D9A4; }
+    QLabel#nombreMedioCobro {
+        font-size: 13px;
+        font-weight: 800;
+    }
+    QLabel#ayudaMedioCobro {
+        font-size: 11px;
+        color: #7A8699;
+    }
+    QDoubleSpinBox#campoCobro {
+        font-size: 20px;
+        font-weight: 700;
+        padding: 7px 12px;
+        min-height: 26px;
+        border: 1px solid #CDD3DE;
+        border-radius: 9px;
+        background-color: #FFFFFF;
+    }
+    QDoubleSpinBox#campoCobro:focus {
+        border: 2px solid #2F6FED;
+        background-color: #F7FAFF;
+    }
+    QDoubleSpinBox#campoCobro:disabled {
+        background-color: #F5F6F8;
+        color: #A7ADB8;
+        border-color: #E1E4E9;
+    }
+    QFrame#cifraDestacada[tono="rojo"] {
+        background-color: #FDECEC;
+        border: 1px solid #F1B5BA;
+    }
+    QFrame#cifraDestacada[tono="rojo"] > QLabel#tituloCifra { color: #A6323C; }
+    QFrame#cifraDestacada[tono="rojo"] > QLabel#valorCifra { color: #C62828; }
+    QFrame#cifraDestacada[tono="rojo"] > QLabel#aclaracionCifra { color: #A0585E; }
+    QFrame#cifraDestacada[tono="gris"][apagada="true"] > QLabel#valorCifra { color: #B4BBC7; }
+    QFrame#cifraDestacada[tono="rojo"] > QLabel#valorCifra[parpadeo="apagado"] { color: rgba(0, 0, 0, 0); }
+    QPushButton#confirmarCobro {
+        font-size: 15px;
+        padding: 11px 22px;
+    }
+    QPushButton#cancelarCobro {
+        padding: 11px 18px;
+    }
     /* Reportes con el diseño C que eligió el dueño el 2026-11-19 (ui/reportes_window.py):
        el menú de las secciones a la izquierda, el nombre de la elegida en grande, los
        filtros en una tarjeta blanca y los títulos y las cifras más grandes. Va por

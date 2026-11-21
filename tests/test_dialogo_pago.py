@@ -184,10 +184,53 @@ class TestDialogoPago(unittest.TestCase):
         self._escribir(dialogo.campo_paga_con, "1000")
 
         self.assertFalse(dialogo.boton_confirmar.isEnabled())
-        self.assertIn("faltan $ 500", dialogo.etiqueta_falta.text())
+        # La cifra de lo que se cobra pasa a roja y dice cuánto falta.
+        self.assertEqual(dialogo.cifra_cobro.titulo.text(), "FALTA")
+        self.assertEqual(dialogo.cifra_cobro.valor.text(), "$ 500")
+        self.assertEqual(dialogo.cifra_cobro.property("tono"), "rojo")
         self._enter(dialogo.campo_paga_con)
         self.assertTrue(dialogo.isVisible())
         self.assertEqual(dialogo.pagos, [])
+
+    # --- Cómo se ve (diseño A del 2026-11-21): las cifras de abajo -------------------
+
+    def test_con_vuelto_la_cifra_del_vuelto_es_roja_y_titila(self):
+        dialogo = self._abrir(6700.0)
+
+        self._escribir(dialogo.campo_paga_con, "10000")
+
+        self.assertEqual(dialogo.cifra_vuelto.property("tono"), "rojo")
+        self.assertEqual(dialogo.etiqueta_vuelto.text(), "$ 3.300")
+        self.assertTrue(dialogo._parpadeo_timer.isActive())
+        dialogo._alternar_parpadeo_vuelto()
+        self.assertEqual(dialogo.etiqueta_vuelto.property("parpadeo"), "apagado")
+        dialogo._alternar_parpadeo_vuelto()
+        self.assertEqual(dialogo.etiqueta_vuelto.property("parpadeo"), "prendido")
+        self.assertEqual(dialogo.cifra_cobro.titulo.text(), "SE COBRA")
+        self.assertEqual(dialogo.cifra_cobro.aclaracion.text(), "todo en efectivo  ✓")
+
+    def test_sin_vuelto_la_cifra_queda_gris_y_quieta(self):
+        dialogo = self._abrir(6700.0)
+        self._escribir(dialogo.campo_paga_con, "10000")
+        dialogo._alternar_parpadeo_vuelto()  # justo en el medio del titileo
+
+        self._escribir(dialogo.campo_paga_con, "0")
+
+        self.assertEqual(dialogo.cifra_vuelto.property("tono"), "gris")
+        self.assertEqual(dialogo.cifra_vuelto.property("apagada"), "true")
+        self.assertEqual(dialogo.etiqueta_vuelto.text(), "$ 0")
+        self.assertFalse(dialogo._parpadeo_timer.isActive())
+        # El número no queda transparente si se frenó a mitad del titileo.
+        self.assertEqual(dialogo.etiqueta_vuelto.property("parpadeo"), "prendido")
+
+    def test_pago_mixto_dice_cuanto_va_en_cada_medio(self):
+        dialogo = self._abrir(6700.0)
+
+        self._escribir(dialogo.campo_efectivo, "4000")
+
+        self.assertEqual(dialogo.cifra_cobro.property("tono"), "verde")
+        self.assertEqual(dialogo.cifra_cobro.valor.text(), "$ 6.700")
+        self.assertEqual(dialogo.cifra_cobro.aclaracion.text(), "$ 4.000 efectivo + $ 2.700 digital  ✓")
 
     def test_un_enter_apretado_no_cobra(self):
         dialogo = self._abrir(2100.0)
