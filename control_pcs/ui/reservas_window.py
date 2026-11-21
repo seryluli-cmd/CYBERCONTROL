@@ -30,10 +30,11 @@ from turnos import dia_en_que_empezo_el_turno
 from control_pcs.repositories import reservas_repo
 from control_pcs.repositories import reservas_socios_repo
 from control_pcs.ui.reservas_dialogos import (
-    DialogoDevolver, DialogoHabilitarReserva, DialogoNuevaReserva, DialogoReprogramar, texto_dia_y_hora,
+    TONO_DEL_EQUIPO, DialogoDevolver, DialogoHabilitarReserva, DialogoNuevaReserva, DialogoReprogramar,
+    texto_dia_y_hora,
 )
 from control_pcs.ui.reservas_socio_dialogo import DialogoReservaDeSocio
-from ui.dibujos_tabla import TONO_PCS, TONO_PCSTREAM, TONO_PLAYSTATION, DelegadoEtiqueta
+from ui.dibujos_tabla import DelegadoEtiqueta
 from ui.piezas_ventana import (
     TONO_AZUL, TONO_CELESTE, TONO_NARANJA, agregar_pastilla, cabecera_oscura, linea_divisoria, tecla,
 )
@@ -45,16 +46,8 @@ from ui.utils import (
 TITULOS = ("Nº", "Día y hora", "Cliente", "Celular", "Equipo", "Bono", "Precio", "Pagó", "Falta", "Estado")
 COLUMNA_ESTADO = TITULOS.index("Estado")
 COLUMNA_EQUIPO = TITULOS.index("Equipo")
-
-# El equipo va en una etiqueta del color de su rubro, el mismo de todo el programa
-# (ui/dibujos_tabla.py): pedido del dueño (2026-11-21) para ver de un vistazo qué
-# reserva es de la PS5 (rosa) y cuál de una PC (azul). Va por el tipo de equipo,
-# no por el nombre: cualquier PC sale azul y cualquier consola, rosa.
-TONO_DEL_EQUIPO = {
-    dominio.EQUIPO_RESERVA_PC: TONO_PCS,
-    dominio.EQUIPO_RESERVA_PCSTREAM: TONO_PCSTREAM,
-    dominio.EQUIPO_RESERVA_PLAYSTATION: TONO_PLAYSTATION,
-}
+# El equipo va en una etiqueta del color de su rubro (TONO_DEL_EQUIPO, en
+# reservas_dialogos.py: lo comparte con la lista de equipos de Nueva reserva).
 
 # El color del estado en la lista, como en la maqueta: azul lo que espera,
 # naranja lo que hay que reprogramar, verde lo que se usó, gris lo terminado.

@@ -83,14 +83,17 @@ def _iso(momento: datetime) -> str:
 def equipos_para_reservar() -> list:
     """
     Lo que se puede elegir como equipo de una reserva nueva, en el orden en que
-    se muestra: "Cualquier PC disponible", cada PC común activa (en orden
-    natural), PCSTREAM si existe y cada PlayStation 5. Cada uno es {"equipo",
-    "estacion_id", "consola", "nombre"}; estacion_id es None en "cualquier PC",
-    en PCSTREAM (que es una sola) y en las consolas, y "consola" es el número de
-    la consola (None en las demás).
+    se muestra: cada PlayStation 5 arriba de todo (pedido del dueño, 2026-11-21:
+    son las que más se reservan y quedaban al fondo, debajo de las ~30 PCs),
+    "Cualquier PC disponible", cada PC común activa (en orden natural) y PCSTREAM
+    si existe. Cada uno es {"equipo", "estacion_id", "consola", "nombre"};
+    estacion_id es None en "cualquier PC", en PCSTREAM (que es una sola) y en las
+    consolas, y "consola" es el número de la consola (None en las demás).
     """
-    opciones = [{"equipo": dominio.EQUIPO_RESERVA_PC, "estacion_id": None, "consola": None,
-                 "nombre": dominio.NOMBRE_RESERVA_CUALQUIER_PC}]
+    opciones = [{"equipo": dominio.EQUIPO_RESERVA_PLAYSTATION, "estacion_id": None, "consola": consola,
+                 "nombre": dominio.nombre_consola(consola)} for consola in dominio.CONSOLAS_PLAYSTATION]
+    opciones.append({"equipo": dominio.EQUIPO_RESERVA_PC, "estacion_id": None, "consola": None,
+                     "nombre": dominio.NOMBRE_RESERVA_CUALQUIER_PC})
     hay_pcstream = False
     for estacion in pcs_repo.listar_estaciones():
         if dominio.es_pcstream(estacion["nombre"]):
@@ -101,9 +104,6 @@ def equipos_para_reservar() -> list:
     if hay_pcstream:
         opciones.append({"equipo": dominio.EQUIPO_RESERVA_PCSTREAM, "estacion_id": None, "consola": None,
                          "nombre": dominio.NOMBRE_PCSTREAM})
-    for consola in dominio.CONSOLAS_PLAYSTATION:
-        opciones.append({"equipo": dominio.EQUIPO_RESERVA_PLAYSTATION, "estacion_id": None, "consola": consola,
-                         "nombre": dominio.nombre_consola(consola)})
     return opciones
 
 

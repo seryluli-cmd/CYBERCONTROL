@@ -671,3 +671,13 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   `tests/test_reservas.py` (la de colores de `tests/test_reservas_ui.py` ahora reserva las dos y las dos
   salen rosa); 2132 pruebas. Cambia la lista blanca (`playstation_repo.estados`): las
   dos copias necesitan el mismo .exe. Sin .exe.
+- **2026-11-21 — Nueva reserva: las dos PS5 arriba de todo y cada equipo con su color** (pedido del
+  dueño, ya con PS5-1 y PS5-2: "que aparezcan arriba de todo las 2 PS5 y de diferente color las PS5 y
+  las PC"). `reservas_repo.equipos_para_reservar` las pone primero (antes iban al fondo, debajo de las
+  ~30 PCs); la lista de equipos de Nueva reserva lleva una raya entre las consolas y las PCs y cada
+  renglón con un punto y la letra del color de su rubro (`reservas_dialogos.TONO_DEL_EQUIPO`, el mismo
+  de la lista de reservas; `_DelegadoDeEquipos` la dibuja, porque el dibujante de siempre del
+  QComboBox ignora el color de la letra). Sigue arrancando en "Cualquier PC disponible": arrancar en la
+  PS5-1 apartaría la consola en una reserva de PC hecha sin mirar. Reprogramar y Reserva de socio solo
+  ofrecen PCs y no cambian. Pruebas en `tests/test_reservas.py` y `tests/test_reservas_ui.py`. Sin .exe;
+  la lista blanca no cambia.

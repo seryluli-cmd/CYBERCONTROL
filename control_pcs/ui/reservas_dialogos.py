@@ -17,16 +17,19 @@ control_pcs/repositories/reservas_repo.py: acá solo se pregunta y se muestra.
 
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QDate, QTime
+from PySide6.QtCore import QDate, Qt, QTime
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup, QComboBox, QDialog, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QRadioButton, QTimeEdit, QVBoxLayout,
+    QApplication, QPushButton, QRadioButton, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTimeEdit,
+    QVBoxLayout,
 )
 
 import dominio
 from repositories import relevo_repo
 from control_pcs.repositories import reservas_habilitar_repo, reservas_repo
 from ui.dialogo_pago import cobrar
+from ui.dibujos_tabla import TONO_PCS, TONO_PCSTREAM, TONO_PLAYSTATION, color_fuerte
 from ui.tarjeta_cierre import etiqueta_dato
 from ui.utils import (
     CampoPesos, aplicar_clase, confirmar, crear_selector_de_fecha, encadenar_enter, formato_pesos, manejar_errores,
@@ -34,6 +37,74 @@ from ui.utils import (
 )
 
 _DIAS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+# El color de cada equipo en Reservas, el de su rubro en todo el programa
+# (ui/dibujos_tabla.py): pedido del dueño (2026-11-21) para ver de un vistazo qué es
+# de la PS5 (rosa) y qué de una PC (azul), en la lista de reservas y en la de equipos
+# de Nueva reserva. Va por el tipo de equipo, no por el nombre: cualquier PC sale
+# azul y cualquier consola, rosa.
+TONO_DEL_EQUIPO = {
+    dominio.EQUIPO_RESERVA_PC: TONO_PCS,
+    dominio.EQUIPO_RESERVA_PCSTREAM: TONO_PCSTREAM,
+    dominio.EQUIPO_RESERVA_PLAYSTATION: TONO_PLAYSTATION,
+}
+
+
+def _punto_de_color(color: QColor) -> QIcon:
+    """Un círculo lleno de ese color, adelante de cada equipo en la lista: se ve
+    también con la lista cerrada (el color de la letra solo se ve abierta)."""
+    lienzo = QPixmap(12, 12)
+    lienzo.fill(Qt.transparent)
+    pintor = QPainter(lienzo)
+    pintor.setRenderHint(QPainter.Antialiasing)
+    pintor.setPen(Qt.NoPen)
+    pintor.setBrush(color)
+    pintor.drawEllipse(1, 1, 10, 10)
+    pintor.end()
+    return QIcon(lienzo)
+
+
+class _DelegadoDeEquipos(QStyledItemDelegate):
+    """Cómo se dibuja la lista abierta de equipos de Nueva reserva. El dibujante de
+    siempre de un QComboBox ignora el color de la letra de cada renglón (salían
+    todos negros); este lo respeta, deja los renglones de la altura de siempre y
+    dibuja la raya entre las consolas y las PCs (sin esto quedaba un renglón vacío)."""
+
+    ALTO = 24
+    MARGEN = 8
+
+    @staticmethod
+    def _es_raya(indice) -> bool:
+        # Así marca QComboBox.insertSeparator el renglón de la raya.
+        return indice.data(Qt.AccessibleDescriptionRole) == "separator"
+
+    def sizeHint(self, opcion, indice):
+        tamaño = super().sizeHint(opcion, indice)
+        tamaño.setHeight(9 if self._es_raya(indice) else max(tamaño.height(), self.ALTO))
+        tamaño.setWidth(tamaño.width() + self.MARGEN)
+        return tamaño
+
+    def paint(self, pintor, opcion, indice):
+        if self._es_raya(indice):
+            pintor.save()
+            pintor.setPen(QColor("#CDD3DE"))
+            medio = opcion.rect.center().y()
+            pintor.drawLine(opcion.rect.left() + 6, medio, opcion.rect.right() - 6, medio)
+            pintor.restore()
+            return
+        opcion = QStyleOptionViewItem(opcion)
+        self.initStyleOption(opcion, indice)
+        # El fondo (el renglón elegido) de punta a punta, y el punto y el nombre un
+        # poco corridos del borde, como en las otras listas.
+        fondo = QStyleOptionViewItem(opcion)
+        fondo.text = ""
+        fondo.icon = QIcon()
+        estilo = opcion.widget.style() if opcion.widget else QApplication.style()
+        estilo.drawControl(QStyle.CE_ItemViewItem, fondo, pintor, opcion.widget)
+        opcion.rect = opcion.rect.adjusted(self.MARGEN, 0, 0, 0)
+        opcion.state &= ~QStyle.State_Selected
+        opcion.state &= ~QStyle.State_MouseOver
+        estilo.drawControl(QStyle.CE_ItemViewItem, opcion, pintor, opcion.widget)
 
 
 def texto_dia_y_hora(fecha_iso: str) -> str:
@@ -120,9 +191,21 @@ class DialogoNuevaReserva(QDialog):
         fila_dia.addWidget(self.campo_hora)
         fila_dia.addStretch()
 
+        # Las PS5 vienen arriba de todo (equipos_para_reservar) y cada equipo con el
+        # color de su rubro; una raya separa las consolas de las PCs.
         self.combo_equipo = QComboBox()
+        self.combo_equipo.setItemDelegate(_DelegadoDeEquipos(self.combo_equipo))
+        consolas = 0
         for opcion in reservas_repo.equipos_para_reservar():
-            self.combo_equipo.addItem(opcion["nombre"], opcion)
+            color = color_fuerte(TONO_DEL_EQUIPO[opcion["equipo"]])
+            self.combo_equipo.addItem(_punto_de_color(color), opcion["nombre"], opcion)
+            self.combo_equipo.setItemData(self.combo_equipo.count() - 1, color, Qt.ForegroundRole)
+            consolas += opcion["equipo"] == dominio.EQUIPO_RESERVA_PLAYSTATION
+        if 0 < consolas < self.combo_equipo.count():
+            self.combo_equipo.insertSeparator(consolas)
+        # Arranca en "Cualquier PC disponible", como antes de subir las PS5: si
+        # arrancara en la PS5-1, una reserva de PC hecha sin mirar apartaría la consola.
+        self.combo_equipo.setCurrentIndex(max(0, self.combo_equipo.findText(dominio.NOMBRE_RESERVA_CUALQUIER_PC)))
         self.combo_equipo.currentIndexChanged.connect(self._cargar_bonos)
 
         self.combo_bono = QComboBox()

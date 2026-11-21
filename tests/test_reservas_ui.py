@@ -30,7 +30,9 @@ from control_pcs.ui.reservas_dialogos import DialogoHabilitarReserva, DialogoNue
 from control_pcs.ui.reservas_window import (  # noqa: E402
     COLOR_ESTADO, COLUMNA_EQUIPO, COLUMNA_ESTADO, TONO_DEL_EQUIPO, ReservasWindow,
 )
-from ui.dibujos_tabla import TONO_PCS, TONO_PLAYSTATION, TONOS_DE_ETIQUETA, DelegadoEtiqueta  # noqa: E402
+from ui.dibujos_tabla import (  # noqa: E402
+    TONO_PCS, TONO_PLAYSTATION, TONOS_DE_ETIQUETA, DelegadoEtiqueta, color_fuerte,
+)
 from ui.caja_window import CajaWindow, CierreTurnoWindow  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from base import BaseConBaseTemporal  # noqa: E402
@@ -215,6 +217,21 @@ class TestVentanaReservas(_ConUnaReserva):
 
 
 class TestDialogos(_ConUnaReserva):
+    def test_nueva_reserva_pone_las_ps5_arriba_y_cada_equipo_con_su_color(self):
+        # Pedido del dueño (2026-11-21): las dos PS5 arriba de todo y de otro color que las PCs.
+        dialogo = self._abrir(DialogoNuevaReserva(self._usuario()))
+        combo = dialogo.combo_equipo
+
+        textos = [combo.itemText(indice) for indice in range(combo.count())]
+        self.assertEqual(textos, ["PS5-1", "PS5-2", "", dominio.NOMBRE_RESERVA_CUALQUIER_PC, "PC1", "PC2"])
+        # Arranca donde arrancaba: "Cualquier PC disponible" no aparta ningún equipo.
+        self.assertEqual(combo.currentText(), dominio.NOMBRE_RESERVA_CUALQUIER_PC)
+        self.assertEqual(dialogo.combo_bono.itemText(0)[:7], "3 horas")
+        for indice in (0, 1):
+            self.assertEqual(combo.itemData(indice, Qt.ForegroundRole), color_fuerte(TONO_PLAYSTATION))
+        for indice in (3, 4, 5):
+            self.assertEqual(combo.itemData(indice, Qt.ForegroundRole), color_fuerte(TONO_PCS))
+
     def test_nueva_reserva_cobra_la_mitad_y_la_guarda(self):
         dialogo = self._abrir(DialogoNuevaReserva(self._usuario()))
         dialogo.campo_cliente.setText("Marta")

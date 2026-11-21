@@ -365,7 +365,8 @@ class TestEquipos(_ConReservas):
         with self.assertRaisesRegex(ValueError, "sus propios bonos"):
             self._reservar(estacion="pcstream")
         nombres = [opcion["nombre"] for opcion in reservas_repo.equipos_para_reservar()]
-        self.assertEqual(nombres, [dominio.NOMBRE_RESERVA_CUALQUIER_PC, "PC1", "PC2", "PCSTREAM", "PS5-1", "PS5-2"])
+        # Las dos PS5 arriba de todo (pedido del dueño, 2026-11-21).
+        self.assertEqual(nombres, ["PS5-1", "PS5-2", dominio.NOMBRE_RESERVA_CUALQUIER_PC, "PC1", "PC2", "PCSTREAM"])
 
     def test_la_playstation_se_reserva_y_se_habilita_como_playstation(self):
         reserva = self._reservar(3000.0, equipo=dominio.EQUIPO_RESERVA_PLAYSTATION, estacion=None,
