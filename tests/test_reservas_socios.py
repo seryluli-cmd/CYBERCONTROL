@@ -185,7 +185,7 @@ class TestSiNoViene(_ConSocios):
         reserva = self._reservar(_en(60))
         with conexion_db() as conexion:
             conexion.execute("UPDATE reservas SET fecha_reserva = ? WHERE id = ?",
-                             (_en(-25).isoformat(timespec="seconds"), reserva))
+                             (_en(-65).isoformat(timespec="seconds"), reserva))
 
         reservas_repo.actualizar_estados()
 

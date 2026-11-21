@@ -644,3 +644,13 @@ Lo nuevo se anota acá abajo, con fecha, lo más nuevo al final.
   con un socio; un Cliente PC viejo no lo tiene y sigue igual. Pruebas en
   `tests/test_cambiar_clave_socio.py` y el contrato con el Cliente PC de verdad en
   `tests/test_contrato_cliente_pc.py`. Sin .exe; la lista blanca no cambia.
+- **2026-11-21 — Reservas: el equipo con su color y 1 hora de tolerancia** (pedido del dueño: "quiero
+  que PS5 y PC18X tengan diferentes colores" y "que la tolerancia para que venza la reserva sea de 1
+  hora"). En la lista de RESERVAS el equipo va en una etiqueta del color de su rubro, el de todo el
+  programa (`reservas_window.TONO_DEL_EQUIPO`): las PCs en azul, la PlayStation 5 en rosa y PCSTREAM
+  en celeste; va por el tipo de equipo, no por el nombre. `dominio.MINUTOS_TOLERANCIA_RESERVA` pasó de
+  20 a 60: hasta 1 hora después de la hora la reserva sigue esperando (el equipo sigue RESERVADO y un
+  socio no entra a esa PC); después pasa sola a No vino o A reprogramar. Los avisos la nombran con
+  `dominio.texto_tolerancia_reserva()` ("1 hora"). Pruebas en `tests/test_reservas.py`,
+  `test_reservas_parte2.py`, `test_reservas_socios.py` y `test_reservas_ui.py`. Sin .exe; la lista
+  blanca no cambia.
